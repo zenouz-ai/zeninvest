@@ -1,0 +1,223 @@
+"""Finnhub API client for news sentiment, analyst data, and insider info."""
+
+import time
+from datetime import datetime
+from typing import Any
+
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from src.data.database import get_session
+from src.data.models import ApiLog
+from src.utils.config import get_settings
+from src.utils.logger import get_logger
+
+logger = get_logger("finnhub_client")
+
+# Rate limit: 60 requests/min for free tier
+_last_request_time: float = 0.0
+_MIN_REQUEST_INTERVAL = 1.1  # ~55 req/min to stay safe
+
+
+class FinnhubClient:
+    """Client for Finnhub.io API."""
+
+    def __init__(self) -> None:
+        settings = get_settings()
+        self.base_url = settings.finnhub_base_url.rstrip("/")
+        self.api_key = settings.finnhub_api_key
+        self._client = httpx.Client(timeout=15.0)
+
+    def _throttle(self) -> None:
+        """Enforce rate limit."""
+        global _last_request_time
+        elapsed = time.monotonic() - _last_request_time
+        if elapsed < _MIN_REQUEST_INTERVAL:
+            time.sleep(_MIN_REQUEST_INTERVAL - elapsed)
+        _last_request_time = time.monotonic()
+
+    def _log_api_call(
+        self,
+        endpoint: str,
+        status_code: int | None,
+        response_body: str | None,
+        duration_ms: float,
+        error: str | None = None,
+    ) -> None:
+        session = get_session()
+        try:
+            session.add(ApiLog(
+                timestamp=datetime.utcnow(),
+                service="finnhub",
+                method="GET",
+                endpoint=endpoint,
+                status_code=status_code,
+                response_body=response_body[:3000] if response_body else None,
+                duration_ms=duration_ms,
+                error=error,
+            ))
+            session.commit()
+        except Exception as e:
+            logger.error(f"Failed to log Finnhub API call: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=4))
+    def _request(self, endpoint: str, params: dict[str, Any] | None = None) -> Any:
+        """Make an authenticated GET request to Finnhub."""
+        self._throttle()
+        url = f"{self.base_url}{endpoint}"
+        all_params = {"token": self.api_key}
+        if params:
+            all_params.update(params)
+
+        start = time.monotonic()
+        error_msg = None
+        status_code = None
+        response_text = None
+
+        try:
+            response = self._client.get(url, params=all_params)
+            status_code = response.status_code
+            response_text = response.text
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Finnhub API error on {endpoint}: {error_msg}")
+            raise
+        finally:
+            duration = (time.monotonic() - start) * 1000
+            self._log_api_call(endpoint, status_code, response_text, duration, error_msg)
+
+    def get_news_sentiment(self, symbol: str) -> dict[str, Any]:
+        """Get news sentiment for a stock.
+
+        Returns buzz, bullish/bearish %, and overall sentiment score.
+        """
+        try:
+            data = self._request("/news-sentiment", {"symbol": symbol})
+            if not data or "sentiment" not in data:
+                return {"error": "No sentiment data available"}
+
+            sentiment = data.get("sentiment", {})
+            buzz = data.get("buzz", {})
+
+            return {
+                "symbol": symbol,
+                "bullish_pct": sentiment.get("bullishPercent", 0),
+                "bearish_pct": sentiment.get("bearishPercent", 0),
+                "news_score": buzz.get("buzz", 0),
+                "articles_in_last_week": buzz.get("articlesInLastWeek", 0),
+                "weekly_average": buzz.get("weeklyAverage", 0),
+                "company_news_score": data.get("companyNewsScore", 0),
+                "sector_avg_bullish": data.get("sectorAverageBullishPercent", 0),
+                "sector_avg_news_score": data.get("sectorAverageNewsScore", 0),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get news sentiment for {symbol}: {e}")
+            return {"error": str(e), "symbol": symbol}
+
+    def get_analyst_recommendations(self, symbol: str) -> dict[str, Any]:
+        """Get analyst buy/hold/sell consensus."""
+        try:
+            data = self._request("/stock/recommendation", {"symbol": symbol})
+            if not data or not isinstance(data, list) or len(data) == 0:
+                return {"error": "No analyst data"}
+
+            latest = data[0]
+            total = (
+                latest.get("buy", 0) + latest.get("hold", 0) +
+                latest.get("sell", 0) + latest.get("strongBuy", 0) +
+                latest.get("strongSell", 0)
+            )
+
+            return {
+                "symbol": symbol,
+                "period": latest.get("period"),
+                "strong_buy": latest.get("strongBuy", 0),
+                "buy": latest.get("buy", 0),
+                "hold": latest.get("hold", 0),
+                "sell": latest.get("sell", 0),
+                "strong_sell": latest.get("strongSell", 0),
+                "total_analysts": total,
+                "consensus": _determine_consensus(latest),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get analyst recs for {symbol}: {e}")
+            return {"error": str(e), "symbol": symbol}
+
+    def get_price_targets(self, symbol: str) -> dict[str, Any]:
+        """Get analyst price targets."""
+        try:
+            data = self._request("/stock/price-target", {"symbol": symbol})
+            if not data:
+                return {"error": "No price target data"}
+
+            return {
+                "symbol": symbol,
+                "target_high": data.get("targetHigh"),
+                "target_low": data.get("targetLow"),
+                "target_mean": data.get("targetMean"),
+                "target_median": data.get("targetMedian"),
+                "last_updated": data.get("lastUpdated"),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get price targets for {symbol}: {e}")
+            return {"error": str(e), "symbol": symbol}
+
+    def get_insider_sentiment(self, symbol: str) -> dict[str, Any]:
+        """Get insider sentiment MSPR score (-100 to +100)."""
+        try:
+            data = self._request("/stock/insider-sentiment", {"symbol": symbol, "from": "2024-01-01"})
+            if not data or "data" not in data or len(data["data"]) == 0:
+                return {"error": "No insider data", "symbol": symbol}
+
+            # Get the most recent month
+            latest = data["data"][-1]
+            return {
+                "symbol": symbol,
+                "mspr": latest.get("mspr", 0),
+                "change": latest.get("change", 0),
+                "month": latest.get("month"),
+                "year": latest.get("year"),
+            }
+        except Exception as e:
+            logger.error(f"Failed to get insider sentiment for {symbol}: {e}")
+            return {"error": str(e), "symbol": symbol}
+
+    def get_peers(self, symbol: str) -> list[str]:
+        """Get company peers."""
+        try:
+            data = self._request("/stock/peers", {"symbol": symbol})
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"Failed to get peers for {symbol}: {e}")
+            return []
+
+    def get_full_sentiment_data(self, symbol: str) -> dict[str, Any]:
+        """Get all sentiment data for a stock in one call."""
+        return {
+            "news_sentiment": self.get_news_sentiment(symbol),
+            "analyst_recommendations": self.get_analyst_recommendations(symbol),
+            "price_targets": self.get_price_targets(symbol),
+            "insider_sentiment": self.get_insider_sentiment(symbol),
+        }
+
+    def close(self) -> None:
+        self._client.close()
+
+
+def _determine_consensus(rec: dict[str, Any]) -> str:
+    """Determine consensus from analyst recommendation counts."""
+    buy_side = rec.get("strongBuy", 0) + rec.get("buy", 0)
+    sell_side = rec.get("strongSell", 0) + rec.get("sell", 0)
+    hold = rec.get("hold", 0)
+
+    if buy_side > sell_side + hold:
+        return "BUY"
+    elif sell_side > buy_side + hold:
+        return "SELL"
+    else:
+        return "HOLD"
