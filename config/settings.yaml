@@ -1,0 +1,50 @@
+trading:
+  mode: practice
+  base_url: https://demo.trading212.com/api/v0
+  cycle_hours: 12
+  cycle_times_utc: ["07:00", "19:00"]
+  market_days: [0, 1, 2, 3, 4]  # Mon-Fri
+  max_positions: 15
+  min_position_pct: 2
+  max_position_pct: 12
+  cash_floor_pct: 10
+  benchmark_ticker: "^GSPC"
+
+risk:
+  max_single_stock_pct: 12
+  max_sector_pct: 30
+  max_correlation: 0.7
+  cautious_drawdown_pct: 5
+  halt_drawdown_pct: 15
+  daily_loss_halt_pct: 2
+  vix_high: 25
+  vix_extreme: 35
+  min_positions: 5
+
+strategy:
+  momentum_weight: 0.35
+  mean_reversion_weight: 0.30
+  factor_weight: 0.35
+  min_conviction: 60
+  min_conviction_no_moderators: 85
+  min_conviction_one_moderator: 75
+
+moderation:
+  require_consensus: true
+  consensus_threshold: 2
+
+models:
+  strategy: claude-sonnet-4-5-20250929
+  moderator_1: gpt-4o
+  moderator_2: gemini-2.0-flash
+
+data_providers:
+  finnhub_base_url: https://finnhub.io/api/v1
+  alpha_vantage_base_url: https://www.alphavantage.co/query
+
+cost_limits:
+  anthropic_daily_gbp: 1.00
+  openai_daily_gbp: 0.75
+  google_daily_gbp: 0.50
+  total_monthly_gbp: 50.00
+  alert_threshold_pct: 80
