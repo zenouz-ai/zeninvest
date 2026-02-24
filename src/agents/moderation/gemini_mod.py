@@ -3,7 +3,8 @@
 import json
 from typing import Any
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, check_budget, log_cost
@@ -69,21 +70,19 @@ Score growth potential, risk level, and confidence. Flag if risk > growth.
 Respond with JSON only."""
 
     try:
-        genai.configure(api_key=settings.google_ai_api_key)
-        model = genai.GenerativeModel(
-            model_name=settings.moderator_2_model,
-            system_instruction=SYSTEM_PROMPT,
-        )
+        client = genai.Client(api_key=settings.google_ai_api_key)
 
-        response = model.generate_content(
-            user_prompt,
-            generation_config=genai.types.GenerationConfig(
+        response = client.models.generate_content(
+            model=settings.moderator_2_model,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
                 max_output_tokens=1024,
                 temperature=0.3,
             ),
         )
 
-        # Log cost (approximate — Gemini doesn't always return exact token counts)
+        # Log cost
         input_tokens = 0
         output_tokens = 0
         if hasattr(response, "usage_metadata") and response.usage_metadata:

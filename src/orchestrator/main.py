@@ -342,19 +342,31 @@ class Orchestrator:
 
     def _get_portfolio_state(self) -> dict[str, Any]:
         """Get current portfolio state from T212."""
+        mock_state = {
+            "cash": 10000.0,
+            "total_value": 10000.0,
+            "invested": 0.0,
+            "positions": [],
+            "num_positions": 0,
+            "daily_pnl_pct": 0.0,
+            "total_return_pct": 0.0,
+            "alpha_pct": 0.0,
+        }
+
         try:
             state = self.order_manager.get_portfolio_state()
         except Exception:
             if self.dry_run:
-                return {
-                    "cash": 10000.0,
-                    "total_value": 10000.0,
-                    "positions": [],
-                    "daily_pnl_pct": 0.0,
-                    "total_return_pct": 0.0,
-                    "alpha_pct": 0.0,
-                }
+                logger.info("T212 API unavailable, using mock portfolio for dry-run")
+                return mock_state
             raise
+
+        # order_manager catches errors internally and returns an error dict
+        if state.get("error"):
+            if self.dry_run:
+                logger.info("T212 API returned error, using mock portfolio for dry-run")
+                return mock_state
+            raise RuntimeError(f"Failed to get portfolio state: {state['error']}")
 
         cash_data = state.get("cash", {})
         positions = state.get("positions", [])
@@ -377,7 +389,7 @@ class Orchestrator:
             "invested": invested,
             "positions": positions,
             "num_positions": len(positions),
-            "daily_pnl_pct": 0.0,  # Would need history to calculate
+            "daily_pnl_pct": 0.0,
             "total_return_pct": ((total_value / 10000) - 1) * 100 if total_value > 0 else 0,
             "alpha_pct": 0.0,
         }
