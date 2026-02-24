@@ -1,0 +1,21 @@
+services:
+  investment-agent:
+    build: .
+    container_name: investment-agent
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./journals:/app/journals
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    healthcheck:
+      test: ["CMD", "python", "-c", "import src; print('ok')"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
