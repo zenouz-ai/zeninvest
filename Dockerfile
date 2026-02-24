@@ -1,0 +1,29 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install --no-cache-dir poetry==1.8.5
+
+# Copy dependency files first for caching
+COPY pyproject.toml poetry.lock ./
+
+# Install dependencies (no dev deps in production)
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-interaction --no-ansi --without dev
+
+# Copy application code
+COPY src/ src/
+COPY config/ config/
+COPY alembic.ini ./
+
+# Create directories for volumes
+RUN mkdir -p data journals/daily journals/weekly logs
+
+# Run migrations on startup, then start scheduler
+CMD ["sh", "-c", "alembic upgrade head && python -m src.scheduler.scheduler"]
