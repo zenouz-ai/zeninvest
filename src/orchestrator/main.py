@@ -342,11 +342,10 @@ class Orchestrator:
 
     def _get_portfolio_state(self) -> dict[str, Any]:
         """Get current portfolio state from T212."""
-        if self.dry_run:
-            # In dry-run, return mock or cached state
-            try:
-                return self.order_manager.get_portfolio_state()
-            except Exception:
+        try:
+            state = self.order_manager.get_portfolio_state()
+        except Exception:
+            if self.dry_run:
                 return {
                     "cash": 10000.0,
                     "total_value": 10000.0,
@@ -355,12 +354,17 @@ class Orchestrator:
                     "total_return_pct": 0.0,
                     "alpha_pct": 0.0,
                 }
+            raise
 
-        state = self.order_manager.get_portfolio_state()
         cash_data = state.get("cash", {})
         positions = state.get("positions", [])
 
-        cash = float(cash_data.get("free", 0))
+        # cash_data may be a dict from T212 API or a plain float (mock)
+        if isinstance(cash_data, dict):
+            cash = float(cash_data.get("free", 0))
+        else:
+            cash = float(cash_data)
+
         invested = sum(
             float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
             for p in positions
