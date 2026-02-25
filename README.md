@@ -119,12 +119,28 @@ src/
 ├── data/               # SQLAlchemy models, Alembic migrations
 ├── scheduler/          # APScheduler with persistent job store
 └── utils/              # Config, logger, cost tracker
+docs/                   # Project documentation
+├── ARCHITECTURE.md     # System architecture and component diagrams
+├── DEPLOYMENT.md       # VPS deployment and monitoring guide
+├── GOVERNANCE.md       # Governance framework and security guardrails
+├── LOCAL_LIVE_RUN.md   # Local live run guide (Trading 212 Practice)
+└── PRESENTATION.md     # Project presentation and summary
+notebooks/
+└── diagnostics.ipynb   # Component diagnostics and integration tests
 ```
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
+- [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts
+- [Governance](docs/GOVERNANCE.md) — security guardrails, kill switches, audit trail
+- [Local Live Run](docs/LOCAL_LIVE_RUN.md) — step-by-step guide for Trading 212 Practice mode
+- [Presentation](docs/PRESENTATION.md) — project overview and summary
 
 ## Risk Rules (never overridden by LLMs)
 
-- No single stock > 12% of portfolio
-- No single sector > 30%
+- No single stock > 15% of portfolio
+- No single sector > 35%
 - Portfolio avg pairwise correlation < 0.7
 - 5% drawdown → CAUTIOUS mode; 15% → HALTED (liquidate all)
 - VIX > 25: max 8% position; VIX > 35: max 5%
