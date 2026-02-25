@@ -34,13 +34,20 @@ def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
         industry = info.get("industry", "Unknown")
         market_cap = info.get("marketCap")
 
-        # Earnings momentum: try to get quarterly earnings
+        # Earnings momentum: use quarterly income statement (Net Income)
+        # Note: ticker.quarterly_earnings is deprecated and no longer available via API
         earnings_momentum = None
         try:
-            quarterly_earnings = ticker.quarterly_earnings
-            if quarterly_earnings is not None and len(quarterly_earnings) >= 2:
-                recent = quarterly_earnings.iloc[-1].get("Earnings", 0)
-                previous = quarterly_earnings.iloc[-2].get("Earnings", 0)
+            quarterly_income = ticker.quarterly_income_stmt
+            if (
+                quarterly_income is not None
+                and not quarterly_income.empty
+                and "Net Income" in quarterly_income.index
+                and quarterly_income.shape[1] >= 2
+            ):
+                # Columns are dates, most recent first (iloc[0] = latest quarter)
+                recent = float(quarterly_income.loc["Net Income"].iloc[0])
+                previous = float(quarterly_income.loc["Net Income"].iloc[1])
                 if previous != 0:
                     earnings_momentum = (recent - previous) / abs(previous)
         except Exception:

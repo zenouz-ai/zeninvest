@@ -36,7 +36,7 @@ moderation:
 models:
   strategy: claude-sonnet-4-5-20250929
   moderator_1: gpt-4o
-  moderator_2: gemini-2.0-flash
+  moderator_2: gemini-2.5-flash
 
 data_providers:
   finnhub_base_url: https://finnhub.io/api/v1

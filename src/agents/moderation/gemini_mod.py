@@ -106,7 +106,7 @@ Respond with JSON only."""
             content = content.split("```")[1].split("```")[0]
 
         result = json.loads(content)
-        result["moderator"] = "gemini-2.0-flash"
+        result["moderator"] = settings.moderator_2_model
         result["available"] = True
         return result
 
@@ -115,7 +115,7 @@ Respond with JSON only."""
         return {
             "verdict": "AGREE",
             "reasoning": f"Could not parse response: {e}",
-            "moderator": "gemini-2.0-flash",
+            "moderator": settings.moderator_2_model,
             "available": True,
             "parse_error": True,
         }
@@ -124,6 +124,6 @@ Respond with JSON only."""
         return {
             "verdict": "SKIP",
             "reasoning": f"API error: {e}",
-            "moderator": "gemini-2.0-flash",
+            "moderator": settings.moderator_2_model,
             "available": False,
         }
