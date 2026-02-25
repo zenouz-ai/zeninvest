@@ -26,11 +26,11 @@ STRATEGY_USER_PROMPT = """Analyze the following portfolio state and strategy pro
 ### Factor Strategy (weight: {factor_weight})
 {factor_proposals}
 
-## NEWS SENTIMENT DATA (Finnhub)
-{finnhub_sentiment}
+## ANALYST DATA (Finnhub — recommendations & insider sentiment)
+{analyst_data}
 
-## MARKET-WIDE NEWS SENTIMENT (Alpha Vantage)
-{alpha_vantage_sentiment}
+## NEWS SENTIMENT (Alpha Vantage — ticker-specific & market-wide)
+{news_sentiment}
 
 ## CURRENT RISK BUDGET
 - System State: {system_state}
@@ -77,8 +77,8 @@ def build_strategy_prompt(
     momentum_proposals: str,
     mean_reversion_proposals: str,
     factor_proposals: str,
-    finnhub_sentiment: str,
-    alpha_vantage_sentiment: str,
+    analyst_data: str,
+    news_sentiment: str,
     system_state: str,
     vix: float | None,
     cash_pct: float,
@@ -104,8 +104,8 @@ def build_strategy_prompt(
         momentum_proposals=momentum_proposals,
         mean_reversion_proposals=mean_reversion_proposals,
         factor_proposals=factor_proposals,
-        finnhub_sentiment=finnhub_sentiment,
-        alpha_vantage_sentiment=alpha_vantage_sentiment,
+        analyst_data=analyst_data,
+        news_sentiment=news_sentiment,
         system_state=system_state,
         vix=vix or "N/A",
         cash_pct=cash_pct,

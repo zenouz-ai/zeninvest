@@ -162,12 +162,12 @@ class DataFetcher:
         # Fundamentals
         result["fundamentals"] = get_fundamentals(yf_ticker)
 
-        # Finnhub sentiment
+        # Finnhub analyst data (recommendations + insider sentiment)
         try:
-            result["sentiment"] = self.finnhub.get_full_sentiment_data(finnhub_symbol)
+            result["analyst_data"] = self.finnhub.get_analyst_data(finnhub_symbol)
         except Exception as e:
-            logger.error(f"Finnhub error for {finnhub_symbol}: {e}")
-            result["sentiment"] = {"error": str(e)}
+            logger.error(f"Finnhub analyst data error for {finnhub_symbol}: {e}")
+            result["analyst_data"] = {"error": str(e)}
 
         # Cache the data
         self._cache_market_data(yf_ticker, "full_analysis", result)

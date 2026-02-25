@@ -6,13 +6,13 @@ trading:
   market_days: [0, 1, 2, 3, 4]  # Mon-Fri
   max_positions: 15
   min_position_pct: 2
-  max_position_pct: 12
+  max_position_pct: 15
   cash_floor_pct: 10
   benchmark_ticker: "^GSPC"
 
 risk:
-  max_single_stock_pct: 12
-  max_sector_pct: 30
+  max_single_stock_pct: 15
+  max_sector_pct: 35
   max_correlation: 0.7
   cautious_drawdown_pct: 5
   halt_drawdown_pct: 15

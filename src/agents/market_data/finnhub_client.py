@@ -101,55 +101,6 @@ class FinnhubClient:
             duration = (time.monotonic() - start) * 1000
             self._log_api_call(endpoint, status_code, response_text, duration, error_msg)
 
-    def get_news_sentiment(self, symbol: str) -> dict[str, Any]:
-        """Get news sentiment for a stock.
-
-        Returns buzz, bullish/bearish %, and overall sentiment score.
-        If the endpoint is unavailable (e.g. 403 on free tier), returns
-        neutral placeholder data with unavailable=True so downstream
-        consumers can handle it gracefully.
-        """
-        try:
-            data = self._request("/news-sentiment", {"symbol": symbol})
-            if not data or "sentiment" not in data:
-                return self._unavailable_news_sentiment(symbol, "No sentiment data returned by API")
-
-            sentiment = data.get("sentiment", {})
-            buzz = data.get("buzz", {})
-
-            return {
-                "symbol": symbol,
-                "unavailable": False,
-                "bullish_pct": sentiment.get("bullishPercent", 0),
-                "bearish_pct": sentiment.get("bearishPercent", 0),
-                "news_score": buzz.get("buzz", 0),
-                "articles_in_last_week": buzz.get("articlesInLastWeek", 0),
-                "weekly_average": buzz.get("weeklyAverage", 0),
-                "company_news_score": data.get("companyNewsScore", 0),
-                "sector_avg_bullish": data.get("sectorAverageBullishPercent", 0),
-                "sector_avg_news_score": data.get("sectorAverageNewsScore", 0),
-            }
-        except Exception as e:
-            logger.warning(f"News sentiment unavailable for {symbol}: {e}")
-            return self._unavailable_news_sentiment(symbol, str(e))
-
-    @staticmethod
-    def _unavailable_news_sentiment(symbol: str, reason: str) -> dict[str, Any]:
-        """Return neutral placeholder when news sentiment is unavailable."""
-        return {
-            "symbol": symbol,
-            "unavailable": True,
-            "reason": reason,
-            "bullish_pct": 0,
-            "bearish_pct": 0,
-            "news_score": 0,
-            "articles_in_last_week": 0,
-            "weekly_average": 0,
-            "company_news_score": 0,
-            "sector_avg_bullish": 0,
-            "sector_avg_news_score": 0,
-        }
-
     def get_analyst_recommendations(self, symbol: str) -> dict[str, Any]:
         """Get analyst buy/hold/sell consensus.
 
@@ -197,44 +148,6 @@ class FinnhubClient:
                 "total_analysts": 0,
                 "consensus": "N/A",
             }
-
-    def get_price_targets(self, symbol: str) -> dict[str, Any]:
-        """Get analyst price targets.
-
-        If the endpoint is unavailable (e.g. 403 on free tier), returns
-        placeholder data with unavailable=True.
-        """
-        try:
-            data = self._request("/stock/price-target", {"symbol": symbol})
-            if not data:
-                return self._unavailable_price_targets(symbol, "No price target data returned by API")
-
-            return {
-                "symbol": symbol,
-                "unavailable": False,
-                "target_high": data.get("targetHigh"),
-                "target_low": data.get("targetLow"),
-                "target_mean": data.get("targetMean"),
-                "target_median": data.get("targetMedian"),
-                "last_updated": data.get("lastUpdated"),
-            }
-        except Exception as e:
-            logger.warning(f"Price targets unavailable for {symbol}: {e}")
-            return self._unavailable_price_targets(symbol, str(e))
-
-    @staticmethod
-    def _unavailable_price_targets(symbol: str, reason: str) -> dict[str, Any]:
-        """Return placeholder when price targets are unavailable."""
-        return {
-            "symbol": symbol,
-            "unavailable": True,
-            "reason": reason,
-            "target_high": None,
-            "target_low": None,
-            "target_mean": None,
-            "target_median": None,
-            "last_updated": None,
-        }
 
     def get_insider_sentiment(self, symbol: str) -> dict[str, Any]:
         """Get insider sentiment MSPR score (-100 to +100).
@@ -286,12 +199,15 @@ class FinnhubClient:
             logger.error(f"Failed to get peers for {symbol}: {e}")
             return []
 
-    def get_full_sentiment_data(self, symbol: str) -> dict[str, Any]:
-        """Get all sentiment data for a stock in one call."""
+    def get_analyst_data(self, symbol: str) -> dict[str, Any]:
+        """Get analyst recommendations and insider sentiment for a stock.
+
+        Note: Finnhub news-sentiment and price-target endpoints are
+        premium-only (403 on free tier). News sentiment is sourced from
+        Alpha Vantage instead. Price targets are on the future roadmap.
+        """
         return {
-            "news_sentiment": self.get_news_sentiment(symbol),
             "analyst_recommendations": self.get_analyst_recommendations(symbol),
-            "price_targets": self.get_price_targets(symbol),
             "insider_sentiment": self.get_insider_sentiment(symbol),
         }
 

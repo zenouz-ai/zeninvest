@@ -280,17 +280,17 @@ def _build_markdown(
 
 
 def _add_finnhub_section(lines: list[str], data: dict[str, Any]) -> None:
-    """Add Finnhub sentiment data section."""
-    lines.append("### Finnhub")
-    news = data.get("news_sentiment", {})
+    """Add Finnhub analyst data section (recommendations + insider sentiment)."""
+    lines.append("### Finnhub Analyst Data")
     analyst = data.get("analyst_recommendations", {})
     insider = data.get("insider_sentiment", {})
 
-    lines.append(f"- **News Score:** {_fmt_val(news.get('news_score'))}")
-    lines.append(f"- **Bullish %:** {_fmt_val(news.get('bullish_pct'))}")
-    lines.append(f"- **Bearish %:** {_fmt_val(news.get('bearish_pct'))}")
     lines.append(f"- **Analyst Consensus:** {analyst.get('consensus', 'N/A')}")
     lines.append(f"- **Total Analysts:** {analyst.get('total_analysts', 'N/A')}")
+    lines.append(f"- **Strong Buy/Buy/Hold/Sell/Strong Sell:** "
+                 f"{analyst.get('strong_buy', 0)}/{analyst.get('buy', 0)}/"
+                 f"{analyst.get('hold', 0)}/{analyst.get('sell', 0)}/"
+                 f"{analyst.get('strong_sell', 0)}")
     lines.append(f"- **Insider MSPR:** {_fmt_val(insider.get('mspr'))}")
 
 

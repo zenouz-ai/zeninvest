@@ -142,12 +142,12 @@ class Orchestrator:
         # Get data for universe (use cached instruments or a small set for now)
         stocks_data = self._fetch_stocks_data(portfolio_data.get("positions", []))
 
-        # Get Alpha Vantage broad sentiment
-        av_sentiment = {}
+        # Get Alpha Vantage broad market sentiment (1 API call)
+        av_broad_sentiment = {}
         try:
-            av_sentiment = self.data_fetcher.alpha_vantage.get_broad_market_sentiment()
+            av_broad_sentiment = self.data_fetcher.alpha_vantage.get_broad_market_sentiment()
         except Exception as e:
-            logger.warning(f"Alpha Vantage unavailable: {e}")
+            logger.warning(f"Alpha Vantage broad sentiment unavailable: {e}")
 
         # --- STEP 4: Run strategies ---
         logger.info("Running strategies...")
@@ -155,19 +155,49 @@ class Orchestrator:
 
         sub_results = self.strategy_engine.run_sub_strategies(stocks_data, existing_tickers)
 
-        # Gather Finnhub sentiment for top candidates
-        finnhub_data_map: dict[str, dict] = {}
+        # Gather Finnhub analyst data (recommendations + insider) for top candidates
+        analyst_data_map: dict[str, dict] = {}
         top_tickers = self._get_top_tickers(sub_results)
         for ticker in top_tickers[:15]:
             try:
                 yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
-                finnhub_data_map[ticker] = self.data_fetcher.finnhub.get_full_sentiment_data(yf_ticker)
+                analyst_data_map[ticker] = self.data_fetcher.finnhub.get_analyst_data(yf_ticker)
             except Exception as e:
-                logger.warning(f"Finnhub error for {ticker}: {e}")
-                finnhub_data_map[ticker] = {}
+                logger.warning(f"Finnhub analyst data error for {ticker}: {e}")
+                analyst_data_map[ticker] = {}
 
-        finnhub_summary = json.dumps(finnhub_data_map, indent=2, default=str)[:3000]
-        av_summary = json.dumps(av_sentiment, indent=2, default=str)[:2000]
+        # Get Alpha Vantage ticker-specific news sentiment (1 API call for all tickers)
+        av_ticker_sentiment = {}
+        if top_tickers:
+            try:
+                yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
+                tickers_str = ",".join(yf_tickers)
+                av_ticker_sentiment = self.data_fetcher.alpha_vantage.get_ticker_news_summary(
+                    tickers=tickers_str, limit=20,
+                )
+            except Exception as e:
+                logger.warning(f"Alpha Vantage ticker sentiment unavailable: {e}")
+
+        # Build combined news sentiment string (ticker-specific + broad market)
+        news_parts = []
+        if av_ticker_sentiment and "error" not in av_ticker_sentiment:
+            news_parts.append(f"### Ticker News ({av_ticker_sentiment.get('tickers_queried', 'N/A')})")
+            news_parts.append(f"Articles: {av_ticker_sentiment.get('total_articles', 0)} | "
+                              f"Avg sentiment: {av_ticker_sentiment.get('average_sentiment', 0):.4f} | "
+                              f"Bullish: {av_ticker_sentiment.get('bullish_articles', 0)} | "
+                              f"Bearish: {av_ticker_sentiment.get('bearish_articles', 0)}")
+            summary = av_ticker_sentiment.get("top_articles_summary", "")
+            if summary:
+                news_parts.append(summary)
+        if av_broad_sentiment and "error" not in av_broad_sentiment:
+            news_parts.append(f"\n### Broad Market Sentiment")
+            news_parts.append(f"Articles: {av_broad_sentiment.get('total_articles', 0)} | "
+                              f"Avg sentiment: {av_broad_sentiment.get('average_sentiment', 0):.4f} | "
+                              f"Bullish: {av_broad_sentiment.get('bullish_articles', 0)} | "
+                              f"Bearish: {av_broad_sentiment.get('bearish_articles', 0)}")
+
+        analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
+        news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
 
         # Claude synthesis
         portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
@@ -175,8 +205,8 @@ class Orchestrator:
             sub_strategy_results=sub_results,
             portfolio_state=portfolio_state_str,
             market_regime=market_regime,
-            finnhub_sentiment=finnhub_summary,
-            alpha_vantage_sentiment=av_summary,
+            analyst_data=analyst_summary,
+            news_sentiment=news_summary,
             system_state=current_state,
             vix=vix,
             cash_pct=cash_pct,
@@ -206,10 +236,16 @@ class Orchestrator:
 
             # Moderation
             logger.info(f"Moderating {action} {ticker}...")
+            # Build per-ticker sentiment context for moderation
+            ticker_analyst = analyst_data_map.get(ticker, {})
+            mod_sentiment = json.dumps(ticker_analyst, default=str)
+            if news_summary != "News sentiment data unavailable.":
+                mod_sentiment += f"\n\nNews: {news_summary[:1000]}"
+
             mod_result = self.moderation_panel.review_trade(
                 trade_proposal=decision,
                 portfolio_context=portfolio_state_str,
-                sentiment_data=json.dumps(finnhub_data_map.get(ticker, {}), default=str),
+                sentiment_data=mod_sentiment,
                 conviction=conviction,
                 cycle_id=cycle_id,
             )
@@ -294,8 +330,8 @@ class Orchestrator:
                     vix=vix,
                     sp500_trend=macro.get("sp500_pct_above_200ma", "N/A"),
                     news_sentiment_overall=decision.get("news_sentiment_summary", ""),
-                    finnhub_data=finnhub_data_map.get(ticker, {}),
-                    alpha_vantage_data=av_sentiment,
+                    finnhub_data=analyst_data_map.get(ticker, {}),
+                    alpha_vantage_data=av_broad_sentiment,
                     moderation_results=mod_result.to_dict(),
                     risk_verdict={
                         "verdict": risk_verdict.verdict,
