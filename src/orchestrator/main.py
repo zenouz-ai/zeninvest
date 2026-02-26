@@ -14,6 +14,7 @@ import click
 
 from src.agents.execution.order_manager import OrderManager
 from src.agents.execution.t212_client import T212Client
+from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.data_fetcher import DataFetcher
 from src.agents.moderation.panel import ModerationPanel
 from src.agents.reporting.journal import generate_trade_journal
@@ -195,6 +196,11 @@ class Orchestrator:
                               f"Avg sentiment: {av_broad_sentiment.get('average_sentiment', 0):.4f} | "
                               f"Bullish: {av_broad_sentiment.get('bullish_articles', 0)} | "
                               f"Bearish: {av_broad_sentiment.get('bearish_articles', 0)}")
+            # Include top article headlines with sentiment for LLM context
+            broad_articles = av_broad_sentiment.get("articles", [])
+            if broad_articles:
+                broad_summary = AlphaVantageClient._summarize_articles(broad_articles, max_articles=10)
+                news_parts.append(broad_summary)
 
         analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
         news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
