@@ -59,11 +59,17 @@ Anthropic  -------> CLAUDE SONNET SYNTHESIS
   (strategy LLM)    (Final decisions with conviction)
                             |
                             v
+                   MARKET CONTEXT (context.py)
+                   [indicators, fundamentals,
+                    macro, sub-strategy signals,
+                    analyst data, news sentiment]
+                            |
+                            v
 OpenAI ----------> GPT-4o MODERATOR ---+
-  (skeptic)                            |
+  (skeptic)        (full data access)  |
                                        +--> MODERATION PANEL --> SQLite
 Gemini ----------> GEMINI MODERATOR ---+    (consensus logic)   (moderation_logs)
-  (risk assessor)                      |
+  (risk assessor)  (full data access)  |
                             +----------+
                             |
                             v

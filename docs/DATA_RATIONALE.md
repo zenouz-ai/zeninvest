@@ -202,13 +202,36 @@ The Claude prompt contains these sections and this is how each should influence 
 
 ### GPT-4o (Skeptic Moderator)
 
-Receives the trade proposal + portfolio context + sentiment data. Expected to challenge
-assumptions, identify recency bias, and flag risks the primary analyst missed.
+Receives the full market context via `market_context` dict (see context.py):
+- **Trade proposal** — Claude's decision with conviction, reasoning, action, allocation
+- **Portfolio context** — Current cash, positions, returns
+- **Technical indicators** — RSI, MACD histogram/crossovers, Bollinger Band, MAs
+- **Fundamentals** — P/E, P/B, ROE, margins, debt, earnings trajectory
+- **Market conditions** — VIX (with severity label), regime, S&P 500 trend
+- **Sub-strategy signals** — Momentum, mean reversion, and factor scores with reasoning
+- **Analyst data** — Finnhub recommendation counts, consensus, insider MSPR
+- **News sentiment** — Alpha Vantage headlines with sentiment scores
+
+Role: Challenge assumptions, identify recency bias, flag risks. When sub-strategies
+conflict or news contradicts the thesis, GPT-4o should DISAGREE or MODIFY.
 
 ### Gemini (Risk Assessor)
 
-Receives the same data. Expected to score growth potential vs risk level and flag trades
-where risk exceeds growth.
+Receives the same full market context as GPT-4o. Scores each trade on three dimensions
+(growth 1-10, risk 1-10, confidence 1-10) using quantitative data. Flags trades where
+risk > growth. Gemini's scoring guidelines map specific data ranges to score adjustments
+(e.g., VIX >25 adds 1-2 risk points, D/E >2.0 raises risk by 2-3 points).
+
+### Data Flow to Moderators (context.py)
+
+The `format_market_context()` function in `src/agents/moderation/context.py` formats
+the raw `market_context` dict into a readable, token-efficient string with labeled sections.
+Both moderators receive identical data, ensuring independent reviews are based on the same
+information. Key formatting features:
+- RSI labels: oversold (<30), overbought (>70), neutral
+- VIX labels: low (<15), normal (15-20), elevated (20-30), high (30-35), extreme (>35)
+- Bollinger Band: "Yes (oversold)" when below lower band
+- MACD crossover: "Bullish crossover (buy signal)" / "Bearish crossover (sell signal)"
 
 ---
 
@@ -223,14 +246,113 @@ A single strategy would miss opportunities in different regimes. However, the we
 (35/30/35) are fixed and never adapt to market conditions. A potential future enhancement
 would be regime-dependent weighting.
 
-The multi-LLM committee (Claude + GPT-4o + Gemini) adds cost and latency but provides
-independent verification. The fallback logic (conviction thresholds when moderators are
-unavailable) shows the system can function with fewer LLMs. Monitoring should track whether
-moderation actually prevents bad trades or just adds cost.
+---
+
+## 10. LLM Necessity Assessment: Do We Need LLMs at All?
+
+### What could be done with pure mathematical rules (no LLM)
+
+The three sub-strategies are already 100% rule-based. A purely mathematical system could:
+
+1. **Generate candidates** — Sub-strategies already score stocks 0-100 using fixed rules
+2. **Select trades** — Pick top N stocks by composite score above a threshold
+3. **Size positions** — Fixed allocation formula (e.g., `score / 100 * max_position_pct`)
+4. **Apply risk rules** — The 10 hard rules (VIX caps, sector limits, drawdown) are already mathematical
+
+**What this system would look like:**
+- BUY: Top 5 stocks with composite score >65, all sub-strategies non-negative
+- SELL: Any holding where momentum score <30 or RSI >80
+- Position size: `min(score * 0.1, max_position_pct)`
+- Cost: $0/cycle (no API calls beyond data fetching)
+
+### What LLMs add that rules cannot replicate
+
+| Capability | Rules-Based | LLM-Based | Delta |
+|-----------|-------------|-----------|-------|
+| **Signal synthesis** | Fixed weighted average of 3 scores | Contextual weighting — can increase momentum weight in BULL, reduce in BEAR | LLM adapts to regime |
+| **News interpretation** | Cannot process text | Reads headlines, identifies catalysts/risks, adjusts conviction | Unique capability |
+| **Conflicting signal resolution** | Always uses fixed formula | Can reason: "momentum is strong but earnings declining, reduce position" | LLM applies judgment |
+| **Contrarian reasoning** | Cannot go against consensus | Can identify when analyst consensus is wrong based on technical deterioration | Adds edge cases |
+| **Portfolio-level thinking** | Each stock scored independently | Can consider correlations: "already heavy in tech, skip this tech stock" | Holistic view |
+| **Narrative generation** | Cannot produce reasoning | Provides tradeable thesis with catalysts, risks, exit conditions | Audit + learning |
+
+### Assessment
+
+**The LLM adds meaningful value in three areas:**
+
+1. **News integration** — This is the strongest justification. No mathematical rule can extract
+   meaning from "Company X announces 3:1 stock split" or "FDA rejects drug application".
+   News is inherently unstructured and requires language understanding.
+
+2. **Signal conflict resolution** — When momentum says BUY (score: 75) but factor says LOW
+   (score: 35), a fixed formula produces a middling score (~55) regardless of context. The LLM
+   can reason about WHY they conflict and make a nuanced decision.
+
+3. **Dynamic risk calibration** — The LLM can tighten position sizes during earnings season
+   or geopolitical events even if VIX hasn't moved yet. Rules react; LLMs can anticipate.
+
+**The LLM adds marginal value in:**
+
+4. **Portfolio-level thinking** — Could be replaced by correlation-based rules, but the LLM's
+   natural language reasoning is more flexible.
+
+5. **Moderation** — The 3-way committee catches errors the primary analyst makes, but the
+   cost is 3x the LLM calls. The conviction-based fallback (no moderators + conviction >85)
+   shows the system works without them.
+
+**Conclusion:** LLMs are necessary for news interpretation and nuanced signal synthesis.
+However, the sub-strategies themselves should remain rule-based — LLMs should not replace
+the scoring logic, only sit on top of it as a synthesis and sanity-check layer.
 
 ---
 
-## 10. Changelog
+## 11. Paid vs. Local/Free Models Assessment
+
+### Current cost structure (per cycle)
+
+| Model | Role | Approx. Tokens | Approx. Cost/Cycle |
+|-------|------|---------------|-------------------|
+| Claude Sonnet 3.5 | Strategy synthesis | ~4K in / ~2K out | ~$0.03 |
+| GPT-4o | Skeptic moderator | ~2K in / ~0.5K out per trade (×3-5 trades) | ~$0.02-0.05 |
+| Gemini Flash 2.0 | Risk assessor | ~2K in / ~0.5K out per trade (×3-5 trades) | ~$0.001-0.003 |
+| **Total** | | | **~$0.05-0.08/cycle** |
+
+With 2 cycles/day: **$0.10-0.16/day** or **$3-5/month**.
+
+### Could local/free models replace paid ones?
+
+| Requirement | Local LLM (Llama 3, Mistral) | Paid API (Claude, GPT-4o, Gemini) |
+|------------|------------------------------|-----------------------------------|
+| **JSON reliability** | Inconsistent. Requires heavy prompt engineering and retry logic. | High. Claude/GPT-4o reliably produce valid JSON with simple instructions. |
+| **Financial reasoning** | Adequate for simple analysis. Weak on nuanced multi-factor trade-offs. | Strong. Trained on financial data, can reference market conventions. |
+| **News comprehension** | Adequate for sentiment classification. Weak on complex causation. | Strong. Can identify 2nd-order effects (e.g., rate hike → housing → REITs). |
+| **Latency** | Fast locally (~2-5s on good GPU). Slow on CPU (~30-60s). | 1-3s API round-trip. Consistent. |
+| **Infra cost** | Free inference but requires GPU server. A decent GPU (4090) = $200+/month cloud. | $3-5/month for this use case. |
+| **Deployment** | Complex. Model updates, quantization, memory management. | Simple. API key + SDK. |
+
+### Recommendation
+
+**Keep paid models. The cost is negligible ($3-5/month) and the reliability is critical.**
+
+- **Claude Sonnet for strategy** — The most important decision point. Requires strong reasoning
+  and reliable JSON output. Local models cannot match this reliably. Cost: ~$1.50/month.
+- **GPT-4o for skeptic moderation** — Provides genuine independent viewpoint (different training,
+  different biases). Replacing with a local model would not add diversity. Cost: ~$1-2/month.
+- **Gemini Flash for risk scoring** — Already the cheapest model. Effectively free at
+  ~$0.05/month. No reason to replace.
+
+**Cost-optimization opportunity:** If costs need to be reduced, the first target should be
+reducing the number of moderation calls (e.g., only moderate BUY trades with conviction <80),
+not switching to cheaper models. The conviction-based bypass already saves money when
+moderators are unavailable.
+
+**Local model viable only if:** The system were running 100+ cycles/day (quant-style), making
+API costs $100+/month. At 2 cycles/day, the $3-5/month cost does not justify the complexity
+and reliability tradeoff of local deployment.
+
+---
+
+## 12. Changelog
 
 | Date | Change | Rationale |
 |------|--------|-----------|
@@ -239,3 +361,8 @@ moderation actually prevents bad trades or just adds cost.
 | 2026-02-26 | Removed yield spread (^TNX - ^IRX) from macro | Never used in market regime or any decision. Proxy was inaccurate. |
 | 2026-02-26 | Removed get_peers() from Finnhub client | Dead code, never called. |
 | 2026-02-26 | Enhanced Claude prompt with interpretation guidance | LLM had no instructions on how to weight data sections. |
+| 2026-02-26 | Enriched moderator data: full market context | GPT-4o and Gemini previously received only Finnhub analyst JSON + truncated news. Now receive indicators, fundamentals, macro, sub-strategy signals, analyst data, and full news sentiment. |
+| 2026-02-26 | Created context.py shared formatter | Centralised moderator data formatting with labeled sections, severity labels (RSI, VIX), and signal annotations. |
+| 2026-02-26 | Enhanced moderator prompts with scoring guidelines | Both moderators now have explicit instructions on how to interpret RSI ranges, P/E thresholds, VIX levels, and sub-strategy disagreements. |
+| 2026-02-26 | Added LLM necessity assessment (Section 10) | Documented where LLMs add value vs. where mathematical rules suffice. Conclusion: LLMs necessary for news interpretation and signal synthesis, not for scoring. |
+| 2026-02-26 | Added paid vs. local models assessment (Section 11) | At $3-5/month, paid models are cheaper than local GPU infrastructure and more reliable. No change recommended. |

@@ -1,10 +1,16 @@
-"""GPT-4o moderator — skeptical investment analyst."""
+"""GPT-4o moderator — skeptical investment analyst.
+
+Receives the full market context (indicators, fundamentals, macro, sub-strategy
+scores, analyst data, news sentiment) to independently challenge the strategy
+agent's trade proposals.
+"""
 
 import json
 from typing import Any
 
 import openai
 
+from src.agents.moderation.context import format_market_context
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, check_budget, log_cost
 from src.utils.logger import get_logger
@@ -15,12 +21,29 @@ SYSTEM_PROMPT = """You are a skeptical investment analyst serving on an Investme
 Your role is to challenge assumptions, identify risks the primary analyst may have missed,
 and flag recency bias or overfitting to recent trends.
 
-You have access to Finnhub sentiment data — use it to verify or challenge the thesis.
+You receive the full data context: technical indicators, fundamentals, market conditions,
+sub-strategy scores, analyst recommendations, and news sentiment. Use ALL of this data
+to independently verify whether the proposed trade is justified.
+
+Key responsibilities:
+- Verify the technical picture supports the action (RSI trend, MACD, Bollinger Bands, MAs)
+- Confirm fundamentals are sound (P/E reasonable, ROE healthy, debt manageable, earnings growing)
+- Check if news sentiment confirms or contradicts the thesis
+- Assess whether the market regime (VIX, regime label) is appropriate for this trade type
+- Identify conflicting signals across sub-strategies — disagreement = lower confidence
+- Challenge the proposed allocation relative to the risk profile
+
+Scoring guidelines:
+- RSI 30-70 is neutral. <30 = oversold (mean reversion). >70 = overbought (caution).
+- P/E <15 = value. >40 = expensive unless high-growth sector.
+- Debt/Equity >2.0 is a red flag. <0.5 is strong.
+- VIX >25 = elevated volatility, warrant smaller positions.
+- When sub-strategies disagree (e.g. momentum BUY but factor LOW), DISAGREE unless conviction is very strong.
 
 For each proposed trade, respond with ONLY valid JSON:
 {
   "verdict": "AGREE|DISAGREE|MODIFY",
-  "reasoning": "2-3 sentence specific reasoning",
+  "reasoning": "2-3 sentence specific reasoning referencing actual data points",
   "risk_flags": ["list of specific risks identified"],
   "modifications": null or {"target_allocation_pct": X, "stop_loss_pct": Y}
 }"""
@@ -29,15 +52,17 @@ For each proposed trade, respond with ONLY valid JSON:
 def review_trade(
     trade_proposal: dict[str, Any],
     portfolio_context: str,
-    sentiment_data: str,
+    market_context: dict[str, Any],
     cycle_id: str | None = None,
 ) -> dict[str, Any]:
-    """Have GPT-4o review a trade proposal.
+    """Have GPT-4o review a trade proposal with full market context.
 
     Args:
-        trade_proposal: Strategy agent's decision for a single stock
-        portfolio_context: Current portfolio state description
-        sentiment_data: Finnhub/AV sentiment data for the stock
+        trade_proposal: Strategy agent's decision for a single stock.
+        portfolio_context: Current portfolio state description.
+        market_context: Rich dict containing indicators, fundamentals, macro,
+                       sub-strategy scores, analyst data, and news sentiment.
+        cycle_id: Optional cycle identifier for cost tracking.
 
     Returns:
         Moderator verdict with reasoning.
@@ -48,6 +73,8 @@ def review_trade(
         logger.warning("OpenAI budget exceeded, skipping moderation")
         return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
 
+    context_text = format_market_context(market_context)
+
     user_prompt = f"""Review this proposed trade:
 
 ## Trade Proposal
@@ -56,10 +83,10 @@ def review_trade(
 ## Portfolio Context
 {portfolio_context}
 
-## Sentiment Data
-{sentiment_data}
+{context_text}
 
 Challenge the thesis. Is the conviction justified? Are there risks being ignored?
+Do the technicals, fundamentals, and sentiment all support this trade?
 Respond with JSON only."""
 
     try:

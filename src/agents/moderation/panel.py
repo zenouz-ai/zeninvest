@@ -1,4 +1,8 @@
-"""Moderation panel — Investment Committee consensus logic."""
+"""Moderation panel — Investment Committee consensus logic.
+
+Passes the full market context (indicators, fundamentals, macro, sub-strategy
+scores, analyst data, news sentiment) to both moderators for independent review.
+"""
 
 import json
 from datetime import datetime
@@ -57,11 +61,20 @@ class ModerationPanel:
         self,
         trade_proposal: dict[str, Any],
         portfolio_context: str,
-        sentiment_data: str,
+        market_context: dict[str, Any],
         conviction: int,
         cycle_id: str,
     ) -> ModerationResult:
-        """Run the full moderation panel on a trade proposal."""
+        """Run the full moderation panel on a trade proposal.
+
+        Args:
+            trade_proposal: Strategy agent's decision for a single stock.
+            portfolio_context: Current portfolio state description.
+            market_context: Rich dict with indicators, fundamentals, macro,
+                          sub-strategy scores, analyst data, news sentiment.
+            conviction: Strategy conviction score (0-100).
+            cycle_id: Cycle identifier for cost tracking and logging.
+        """
         ticker = trade_proposal.get("ticker", "UNKNOWN")
         degradation = get_degradation_level()
 
@@ -83,14 +96,14 @@ class ModerationPanel:
 
         if use_gpt4o:
             gpt4o_result = openai_mod.review_trade(
-                trade_proposal, portfolio_context, sentiment_data, cycle_id,
+                trade_proposal, portfolio_context, market_context, cycle_id,
             )
             if not gpt4o_result.get("available", False):
                 gpt4o_result = None
 
         if use_gemini:
             gemini_result = gemini_mod.review_trade(
-                trade_proposal, portfolio_context, sentiment_data, cycle_id,
+                trade_proposal, portfolio_context, market_context, cycle_id,
             )
             if not gemini_result.get("available", False):
                 gemini_result = None

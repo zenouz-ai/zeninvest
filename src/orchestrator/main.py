@@ -240,18 +240,23 @@ class Orchestrator:
             if action == "HOLD":
                 continue
 
-            # Moderation
+            # Moderation — build rich market context for moderators
             logger.info(f"Moderating {action} {ticker}...")
-            # Build per-ticker sentiment context for moderation
-            ticker_analyst = analyst_data_map.get(ticker, {})
-            mod_sentiment = json.dumps(ticker_analyst, default=str)
-            if news_summary != "News sentiment data unavailable.":
-                mod_sentiment += f"\n\nNews: {news_summary[:1000]}"
+            market_context = self._build_market_context(
+                ticker=ticker,
+                stocks_data=stocks_data,
+                sub_results=sub_results,
+                macro=macro,
+                market_regime=market_regime,
+                vix=vix,
+                analyst_data_map=analyst_data_map,
+                news_summary=news_summary,
+            )
 
             mod_result = self.moderation_panel.review_trade(
                 trade_proposal=decision,
                 portfolio_context=portfolio_state_str,
-                sentiment_data=mod_sentiment,
+                market_context=market_context,
                 conviction=conviction,
                 cycle_id=cycle_id,
             )
@@ -472,6 +477,78 @@ class Orchestrator:
         for score in sub_results.get("top_factor", []):
             tickers.add(score.ticker)
         return list(tickers)
+
+    def _build_market_context(
+        self,
+        ticker: str,
+        stocks_data: list[dict],
+        sub_results: dict[str, Any],
+        macro: dict[str, Any],
+        market_regime: str,
+        vix: float | None,
+        analyst_data_map: dict[str, dict],
+        news_summary: str,
+    ) -> dict[str, Any]:
+        """Build rich market context dict for moderator review.
+
+        Gives moderators the same data quality as the strategy agent:
+        technical indicators, fundamentals, market regime, sub-strategy
+        signals, analyst data, and news sentiment.
+        """
+        # Find stock-specific data
+        stock_data = next((s for s in stocks_data if s.get("ticker") == ticker), {})
+        indicators = stock_data.get("indicators", {})
+        fundamentals = stock_data.get("fundamentals", {})
+
+        # Find sub-strategy signals for this ticker
+        momentum_signal = None
+        for s in sub_results.get("momentum", []):
+            if s.ticker == ticker:
+                momentum_signal = {
+                    "action": s.action,
+                    "score": s.score,
+                    "reasoning": s.reasoning,
+                }
+                break
+
+        mean_reversion_signal = None
+        for s in sub_results.get("mean_reversion", []):
+            if s.ticker == ticker:
+                mean_reversion_signal = {
+                    "action": s.action,
+                    "score": s.score,
+                    "reasoning": s.reasoning,
+                }
+                break
+
+        factor_signal = None
+        for s in sub_results.get("factor", []):
+            if s.ticker == ticker:
+                factor_signal = {
+                    "composite_score": s.composite_score,
+                    "value_score": s.value_score,
+                    "quality_score": s.quality_score,
+                    "momentum_score": s.momentum_score,
+                    "reasoning": s.reasoning,
+                }
+                break
+
+        return {
+            "indicators": indicators,
+            "fundamentals": fundamentals,
+            "macro": {
+                "vix": vix,
+                "market_regime": market_regime,
+                "sp500_above_200ma": macro.get("sp500_above_200ma"),
+            },
+            "sub_strategies": {
+                "momentum": momentum_signal,
+                "mean_reversion": mean_reversion_signal,
+                "factor": factor_signal,
+            },
+            "analyst_data": analyst_data_map.get(ticker, {}),
+            "news_sentiment": news_summary if news_summary != "News sentiment data unavailable." else "",
+        }
 
     def _get_sector(self, ticker: str, stocks_data: list[dict]) -> str:
         for s in stocks_data:

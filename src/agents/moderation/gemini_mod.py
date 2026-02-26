@@ -1,4 +1,9 @@
-"""Gemini moderator — independent risk assessor."""
+"""Gemini moderator — independent risk assessor.
+
+Receives the full market context (indicators, fundamentals, macro, sub-strategy
+scores, analyst data, news sentiment) to independently score growth potential,
+risk level, and confidence for each trade proposal.
+"""
 
 import json
 import re
@@ -7,6 +12,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from src.agents.moderation.context import format_market_context
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, check_budget, log_cost
 from src.utils.logger import get_logger
@@ -14,13 +20,21 @@ from src.utils.logger import get_logger
 logger = get_logger("gemini_moderator")
 
 SYSTEM_PROMPT = """You are an independent risk assessor on an Investment Committee.
-Score each proposed trade on three dimensions:
-- Growth potential: 1-10
-- Risk level: 1-10
-- Confidence in thesis: 1-10
+You receive the full data context: technical indicators, fundamentals, market conditions,
+sub-strategy scores, analyst recommendations, and news sentiment.
 
-Flag any trade where risk > growth potential.
-Consider news sentiment data in your scoring.
+Score each proposed trade on three dimensions using ALL available data:
+- Growth potential: 1-10 (based on momentum scores, earnings growth, analyst consensus, news catalysts)
+- Risk level: 1-10 (based on VIX, debt, P/E, conflicting signals, bearish news, regime)
+- Confidence in thesis: 1-10 (based on signal agreement, data quality, news confirmation)
+
+Scoring guidelines:
+- RSI >70 or negative MACD histogram increases risk. RSI <30 with sound fundamentals increases growth.
+- Debt/Equity >2.0, negative earnings, or P/E >40 raise risk by 2-3 points.
+- VIX >25 adds 1-2 risk points. VIX >35 adds 3+ risk points.
+- When sub-strategies disagree (momentum says BUY, factor says LOW), lower confidence by 2-3.
+- Bullish news + positive analyst consensus increases confidence. Bearish news decreases it.
+- Flag any trade where risk > growth potential.
 
 IMPORTANT: Keep your assessment under 100 words. Respond with ONLY valid JSON:
 {
@@ -28,7 +42,7 @@ IMPORTANT: Keep your assessment under 100 words. Respond with ONLY valid JSON:
   "growth_score": 7,
   "risk_score": 4,
   "confidence_score": 6,
-  "assessment": "2-sentence independent assessment",
+  "assessment": "2-sentence independent assessment referencing specific data points",
   "high_risk_flag": false,
   "modifications": null
 }"""
@@ -37,15 +51,17 @@ IMPORTANT: Keep your assessment under 100 words. Respond with ONLY valid JSON:
 def review_trade(
     trade_proposal: dict[str, Any],
     portfolio_context: str,
-    sentiment_data: str,
+    market_context: dict[str, Any],
     cycle_id: str | None = None,
 ) -> dict[str, Any]:
-    """Have Gemini review a trade proposal.
+    """Have Gemini review a trade proposal with full market context.
 
     Args:
-        trade_proposal: Strategy agent's decision for a single stock
-        portfolio_context: Current portfolio state description
-        sentiment_data: Finnhub/AV sentiment data for the stock
+        trade_proposal: Strategy agent's decision for a single stock.
+        portfolio_context: Current portfolio state description.
+        market_context: Rich dict containing indicators, fundamentals, macro,
+                       sub-strategy scores, analyst data, and news sentiment.
+        cycle_id: Optional cycle identifier for cost tracking.
 
     Returns:
         Moderator verdict with scores and reasoning.
@@ -56,6 +72,8 @@ def review_trade(
         logger.warning("Google budget exceeded, skipping Gemini moderation")
         return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
 
+    context_text = format_market_context(market_context)
+
     user_prompt = f"""Independently assess this proposed trade:
 
 ## Trade Proposal
@@ -64,11 +82,10 @@ def review_trade(
 ## Portfolio Context
 {portfolio_context}
 
-## Sentiment Data
-{sentiment_data}
+{context_text}
 
-Score growth potential, risk level, and confidence. Flag if risk > growth.
-Respond with JSON only."""
+Score growth potential, risk level, and confidence using the data above.
+Flag if risk > growth. Respond with JSON only."""
 
     try:
         client = genai.Client(api_key=settings.google_ai_api_key)

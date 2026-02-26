@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.data.models import Base
 from src.agents.moderation.panel import ModerationPanel, ModerationResult
+from src.agents.moderation.context import format_market_context
 from src.utils.cost_tracker import DegradationLevel
 
 
@@ -41,6 +42,55 @@ def sample_proposal():
         "target_allocation_pct": 5.0,
         "conviction": 78,
         "reasoning": "Strong momentum with good fundamentals",
+    }
+
+
+@pytest.fixture
+def sample_market_context():
+    """Rich market context dict matching the new moderator API."""
+    return {
+        "indicators": {
+            "current_price": 185.50,
+            "rsi_14": 55.3,
+            "macd_histogram": 0.45,
+            "macd_bullish_crossover": False,
+            "macd_bearish_crossover": False,
+            "above_50ma": True,
+            "below_lower_bb": False,
+            "ma_20": 183.20,
+        },
+        "fundamentals": {
+            "trailing_pe": 28.5,
+            "pb_ratio": 45.0,
+            "roe": 0.175,
+            "profit_margin": 0.265,
+            "debt_equity": 1.76,
+            "earnings_growth": 0.08,
+            "earnings_momentum_qoq": 0.05,
+            "sector": "Technology",
+            "market_cap": 2800000000000,
+        },
+        "macro": {
+            "vix": 18.5,
+            "market_regime": "BULL",
+            "sp500_above_200ma": True,
+        },
+        "sub_strategies": {
+            "momentum": {"action": "BUY", "score": 72, "reasoning": "RSI in sweet spot | Above 50MA | RS vs S&P: 1.12"},
+            "mean_reversion": {"action": "HOLD", "score": 15, "reasoning": "No mean reversion opportunity"},
+            "factor": {
+                "composite_score": 58.0,
+                "value_score": 30.0,
+                "quality_score": 65.0,
+                "momentum_score": 72.0,
+                "reasoning": "Strong margins (26.5%) | RS vs S&P: 1.12",
+            },
+        },
+        "analyst_data": {
+            "recommendation": {"buy": 30, "hold": 8, "sell": 2, "consensus": "BUY"},
+            "insider": {"mspr": 0.15},
+        },
+        "news_sentiment": "[Bullish +0.234] Apple reports record Q1 revenue (Reuters)",
     }
 
 
@@ -150,7 +200,10 @@ class TestFullReview:
     @patch("src.agents.moderation.panel.get_degradation_level")
     @patch("src.agents.moderation.panel.openai_mod.review_trade")
     @patch("src.agents.moderation.panel.gemini_mod.review_trade")
-    def test_full_approval(self, mock_gemini, mock_openai, mock_degradation, panel, sample_proposal):
+    def test_full_approval(
+        self, mock_gemini, mock_openai, mock_degradation,
+        panel, sample_proposal, sample_market_context,
+    ):
         mock_degradation.return_value = DegradationLevel.FULL
         mock_openai.return_value = {"verdict": "AGREE", "reasoning": "Looks good", "available": True}
         mock_gemini.return_value = {
@@ -159,15 +212,26 @@ class TestFullReview:
         }
 
         result = panel.review_trade(
-            sample_proposal, "Portfolio context", "Sentiment data", 78, "cycle-1",
+            sample_proposal, "Portfolio context", sample_market_context, 78, "cycle-1",
         )
         assert result.consensus == "APPROVED"
         assert result.moderators_available == 2
 
+        # Verify moderators received the rich market_context dict
+        mock_openai.assert_called_once()
+        call_args = mock_openai.call_args
+        assert call_args[0][2] == sample_market_context  # 3rd positional arg
+        mock_gemini.assert_called_once()
+        call_args = mock_gemini.call_args
+        assert call_args[0][2] == sample_market_context
+
     @patch("src.agents.moderation.panel.get_degradation_level")
     @patch("src.agents.moderation.panel.openai_mod.review_trade")
     @patch("src.agents.moderation.panel.gemini_mod.review_trade")
-    def test_blocked_by_both(self, mock_gemini, mock_openai, mock_degradation, panel, sample_proposal):
+    def test_blocked_by_both(
+        self, mock_gemini, mock_openai, mock_degradation,
+        panel, sample_proposal, sample_market_context,
+    ):
         mock_degradation.return_value = DegradationLevel.FULL
         mock_openai.return_value = {"verdict": "DISAGREE", "reasoning": "Too risky", "available": True}
         mock_gemini.return_value = {
@@ -176,29 +240,103 @@ class TestFullReview:
         }
 
         result = panel.review_trade(
-            sample_proposal, "Portfolio context", "Sentiment data", 78, "cycle-1",
+            sample_proposal, "Portfolio context", sample_market_context, 78, "cycle-1",
         )
         assert result.consensus == "BLOCKED"
 
     @patch("src.agents.moderation.panel.get_degradation_level")
-    def test_no_moderators_fallback(self, mock_degradation, panel, sample_proposal):
+    def test_no_moderators_fallback(
+        self, mock_degradation, panel, sample_proposal, sample_market_context,
+    ):
         mock_degradation.return_value = DegradationLevel.HALTED
         sample_proposal["conviction"] = 90
 
         result = panel.review_trade(
-            sample_proposal, "Portfolio context", "Sentiment data", 90, "cycle-1",
+            sample_proposal, "Portfolio context", sample_market_context, 90, "cycle-1",
         )
         assert result.moderators_available == 0
         assert result.consensus == "APPROVED"  # conviction 90 > 85
 
     @patch("src.agents.moderation.panel.get_degradation_level")
     @patch("src.agents.moderation.panel.openai_mod.review_trade")
-    def test_single_moderator(self, mock_openai, mock_degradation, panel, sample_proposal):
+    def test_single_moderator(
+        self, mock_openai, mock_degradation,
+        panel, sample_proposal, sample_market_context,
+    ):
         mock_degradation.return_value = DegradationLevel.NO_GEMINI
         mock_openai.return_value = {"verdict": "AGREE", "reasoning": "Good", "available": True}
 
         result = panel.review_trade(
-            sample_proposal, "Portfolio context", "Sentiment data", 80, "cycle-1",
+            sample_proposal, "Portfolio context", sample_market_context, 80, "cycle-1",
         )
         assert result.moderators_available == 1
         assert result.consensus == "APPROVED"
+
+
+class TestContextFormatter:
+    """Test the shared context formatting logic."""
+
+    def test_format_full_context(self, sample_market_context):
+        text = format_market_context(sample_market_context)
+        assert "Technical Indicators" in text
+        assert "RSI(14): 55.3" in text
+        assert "Fundamentals" in text
+        assert "P/E: 28.5" in text
+        assert "Market Conditions" in text
+        assert "BULL" in text
+        assert "VIX: 18.5" in text
+        assert "Sub-Strategy Signals" in text
+        assert "Momentum: BUY" in text
+        assert "Analyst" in text
+        assert "News Sentiment" in text
+
+    def test_format_empty_context(self):
+        text = format_market_context({})
+        assert text == ""
+
+    def test_format_partial_context(self):
+        ctx = {
+            "indicators": {"rsi_14": 25.0, "current_price": 100.0},
+            "macro": {"vix": 32.0, "market_regime": "BEAR"},
+        }
+        text = format_market_context(ctx)
+        assert "RSI(14): 25.0 (oversold)" in text
+        assert "VIX: 32.0 (high)" in text
+        assert "BEAR" in text
+        # Should not have fundamentals section
+        assert "Fundamentals" not in text
+
+    def test_format_indicators_labels(self):
+        """Test RSI labels are correctly assigned."""
+        # Oversold
+        ctx = {"indicators": {"rsi_14": 25.0, "current_price": 50.0}}
+        assert "oversold" in format_market_context(ctx)
+
+        # Overbought
+        ctx = {"indicators": {"rsi_14": 75.0, "current_price": 50.0}}
+        assert "overbought" in format_market_context(ctx)
+
+        # Neutral
+        ctx = {"indicators": {"rsi_14": 50.0, "current_price": 50.0}}
+        assert "neutral" in format_market_context(ctx)
+
+    def test_format_vix_labels(self):
+        """Test VIX severity labels."""
+        assert "low" in format_market_context({"macro": {"vix": 12.0}})
+        assert "normal" in format_market_context({"macro": {"vix": 18.0}})
+        assert "elevated" in format_market_context({"macro": {"vix": 28.0}})
+        assert "extreme" in format_market_context({"macro": {"vix": 40.0}})
+
+    def test_format_bollinger_band_oversold_label(self):
+        ctx = {"indicators": {"below_lower_bb": True, "current_price": 50.0}}
+        text = format_market_context(ctx)
+        assert "Yes (oversold)" in text
+
+    def test_format_macd_crossover_signals(self):
+        ctx = {"indicators": {"macd_bullish_crossover": True, "current_price": 50.0}}
+        text = format_market_context(ctx)
+        assert "Bullish crossover (buy signal)" in text
+
+        ctx = {"indicators": {"macd_bearish_crossover": True, "current_price": 50.0}}
+        text = format_market_context(ctx)
+        assert "Bearish crossover (sell signal)" in text
