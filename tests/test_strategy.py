@@ -32,44 +32,41 @@ def mock_get_session(db_session):
 
 
 def _good_momentum_indicators():
+    """Indicators matching the cleaned output of calculate_indicators()."""
     return {
         "current_price": 175.0,
         "rsi_14": 60.0,
-        "above_50ma": True,
+        "macd_histogram": 0.5,
         "macd_bullish_crossover": True,
         "macd_bearish_crossover": False,
-        "macd_histogram": 0.5,
         "below_lower_bb": False,
+        "above_50ma": True,
         "ma_20": 170.0,
-        "ma_50": 168.0,
-        "ma_200": 155.0,
     }
 
 
 def _oversold_indicators():
+    """Indicators for an oversold stock (mean reversion candidate)."""
     return {
         "current_price": 120.0,
         "rsi_14": 25.0,
-        "above_50ma": False,
+        "macd_histogram": -0.5,
         "macd_bullish_crossover": False,
         "macd_bearish_crossover": False,
-        "macd_histogram": -0.5,
         "below_lower_bb": True,
+        "above_50ma": False,
         "ma_20": 130.0,
-        "ma_50": 135.0,
-        "ma_200": 140.0,
     }
 
 
 def _good_fundamentals():
+    """Fundamentals matching the cleaned output of get_fundamentals()."""
     return {
         "trailing_pe": 18.0,
-        "forward_pe": 16.0,
         "pb_ratio": 2.5,
         "roe": 0.25,
         "profit_margin": 0.22,
         "debt_equity": 0.8,
-        "revenue_growth_yoy": 0.12,
         "earnings_growth": 0.15,
         "earnings_momentum_qoq": 0.10,
         "sector": "Technology",

@@ -190,15 +190,6 @@ class FinnhubClient:
                 "year": None,
             }
 
-    def get_peers(self, symbol: str) -> list[str]:
-        """Get company peers."""
-        try:
-            data = self._request("/stock/peers", {"symbol": symbol})
-            return data if isinstance(data, list) else []
-        except Exception as e:
-            logger.error(f"Failed to get peers for {symbol}: {e}")
-            return []
-
     def get_analyst_data(self, symbol: str) -> dict[str, Any]:
         """Get analyst recommendations and insider sentiment for a stock.
 

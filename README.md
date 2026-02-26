@@ -132,6 +132,7 @@ notebooks/
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
+- [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
 - [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts
 - [Governance](docs/GOVERNANCE.md) — security guardrails, kill switches, audit trail
 - [Local Live Run](docs/LOCAL_LIVE_RUN.md) — step-by-step guide for Trading 212 Practice mode

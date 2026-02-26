@@ -41,11 +41,11 @@ Yahoo Finance  ----+
 Finnhub --------> DATA FETCHER ----+---> SQLite (market_data_cache)
   (analyst recs,   |               |
    insider sent.)  |               v
-                   |        +-- INDICATORS (RSI, MACD, BB, MA, ATR)
-Alpha Vantage --->-+        |
-  (news sentiment)          +-- FUNDAMENTALS (P/E, ROE, margins)
-                            |
-                            +-- MACRO (VIX, yield spread, S&P vs 200MA)
+                   |        +-- INDICATORS (RSI, MACD, BB, 50MA)
+Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
+  (news sentiment)          +-- FUNDAMENTALS (P/E, P/B, ROE, margins, D/E)
+                            |     (9 fields — see docs/DATA_RATIONALE.md)
+                            +-- MACRO (VIX, S&P vs 200MA, market regime)
                             |
                             v
                    +-- STRATEGY ENGINE --+
@@ -214,8 +214,8 @@ graph TB
         YF[yfinance<br/>OHLCV + Fundamentals]
         FH[Finnhub<br/>Analyst + Insider]
         AV[Alpha Vantage<br/>News Sentiment]
-        IND[Technical Indicators<br/>RSI, MACD, BB, MA]
-        MACRO[Macro Data<br/>VIX, Yields, S&P]
+        IND[Technical Indicators<br/>RSI, MACD, BB, 50MA]
+        MACRO[Macro Data<br/>VIX, S&P vs 200MA]
     end
 
     subgraph Strategy["Strategy Engine"]
