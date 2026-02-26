@@ -1,4 +1,8 @@
-"""Fundamental data extraction from yfinance."""
+"""Fundamental data extraction from yfinance.
+
+Only metrics that directly influence sub-strategy scoring or risk rules are returned.
+See docs/DATA_RATIONALE.md for why each metric is kept or removed.
+"""
 
 from typing import Any
 
@@ -12,6 +16,17 @@ logger = get_logger("fundamentals")
 def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
     """Extract fundamental data for a stock using yfinance.
 
+    Returns only metrics consumed by strategies or risk rules:
+    - trailing_pe: mean reversion (P/E check), factor (value score)
+    - pb_ratio: factor (value score)
+    - roe: factor (quality score)
+    - profit_margin: factor (quality score)
+    - debt_equity: mean reversion + factor (debt check, quality score)
+    - earnings_growth: mean reversion (growth check)
+    - earnings_momentum_qoq: factor (momentum component)
+    - sector: risk manager (sector allocation cap)
+    - market_cap: universe ranking
+
     Args:
         ticker_symbol: Yahoo Finance ticker (e.g., "AAPL")
 
@@ -23,24 +38,26 @@ def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
         info = ticker.info
 
         trailing_pe = info.get("trailingPE")
-        forward_pe = info.get("forwardPE")
         pb_ratio = info.get("priceToBook")
         roe = info.get("returnOnEquity")
         profit_margin = info.get("profitMargins")
         debt_equity = info.get("debtToEquity")
-        revenue_growth = info.get("revenueGrowth")
         earnings_growth = info.get("earningsGrowth")
         sector = info.get("sector", "Unknown")
-        industry = info.get("industry", "Unknown")
         market_cap = info.get("marketCap")
 
-        # Earnings momentum: try to get quarterly earnings
+        # Earnings momentum: use quarterly income statement (Net Income)
         earnings_momentum = None
         try:
-            quarterly_earnings = ticker.quarterly_earnings
-            if quarterly_earnings is not None and len(quarterly_earnings) >= 2:
-                recent = quarterly_earnings.iloc[-1].get("Earnings", 0)
-                previous = quarterly_earnings.iloc[-2].get("Earnings", 0)
+            quarterly_income = ticker.quarterly_income_stmt
+            if (
+                quarterly_income is not None
+                and not quarterly_income.empty
+                and "Net Income" in quarterly_income.index
+                and quarterly_income.shape[1] >= 2
+            ):
+                recent = float(quarterly_income.loc["Net Income"].iloc[0])
+                previous = float(quarterly_income.loc["Net Income"].iloc[1])
                 if previous != 0:
                     earnings_momentum = (recent - previous) / abs(previous)
         except Exception:
@@ -48,16 +65,13 @@ def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
 
         return {
             "trailing_pe": _safe_float(trailing_pe),
-            "forward_pe": _safe_float(forward_pe),
             "pb_ratio": _safe_float(pb_ratio),
             "roe": _safe_float(roe),
             "profit_margin": _safe_float(profit_margin),
             "debt_equity": _safe_float(debt_equity),
-            "revenue_growth_yoy": _safe_float(revenue_growth),
             "earnings_growth": _safe_float(earnings_growth),
             "earnings_momentum_qoq": _safe_float(earnings_momentum),
             "sector": sector,
-            "industry": industry,
             "market_cap": _safe_float(market_cap),
         }
 

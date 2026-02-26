@@ -176,6 +176,54 @@ class AlphaVantageClient:
             logger.error(f"Failed to get market news sentiment: {e}")
             return {"error": str(e)}
 
+    def get_ticker_news_summary(
+        self,
+        tickers: str,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Get news sentiment for specific tickers, formatted for LLM consumption.
+
+        Args:
+            tickers: Comma-separated ticker symbols (e.g., "AAPL,MSFT,GOOGL").
+                     Multiple tickers in a single call to conserve the 25 req/day limit.
+            limit: Number of articles per request.
+
+        Returns:
+            Dict with aggregate stats and top article summaries for LLMs.
+        """
+        data = self.get_market_news_sentiment(tickers=tickers, sort="RELEVANCE", limit=limit)
+        if "error" in data:
+            return data
+
+        return {
+            "tickers_queried": tickers,
+            "total_articles": data.get("total_articles", 0),
+            "average_sentiment": data.get("average_sentiment", 0),
+            "bullish_articles": data.get("bullish_articles", 0),
+            "bearish_articles": data.get("bearish_articles", 0),
+            "neutral_articles": data.get("neutral_articles", 0),
+            "top_articles_summary": self._summarize_articles(data.get("articles", []), max_articles=10),
+        }
+
+    @staticmethod
+    def _summarize_articles(articles: list[dict[str, Any]], max_articles: int = 10) -> str:
+        """Create a compact text summary of articles for LLM prompts.
+
+        Distills each article into a single line: [SENTIMENT score] title (source).
+        """
+        if not articles:
+            return "No recent articles found."
+
+        lines = []
+        for art in articles[:max_articles]:
+            score = art.get("overall_sentiment_score", 0)
+            label = art.get("overall_sentiment_label", "Neutral")
+            title = art.get("title", "Untitled")[:100]
+            source = art.get("source", "Unknown")
+            lines.append(f"[{label} {score:+.3f}] {title} ({source})")
+
+        return "\n".join(lines)
+
     def get_broad_market_sentiment(self) -> dict[str, Any]:
         """Get broad market sentiment across key topics.
 

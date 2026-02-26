@@ -223,16 +223,12 @@ def _build_markdown(
     lines.append("| Indicator | Value |")
     lines.append("|-----------|-------|")
     lines.append(f"| RSI(14) | {_fmt_val(indicators.get('rsi_14'))} |")
-    lines.append(f"| MACD Line | {_fmt_val(indicators.get('macd_line'))} |")
-    lines.append(f"| MACD Signal | {_fmt_val(indicators.get('macd_signal'))} |")
     lines.append(f"| MACD Histogram | {_fmt_val(indicators.get('macd_histogram'))} |")
+    lines.append(f"| MACD Bullish Cross | {indicators.get('macd_bullish_crossover', 'N/A')} |")
+    lines.append(f"| MACD Bearish Cross | {indicators.get('macd_bearish_crossover', 'N/A')} |")
+    lines.append(f"| Above 50-day MA | {indicators.get('above_50ma', 'N/A')} |")
+    lines.append(f"| Below Lower BB | {indicators.get('below_lower_bb', 'N/A')} |")
     lines.append(f"| 20-day MA | {_fmt_val(indicators.get('ma_20'))} |")
-    lines.append(f"| 50-day MA | {_fmt_val(indicators.get('ma_50'))} |")
-    lines.append(f"| 200-day MA | {_fmt_val(indicators.get('ma_200'))} |")
-    lines.append(f"| BB Upper | {_fmt_val(indicators.get('bb_upper'))} |")
-    lines.append(f"| BB Lower | {_fmt_val(indicators.get('bb_lower'))} |")
-    lines.append(f"| BB Position | {_fmt_val(indicators.get('bb_pct'))} |")
-    lines.append(f"| ATR(14) | {_fmt_val(indicators.get('atr_14'))} |")
     lines.append("")
 
     # Fundamental Snapshot
@@ -241,13 +237,12 @@ def _build_markdown(
     lines.append("| Metric | Value |")
     lines.append("|--------|-------|")
     lines.append(f"| P/E (trailing) | {_fmt_val(fundamentals.get('trailing_pe'))} |")
-    lines.append(f"| P/E (forward) | {_fmt_val(fundamentals.get('forward_pe'))} |")
     lines.append(f"| P/B | {_fmt_val(fundamentals.get('pb_ratio'))} |")
     lines.append(f"| ROE | {_fmt_pct(fundamentals.get('roe'))} |")
-    lines.append(f"| Revenue Growth YoY | {_fmt_pct(fundamentals.get('revenue_growth_yoy'))} |")
-    lines.append(f"| Earnings Growth | {_fmt_pct(fundamentals.get('earnings_growth'))} |")
     lines.append(f"| Profit Margin | {_fmt_pct(fundamentals.get('profit_margin'))} |")
     lines.append(f"| Debt/Equity | {_fmt_val(fundamentals.get('debt_equity'))} |")
+    lines.append(f"| Earnings Growth | {_fmt_pct(fundamentals.get('earnings_growth'))} |")
+    lines.append(f"| Earnings Momentum QoQ | {_fmt_pct(fundamentals.get('earnings_momentum_qoq'))} |")
     lines.append(f"| Sector | {fundamentals.get('sector', 'N/A')} |")
     lines.append("")
 
@@ -280,17 +275,17 @@ def _build_markdown(
 
 
 def _add_finnhub_section(lines: list[str], data: dict[str, Any]) -> None:
-    """Add Finnhub sentiment data section."""
-    lines.append("### Finnhub")
-    news = data.get("news_sentiment", {})
+    """Add Finnhub analyst data section (recommendations + insider sentiment)."""
+    lines.append("### Finnhub Analyst Data")
     analyst = data.get("analyst_recommendations", {})
     insider = data.get("insider_sentiment", {})
 
-    lines.append(f"- **News Score:** {_fmt_val(news.get('news_score'))}")
-    lines.append(f"- **Bullish %:** {_fmt_val(news.get('bullish_pct'))}")
-    lines.append(f"- **Bearish %:** {_fmt_val(news.get('bearish_pct'))}")
     lines.append(f"- **Analyst Consensus:** {analyst.get('consensus', 'N/A')}")
     lines.append(f"- **Total Analysts:** {analyst.get('total_analysts', 'N/A')}")
+    lines.append(f"- **Strong Buy/Buy/Hold/Sell/Strong Sell:** "
+                 f"{analyst.get('strong_buy', 0)}/{analyst.get('buy', 0)}/"
+                 f"{analyst.get('hold', 0)}/{analyst.get('sell', 0)}/"
+                 f"{analyst.get('strong_sell', 0)}")
     lines.append(f"- **Insider MSPR:** {_fmt_val(insider.get('mspr'))}")
 
 

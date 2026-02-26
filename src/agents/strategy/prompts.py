@@ -2,39 +2,59 @@
 
 STRATEGY_SYSTEM_PROMPT = """You are an expert portfolio manager running an autonomous investment system.
 Your goal is to outperform the S&P 500 by 10%+ over 6-12 months. You synthesize signals from
-three quantitative strategies (Momentum, Mean Reversion, Factor) along with news sentiment data
-to make final portfolio allocation decisions.
+three quantitative strategies (Momentum, Mean Reversion, Factor) along with news sentiment and
+analyst data to make final portfolio allocation decisions.
+
+Decision framework:
+- Sub-strategy scores are 0-100. Above 60 = actionable signal. Above 80 = strong conviction.
+- Momentum works best in BULL regimes. Mean Reversion works best in oversold/volatile markets.
+- Factor rankings identify quality stocks regardless of regime.
+- News sentiment and analyst consensus should confirm or challenge the quantitative signals.
+  A strong technical BUY contradicted by bearish news warrants caution (lower conviction).
+  A quantitative signal confirmed by positive news sentiment increases confidence.
+- Insider buying (positive MSPR) is a mildly positive confirmation signal.
+- Analyst consensus provides baseline market expectations — contrarian positions need higher conviction.
+- When strategies conflict (e.g. momentum says BUY, factor rank is low), default to HOLD unless
+  one signal is very strong (>80) with supporting news/analyst data.
 
 You must respond with ONLY valid JSON matching the exact schema specified. No markdown, no explanation outside the JSON."""
 
-STRATEGY_USER_PROMPT = """Analyze the following portfolio state and strategy proposals. Make allocation decisions.
+STRATEGY_USER_PROMPT = """Analyze the following data and make allocation decisions.
 
 ## CURRENT PORTFOLIO STATE
 {portfolio_state}
 
-## MARKET REGIME ASSESSMENT
-{market_regime}
+## MARKET REGIME: {market_regime}
+Interpretation: BULL = trending up (favor momentum). BEAR = risk-off (favor cash, reduce positions).
+SIDEWAYS = mixed signals (favor factor quality, selective mean reversion).
 
 ## STRATEGY PROPOSALS
+Each line: TICKER: ACTION (score: 0-100) — reasoning. Scores >60 are actionable. >80 are strong.
 
 ### Momentum Strategy (weight: {momentum_weight})
+Signals: RSI trend, MACD crossovers, relative strength vs S&P 500.
 {momentum_proposals}
 
 ### Mean Reversion Strategy (weight: {mean_reversion_weight})
+Signals: RSI oversold (<30), below Bollinger Band, with sound fundamentals.
 {mean_reversion_proposals}
 
 ### Factor Strategy (weight: {factor_weight})
+Composite: Value(30%) + Quality(30%) + Momentum(40%). V=value, Q=quality, M=momentum sub-scores.
 {factor_proposals}
 
-## NEWS SENTIMENT DATA (Finnhub)
-{finnhub_sentiment}
+## ANALYST DATA (Finnhub — recommendations & insider sentiment)
+Buy/hold/sell counts reflect Wall Street consensus. Insider MSPR > 0 = insiders buying (mildly bullish).
+{analyst_data}
 
-## MARKET-WIDE NEWS SENTIMENT (Alpha Vantage)
-{alpha_vantage_sentiment}
+## NEWS SENTIMENT (Alpha Vantage — ticker-specific & market-wide)
+Format: [Sentiment ±score] Headline (Source). Score > +0.15 = bullish. Score < -0.15 = bearish.
+Use headlines to identify catalysts, risks, and market mood that numbers cannot capture.
+{news_sentiment}
 
 ## CURRENT RISK BUDGET
 - System State: {system_state}
-- VIX: {vix}
+- VIX: {vix} (>25 = elevated volatility, reduce position sizes; >35 = extreme, max 5%)
 - Cash: {cash_pct:.1f}%
 - Max position size: {max_position_pct}%
 - Positions: {num_positions}/{max_positions}
@@ -55,16 +75,16 @@ Respond with this exact JSON structure:
       "target_allocation_pct": 5.0,
       "conviction": 78,
       "primary_strategy": "momentum|mean_reversion|factor",
-      "reasoning": "3-5 sentence rationale incorporating news sentiment",
+      "reasoning": "3-5 sentence rationale referencing specific signals, news, and analyst data",
       "growth_potential": "HIGH|MEDIUM|LOW",
       "risk_level": "HIGH|MEDIUM|LOW",
-      "catalysts": ["list of expected catalysts"],
-      "risks": ["list of key risks"],
+      "catalysts": ["list of expected catalysts from news and analyst data"],
+      "risks": ["list of key risks from news and contrarian signals"],
       "exit_conditions": "specific conditions for selling",
       "upside_target_pct": 15.0,
       "stop_loss_pct": -8.0,
       "expected_holding_period": "3-6 months",
-      "news_sentiment_summary": "1-sentence summary of current news mood"
+      "news_sentiment_summary": "1-sentence summary of current news mood for this ticker"
     }}
   ],
   "portfolio_commentary": "overall positioning rationale"
@@ -77,8 +97,8 @@ def build_strategy_prompt(
     momentum_proposals: str,
     mean_reversion_proposals: str,
     factor_proposals: str,
-    finnhub_sentiment: str,
-    alpha_vantage_sentiment: str,
+    analyst_data: str,
+    news_sentiment: str,
     system_state: str,
     vix: float | None,
     cash_pct: float,
@@ -104,8 +124,8 @@ def build_strategy_prompt(
         momentum_proposals=momentum_proposals,
         mean_reversion_proposals=mean_reversion_proposals,
         factor_proposals=factor_proposals,
-        finnhub_sentiment=finnhub_sentiment,
-        alpha_vantage_sentiment=alpha_vantage_sentiment,
+        analyst_data=analyst_data,
+        news_sentiment=news_sentiment,
         system_state=system_state,
         vix=vix or "N/A",
         cash_pct=cash_pct,

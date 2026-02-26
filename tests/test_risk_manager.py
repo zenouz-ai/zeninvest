@@ -38,12 +38,12 @@ class TestMaxSingleStock:
         assert result.passed
 
     def test_exceeds_limit(self, risk_mgr):
-        result = risk_mgr.check_max_single_stock("AAPL", 15.0, {})
+        result = risk_mgr.check_max_single_stock("AAPL", 20.0, {})
         assert not result.passed
-        assert result.adjusted_allocation == 12.0
+        assert result.adjusted_allocation == 15.0
 
     def test_at_limit(self, risk_mgr):
-        result = risk_mgr.check_max_single_stock("AAPL", 12.0, {})
+        result = risk_mgr.check_max_single_stock("AAPL", 15.0, {})
         assert result.passed
 
 
@@ -53,9 +53,9 @@ class TestMaxSector:
         assert result.passed
 
     def test_exceeds_limit(self, risk_mgr):
-        result = risk_mgr.check_max_sector("AAPL", "Technology", 10.0, {"Technology": 25.0})
+        result = risk_mgr.check_max_sector("AAPL", "Technology", 15.0, {"Technology": 25.0})
         assert not result.passed
-        assert result.adjusted_allocation == 5.0  # 30 - 25 = 5% room
+        assert result.adjusted_allocation == 10.0  # 35 - 25 = 10% room
 
     def test_empty_sector(self, risk_mgr):
         result = risk_mgr.check_max_sector("AAPL", "Technology", 10.0, {})
@@ -260,11 +260,11 @@ class TestEvaluateTrade:
 
     def test_reject_over_stock_limit(self, risk_mgr):
         verdict = risk_mgr.evaluate_trade(**self._default_params(
-            proposed_allocation_pct=15.0,
+            proposed_allocation_pct=20.0,
             cash_pct=50.0,
         ))
         assert verdict.verdict == "RESIZE"
-        assert verdict.adjusted_allocation_pct == 12.0
+        assert verdict.adjusted_allocation_pct == 15.0
 
     def test_reject_on_halt_drawdown(self, risk_mgr):
         verdict = risk_mgr.evaluate_trade(**self._default_params(

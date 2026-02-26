@@ -1,9 +1,11 @@
 """Gemini moderator — independent risk assessor."""
 
 import json
+import re
 from typing import Any
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, check_budget, log_cost
@@ -20,7 +22,7 @@ Score each proposed trade on three dimensions:
 Flag any trade where risk > growth potential.
 Consider news sentiment data in your scoring.
 
-Respond with ONLY valid JSON:
+IMPORTANT: Keep your assessment under 100 words. Respond with ONLY valid JSON:
 {
   "verdict": "AGREE|DISAGREE|MODIFY",
   "growth_score": 7,
@@ -28,7 +30,7 @@ Respond with ONLY valid JSON:
   "confidence_score": 6,
   "assessment": "2-sentence independent assessment",
   "high_risk_flag": false,
-  "modifications": null or {"target_allocation_pct": X}
+  "modifications": null
 }"""
 
 
@@ -69,21 +71,19 @@ Score growth potential, risk level, and confidence. Flag if risk > growth.
 Respond with JSON only."""
 
     try:
-        genai.configure(api_key=settings.google_ai_api_key)
-        model = genai.GenerativeModel(
-            model_name=settings.moderator_2_model,
-            system_instruction=SYSTEM_PROMPT,
-        )
+        client = genai.Client(api_key=settings.google_ai_api_key)
 
-        response = model.generate_content(
-            user_prompt,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=1024,
+        response = client.models.generate_content(
+            model=settings.moderator_2_model,
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                max_output_tokens=2048,
                 temperature=0.3,
             ),
         )
 
-        # Log cost (approximate — Gemini doesn't always return exact token counts)
+        # Log cost
         input_tokens = 0
         output_tokens = 0
         if hasattr(response, "usage_metadata") and response.usage_metadata:
@@ -106,8 +106,9 @@ Respond with JSON only."""
         elif "```" in content:
             content = content.split("```")[1].split("```")[0]
 
-        result = json.loads(content)
-        result["moderator"] = "gemini-2.0-flash"
+        content = content.strip()
+        result = _parse_json_with_repair(content)
+        result["moderator"] = settings.moderator_2_model
         result["available"] = True
         return result
 
@@ -116,7 +117,7 @@ Respond with JSON only."""
         return {
             "verdict": "AGREE",
             "reasoning": f"Could not parse response: {e}",
-            "moderator": "gemini-2.0-flash",
+            "moderator": settings.moderator_2_model,
             "available": True,
             "parse_error": True,
         }
@@ -125,6 +126,69 @@ Respond with JSON only."""
         return {
             "verdict": "SKIP",
             "reasoning": f"API error: {e}",
-            "moderator": "gemini-2.0-flash",
+            "moderator": settings.moderator_2_model,
             "available": False,
         }
+
+
+def _parse_json_with_repair(text: str) -> dict[str, Any]:
+    """Parse JSON with repair for common LLM output issues.
+
+    Handles truncated strings, missing closing braces, trailing commas, etc.
+    Raises json.JSONDecodeError if repair is not possible.
+    """
+    # First try normal parse
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Repair: fix unterminated strings by closing them
+    repaired = text
+    # Remove trailing comma before closing brace
+    repaired = re.sub(r",\s*}", "}", repaired)
+    repaired = re.sub(r",\s*$", "", repaired)
+
+    # Count open/close braces to detect truncation
+    open_braces = repaired.count("{") - repaired.count("}")
+    open_quotes = repaired.count('"') % 2
+
+    # Close any unterminated string
+    if open_quotes:
+        repaired += '"'
+
+    # Close any open braces
+    repaired += "}" * open_braces
+
+    # Remove trailing comma before closing brace (again after repair)
+    repaired = re.sub(r",\s*}", "}", repaired)
+
+    try:
+        result = json.loads(repaired)
+        logger.info("Gemini JSON repaired successfully")
+        return result
+    except json.JSONDecodeError:
+        pass
+
+    # Last resort: try to extract key fields with regex
+    verdict_match = re.search(r'"verdict"\s*:\s*"(AGREE|DISAGREE|MODIFY)"', text)
+    growth_match = re.search(r'"growth_score"\s*:\s*(\d+)', text)
+    risk_match = re.search(r'"risk_score"\s*:\s*(\d+)', text)
+    confidence_match = re.search(r'"confidence_score"\s*:\s*(\d+)', text)
+
+    if verdict_match:
+        logger.info("Gemini JSON extracted via regex fallback")
+        growth = int(growth_match.group(1)) if growth_match else 5
+        risk = int(risk_match.group(1)) if risk_match else 5
+        return {
+            "verdict": verdict_match.group(1),
+            "growth_score": growth,
+            "risk_score": risk,
+            "confidence_score": int(confidence_match.group(1)) if confidence_match else 5,
+            "assessment": "Extracted from malformed response",
+            "high_risk_flag": risk > growth,
+            "modifications": None,
+        }
+
+    # Nothing worked — raise the original error
+    raise json.JSONDecodeError("Could not repair Gemini JSON output", text, 0)

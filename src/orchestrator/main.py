@@ -14,6 +14,7 @@ import click
 
 from src.agents.execution.order_manager import OrderManager
 from src.agents.execution.t212_client import T212Client
+from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.data_fetcher import DataFetcher
 from src.agents.moderation.panel import ModerationPanel
 from src.agents.reporting.journal import generate_trade_journal
@@ -142,12 +143,12 @@ class Orchestrator:
         # Get data for universe (use cached instruments or a small set for now)
         stocks_data = self._fetch_stocks_data(portfolio_data.get("positions", []))
 
-        # Get Alpha Vantage broad sentiment
-        av_sentiment = {}
+        # Get Alpha Vantage broad market sentiment (1 API call)
+        av_broad_sentiment = {}
         try:
-            av_sentiment = self.data_fetcher.alpha_vantage.get_broad_market_sentiment()
+            av_broad_sentiment = self.data_fetcher.alpha_vantage.get_broad_market_sentiment()
         except Exception as e:
-            logger.warning(f"Alpha Vantage unavailable: {e}")
+            logger.warning(f"Alpha Vantage broad sentiment unavailable: {e}")
 
         # --- STEP 4: Run strategies ---
         logger.info("Running strategies...")
@@ -155,19 +156,54 @@ class Orchestrator:
 
         sub_results = self.strategy_engine.run_sub_strategies(stocks_data, existing_tickers)
 
-        # Gather Finnhub sentiment for top candidates
-        finnhub_data_map: dict[str, dict] = {}
+        # Gather Finnhub analyst data (recommendations + insider) for top candidates
+        analyst_data_map: dict[str, dict] = {}
         top_tickers = self._get_top_tickers(sub_results)
         for ticker in top_tickers[:15]:
             try:
                 yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
-                finnhub_data_map[ticker] = self.data_fetcher.finnhub.get_full_sentiment_data(yf_ticker)
+                analyst_data_map[ticker] = self.data_fetcher.finnhub.get_analyst_data(yf_ticker)
             except Exception as e:
-                logger.warning(f"Finnhub error for {ticker}: {e}")
-                finnhub_data_map[ticker] = {}
+                logger.warning(f"Finnhub analyst data error for {ticker}: {e}")
+                analyst_data_map[ticker] = {}
 
-        finnhub_summary = json.dumps(finnhub_data_map, indent=2, default=str)[:3000]
-        av_summary = json.dumps(av_sentiment, indent=2, default=str)[:2000]
+        # Get Alpha Vantage ticker-specific news sentiment (1 API call for all tickers)
+        av_ticker_sentiment = {}
+        if top_tickers:
+            try:
+                yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
+                tickers_str = ",".join(yf_tickers)
+                av_ticker_sentiment = self.data_fetcher.alpha_vantage.get_ticker_news_summary(
+                    tickers=tickers_str, limit=20,
+                )
+            except Exception as e:
+                logger.warning(f"Alpha Vantage ticker sentiment unavailable: {e}")
+
+        # Build combined news sentiment string (ticker-specific + broad market)
+        news_parts = []
+        if av_ticker_sentiment and "error" not in av_ticker_sentiment:
+            news_parts.append(f"### Ticker News ({av_ticker_sentiment.get('tickers_queried', 'N/A')})")
+            news_parts.append(f"Articles: {av_ticker_sentiment.get('total_articles', 0)} | "
+                              f"Avg sentiment: {av_ticker_sentiment.get('average_sentiment', 0):.4f} | "
+                              f"Bullish: {av_ticker_sentiment.get('bullish_articles', 0)} | "
+                              f"Bearish: {av_ticker_sentiment.get('bearish_articles', 0)}")
+            summary = av_ticker_sentiment.get("top_articles_summary", "")
+            if summary:
+                news_parts.append(summary)
+        if av_broad_sentiment and "error" not in av_broad_sentiment:
+            news_parts.append(f"\n### Broad Market Sentiment")
+            news_parts.append(f"Articles: {av_broad_sentiment.get('total_articles', 0)} | "
+                              f"Avg sentiment: {av_broad_sentiment.get('average_sentiment', 0):.4f} | "
+                              f"Bullish: {av_broad_sentiment.get('bullish_articles', 0)} | "
+                              f"Bearish: {av_broad_sentiment.get('bearish_articles', 0)}")
+            # Include top article headlines with sentiment for LLM context
+            broad_articles = av_broad_sentiment.get("articles", [])
+            if broad_articles:
+                broad_summary = AlphaVantageClient._summarize_articles(broad_articles, max_articles=10)
+                news_parts.append(broad_summary)
+
+        analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
+        news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
 
         # Claude synthesis
         portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
@@ -175,8 +211,8 @@ class Orchestrator:
             sub_strategy_results=sub_results,
             portfolio_state=portfolio_state_str,
             market_regime=market_regime,
-            finnhub_sentiment=finnhub_summary,
-            alpha_vantage_sentiment=av_summary,
+            analyst_data=analyst_summary,
+            news_sentiment=news_summary,
             system_state=current_state,
             vix=vix,
             cash_pct=cash_pct,
@@ -206,10 +242,16 @@ class Orchestrator:
 
             # Moderation
             logger.info(f"Moderating {action} {ticker}...")
+            # Build per-ticker sentiment context for moderation
+            ticker_analyst = analyst_data_map.get(ticker, {})
+            mod_sentiment = json.dumps(ticker_analyst, default=str)
+            if news_summary != "News sentiment data unavailable.":
+                mod_sentiment += f"\n\nNews: {news_summary[:1000]}"
+
             mod_result = self.moderation_panel.review_trade(
                 trade_proposal=decision,
                 portfolio_context=portfolio_state_str,
-                sentiment_data=json.dumps(finnhub_data_map.get(ticker, {}), default=str),
+                sentiment_data=mod_sentiment,
                 conviction=conviction,
                 cycle_id=cycle_id,
             )
@@ -294,8 +336,8 @@ class Orchestrator:
                     vix=vix,
                     sp500_trend=macro.get("sp500_pct_above_200ma", "N/A"),
                     news_sentiment_overall=decision.get("news_sentiment_summary", ""),
-                    finnhub_data=finnhub_data_map.get(ticker, {}),
-                    alpha_vantage_data=av_sentiment,
+                    finnhub_data=analyst_data_map.get(ticker, {}),
+                    alpha_vantage_data=av_broad_sentiment,
                     moderation_results=mod_result.to_dict(),
                     risk_verdict={
                         "verdict": risk_verdict.verdict,
@@ -342,25 +384,41 @@ class Orchestrator:
 
     def _get_portfolio_state(self) -> dict[str, Any]:
         """Get current portfolio state from T212."""
-        if self.dry_run:
-            # In dry-run, return mock or cached state
-            try:
-                return self.order_manager.get_portfolio_state()
-            except Exception:
-                return {
-                    "cash": 10000.0,
-                    "total_value": 10000.0,
-                    "positions": [],
-                    "daily_pnl_pct": 0.0,
-                    "total_return_pct": 0.0,
-                    "alpha_pct": 0.0,
-                }
+        mock_state = {
+            "cash": 10000.0,
+            "total_value": 10000.0,
+            "invested": 0.0,
+            "positions": [],
+            "num_positions": 0,
+            "daily_pnl_pct": 0.0,
+            "total_return_pct": 0.0,
+            "alpha_pct": 0.0,
+        }
 
-        state = self.order_manager.get_portfolio_state()
+        try:
+            state = self.order_manager.get_portfolio_state()
+        except Exception:
+            if self.dry_run:
+                logger.info("T212 API unavailable, using mock portfolio for dry-run")
+                return mock_state
+            raise
+
+        # order_manager catches errors internally and returns an error dict
+        if state.get("error"):
+            if self.dry_run:
+                logger.info("T212 API returned error, using mock portfolio for dry-run")
+                return mock_state
+            raise RuntimeError(f"Failed to get portfolio state: {state['error']}")
+
         cash_data = state.get("cash", {})
         positions = state.get("positions", [])
 
-        cash = float(cash_data.get("free", 0))
+        # cash_data may be a dict from T212 API or a plain float (mock)
+        if isinstance(cash_data, dict):
+            cash = float(cash_data.get("free", 0))
+        else:
+            cash = float(cash_data)
+
         invested = sum(
             float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
             for p in positions
@@ -373,7 +431,7 @@ class Orchestrator:
             "invested": invested,
             "positions": positions,
             "num_positions": len(positions),
-            "daily_pnl_pct": 0.0,  # Would need history to calculate
+            "daily_pnl_pct": 0.0,
             "total_return_pct": ((total_value / 10000) - 1) * 100 if total_value > 0 else 0,
             "alpha_pct": 0.0,
         }

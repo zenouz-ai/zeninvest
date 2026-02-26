@@ -32,44 +32,41 @@ def mock_get_session(db_session):
 
 
 def _good_momentum_indicators():
+    """Indicators matching the cleaned output of calculate_indicators()."""
     return {
         "current_price": 175.0,
         "rsi_14": 60.0,
-        "above_50ma": True,
+        "macd_histogram": 0.5,
         "macd_bullish_crossover": True,
         "macd_bearish_crossover": False,
-        "macd_histogram": 0.5,
         "below_lower_bb": False,
+        "above_50ma": True,
         "ma_20": 170.0,
-        "ma_50": 168.0,
-        "ma_200": 155.0,
     }
 
 
 def _oversold_indicators():
+    """Indicators for an oversold stock (mean reversion candidate)."""
     return {
         "current_price": 120.0,
         "rsi_14": 25.0,
-        "above_50ma": False,
+        "macd_histogram": -0.5,
         "macd_bullish_crossover": False,
         "macd_bearish_crossover": False,
-        "macd_histogram": -0.5,
         "below_lower_bb": True,
+        "above_50ma": False,
         "ma_20": 130.0,
-        "ma_50": 135.0,
-        "ma_200": 140.0,
     }
 
 
 def _good_fundamentals():
+    """Fundamentals matching the cleaned output of get_fundamentals()."""
     return {
         "trailing_pe": 18.0,
-        "forward_pe": 16.0,
         "pb_ratio": 2.5,
         "roe": 0.25,
         "profit_margin": 0.22,
         "debt_equity": 0.8,
-        "revenue_growth_yoy": 0.12,
         "earnings_growth": 0.15,
         "earnings_momentum_qoq": 0.10,
         "sector": "Technology",
@@ -189,12 +186,12 @@ class TestPrompts:
             momentum_proposals="- AAPL: BUY (score 80)",
             mean_reversion_proposals="None",
             factor_proposals="- AAPL: composite=75",
-            finnhub_sentiment="AAPL: bullish 60%",
-            alpha_vantage_sentiment="Market positive",
+            analyst_data="AAPL: Buy consensus, 10 analysts",
+            news_sentiment="AAPL: bullish 60%, 5 articles",
             system_state="ACTIVE",
             vix=18.0,
             cash_pct=50.0,
-            max_position_pct=12.0,
+            max_position_pct=15.0,
             num_positions=3,
             max_positions=15,
             momentum_weight=0.35,
@@ -212,8 +209,8 @@ class TestPrompts:
             momentum_proposals="None",
             mean_reversion_proposals="None",
             factor_proposals="None",
-            finnhub_sentiment="None",
-            alpha_vantage_sentiment="None",
+            analyst_data="None",
+            news_sentiment="None",
             system_state="CAUTIOUS",
             vix=28.0,
             cash_pct=20.0,
@@ -291,8 +288,8 @@ class TestStrategyEngine:
             sub_strategy_results=sub_results,
             portfolio_state="Cash: £5000",
             market_regime="BULL",
-            finnhub_sentiment="Positive",
-            alpha_vantage_sentiment="Bullish",
+            analyst_data="Positive analyst consensus",
+            news_sentiment="Bullish news sentiment",
             system_state="ACTIVE",
             vix=18.0,
             cash_pct=50.0,

@@ -230,7 +230,7 @@ class ModerationPanel:
                     timestamp=datetime.utcnow(),
                     cycle_id=cycle_id,
                     ticker=result.ticker,
-                    moderator="gemini-2.0-flash",
+                    moderator=result.gemini_verdict.get("moderator", "gemini"),
                     verdict=result.gemini_verdict.get("verdict", "SKIP"),
                     reasoning=result.gemini_verdict.get("assessment"),
                     growth_score=result.gemini_verdict.get("growth_score"),
