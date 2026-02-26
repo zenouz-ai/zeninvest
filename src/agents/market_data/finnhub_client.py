@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from src.data.database import get_session
 from src.data.models import ApiLog
@@ -63,9 +63,19 @@ class FinnhubClient:
         finally:
             session.close()
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=4))
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+        retry=retry_if_exception(lambda e: not (
+            isinstance(e, httpx.HTTPStatusError) and 400 <= e.response.status_code < 500
+        )),
+    )
     def _request(self, endpoint: str, params: dict[str, Any] | None = None) -> Any:
-        """Make an authenticated GET request to Finnhub."""
+        """Make an authenticated GET request to Finnhub.
+
+        Retries on 5xx/network errors only. 4xx errors (e.g. 403 Forbidden
+        for premium-only endpoints) are raised immediately without retrying.
+        """
         self._throttle()
         url = f"{self.base_url}{endpoint}"
         all_params = {"token": self.api_key}
@@ -91,40 +101,23 @@ class FinnhubClient:
             duration = (time.monotonic() - start) * 1000
             self._log_api_call(endpoint, status_code, response_text, duration, error_msg)
 
-    def get_news_sentiment(self, symbol: str) -> dict[str, Any]:
-        """Get news sentiment for a stock.
-
-        Returns buzz, bullish/bearish %, and overall sentiment score.
-        """
-        try:
-            data = self._request("/news-sentiment", {"symbol": symbol})
-            if not data or "sentiment" not in data:
-                return {"error": "No sentiment data available"}
-
-            sentiment = data.get("sentiment", {})
-            buzz = data.get("buzz", {})
-
-            return {
-                "symbol": symbol,
-                "bullish_pct": sentiment.get("bullishPercent", 0),
-                "bearish_pct": sentiment.get("bearishPercent", 0),
-                "news_score": buzz.get("buzz", 0),
-                "articles_in_last_week": buzz.get("articlesInLastWeek", 0),
-                "weekly_average": buzz.get("weeklyAverage", 0),
-                "company_news_score": data.get("companyNewsScore", 0),
-                "sector_avg_bullish": data.get("sectorAverageBullishPercent", 0),
-                "sector_avg_news_score": data.get("sectorAverageNewsScore", 0),
-            }
-        except Exception as e:
-            logger.error(f"Failed to get news sentiment for {symbol}: {e}")
-            return {"error": str(e), "symbol": symbol}
-
     def get_analyst_recommendations(self, symbol: str) -> dict[str, Any]:
-        """Get analyst buy/hold/sell consensus."""
+        """Get analyst buy/hold/sell consensus.
+
+        If the endpoint is unavailable, returns placeholder data with
+        unavailable=True.
+        """
         try:
             data = self._request("/stock/recommendation", {"symbol": symbol})
             if not data or not isinstance(data, list) or len(data) == 0:
-                return {"error": "No analyst data"}
+                return {
+                    "symbol": symbol,
+                    "unavailable": True,
+                    "reason": "No analyst data returned by API",
+                    "strong_buy": 0, "buy": 0, "hold": 0, "sell": 0, "strong_sell": 0,
+                    "total_analysts": 0,
+                    "consensus": "N/A",
+                }
 
             latest = data[0]
             total = (
@@ -135,6 +128,7 @@ class FinnhubClient:
 
             return {
                 "symbol": symbol,
+                "unavailable": False,
                 "period": latest.get("period"),
                 "strong_buy": latest.get("strongBuy", 0),
                 "buy": latest.get("buy", 0),
@@ -145,63 +139,66 @@ class FinnhubClient:
                 "consensus": _determine_consensus(latest),
             }
         except Exception as e:
-            logger.error(f"Failed to get analyst recs for {symbol}: {e}")
-            return {"error": str(e), "symbol": symbol}
-
-    def get_price_targets(self, symbol: str) -> dict[str, Any]:
-        """Get analyst price targets."""
-        try:
-            data = self._request("/stock/price-target", {"symbol": symbol})
-            if not data:
-                return {"error": "No price target data"}
-
+            logger.warning(f"Analyst recommendations unavailable for {symbol}: {e}")
             return {
                 "symbol": symbol,
-                "target_high": data.get("targetHigh"),
-                "target_low": data.get("targetLow"),
-                "target_mean": data.get("targetMean"),
-                "target_median": data.get("targetMedian"),
-                "last_updated": data.get("lastUpdated"),
+                "unavailable": True,
+                "reason": str(e),
+                "strong_buy": 0, "buy": 0, "hold": 0, "sell": 0, "strong_sell": 0,
+                "total_analysts": 0,
+                "consensus": "N/A",
             }
-        except Exception as e:
-            logger.error(f"Failed to get price targets for {symbol}: {e}")
-            return {"error": str(e), "symbol": symbol}
 
     def get_insider_sentiment(self, symbol: str) -> dict[str, Any]:
-        """Get insider sentiment MSPR score (-100 to +100)."""
+        """Get insider sentiment MSPR score (-100 to +100).
+
+        If the endpoint is unavailable, returns placeholder data with
+        unavailable=True.
+        """
         try:
             data = self._request("/stock/insider-sentiment", {"symbol": symbol, "from": "2024-01-01"})
             if not data or "data" not in data or len(data["data"]) == 0:
-                return {"error": "No insider data", "symbol": symbol}
+                return {
+                    "symbol": symbol,
+                    "unavailable": True,
+                    "reason": "No insider data returned by API",
+                    "mspr": 0,
+                    "change": 0,
+                    "month": None,
+                    "year": None,
+                }
 
             # Get the most recent month
             latest = data["data"][-1]
             return {
                 "symbol": symbol,
+                "unavailable": False,
                 "mspr": latest.get("mspr", 0),
                 "change": latest.get("change", 0),
                 "month": latest.get("month"),
                 "year": latest.get("year"),
             }
         except Exception as e:
-            logger.error(f"Failed to get insider sentiment for {symbol}: {e}")
-            return {"error": str(e), "symbol": symbol}
+            logger.warning(f"Insider sentiment unavailable for {symbol}: {e}")
+            return {
+                "symbol": symbol,
+                "unavailable": True,
+                "reason": str(e),
+                "mspr": 0,
+                "change": 0,
+                "month": None,
+                "year": None,
+            }
 
-    def get_peers(self, symbol: str) -> list[str]:
-        """Get company peers."""
-        try:
-            data = self._request("/stock/peers", {"symbol": symbol})
-            return data if isinstance(data, list) else []
-        except Exception as e:
-            logger.error(f"Failed to get peers for {symbol}: {e}")
-            return []
+    def get_analyst_data(self, symbol: str) -> dict[str, Any]:
+        """Get analyst recommendations and insider sentiment for a stock.
 
-    def get_full_sentiment_data(self, symbol: str) -> dict[str, Any]:
-        """Get all sentiment data for a stock in one call."""
+        Note: Finnhub news-sentiment and price-target endpoints are
+        premium-only (403 on free tier). News sentiment is sourced from
+        Alpha Vantage instead. Price targets are on the future roadmap.
+        """
         return {
-            "news_sentiment": self.get_news_sentiment(symbol),
             "analyst_recommendations": self.get_analyst_recommendations(symbol),
-            "price_targets": self.get_price_targets(symbol),
             "insider_sentiment": self.get_insider_sentiment(symbol),
         }
 

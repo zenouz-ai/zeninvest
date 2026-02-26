@@ -68,10 +68,14 @@ class DataFetcher:
         return self.get_ohlcv(self.settings.benchmark_ticker, period=period)
 
     def get_macro_data(self) -> dict[str, Any]:
-        """Fetch macro indicators: VIX, yield spread, S&P vs 200-day MA."""
+        """Fetch macro indicators: VIX and S&P 500 vs 200-day MA.
+
+        These two inputs drive the market regime classification and risk rules.
+        See docs/DATA_RATIONALE.md for why yield spread data was removed.
+        """
         result: dict[str, Any] = {}
 
-        # VIX
+        # VIX — used by risk rules (position caps) and market regime
         try:
             vix_df = self.get_ohlcv("^VIX", period="5d")
             if not vix_df.empty:
@@ -82,25 +86,7 @@ class DataFetcher:
             logger.error(f"Failed to fetch VIX: {e}")
             result["vix"] = None
 
-        # US 10Y-2Y yield spread (approximation via ETFs)
-        try:
-            tny = yf.Ticker("^TNX")  # 10-year
-            twy = yf.Ticker("^IRX")  # 3-month (approximate for 2Y)
-            tny_hist = tny.history(period="5d")
-            twy_hist = twy.history(period="5d")
-            if not tny_hist.empty and not twy_hist.empty:
-                ten_y = float(tny_hist["Close"].iloc[-1])
-                short_y = float(twy_hist["Close"].iloc[-1])
-                result["yield_spread_10y_short"] = ten_y - short_y
-                result["ten_year_yield"] = ten_y
-                result["short_yield"] = short_y
-            else:
-                result["yield_spread_10y_short"] = None
-        except Exception as e:
-            logger.error(f"Failed to fetch yield data: {e}")
-            result["yield_spread_10y_short"] = None
-
-        # S&P 500 vs 200-day MA
+        # S&P 500 vs 200-day MA — used for market regime classification
         try:
             sp_df = self.get_ohlcv("^GSPC", period="1y")
             if not sp_df.empty and len(sp_df) >= 200:
@@ -116,10 +102,9 @@ class DataFetcher:
             logger.error(f"Failed to fetch S&P 500 data: {e}")
             result["sp500_above_200ma"] = None
 
-        # Determine market regime
+        # Market regime: VIX + S&P position relative to 200MA
         vix = result.get("vix")
         sp_above = result.get("sp500_above_200ma")
-        spread = result.get("yield_spread_10y_short")
 
         if vix and vix > 30:
             result["market_regime"] = "BEAR"
@@ -162,12 +147,12 @@ class DataFetcher:
         # Fundamentals
         result["fundamentals"] = get_fundamentals(yf_ticker)
 
-        # Finnhub sentiment
+        # Finnhub analyst data (recommendations + insider sentiment)
         try:
-            result["sentiment"] = self.finnhub.get_full_sentiment_data(finnhub_symbol)
+            result["analyst_data"] = self.finnhub.get_analyst_data(finnhub_symbol)
         except Exception as e:
-            logger.error(f"Finnhub error for {finnhub_symbol}: {e}")
-            result["sentiment"] = {"error": str(e)}
+            logger.error(f"Finnhub analyst data error for {finnhub_symbol}: {e}")
+            result["analyst_data"] = {"error": str(e)}
 
         # Cache the data
         self._cache_market_data(yf_ticker, "full_analysis", result)
