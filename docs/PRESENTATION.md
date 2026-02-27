@@ -32,8 +32,8 @@ to autonomously analyze markets and execute trades.*
  yfinance  Sector   Momentum  GPT-4o     Hard    Market     Per-trade
  Finnhub   balanced Mean Rev. Gemini     Rules   orders     markdown
  Alpha V.  Cap-tier Factor    Consensus  VETO    Stop-loss  reports
- Per-ticker sampling Claude   Challenges power   REDUCE
- news               Synthesis assessment         Dedup
+ Per-ticker 72h cool Claude   Challenges power   REDUCE
+ news      -down    Synthesis assessment         Dedup
 ```
 
 **Key Design Principle:** Defense-in-depth. Every trade must pass through strategy, moderation, AND risk — any layer can veto.
@@ -180,12 +180,13 @@ Every executed trade generates a comprehensive report including:
 
 ## Slide 11: Testing & Quality
 
-**111 unit tests covering:**
+**117 unit tests covering:**
 - Risk manager: 43 tests (all rules + state transitions + REDUCE check)
 - Strategy engine: 17 tests (momentum, mean reversion, factor, prompts, synthesis)
 - Moderation: 21 tests (consensus logic, panel integration, context formatting)
 - Execution: 14 tests (order management, dedup, portfolio state)
 - Cost tracker: 16 tests (budgets, degradation, logging)
+- Screening cooldown: 6 tests (cooldown inclusion/exclusion/expiry, mark + screen)
 
 **Diagnostics Notebook:**
 - 20-section Jupyter notebook testing each component independently
@@ -239,7 +240,7 @@ docker compose logs -f investment-agent
 6. **Per-trade journaling** — Complete audit trail for learning and accountability
 7. **12-hour cycles over real-time** — Reduces costs, avoids overtrading
 8. **Conviction thresholds** — Higher bar when fewer moderators available
-9. **Universe screening over position-only analysis** — Discovers new opportunities via sector-balanced, cap-tiered sampling (40% large, 35% mid, 25% small)
+9. **Universe screening over position-only analysis** — Discovers new opportunities via sector-balanced, cap-tiered sampling (40% large, 35% mid, 25% small) with 72-hour screening cooldown to ensure broad coverage
 10. **Automatic stop-loss over manual protection** — GTC stop orders placed after every BUY using Claude's downside estimate
 11. **Per-ticker news over combined dump** — Claude sees which articles belong to which stock, eliminating generic "no specific news" outputs
 
@@ -265,6 +266,7 @@ docker compose logs -f investment-agent
 
 **Recently Completed:**
 - ~~Universe screening~~ → Sector-balanced, cap-tiered candidate discovery
+- ~~Screening cooldown~~ → 72-hour cooldown prevents re-screening same stocks, ensuring broader universe rotation
 - ~~Per-ticker news extraction~~ → Claude sees stock-specific news, not combined dump
 - ~~Stop-loss orders~~ → Auto-placed after BUY using Claude's stop_loss_pct
 - ~~REDUCE action~~ → Partial sell support in order manager and risk agent
@@ -296,13 +298,13 @@ docker compose logs -f investment-agent
 | Metric | Value |
 |--------|-------|
 | Components | 24+ Python modules |
-| Tests | 111 (all passing) |
+| Tests | 117 (all passing) |
 | LLM Providers | 3 (Anthropic, OpenAI, Google) |
 | Data Sources | 3 (yfinance, Finnhub, Alpha Vantage) |
 | Risk Rules | 9 (hard, never overridden by LLMs) |
 | Strategies | 3 (Momentum, Mean Reversion, Factor) |
 | Order Types | Market, stop-loss, REDUCE (partial sell) |
-| Universe Screening | Sector-balanced, cap-tiered (large/mid/small) |
+| Universe Screening | Sector-balanced, cap-tiered, 72h cooldown rotation |
 | Cost per cycle | ~£0.03-0.05 |
 | Monthly cost | ~£2-3 estimated |
 | State Machine | 3 states (ACTIVE, CAUTIOUS, HALTED) |

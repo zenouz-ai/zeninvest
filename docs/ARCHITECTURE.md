@@ -54,6 +54,7 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |        +-- UNIVERSE SCREENER (get_screened_universe)
                    |              [Sector-balanced, cap-tiered sampling:
                    |               40% large, 35% mid, 25% small cap]
+                   |              [72h screening cooldown prevents re-screening]
                    |              [Back-fills sector/market_cap to instruments]
                    |
                    v
@@ -236,7 +237,7 @@ graph TB
         AV[Alpha Vantage<br/>Per-Ticker News Sentiment]
         IND[Technical Indicators<br/>RSI, MACD, BB, 50MA]
         MACRO[Macro Data<br/>VIX, S&P vs 200MA]
-        UNIV[Universe Screener<br/>Sector-balanced, cap-tiered]
+        UNIV[Universe Screener<br/>Sector-balanced, cap-tiered<br/>72h cooldown]
     end
 
     subgraph Strategy["Strategy Engine"]
@@ -338,7 +339,8 @@ sequenceDiagram
     O->>D: Fetch market data (positions + universe candidates)
     D->>D: yfinance: OHLCV + fundamentals
     D->>D: Macro: VIX, yields, S&P
-    D->>D: Universe screener: sector-balanced, cap-tiered
+    D->>D: Universe screener: sector-balanced, cap-tiered (72h cooldown)
+    D->>D: Mark screened instruments (cooldown stamp)
     D->>D: Enrich instruments: back-fill sector/market_cap
     D-->>O: Stocks data + macro
 

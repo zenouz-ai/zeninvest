@@ -47,7 +47,7 @@ Edit `config/settings.yaml` for trading parameters, risk limits, cost budgets, a
 Key settings:
 - **Trading:** cycle times, position limits, cash floor
 - **Risk:** drawdown thresholds, VIX limits, sector caps, correlation limits
-- **Universe:** candidate count, sector balance, market-cap tiers (large/mid/small)
+- **Universe:** candidate count, sector balance, market-cap tiers, screening cooldown
 - **Cost:** daily per-provider budgets, monthly total cap
 - **Models:** Claude Sonnet (strategy), GPT-4o + Gemini Flash (moderation)
 
@@ -104,6 +104,7 @@ poetry run pytest tests/test_execution.py     # Execution (14 tests)
 poetry run pytest tests/test_strategy.py      # Strategy (17 tests)
 poetry run pytest tests/test_moderation.py    # Moderation (21 tests)
 poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)
+poetry run pytest tests/test_screening_cooldown.py  # Screening cooldown (6 tests)
 ```
 
 ## Project Structure
@@ -162,6 +163,7 @@ notebooks/
 Each cycle discovers new candidates beyond existing positions:
 - **Sector-balanced sampling** — minimum 3 candidates per sector to avoid concentration
 - **Market-cap tiers** — 40% large cap ($10B+), 35% mid cap ($2B-$10B), 25% small cap ($300M-$2B)
+- **Screening cooldown** — stocks are stamped with `last_screened_at` after each screen and excluded for 72 hours (configurable via `screening_cooldown_hours`), ensuring broader universe coverage across cycles
 - **Metadata enrichment** — sector/market_cap back-filled from yfinance into instruments table over time
 - Skipped in CAUTIOUS mode (no new positions allowed)
 

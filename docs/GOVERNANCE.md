@@ -725,6 +725,7 @@ universe:
   large_cap_min: 10000000000
   mid_cap_min: 2000000000
   small_cap_min: 300000000
+  screening_cooldown_hours: 72    # Hours before re-screening a stock
   refresh_sector_data: true       # Back-fill from yfinance
 
 cost_limits:
@@ -744,7 +745,7 @@ All data is stored in a SQLite database managed via SQLAlchemy + Alembic migrati
 | Table | Purpose | Records Per Cycle |
 |-------|---------|-------------------|
 | `system_state` | Singleton state machine row | Updated 1x |
-| `instruments` | Cached T212 instrument metadata | Refreshed weekly |
+| `instruments` | Cached T212 instrument metadata + `last_screened_at` cooldown | Refreshed weekly; `last_screened_at` updated per cycle |
 | `portfolio_snapshots` | Portfolio state at each cycle end | 1 per cycle |
 | `orders` | All orders (placed, dry-run, failed) | 0-15 per cycle |
 | `strategy_decisions` | Claude's trade proposals | 0-15 per cycle |
