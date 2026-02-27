@@ -31,11 +31,13 @@ The Investment Agent is an autonomous trading system that uses a multi-LLM pipel
 
 ```
 Orchestrator (every 12h, Mon-Fri)
-  +-- Market Data Agent    -> yfinance + Finnhub + Alpha Vantage
+  +-- Market Data Agent    -> yfinance + Finnhub + Alpha Vantage (per-ticker news)
+  +-- Universe Screener    -> Sector-balanced, cap-tiered candidate discovery
   +-- Strategy Agent       -> Momentum + Mean Reversion + Factor -> Claude Sonnet synthesis
-  +-- Moderation Panel     -> GPT-4o (skeptical moderator) + Gemini Flash (risk assessor) -> consensus
-  +-- Risk Agent           -> 8 hard rules, VETO power, NEVER overridden by LLMs
-  +-- Execution Agent      -> Trading 212 API with deduplication + rate limiting
+  +-- Moderation Panel     -> GPT-4o (skeptical) + Gemini Flash (risk) -> consensus
+  +--                         (receives Claude's market_assessment to challenge)
+  +-- Risk Agent           -> Hard rules, VETO power, NEVER overridden by LLMs
+  +-- Execution Agent      -> Market orders + stop-loss + dedup + rate limiting
   +-- Journal & Reporting  -> Per-trade journals, daily + weekly reports
 ```
 
@@ -168,10 +170,12 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 - Before every LLM call, `check_budget()` is called. If the daily or monthly budget is exceeded, the call is skipped entirely.
 - The degradation system (see [Section 5.3](#53-graceful-degradation)) progressively shuts down LLM providers as budgets are consumed.
 
-#### Order Deduplication
+#### Order Deduplication and Stop-Loss
 
 - The `OrderManager._is_duplicate()` method checks for matching orders (same ticker, direction, and quantity) placed within the last 5 minutes.
 - Duplicate orders are logged and skipped with `"status": "skipped", "reason": "duplicate"`.
+- After successful BUY executions, the system automatically places a GTC stop-loss order via `OrderManager.place_stop_loss()` using the `stop_loss_pct` from Claude's decision. This protects against downside risk without requiring manual intervention.
+- The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation.
 
 ### 3.4 Network Security
 
@@ -225,7 +229,7 @@ No personally identifiable information (names, account numbers, addresses, etc.)
 
 ### 4.1 The 8 Hard Rules
 
-The Risk Agent (`src/agents/risk/risk_manager.py`) enforces eight non-negotiable rules. These are implemented as deterministic Python functions with no LLM involvement. **No LLM output can override, modify, or bypass these rules.**
+The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules. These are implemented as deterministic Python functions with no LLM involvement. **No LLM output can override, modify, or bypass these rules.**
 
 | # | Rule | Threshold | Enforcement | Method |
 |---|------|-----------|-------------|--------|
@@ -236,7 +240,7 @@ The Risk Agent (`src/agents/risk/risk_manager.py`) enforces eight non-negotiable
 | 5 | **VIX-Based Position Limits** | VIX >25: max 8%; VIX >35: max 5% per position | RESIZE | `check_vix_limit()` |
 | 6 | **Daily Loss Halt** | Daily loss >2%: no new buys for 24 hours | REJECT | `check_daily_loss_halt()` |
 | 7 | **Cash Floor** | Always maintain >= 10% cash | REJECT or RESIZE | `check_cash_floor()` |
-| 8 | **Min Positions** | Minimum 5 positions once invested (prevents over-concentration) | REJECT (on sell) | `check_min_positions()` |
+| 8 | **Min Positions** | Minimum 5 positions once invested (prevents over-concentration) | REJECT (on SELL or REDUCE) | `check_min_positions()` |
 
 #### Why These Rules Can Never Be Overridden
 
@@ -711,6 +715,17 @@ models:
   strategy: claude-sonnet-4-5-20250929
   moderator_1: gpt-4o
   moderator_2: gemini-2.5-flash
+
+universe:
+  max_candidates: 30              # New stocks screened per cycle
+  candidates_per_sector: 3        # Min per sector (avoid concentration)
+  large_cap_pct: 0.40             # 40% large cap ($10B+)
+  mid_cap_pct: 0.35               # 35% mid cap ($2B-$10B)
+  small_cap_pct: 0.25             # 25% small cap ($300M-$2B)
+  large_cap_min: 10000000000
+  mid_cap_min: 2000000000
+  small_cap_min: 300000000
+  refresh_sector_data: true       # Back-fill from yfinance
 
 cost_limits:
   anthropic_daily_gbp: 1.00

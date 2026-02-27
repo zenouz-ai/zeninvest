@@ -6,11 +6,12 @@ Autonomous investment agent that trades via the Trading 212 API (Practice/Demo m
 
 ```
 Orchestrator (every 12h)
-  ├── Market Data Agent    → yfinance + Finnhub + Alpha Vantage
+  ├── Market Data Agent    → yfinance + Finnhub + Alpha Vantage (per-ticker news)
+  ├── Universe Screener    → Sector-balanced, cap-tiered candidate discovery
   ├── Strategy Agent       → Momentum + Mean Reversion + Factor → Claude Sonnet synthesis
   ├── Moderation Panel     → GPT-4o (skeptic) + Gemini (risk assessor) → consensus
   ├── Risk Agent           → Hard rules, VETO power, never overridden by LLMs
-  ├── Execution Agent      → Trading 212 API with dedup + rate limiting
+  ├── Execution Agent      → Trading 212 API: market orders + stop-loss + dedup
   └── Journal & Reporting  → Per-trade journals, daily + weekly reports
 ```
 
@@ -46,6 +47,7 @@ Edit `config/settings.yaml` for trading parameters, risk limits, cost budgets, a
 Key settings:
 - **Trading:** cycle times, position limits, cash floor
 - **Risk:** drawdown thresholds, VIX limits, sector caps, correlation limits
+- **Universe:** candidate count, sector balance, market-cap tiers (large/mid/small)
 - **Cost:** daily per-provider budgets, monthly total cap
 - **Models:** Claude Sonnet (strategy), GPT-4o + Gemini Flash (moderation)
 
@@ -110,11 +112,11 @@ poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)
 src/
 ├── orchestrator/       # Main control loop + state machine
 ├── agents/
-│   ├── market_data/    # yfinance, Finnhub, Alpha Vantage, indicators
+│   ├── market_data/    # yfinance, Finnhub, Alpha Vantage, per-ticker news, universe screener
 │   ├── strategy/       # Momentum, mean reversion, factor, Claude synthesis
-│   ├── moderation/     # GPT-4o + Gemini investment committee (full data access)
+│   ├── moderation/     # GPT-4o + Gemini investment committee (full data + strategy assessment)
 │   ├── risk/           # Hard rules with VETO power
-│   ├── execution/      # T212 client + order manager with dedup
+│   ├── execution/      # T212 client + order manager: market, stop-loss, dedup
 │   └── reporting/      # Trade journals, daily/weekly reports
 ├── data/               # SQLAlchemy models, Alembic migrations
 ├── scheduler/          # APScheduler with persistent job store
@@ -147,7 +149,21 @@ notebooks/
 - VIX > 25: max 8% position; VIX > 35: max 5%
 - Daily loss > 2%: no new buys for 24 hours
 - Cash floor: always >= 10%
-- Min 5 positions once invested
+- Min 5 positions once invested (checked for SELL and REDUCE actions)
+
+## Order Types
+
+- **Market orders** — BUY, SELL, REDUCE (partial sell) via T212 market order API
+- **Stop-loss orders** — Automatically placed after BUY executions using Claude's `stop_loss_pct` (GTC validity)
+- **Order deduplication** — 5-minute window prevents double-execution
+
+## Universe Screening
+
+Each cycle discovers new candidates beyond existing positions:
+- **Sector-balanced sampling** — minimum 3 candidates per sector to avoid concentration
+- **Market-cap tiers** — 40% large cap ($10B+), 35% mid cap ($2B-$10B), 25% small cap ($300M-$2B)
+- **Metadata enrichment** — sector/market_cap back-filled from yfinance into instruments table over time
+- Skipped in CAUTIOUS mode (no new positions allowed)
 
 ## Cost Management
 
