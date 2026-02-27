@@ -212,6 +212,10 @@ class Settings:
     def small_cap_min(self) -> float:
         return float(self.universe.get("small_cap_min", 300_000_000))
 
+    @property
+    def screening_cooldown_hours(self) -> int:
+        return int(self.universe.get("screening_cooldown_hours", 72))
+
     # --- Cost Limits ---
     @property
     def cost_limits(self) -> dict[str, Any]:

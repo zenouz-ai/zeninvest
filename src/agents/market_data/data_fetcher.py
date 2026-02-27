@@ -328,6 +328,10 @@ class DataFetcher:
         session = get_session()
 
         try:
+            # Cooldown cutoff: exclude instruments screened within the window
+            cooldown_hours = settings.screening_cooldown_hours
+            cooldown_cutoff = datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)
+
             # Query all instruments that have sector + market_cap populated
             instruments = (
                 session.query(Instrument)
@@ -337,6 +341,9 @@ class DataFetcher:
                     Instrument.sector != "Unknown",
                     Instrument.market_cap.isnot(None),
                     Instrument.market_cap > settings.small_cap_min,
+                    # Exclude recently screened stocks
+                    (Instrument.last_screened_at.is_(None))
+                    | (Instrument.last_screened_at < cooldown_cutoff),
                 )
                 .all()
             )
@@ -377,7 +384,8 @@ class DataFetcher:
                 f"Screened universe: {len(selected)} candidates "
                 f"(large={min(n_large, len(large))}, "
                 f"mid={min(n_mid, len(mid))}, "
-                f"small={min(n_small, len(small))})"
+                f"small={min(n_small, len(small))}, "
+                f"cooldown={cooldown_hours}h)"
             )
 
             return [
@@ -475,6 +483,27 @@ class DataFetcher:
                 session.commit()
         except Exception as e:
             logger.error(f"Failed to enrich instrument {ticker}: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
+    def mark_instruments_screened(self, tickers: list[str]) -> None:
+        """Stamp last_screened_at on instruments so they enter the cooldown window."""
+        if not tickers:
+            return
+        session = get_session()
+        try:
+            now = datetime.now(timezone.utc)
+            session.query(Instrument).filter(
+                Instrument.ticker.in_(tickers),
+            ).update(
+                {Instrument.last_screened_at: now},
+                synchronize_session="fetch",
+            )
+            session.commit()
+            logger.info(f"Marked {len(tickers)} instruments as screened (cooldown starts now).")
+        except Exception as e:
+            logger.error(f"Failed to mark instruments screened: {e}")
             session.rollback()
         finally:
             session.close()

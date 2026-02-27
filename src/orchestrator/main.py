@@ -549,6 +549,10 @@ class Orchestrator:
                 candidates = self.data_fetcher.get_screened_universe(
                     exclude_tickers=all_exclude,
                 )
+                # Mark screened candidates so they enter the cooldown window
+                self.data_fetcher.mark_instruments_screened(
+                    [c["ticker"] for c in candidates],
+                )
                 logger.info(f"Screening {len(candidates)} universe candidates...")
                 for candidate in candidates:
                     c_ticker = candidate["ticker"]

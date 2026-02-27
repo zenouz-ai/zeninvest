@@ -51,6 +51,7 @@ class Instrument(Base):
     type = Column(String(50), nullable=True)
     min_trade_quantity = Column(Float, nullable=True)
     max_open_quantity = Column(Float, nullable=True)
+    last_screened_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
