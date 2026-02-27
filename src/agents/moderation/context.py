@@ -146,6 +146,14 @@ def format_market_context(market_context: dict[str, Any]) -> str:
     if news and news != "News sentiment data unavailable.":
         sections.append(f"## News Sentiment\n{news[:1500]}")
 
+    # --- Strategy Agent's Market Assessment ---
+    assessment = market_context.get("strategy_assessment", "")
+    if assessment:
+        sections.append(
+            f"## Strategy Agent's Market Assessment\n"
+            f"(Challenge this thesis — do you agree with the reasoning?)\n{assessment[:500]}"
+        )
+
     return "\n\n".join(sections)
 
 

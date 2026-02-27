@@ -26,13 +26,14 @@ to autonomously analyze markets and execute trades.*
                          ORCHESTRATOR
                     (Every 12h, Mon-Fri)
                              |
-         +--------+----------+----------+---------+
-         |        |          |          |         |
-      DATA    STRATEGY   MODERATION   RISK    EXECUTE
-    yfinance   Momentum   GPT-4o     8 Hard   Trading
-    Finnhub    Mean Rev.  Gemini     Rules     212 API
-    Alpha V.   Factor     Consensus  VETO      + Journal
-               Claude     3-way vote power
+    +--------+--------+----------+----------+---------+---------+
+    |        |        |          |          |         |         |
+  DATA    UNIVERSE STRATEGY  MODERATION   RISK    EXECUTE   JOURNAL
+ yfinance  Sector   Momentum  GPT-4o     Hard    Market     Per-trade
+ Finnhub   balanced Mean Rev. Gemini     Rules   orders     markdown
+ Alpha V.  Cap-tier Factor    Consensus  VETO    Stop-loss  reports
+ Per-ticker sampling Claude   Challenges power   REDUCE
+ news               Synthesis assessment         Dedup
 ```
 
 **Key Design Principle:** Defense-in-depth. Every trade must pass through strategy, moderation, AND risk — any layer can veto.
@@ -45,13 +46,15 @@ to autonomously analyze markets and execute trades.*
 |--------|------|-----------|------|
 | Yahoo Finance | OHLCV, fundamentals, earnings | Unlimited | Free |
 | Finnhub | Analyst recommendations, insider sentiment | 60 req/min | Free |
-| Alpha Vantage | AI-powered news sentiment | 25 req/day | Free |
+| Alpha Vantage | AI-powered news sentiment (**per-ticker extraction**) | 25 req/day | Free |
+
+**Per-Ticker News:** Alpha Vantage articles are parsed via `extract_per_ticker_news()` to build per-stock summaries with sentiment scores, bullish/bearish counts, and top headlines. Claude sees which news belongs to which stock.
 
 **Technical Indicators Computed:**
-RSI(14), MACD(12,26,9), Bollinger Bands(20,2), 50/200-day MA, ATR(14), Relative Strength vs S&P 500
+RSI(14), MACD(12,26,9), Bollinger Bands(20,2), 50-day MA, Relative Strength vs S&P 500
 
 **Fundamental Metrics:**
-P/E, P/B, ROE, profit margins, D/E ratio, revenue growth, earnings momentum
+P/E, P/B, ROE, profit margins, D/E ratio, earnings growth, earnings momentum (QoQ)
 
 ---
 
@@ -63,9 +66,10 @@ P/E, P/B, ROE, profit margins, D/E ratio, revenue growth, earnings momentum
 | **Mean Reversion** | 30% | Buy oversold | RSI < 30 + below lower BB + sound fundamentals |
 | **Factor/Quality** | 35% | Composite scoring | Value(30%) + Quality(30%) + Momentum(40%) |
 
-**Claude Sonnet** synthesizes all three into final decisions with:
-- Ticker, action, allocation %, conviction score (0-100)
-- Catalysts, risks, exit conditions, expected holding period
+**Claude Sonnet** synthesizes all three + per-ticker news + analyst data into final decisions with:
+- Ticker, action (BUY/SELL/REDUCE/HOLD), allocation %, conviction score (0-100)
+- Catalysts, risks, exit conditions, stop-loss %, expected holding period
+- Market assessment thesis (passed to moderators for challenge)
 
 ---
 
@@ -91,11 +95,13 @@ P/E, P/B, ROE, profit margins, D/E ratio, revenue growth, earnings momentum
 
 **Why Multi-LLM?** Reduces single-model bias, catches blind spots, provides diverse perspectives on risk.
 
+**New:** Moderators now receive Claude's `market_assessment` thesis and are explicitly prompted to challenge it, plus per-ticker news for each stock under review.
+
 ---
 
 ## Slide 7: Risk Management (Hard Rules)
 
-**8 rules with absolute VETO power — never overridden by LLMs:**
+**Hard rules with absolute VETO power — never overridden by LLMs:**
 
 | Rule | Limit | Action |
 |------|-------|--------|
@@ -107,6 +113,7 @@ P/E, P/B, ROE, profit margins, D/E ratio, revenue growth, earnings momentum
 | VIX high/extreme | 25/35 | Cap positions at 8%/5% |
 | Daily loss halt | 2% | No new buys for 24h |
 | Cash floor | 10% | Reject if insufficient |
+| Min positions | 5 | Reject SELL/REDUCE if below |
 
 **State Machine:** ACTIVE → CAUTIOUS → HALTED (automatic escalation, manual recovery)
 
@@ -135,7 +142,8 @@ FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED
 
 **Trading 212 Integration:**
 - Practice/Demo API (safe for testing)
-- Market orders with calculated quantities
+- **Market orders:** BUY, SELL, REDUCE (partial sell) with calculated quantities
+- **Stop-loss orders:** Automatically placed after BUY using Claude's `stop_loss_pct` (GTC)
 - 5-minute deduplication window
 - Rate limit monitoring
 
@@ -166,16 +174,16 @@ Every executed trade generates a comprehensive report including:
 | Logging | Rich |
 | CLI | Click |
 | Containerization | Docker + Docker Compose |
-| Testing | pytest (104 tests) |
+| Testing | pytest (111 tests) |
 
 ---
 
 ## Slide 11: Testing & Quality
 
-**104 unit tests covering:**
-- Risk manager: 43 tests (all 8 rules + integration)
-- Strategy engine: 17 tests (momentum, mean reversion, factor, prompts)
-- Moderation: 14 tests (consensus logic, panel integration)
+**111 unit tests covering:**
+- Risk manager: 43 tests (all rules + state transitions + REDUCE check)
+- Strategy engine: 17 tests (momentum, mean reversion, factor, prompts, synthesis)
+- Moderation: 21 tests (consensus logic, panel integration, context formatting)
 - Execution: 14 tests (order management, dedup, portfolio state)
 - Cost tracker: 16 tests (budgets, degradation, logging)
 
@@ -231,6 +239,9 @@ docker compose logs -f investment-agent
 6. **Per-trade journaling** — Complete audit trail for learning and accountability
 7. **12-hour cycles over real-time** — Reduces costs, avoids overtrading
 8. **Conviction thresholds** — Higher bar when fewer moderators available
+9. **Universe screening over position-only analysis** — Discovers new opportunities via sector-balanced, cap-tiered sampling (40% large, 35% mid, 25% small)
+10. **Automatic stop-loss over manual protection** — GTC stop orders placed after every BUY using Claude's downside estimate
+11. **Per-ticker news over combined dump** — Claude sees which articles belong to which stock, eliminating generic "no specific news" outputs
 
 ---
 
@@ -252,11 +263,19 @@ docker compose logs -f investment-agent
 
 ## Slide 16: Future Roadmap
 
+**Recently Completed:**
+- ~~Universe screening~~ → Sector-balanced, cap-tiered candidate discovery
+- ~~Per-ticker news extraction~~ → Claude sees stock-specific news, not combined dump
+- ~~Stop-loss orders~~ → Auto-placed after BUY using Claude's stop_loss_pct
+- ~~REDUCE action~~ → Partial sell support in order manager and risk agent
+- ~~Strategy assessment to moderators~~ → GPT-4o and Gemini can challenge Claude's thesis
+
 **Phase 2 — Enhanced Intelligence:**
 - Backtesting engine with historical data replay
 - Portfolio optimization (Markowitz / risk parity)
 - Alternative data: earnings call transcripts, SEC filings
-- Sector rotation strategy
+- Regime-dependent strategy weighting (adjust 35/30/35 split based on market regime)
+- Limit orders / take-profit orders using T212's existing API
 
 **Phase 3 — Production Hardening:**
 - Real-time alerting (Slack, email, PagerDuty)
@@ -276,15 +295,17 @@ docker compose logs -f investment-agent
 
 | Metric | Value |
 |--------|-------|
-| Components | 24 Python modules |
-| Tests | 104 (all passing) |
+| Components | 24+ Python modules |
+| Tests | 111 (all passing) |
 | LLM Providers | 3 (Anthropic, OpenAI, Google) |
 | Data Sources | 3 (yfinance, Finnhub, Alpha Vantage) |
-| Risk Rules | 8 (hard, never overridden) |
+| Risk Rules | 9 (hard, never overridden by LLMs) |
 | Strategies | 3 (Momentum, Mean Reversion, Factor) |
+| Order Types | Market, stop-loss, REDUCE (partial sell) |
+| Universe Screening | Sector-balanced, cap-tiered (large/mid/small) |
 | Cost per cycle | ~£0.03-0.05 |
 | Monthly cost | ~£2-3 estimated |
 | State Machine | 3 states (ACTIVE, CAUTIOUS, HALTED) |
 
 **An autonomous, cost-effective, multi-LLM investment system
-with defense-in-depth safety and complete auditability.**
+with defense-in-depth safety, universe discovery, and complete auditability.**

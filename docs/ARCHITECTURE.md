@@ -43,26 +43,39 @@ Finnhub --------> DATA FETCHER ----+---> SQLite (market_data_cache)
    insider sent.)  |               v
                    |        +-- INDICATORS (RSI, MACD, BB, 50MA)
 Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
-  (news sentiment)          +-- FUNDAMENTALS (P/E, P/B, ROE, margins, D/E)
-                            |     (9 fields — see docs/DATA_RATIONALE.md)
-                            +-- MACRO (VIX, S&P vs 200MA, market regime)
-                            |
-                            v
-                   +-- STRATEGY ENGINE --+
-                   |   Momentum (35%)    |
-                   |   Mean Rev. (30%)   |---> SQLite (strategy_decisions)
-                   |   Factor (35%)      |
-                   +--------+------------+
-                            |
-                            v
+  (news sentiment) |        +-- FUNDAMENTALS (P/E, P/B, ROE, margins, D/E)
+                   |        |     (9 fields — see docs/DATA_RATIONALE.md)
+                   |        +-- MACRO (VIX, S&P vs 200MA, market regime)
+                   |        |
+                   |        +-- PER-TICKER NEWS (extract_per_ticker_news)
+                   |        |     [Parsed from AV ticker_sentiments array,
+                   |        |      per-stock sentiment scores + headlines]
+                   |        |
+                   |        +-- UNIVERSE SCREENER (get_screened_universe)
+                   |              [Sector-balanced, cap-tiered sampling:
+                   |               40% large, 35% mid, 25% small cap]
+                   |              [Back-fills sector/market_cap to instruments]
+                   |
+                   v
+          +-- STRATEGY ENGINE -----+
+          |   Momentum (35%)       |
+          |   Mean Rev. (30%)      |---> SQLite (strategy_decisions)
+          |   Factor (35%)         |
+          +--------+---------------+
+                   |
+                   v
 Anthropic  -------> CLAUDE SONNET SYNTHESIS
-  (strategy LLM)    (Final decisions with conviction)
+  (strategy LLM)    [Sub-strategy signals + per-ticker news
+                     + analyst data + portfolio state]
+                     → decisions with conviction
+                     → market_assessment thesis
                             |
                             v
                    MARKET CONTEXT (context.py)
                    [indicators, fundamentals,
                     macro, sub-strategy signals,
-                    analyst data, news sentiment]
+                    analyst data, per-ticker news,
+                    strategy_assessment (challenge this)]
                             |
                             v
 OpenAI ----------> GPT-4o MODERATOR ---+
@@ -75,13 +88,14 @@ Gemini ----------> GEMINI MODERATOR ---+    (consensus logic)   (moderation_logs
                             v
                    RISK MANAGER (hard rules) --> SQLite (risk_decisions)
                    [Max stock %, sector %,
-                    drawdown, VIX, cash
-                    floor, correlation]
+                    drawdown, VIX, cash floor,
+                    correlation, REDUCE check]
                             |
                             v
 Trading 212 <----- ORDER MANAGER -----------> SQLite (orders)
-  (Practice API)   [Dedup, rate limit,
-                    market orders]
+  (Practice API)   [Market orders (BUY/SELL/REDUCE),
+                    stop-loss orders (GTC),
+                    dedup + rate limit]
                             |
                             v
                    TRADE JOURNAL -----------> journals/*.md
@@ -219,9 +233,10 @@ graph TB
     subgraph Data["Market Data Layer"]
         YF[yfinance<br/>OHLCV + Fundamentals]
         FH[Finnhub<br/>Analyst + Insider]
-        AV[Alpha Vantage<br/>News Sentiment]
+        AV[Alpha Vantage<br/>Per-Ticker News Sentiment]
         IND[Technical Indicators<br/>RSI, MACD, BB, 50MA]
         MACRO[Macro Data<br/>VIX, S&P vs 200MA]
+        UNIV[Universe Screener<br/>Sector-balanced, cap-tiered]
     end
 
     subgraph Strategy["Strategy Engine"]
@@ -238,11 +253,11 @@ graph TB
     end
 
     subgraph Risk["Risk Agent"]
-        RULES[Hard Rules<br/>8 checks, VETO power]
+        RULES[Hard Rules<br/>VETO power, BUY/SELL/REDUCE]
     end
 
     subgraph Execution["Execution Layer"]
-        OM[Order Manager<br/>Dedup + Logging]
+        OM[Order Manager<br/>Market + Stop-Loss + Dedup]
         T212[Trading 212 API<br/>Practice Mode]
     end
 
@@ -256,11 +271,13 @@ graph TB
     S2 --> CYCLE
     SM --> CYCLE
 
+    CYCLE --> UNIV
     CYCLE --> YF
     CYCLE --> FH
     CYCLE --> AV
     YF --> IND
     YF --> MACRO
+    UNIV --> YF
 
     IND --> MOM
     IND --> MR
@@ -318,9 +335,11 @@ sequenceDiagram
     T-->>D: Cash + positions
     D-->>O: Portfolio state
 
-    O->>D: Fetch market data
+    O->>D: Fetch market data (positions + universe candidates)
     D->>D: yfinance: OHLCV + fundamentals
     D->>D: Macro: VIX, yields, S&P
+    D->>D: Universe screener: sector-balanced, cap-tiered
+    D->>D: Enrich instruments: back-fill sector/market_cap
     D-->>O: Stocks data + macro
 
     O->>ST: Run sub-strategies
@@ -329,21 +348,25 @@ sequenceDiagram
     ST->>ST: Factor scoring
     ST-->>O: Sub-strategy signals
 
-    O->>CL: Synthesize decisions
-    CL-->>O: Decisions with conviction
+    O->>D: Fetch Alpha Vantage per-ticker news
+    D-->>O: Per-ticker news summaries
+
+    O->>CL: Synthesize decisions (with per-ticker news)
+    CL-->>O: Decisions with conviction + market_assessment
 
     loop For each decision
-        O->>GP: Review trade proposal
+        O->>O: Build market context (per-ticker news + strategy_assessment)
+        O->>GP: Review trade proposal + market context
         GP-->>O: Verdict + reasoning
-        O->>GE: Review trade proposal
+        O->>GE: Review trade proposal + market context
         GE-->>O: Verdict + scores
         O->>O: Determine consensus
 
         alt BLOCKED
             O->>O: Skip trade
         else APPROVED or CAUTION
-            O->>R: Evaluate trade
-            R->>R: Check 8 risk rules
+            O->>R: Evaluate trade (BUY/SELL/REDUCE)
+            R->>R: Check risk rules (incl. REDUCE)
             alt REJECT
                 O->>O: Skip trade
             else APPROVE or RESIZE
@@ -351,6 +374,11 @@ sequenceDiagram
                 E->>T: POST /equity/orders/market
                 T-->>E: Order confirmation
                 E-->>O: Execution result
+                alt BUY with stop_loss_pct
+                    O->>E: Place stop-loss order (GTC)
+                    E->>T: POST /equity/orders/stop
+                    T-->>E: Stop-loss confirmation
+                end
                 O->>J: Generate trade journal
             end
         end

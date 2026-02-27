@@ -1,11 +1,14 @@
 """Main data fetcher — orchestrates yfinance, Finnhub, Alpha Vantage, and T212."""
 
 import json
+import random
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
 import yfinance as yf
+from sqlalchemy import func
 
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.finnhub_client import FinnhubClient
@@ -297,6 +300,251 @@ class DataFetcher:
             session.rollback()
         finally:
             session.close()
+
+    # --- Universe screening ---
+
+    def get_screened_universe(
+        self,
+        exclude_tickers: set[str] | None = None,
+        max_candidates: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Screen the instrument universe for diverse candidates.
+
+        Returns a sector-balanced, market-cap-tiered sample of stocks to
+        evaluate.  Avoids re-analyzing tickers already in the portfolio or
+        previously excluded.
+
+        Args:
+            exclude_tickers: Tickers to skip (e.g. current positions).
+            max_candidates: Override for settings.max_candidates.
+
+        Returns:
+            List of candidate dicts with keys: ticker, name, sector,
+            market_cap, exchange, currency.
+        """
+        settings = self.settings
+        exclude = exclude_tickers or set()
+        total = max_candidates or settings.max_candidates
+        session = get_session()
+
+        try:
+            # Query all instruments that have sector + market_cap populated
+            instruments = (
+                session.query(Instrument)
+                .filter(
+                    Instrument.sector.isnot(None),
+                    Instrument.sector != "",
+                    Instrument.sector != "Unknown",
+                    Instrument.market_cap.isnot(None),
+                    Instrument.market_cap > settings.small_cap_min,
+                )
+                .all()
+            )
+
+            if not instruments:
+                # Fallback: grab whatever is available
+                logger.warning("No instruments with sector/market_cap. Using raw universe.")
+                return self._get_fallback_universe(exclude, total, session)
+
+            # Bucket by market-cap tier
+            large: list[Instrument] = []
+            mid: list[Instrument] = []
+            small: list[Instrument] = []
+
+            for inst in instruments:
+                if inst.ticker in exclude:
+                    continue
+                cap = inst.market_cap or 0
+                if cap >= settings.large_cap_min:
+                    large.append(inst)
+                elif cap >= settings.mid_cap_min:
+                    mid.append(inst)
+                else:
+                    small.append(inst)
+
+            # Target counts per tier
+            n_large = max(1, int(total * settings.large_cap_pct))
+            n_mid = max(1, int(total * settings.mid_cap_pct))
+            n_small = max(1, total - n_large - n_mid)
+
+            # Sample within each tier using sector-balanced selection
+            selected: list[Instrument] = []
+            selected.extend(self._sector_balanced_sample(large, n_large, settings.candidates_per_sector))
+            selected.extend(self._sector_balanced_sample(mid, n_mid, settings.candidates_per_sector))
+            selected.extend(self._sector_balanced_sample(small, n_small, settings.candidates_per_sector))
+
+            logger.info(
+                f"Screened universe: {len(selected)} candidates "
+                f"(large={min(n_large, len(large))}, "
+                f"mid={min(n_mid, len(mid))}, "
+                f"small={min(n_small, len(small))})"
+            )
+
+            return [
+                {
+                    "ticker": i.ticker,
+                    "name": i.name,
+                    "sector": i.sector,
+                    "market_cap": i.market_cap,
+                    "exchange": i.exchange,
+                    "currency": i.currency,
+                }
+                for i in selected
+            ]
+
+        finally:
+            session.close()
+
+    @staticmethod
+    def _sector_balanced_sample(
+        instruments: list,
+        n: int,
+        per_sector: int,
+    ) -> list:
+        """Sample n instruments ensuring at least per_sector from each sector."""
+        if not instruments:
+            return []
+
+        by_sector: dict[str, list] = defaultdict(list)
+        for inst in instruments:
+            by_sector[inst.sector or "Unknown"].append(inst)
+
+        selected: list = []
+        sectors = list(by_sector.keys())
+        random.shuffle(sectors)
+
+        # Round 1: guarantee per_sector from each sector
+        for sector in sectors:
+            pool = by_sector[sector]
+            random.shuffle(pool)
+            take = min(per_sector, len(pool))
+            selected.extend(pool[:take])
+            by_sector[sector] = pool[take:]
+
+        # Round 2: fill remaining slots from all sectors
+        remaining = n - len(selected)
+        if remaining > 0:
+            leftover = [inst for pool in by_sector.values() for inst in pool]
+            random.shuffle(leftover)
+            selected.extend(leftover[:remaining])
+
+        return selected[:n]
+
+    def _get_fallback_universe(
+        self,
+        exclude: set[str],
+        total: int,
+        session: Any,
+    ) -> list[dict[str, Any]]:
+        """Fallback when instruments lack sector/market_cap data."""
+        instruments = (
+            session.query(Instrument)
+            .filter(Instrument.ticker.notin_(exclude) if exclude else True)
+            .order_by(func.random())
+            .limit(total)
+            .all()
+        )
+        return [
+            {
+                "ticker": i.ticker,
+                "name": i.name,
+                "sector": i.sector or "Unknown",
+                "market_cap": i.market_cap,
+                "exchange": i.exchange,
+                "currency": i.currency,
+            }
+            for i in instruments
+        ]
+
+    def enrich_instrument_metadata(self, ticker: str, fundamentals: dict[str, Any]) -> None:
+        """Back-fill sector and market_cap into the instruments table from yfinance data."""
+        sector = fundamentals.get("sector")
+        market_cap = fundamentals.get("market_cap")
+        if not sector and not market_cap:
+            return
+
+        session = get_session()
+        try:
+            inst = session.query(Instrument).filter_by(ticker=ticker).first()
+            if inst:
+                if sector and sector != "Unknown" and inst.sector != sector:
+                    inst.sector = sector
+                if market_cap and (inst.market_cap is None or inst.market_cap == 0):
+                    inst.market_cap = market_cap
+                inst.updated_at = datetime.utcnow()
+                session.commit()
+        except Exception as e:
+            logger.error(f"Failed to enrich instrument {ticker}: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
+    # --- Per-ticker news extraction ---
+
+    @staticmethod
+    def extract_per_ticker_news(
+        av_articles: list[dict[str, Any]],
+        tickers: list[str],
+    ) -> dict[str, str]:
+        """Extract per-ticker news summaries from Alpha Vantage articles.
+
+        Parses each article's ticker_sentiments array to find articles relevant
+        to each ticker, then builds a compact text summary per ticker.
+
+        Args:
+            av_articles: List of processed article dicts from Alpha Vantage.
+            tickers: List of yfinance-style ticker symbols to match.
+
+        Returns:
+            Dict mapping ticker -> formatted news summary string.
+        """
+        ticker_articles: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+        for article in av_articles:
+            for ts in article.get("ticker_sentiments", []):
+                av_ticker = ts.get("ticker", "")
+                # Alpha Vantage uses bare ticker symbols (AAPL, MSFT)
+                for t in tickers:
+                    if av_ticker == t or av_ticker in t:
+                        ticker_articles[t].append({
+                            "title": article.get("title", ""),
+                            "source": article.get("source", ""),
+                            "overall_sentiment_score": article.get("overall_sentiment_score", 0),
+                            "overall_sentiment_label": article.get("overall_sentiment_label", "Neutral"),
+                            "ticker_sentiment_score": ts.get("sentiment_score", 0),
+                            "ticker_relevance": ts.get("relevance_score", 0),
+                        })
+                        break
+
+        result: dict[str, str] = {}
+        for ticker in tickers:
+            articles = ticker_articles.get(ticker, [])
+            if not articles:
+                result[ticker] = ""
+                continue
+
+            # Sort by relevance, take top 5
+            articles.sort(key=lambda a: a.get("ticker_relevance", 0), reverse=True)
+            top = articles[:5]
+
+            lines = []
+            scores = [a["ticker_sentiment_score"] for a in top]
+            avg_score = sum(scores) / len(scores) if scores else 0
+            bullish = sum(1 for s in scores if s > 0.15)
+            bearish = sum(1 for s in scores if s < -0.15)
+            lines.append(f"Ticker avg sentiment: {avg_score:+.3f} "
+                         f"(Bullish: {bullish}, Bearish: {bearish}, Articles: {len(articles)})")
+
+            for a in top:
+                score = a["overall_sentiment_score"]
+                label = a["overall_sentiment_label"]
+                title = a["title"][:80]
+                source = a["source"]
+                lines.append(f"  [{label} {score:+.3f}] {title} ({source})")
+
+            result[ticker] = "\n".join(lines)
+
+        return result
 
     def close(self) -> None:
         """Close all API clients."""

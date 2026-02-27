@@ -400,7 +400,7 @@ class RiskManager:
         results.append(self.check_drawdown(current_value, peak_value))
         results.append(self.check_correlation(portfolio_returns))
 
-        if action == "SELL":
+        if action in ("SELL", "REDUCE"):
             results.append(self.check_min_positions(num_positions, action))
 
         # Evaluate results

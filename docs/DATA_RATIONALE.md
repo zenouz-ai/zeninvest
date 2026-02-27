@@ -162,13 +162,22 @@ inaccurate ^IRX proxy.
 |------|---------------|------------------------|
 | Broad market sentiment (economy, earnings, tech) | Path 2 | 50 articles with AI sentiment scores. Formatted as headline summaries with sentiment labels. Gives Claude and moderators context on market mood that technical indicators cannot capture. |
 | Ticker-specific sentiment | Path 2 | Top articles for the 15 candidate tickers. Per-ticker sentiment scores let Claude correlate news with technical signals. |
+| **Per-ticker news extraction** | Path 2 | `extract_per_ticker_news()` parses each article's `ticker_sentiments` array to build per-stock summaries. Each ticker gets its own section: avg sentiment score, bullish/bearish counts, and top 5 articles sorted by relevance. Claude sees which news belongs to which stock — no more generic "no specific news" fallbacks. |
 | Aggregate stats (bullish/bearish/neutral counts) | Path 2 | Quick summary metrics at top of news section in prompt. |
 
-**Format for LLM:** Each article distilled to one line: `[Bullish +0.234] Headline text (Source)`.
+**Format for LLM (per-ticker):**
+```
+**AAPL**:
+Ticker avg sentiment: +0.250 (Bullish: 3, Bearish: 0, Articles: 5)
+  [Bullish +0.250] Apple Reports Strong Q4 Earnings (Reuters)
+  [Somewhat-Bearish -0.100] Tech Sector Faces Headwinds (Bloomberg)
+```
+
+**Format for LLM (broad):** Each article distilled to one line: `[Bullish +0.234] Headline text (Source)`.
 This is an efficient format — compact enough for token budget, rich enough for LLM reasoning.
 
-**Refresh:** 2 API calls per cycle (broad + ticker batch). Free tier: 25 calls/day.
-Two 12h cycles = 4 calls/day, well within limits.
+**Refresh:** 3 API calls per cycle (broad + ticker summary + raw articles for per-ticker parsing).
+Free tier: 25 calls/day. Two 12h cycles = 6 calls/day, well within limits.
 
 ---
 
@@ -197,7 +206,8 @@ The Claude prompt contains these sections and this is how each should influence 
 | Mean Reversion Proposals | `TICKER: BUY (score: 70) — reasoning` | Oversold stocks with good fundamentals |
 | Factor Proposals | `TICKER: composite=72 (V=65 Q=80 M=70)` | Multi-factor quality ranking of top stocks |
 | Analyst Data | JSON: buy/hold/sell counts, insider MSPR | Confirmation or warning signal |
-| News Sentiment | Headlines with sentiment scores | Catalysts, risks, market mood |
+| Per-Ticker News | Per-stock sentiment scores + headlines from AV | Specific catalysts/risks per stock (not a combined dump) |
+| Broad Market Sentiment | Aggregate headlines + sentiment | Overall market mood beyond numbers |
 | Risk Budget | VIX, cash %, position limits | Constrains position sizing |
 
 ### GPT-4o (Skeptic Moderator)
@@ -210,17 +220,19 @@ Receives the full market context via `market_context` dict (see context.py):
 - **Market conditions** — VIX (with severity label), regime, S&P 500 trend
 - **Sub-strategy signals** — Momentum, mean reversion, and factor scores with reasoning
 - **Analyst data** — Finnhub recommendation counts, consensus, insider MSPR
-- **News sentiment** — Alpha Vantage headlines with sentiment scores
+- **Per-ticker news** — Alpha Vantage per-stock sentiment scores + headlines (not a combined dump)
+- **Strategy Agent's Market Assessment** — Claude's overall market thesis, presented with the instruction "Challenge this thesis — do you agree with the reasoning?"
 
 Role: Challenge assumptions, identify recency bias, flag risks. When sub-strategies
 conflict or news contradicts the thesis, GPT-4o should DISAGREE or MODIFY.
 
 ### Gemini (Risk Assessor)
 
-Receives the same full market context as GPT-4o. Scores each trade on three dimensions
-(growth 1-10, risk 1-10, confidence 1-10) using quantitative data. Flags trades where
-risk > growth. Gemini's scoring guidelines map specific data ranges to score adjustments
-(e.g., VIX >25 adds 1-2 risk points, D/E >2.0 raises risk by 2-3 points).
+Receives the same full market context as GPT-4o, including Claude's strategy assessment.
+Scores each trade on three dimensions (growth 1-10, risk 1-10, confidence 1-10) using
+quantitative data. Flags trades where risk > growth. Gemini's scoring guidelines map
+specific data ranges to score adjustments (e.g., VIX >25 adds 1-2 risk points,
+D/E >2.0 raises risk by 2-3 points).
 
 ### Data Flow to Moderators (context.py)
 
@@ -232,6 +244,7 @@ information. Key formatting features:
 - VIX labels: low (<15), normal (15-20), elevated (20-30), high (30-35), extreme (>35)
 - Bollinger Band: "Yes (oversold)" when below lower band
 - MACD crossover: "Bullish crossover (buy signal)" / "Bearish crossover (sell signal)"
+- Strategy assessment: Claude's market thesis is shown under "Strategy Agent's Market Assessment" with a prompt to challenge it
 
 ---
 
@@ -366,3 +379,9 @@ and reliability tradeoff of local deployment.
 | 2026-02-26 | Enhanced moderator prompts with scoring guidelines | Both moderators now have explicit instructions on how to interpret RSI ranges, P/E thresholds, VIX levels, and sub-strategy disagreements. |
 | 2026-02-26 | Added LLM necessity assessment (Section 10) | Documented where LLMs add value vs. where mathematical rules suffice. Conclusion: LLMs necessary for news interpretation and signal synthesis, not for scoring. |
 | 2026-02-26 | Added paid vs. local models assessment (Section 11) | At $3-5/month, paid models are cheaper than local GPU infrastructure and more reliable. No change recommended. |
+| 2026-02-27 | Added per-ticker news extraction from Alpha Vantage | `extract_per_ticker_news()` parses AV `ticker_sentiments` to build per-stock summaries. Claude now sees which news belongs to which stock. Eliminates generic "no specific news" fallbacks. |
+| 2026-02-27 | Added strategy_assessment to moderator context | Claude's `market_assessment` thesis is now passed to GPT-4o and Gemini so moderators can challenge the overall market reasoning, not just individual trade proposals. |
+| 2026-02-27 | Added universe screening with sector/cap diversity | `get_screened_universe()` samples candidates across sectors (min 3 per sector) and market-cap tiers (40% large, 35% mid, 25% small). System can now discover new stocks beyond existing positions. |
+| 2026-02-27 | Added `enrich_instrument_metadata()` | Back-fills sector and market_cap from yfinance into the instruments table, improving future screening cycles. |
+| 2026-02-27 | Fixed REDUCE action in order manager | REDUCE now correctly negates quantity (partial sell). Previously would have tried to BUY instead. Risk manager also checks `min_positions` for REDUCE. |
+| 2026-02-27 | Added automatic stop-loss orders after BUY | `place_stop_loss()` uses T212's stop order API (GTC validity) with Claude's `stop_loss_pct`. Placed automatically after successful BUY executions. |
