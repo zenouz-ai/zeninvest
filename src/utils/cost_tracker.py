@@ -1,6 +1,6 @@
 """LLM API cost tracking, budget enforcement, and graceful degradation."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import NamedTuple
 
@@ -97,7 +97,7 @@ def log_cost(
     session = get_session()
     try:
         entry = CostLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             provider=provider,
             model=model,
             input_tokens=input_tokens,
@@ -128,7 +128,7 @@ def get_daily_spend(provider: str | None = None) -> float:
     """Get total spend today in GBP, optionally filtered by provider."""
     session = get_session()
     try:
-        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         query = session.query(func.coalesce(func.sum(CostLog.cost_gbp), 0.0)).filter(
             CostLog.timestamp >= today_start
         )
@@ -143,7 +143,7 @@ def get_monthly_spend() -> float:
     """Get total spend this month in GBP across all providers."""
     session = get_session()
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         result = session.query(
             func.coalesce(func.sum(CostLog.cost_gbp), 0.0)
@@ -247,7 +247,7 @@ def get_cost_summary(days: int = 1) -> dict[str, float]:
     """Get cost summary grouped by provider for the last N days."""
     session = get_session()
     try:
-        since = datetime.utcnow() - timedelta(days=days)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
         rows = (
             session.query(
                 CostLog.provider,

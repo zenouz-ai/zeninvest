@@ -1,7 +1,7 @@
 """Tests for the risk agent — all rules as pure functions."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -163,12 +163,12 @@ class TestDailyLossHalt:
         assert not result.passed
 
     def test_halt_active(self, risk_mgr):
-        future = datetime.utcnow() + timedelta(hours=12)
+        future = datetime.now(timezone.utc) + timedelta(hours=12)
         result = risk_mgr.check_daily_loss_halt(0.0, future)
         assert not result.passed
 
     def test_halt_expired(self, risk_mgr):
-        past = datetime.utcnow() - timedelta(hours=1)
+        past = datetime.now(timezone.utc) - timedelta(hours=1)
         result = risk_mgr.check_daily_loss_halt(0.0, past)
         assert result.passed
 

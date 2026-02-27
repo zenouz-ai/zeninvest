@@ -3,7 +3,7 @@
 import json
 import random
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
@@ -132,7 +132,7 @@ class DataFetcher:
         if finnhub_symbol is None:
             finnhub_symbol = yf_ticker
 
-        result: dict[str, Any] = {"ticker": yf_ticker, "timestamp": datetime.utcnow().isoformat()}
+        result: dict[str, Any] = {"ticker": yf_ticker, "timestamp": datetime.now(timezone.utc).isoformat()}
 
         # OHLCV + Technical Indicators
         df = self.get_ohlcv(yf_ticker, period="1y")
@@ -210,7 +210,7 @@ class DataFetcher:
                     existing.type = inst.get("type", existing.type)
                     existing.min_trade_quantity = inst.get("minTradeQuantity")
                     existing.max_open_quantity = inst.get("maxOpenQuantity")
-                    existing.updated_at = datetime.utcnow()
+                    existing.updated_at = datetime.now(timezone.utc)
                 else:
                     session.add(Instrument(
                         ticker=ticker,
@@ -220,7 +220,7 @@ class DataFetcher:
                         type=inst.get("type"),
                         min_trade_quantity=inst.get("minTradeQuantity"),
                         max_open_quantity=inst.get("maxOpenQuantity"),
-                        updated_at=datetime.utcnow(),
+                        updated_at=datetime.now(timezone.utc),
                     ))
                 count += 1
 
@@ -243,9 +243,9 @@ class DataFetcher:
             session.add(MarketDataCache(
                 ticker=ticker,
                 data_type=data_type,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 data_json=json.dumps(data, default=str),
-                expires_at=datetime.utcnow() + timedelta(hours=12),
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
             ))
             session.commit()
         except Exception as e:
@@ -263,7 +263,7 @@ class DataFetcher:
                 .filter(
                     MarketDataCache.ticker == ticker,
                     MarketDataCache.data_type == data_type,
-                    MarketDataCache.expires_at > datetime.utcnow(),
+                    MarketDataCache.expires_at > datetime.now(timezone.utc),
                 )
                 .order_by(MarketDataCache.timestamp.desc())
                 .first()
@@ -289,10 +289,10 @@ class DataFetcher:
                 ticker=ticker,
                 source=source,
                 data_type=data_type,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 data_json=json.dumps(data, default=str),
                 overall_score=overall_score,
-                expires_at=datetime.utcnow() + timedelta(hours=6),
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=6),
             ))
             session.commit()
         except Exception as e:
@@ -471,7 +471,7 @@ class DataFetcher:
                     inst.sector = sector
                 if market_cap and (inst.market_cap is None or inst.market_cap == 0):
                     inst.market_cap = market_cap
-                inst.updated_at = datetime.utcnow()
+                inst.updated_at = datetime.now(timezone.utc)
                 session.commit()
         except Exception as e:
             logger.error(f"Failed to enrich instrument {ticker}: {e}")

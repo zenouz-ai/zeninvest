@@ -26,8 +26,8 @@ strategy:
   mean_reversion_weight: 0.30
   factor_weight: 0.35
   min_conviction: 60
-  min_conviction_no_moderators: 85
-  min_conviction_one_moderator: 75
+  min_conviction_no_moderators: 70
+  min_conviction_one_moderator: 60
 
 moderation:
   require_consensus: true

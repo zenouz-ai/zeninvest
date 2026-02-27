@@ -5,7 +5,7 @@ scores, analyst data, news sentiment) to both moderators for independent review.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from src.agents.moderation import gemini_mod, openai_mod
@@ -152,9 +152,10 @@ class ModerationPanel:
         - 3/3 AGREE → APPROVED
         - 2/3 AGREE → CAUTION (proceed with flag)
         - 2/3 DISAGREE → BLOCKED
-        - Any "HIGH_RISK" + another DISAGREE → BLOCKED
-        - 1 moderator: require AGREE + conviction > 75
-        - 0 moderators: conviction > 85 only
+        - HIGH_RISK + both moderators DISAGREE → BLOCKED
+        - HIGH_RISK + one DISAGREE → CAUTION (proceed with flag)
+        - 1 moderator: require AGREE + conviction > 60
+        - 0 moderators: conviction > 70 only
         """
         settings = self.settings
 
@@ -168,7 +169,7 @@ class ModerationPanel:
         if gemini_result:
             risk_score = gemini_result.get("risk_score", 0)
             growth_score = gemini_result.get("growth_score", 0)
-            if risk_score > growth_score:
+            if risk_score > growth_score + 2:
                 high_risk = True
 
         # Fallback: 0 moderators
@@ -197,10 +198,15 @@ class ModerationPanel:
         agree_count = verdicts.count("AGREE")
         disagree_count = verdicts.count("DISAGREE")
 
-        # High risk + any disagree → BLOCKED
-        if high_risk and disagree_count >= 1:
-            logger.warning("HIGH RISK + DISAGREE → BLOCKED")
+        # High risk + both moderators disagree → BLOCKED
+        if high_risk and disagree_count >= 2:
+            logger.warning("HIGH RISK + BOTH DISAGREE → BLOCKED")
             return "BLOCKED"
+
+        # High risk + one disagree → proceed with caution
+        if high_risk and disagree_count == 1:
+            logger.warning("HIGH RISK + 1 DISAGREE → CAUTION")
+            return "CAUTION"
 
         if agree_count == 3:
             return "APPROVED"
@@ -217,7 +223,7 @@ class ModerationPanel:
         try:
             # Log strategy verdict
             session.add(ModerationLog(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 cycle_id=cycle_id,
                 ticker=result.ticker,
                 moderator="strategy",
@@ -229,7 +235,7 @@ class ModerationPanel:
             # Log GPT-4o verdict
             if result.gpt4o_verdict:
                 session.add(ModerationLog(
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     cycle_id=cycle_id,
                     ticker=result.ticker,
                     moderator="gpt-4o",
@@ -240,7 +246,7 @@ class ModerationPanel:
             # Log Gemini verdict
             if result.gemini_verdict:
                 session.add(ModerationLog(
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     cycle_id=cycle_id,
                     ticker=result.ticker,
                     moderator=result.gemini_verdict.get("moderator", "gemini"),

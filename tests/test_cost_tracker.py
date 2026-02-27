@@ -1,7 +1,7 @@
 """Tests for the cost tracker module."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -93,7 +93,7 @@ class TestDailySpend:
 
     def test_with_entries(self, db_session):
         db_session.add(CostLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             provider="anthropic",
             model="test",
             input_tokens=1000,
@@ -115,7 +115,7 @@ class TestBudgetStatus:
     def test_over_daily(self, db_session):
         # Add entries exceeding daily limit (£1.00 for anthropic)
         db_session.add(CostLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             provider="anthropic",
             model="test",
             input_tokens=0,
@@ -134,7 +134,7 @@ class TestDegradation:
 
     def test_no_gemini_when_google_over(self, db_session):
         db_session.add(CostLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             provider="google",
             model="test",
             input_tokens=0,
@@ -147,7 +147,7 @@ class TestDegradation:
 
     def test_no_strategy_when_anthropic_over(self, db_session):
         db_session.add(CostLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             provider="anthropic",
             model="test",
             input_tokens=0,
@@ -166,7 +166,7 @@ class TestCostSummary:
 
     def test_with_entries(self, db_session):
         db_session.add(CostLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             provider="anthropic",
             model="test",
             input_tokens=1000,
@@ -174,7 +174,7 @@ class TestCostSummary:
             cost_gbp=0.05,
         ))
         db_session.add(CostLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             provider="openai",
             model="test",
             input_tokens=2000,

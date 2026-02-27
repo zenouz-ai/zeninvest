@@ -34,7 +34,7 @@ Scoring guidelines:
 - VIX >25 adds 1-2 risk points. VIX >35 adds 3+ risk points.
 - When sub-strategies disagree (momentum says BUY, factor says LOW), lower confidence by 2-3.
 - Bullish news + positive analyst consensus increases confidence. Bearish news decreases it.
-- Flag any trade where risk > growth potential.
+- Only flag high_risk_flag when risk exceeds growth potential by 3+ points.
 
 IMPORTANT: Keep your assessment under 100 words. Respond with ONLY valid JSON:
 {
@@ -96,7 +96,7 @@ Flag if risk > growth. Respond with JSON only."""
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 max_output_tokens=2048,
-                temperature=0.3,
+                temperature=0.4,
             ),
         )
 

@@ -1,7 +1,7 @@
 """Weekly report generation."""
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,7 @@ def generate_weekly_report(end_date: datetime | None = None) -> str:
         Path to the written report file.
     """
     if end_date is None:
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
 
     _WEEKLY_DIR.mkdir(parents=True, exist_ok=True)
     week_num = end_date.isocalendar()[1]
@@ -295,7 +295,7 @@ def _build_weekly_md(
     lines.append("")
 
     lines.append("---")
-    lines.append(f"*Generated at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}*")
+    lines.append(f"*Generated at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}*")
     lines.append("")
 
     return "\n".join(lines)

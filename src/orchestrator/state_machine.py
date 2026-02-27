@@ -1,6 +1,6 @@
 """Orchestrator state machine — persisted in SQLite."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.data.database import get_session
@@ -35,7 +35,7 @@ class StateMachine:
                     peak_portfolio_value=None,
                     current_drawdown_pct=0.0,
                     paused=False,
-                    updated_at=datetime.utcnow(),
+                    updated_at=datetime.now(timezone.utc),
                 )
                 session.add(state)
                 session.commit()
@@ -83,7 +83,7 @@ class StateMachine:
             old_state = state.state
             state.state = new_state
             state.notes = notes
-            state.updated_at = datetime.utcnow()
+            state.updated_at = datetime.now(timezone.utc)
             session.commit()
             logger.info(f"State transition: {old_state} -> {new_state}" + (f" ({notes})" if notes else ""))
         finally:
@@ -98,7 +98,7 @@ class StateMachine:
                 return
             if state.peak_portfolio_value is None or current_value > state.peak_portfolio_value:
                 state.peak_portfolio_value = current_value
-                state.updated_at = datetime.utcnow()
+                state.updated_at = datetime.now(timezone.utc)
                 session.commit()
                 logger.info(f"New portfolio peak: {current_value:.2f}")
         finally:
@@ -112,7 +112,7 @@ class StateMachine:
             if state is None:
                 return
             state.current_drawdown_pct = drawdown_pct
-            state.updated_at = datetime.utcnow()
+            state.updated_at = datetime.now(timezone.utc)
             session.commit()
         finally:
             session.close()
@@ -124,8 +124,8 @@ class StateMachine:
             state = session.query(SystemState).first()
             if state is None:
                 return
-            state.last_cycle_at = datetime.utcnow()
-            state.updated_at = datetime.utcnow()
+            state.last_cycle_at = datetime.now(timezone.utc)
+            state.updated_at = datetime.now(timezone.utc)
             session.commit()
         finally:
             session.close()
@@ -137,8 +137,8 @@ class StateMachine:
             state = session.query(SystemState).first()
             if state is None:
                 return
-            state.daily_loss_halt_until = datetime.utcnow() + timedelta(hours=24)
-            state.updated_at = datetime.utcnow()
+            state.daily_loss_halt_until = datetime.now(timezone.utc) + timedelta(hours=24)
+            state.updated_at = datetime.now(timezone.utc)
             session.commit()
             logger.warning("Daily loss halt activated for 24 hours")
         finally:
@@ -152,7 +152,7 @@ class StateMachine:
             if state is None:
                 return
             state.paused = True
-            state.updated_at = datetime.utcnow()
+            state.updated_at = datetime.now(timezone.utc)
             session.commit()
             logger.info("System PAUSED")
         finally:
@@ -166,7 +166,7 @@ class StateMachine:
             if state is None:
                 return
             state.paused = False
-            state.updated_at = datetime.utcnow()
+            state.updated_at = datetime.now(timezone.utc)
             session.commit()
             logger.info("System RESUMED")
         finally:

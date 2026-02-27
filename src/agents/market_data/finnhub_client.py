@@ -1,7 +1,7 @@
 """Finnhub API client for news sentiment, analyst data, and insider info."""
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -47,7 +47,7 @@ class FinnhubClient:
         session = get_session()
         try:
             session.add(ApiLog(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 service="finnhub",
                 method="GET",
                 endpoint=endpoint,

@@ -1,7 +1,7 @@
 """Trade journal — generates detailed markdown entries for every trade."""
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +53,7 @@ def generate_trade_journal(
         Path to the written journal file.
     """
     _ensure_dir(_JOURNALS_DIR)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     filename = f"{now.strftime('%Y-%m-%d_%H-%M')}_{ticker}_{action}.md"
     filepath = _JOURNALS_DIR / filename
 

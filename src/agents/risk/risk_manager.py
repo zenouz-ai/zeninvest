@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import numpy as np
@@ -245,7 +245,7 @@ class RiskManager:
         """Check if daily loss halt is active."""
         max_loss = self.settings.daily_loss_halt_pct
 
-        if halt_until and datetime.utcnow() < halt_until:
+        if halt_until and datetime.now(timezone.utc) < halt_until:
             return RuleResult(
                 rule_name="daily_loss_halt",
                 passed=False,
@@ -477,7 +477,7 @@ class RiskManager:
         session = get_session()
         try:
             session.add(RiskDecision(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 cycle_id=cycle_id or "manual",
                 ticker=verdict.ticker,
                 proposed_action=verdict.proposed_action,

@@ -1,7 +1,7 @@
 """Strategy engine — orchestrates sub-strategies and Claude synthesis."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import anthropic
@@ -200,7 +200,7 @@ class StrategyEngine:
 
             for decision in result.get("decisions", []):
                 session.add(StrategyDecision(
-                    timestamp=datetime.utcnow(),
+                    timestamp=datetime.now(timezone.utc),
                     cycle_id=cycle_id,
                     ticker=decision.get("ticker", ""),
                     action=decision.get("action", ""),

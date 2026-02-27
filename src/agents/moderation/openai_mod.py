@@ -38,7 +38,7 @@ Scoring guidelines:
 - P/E <15 = value. >40 = expensive unless high-growth sector.
 - Debt/Equity >2.0 is a red flag. <0.5 is strong.
 - VIX >25 = elevated volatility, warrant smaller positions.
-- When sub-strategies disagree (e.g. momentum BUY but factor LOW), DISAGREE unless conviction is very strong.
+- When sub-strategies disagree (e.g. momentum BUY but factor LOW), consider MODIFY with reduced allocation rather than outright DISAGREE, unless the signals are clearly contradictory.
 
 For each proposed trade, respond with ONLY valid JSON:
 {
@@ -98,7 +98,7 @@ Respond with JSON only."""
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=1024,
-            temperature=0.3,
+            temperature=0.4,
         )
 
         # Log cost

@@ -1,7 +1,7 @@
 """Alpha Vantage API client for market news with AI sentiment."""
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -39,7 +39,7 @@ class AlphaVantageClient:
         session = get_session()
         try:
             session.add(ApiLog(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 service="alpha_vantage",
                 method="GET",
                 endpoint=endpoint,
