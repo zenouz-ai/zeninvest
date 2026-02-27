@@ -42,6 +42,17 @@ data_providers:
   finnhub_base_url: https://finnhub.io/api/v1
   alpha_vantage_base_url: https://www.alphavantage.co/query
 
+universe:
+  max_candidates: 30          # Max new stocks to screen per cycle
+  candidates_per_sector: 3    # Min candidates sampled from each sector
+  large_cap_pct: 0.40         # 40% of candidates from large cap ($10B+)
+  mid_cap_pct: 0.35           # 35% from mid cap ($2B-$10B)
+  small_cap_pct: 0.25         # 25% from small cap ($300M-$2B)
+  large_cap_min: 10000000000  # $10B
+  mid_cap_min: 2000000000     # $2B
+  small_cap_min: 300000000    # $300M
+  refresh_sector_data: true   # Back-fill sector/market_cap from yfinance
+
 cost_limits:
   anthropic_daily_gbp: 1.00
   openai_daily_gbp: 0.75

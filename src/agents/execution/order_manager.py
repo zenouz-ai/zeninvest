@@ -110,7 +110,7 @@ class OrderManager:
 
         Args:
             ticker: Instrument ticker (e.g., "AAPL_US_EQ")
-            action: BUY or SELL
+            action: BUY, SELL, or REDUCE
             target_amount_gbp: Target trade value in GBP
             current_price: Current market price
             strategy: Which strategy triggered this
@@ -123,7 +123,7 @@ class OrderManager:
             logger.warning(f"Calculated quantity is 0 for {ticker} @ {current_price}")
             return {"status": "skipped", "reason": "zero_quantity"}
 
-        if action == "SELL":
+        if action in ("SELL", "REDUCE"):
             quantity = -quantity
 
         dedup_key = self._make_dedup_key(ticker, quantity)
@@ -223,6 +223,105 @@ class OrderManager:
         except Exception as e:
             logger.error(f"Failed to get portfolio state: {e}")
             return {"cash": {}, "positions": [], "num_positions": 0, "error": str(e)}
+
+    def place_stop_loss(
+        self,
+        ticker: str,
+        quantity: float,
+        current_price: float,
+        stop_loss_pct: float,
+        strategy: str | None = None,
+    ) -> dict[str, Any]:
+        """Place a stop-loss order for a position.
+
+        Args:
+            ticker: Instrument ticker (e.g., "AAPL_US_EQ")
+            quantity: Number of shares to protect (positive).
+            current_price: Current market price.
+            stop_loss_pct: Negative percentage (e.g., -8.0 for 8% below).
+            strategy: Which strategy triggered this.
+
+        Returns:
+            Result dict with order status.
+        """
+        if stop_loss_pct >= 0 or quantity <= 0:
+            return {"status": "skipped", "reason": "invalid_stop_loss_params"}
+
+        stop_price = round(current_price * (1 + stop_loss_pct / 100), 2)
+        sell_quantity = -quantity  # Negative for sell
+
+        if self.dry_run:
+            logger.info(
+                f"[DRY RUN] Would place stop-loss: SELL {quantity} x {ticker} "
+                f"@ stop={stop_price} (current={current_price}, pct={stop_loss_pct}%)"
+            )
+            order = self._log_order(
+                ticker=ticker,
+                action="SELL",
+                order_type="stop",
+                quantity=sell_quantity,
+                stop_price=stop_price,
+                price=current_price,
+                status="dry_run",
+                strategy=strategy,
+            )
+            return {
+                "status": "dry_run",
+                "order_type": "stop",
+                "order_id": order.id,
+                "ticker": ticker,
+                "stop_price": stop_price,
+                "quantity": quantity,
+            }
+
+        try:
+            result = self.client.place_stop_order(
+                ticker=ticker,
+                quantity=sell_quantity,
+                stop_price=stop_price,
+                time_validity="GTC",
+            )
+            t212_order_id = result.get("id") or result.get("orderId")
+
+            order = self._log_order(
+                ticker=ticker,
+                action="SELL",
+                order_type="stop",
+                quantity=sell_quantity,
+                stop_price=stop_price,
+                price=current_price,
+                t212_order_id=str(t212_order_id) if t212_order_id else None,
+                status="pending",
+                strategy=strategy,
+            )
+
+            logger.info(
+                f"Stop-loss placed: SELL {quantity} x {ticker} "
+                f"@ stop={stop_price} (order_id={t212_order_id})"
+            )
+            return {
+                "status": "placed",
+                "order_type": "stop",
+                "order_id": order.id,
+                "t212_order_id": t212_order_id,
+                "ticker": ticker,
+                "stop_price": stop_price,
+                "quantity": quantity,
+            }
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Stop-loss order failed for {ticker}: {error_msg}")
+            self._log_order(
+                ticker=ticker,
+                action="SELL",
+                order_type="stop",
+                quantity=sell_quantity,
+                stop_price=stop_price,
+                status="failed",
+                strategy=strategy,
+                error_message=error_msg,
+            )
+            return {"status": "failed", "order_type": "stop", "error": error_msg}
 
     def liquidate_all(self) -> list[dict[str, Any]]:
         """Sell all positions (for HALTED state)."""

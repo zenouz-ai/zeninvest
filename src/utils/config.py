@@ -175,6 +175,43 @@ class Settings:
     def alpha_vantage_base_url(self) -> str:
         return self.data_providers["alpha_vantage_base_url"]
 
+    # --- Universe Screening ---
+    @property
+    def universe(self) -> dict[str, Any]:
+        return self._config.get("universe", {})
+
+    @property
+    def max_candidates(self) -> int:
+        return int(self.universe.get("max_candidates", 30))
+
+    @property
+    def candidates_per_sector(self) -> int:
+        return int(self.universe.get("candidates_per_sector", 3))
+
+    @property
+    def large_cap_pct(self) -> float:
+        return float(self.universe.get("large_cap_pct", 0.40))
+
+    @property
+    def mid_cap_pct(self) -> float:
+        return float(self.universe.get("mid_cap_pct", 0.35))
+
+    @property
+    def small_cap_pct(self) -> float:
+        return float(self.universe.get("small_cap_pct", 0.25))
+
+    @property
+    def large_cap_min(self) -> float:
+        return float(self.universe.get("large_cap_min", 10_000_000_000))
+
+    @property
+    def mid_cap_min(self) -> float:
+        return float(self.universe.get("mid_cap_min", 2_000_000_000))
+
+    @property
+    def small_cap_min(self) -> float:
+        return float(self.universe.get("small_cap_min", 300_000_000))
+
     # --- Cost Limits ---
     @property
     def cost_limits(self) -> dict[str, Any]:
