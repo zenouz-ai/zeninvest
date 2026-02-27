@@ -179,14 +179,23 @@ class Orchestrator:
             try:
                 yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
                 tickers_str = ",".join(yf_tickers)
-                av_ticker_sentiment = self.data_fetcher.alpha_vantage.get_ticker_news_summary(
-                    tickers=tickers_str, limit=20,
-                )
-                # Also get raw articles for per-ticker extraction
+                # Single API call — returns both aggregate stats and raw articles
                 raw_data = self.data_fetcher.alpha_vantage.get_market_news_sentiment(
                     tickers=tickers_str, sort="RELEVANCE", limit=30,
                 )
-                av_all_articles = raw_data.get("articles", [])
+                if "error" not in raw_data:
+                    av_all_articles = raw_data.get("articles", [])
+                    av_ticker_sentiment = {
+                        "tickers_queried": tickers_str,
+                        "total_articles": raw_data.get("total_articles", 0),
+                        "average_sentiment": raw_data.get("average_sentiment", 0),
+                        "bullish_articles": raw_data.get("bullish_articles", 0),
+                        "bearish_articles": raw_data.get("bearish_articles", 0),
+                        "neutral_articles": raw_data.get("neutral_articles", 0),
+                        "top_articles_summary": AlphaVantageClient._summarize_articles(
+                            av_all_articles, max_articles=10,
+                        ),
+                    }
             except Exception as e:
                 logger.warning(f"Alpha Vantage ticker sentiment unavailable: {e}")
 
