@@ -7,7 +7,7 @@ Sequence: Data -> Strategy -> Moderation -> Risk -> Execution -> Journal
 import json
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import click
@@ -62,7 +62,7 @@ class Orchestrator:
 
         Sequence: Data -> Strategy -> Moderation -> Risk -> Execution -> Journal
         """
-        cycle_id = f"cycle_{datetime.utcnow().strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
+        cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
         logger.info(f"Starting cycle {cycle_id} (dry_run={self.dry_run})")
 
         result: dict[str, Any] = {"cycle_id": cycle_id, "trades": [], "errors": []}
@@ -549,6 +549,10 @@ class Orchestrator:
                 candidates = self.data_fetcher.get_screened_universe(
                     exclude_tickers=all_exclude,
                 )
+                # Mark screened candidates so they enter the cooldown window
+                self.data_fetcher.mark_instruments_screened(
+                    [c["ticker"] for c in candidates],
+                )
                 logger.info(f"Screening {len(candidates)} universe candidates...")
                 for candidate in candidates:
                     c_ticker = candidate["ticker"]
@@ -708,7 +712,7 @@ class Orchestrator:
         session = get_session()
         try:
             session.add(PortfolioSnapshot(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 total_value_gbp=portfolio_data.get("total_value", 0),
                 cash_gbp=portfolio_data.get("cash", 0),
                 invested_gbp=portfolio_data.get("invested", 0),

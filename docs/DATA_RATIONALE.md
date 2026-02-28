@@ -385,3 +385,4 @@ and reliability tradeoff of local deployment.
 | 2026-02-27 | Added `enrich_instrument_metadata()` | Back-fills sector and market_cap from yfinance into the instruments table, improving future screening cycles. |
 | 2026-02-27 | Fixed REDUCE action in order manager | REDUCE now correctly negates quantity (partial sell). Previously would have tried to BUY instead. Risk manager also checks `min_positions` for REDUCE. |
 | 2026-02-27 | Added automatic stop-loss orders after BUY | `place_stop_loss()` uses T212's stop order API (GTC validity) with Claude's `stop_loss_pct`. Placed automatically after successful BUY executions. |
+| 2026-02-27 | Added 72-hour screening cooldown | `last_screened_at` column on Instrument table. Screened stocks are excluded from future screens for 72 hours (configurable via `screening_cooldown_hours`), preventing the same candidates from appearing in consecutive cycles. |

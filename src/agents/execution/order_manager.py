@@ -1,7 +1,7 @@
 """Order management with deduplication and execution logic."""
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.agents.execution.t212_client import T212Client, calculate_quantity
@@ -30,7 +30,7 @@ class OrderManager:
         """Check if a similar order was placed within the dedup window."""
         session = get_session()
         try:
-            cutoff = datetime.utcnow() - timedelta(minutes=DEDUP_WINDOW_MINUTES)
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=DEDUP_WINDOW_MINUTES)
             exists = (
                 session.query(Order)
                 .filter(
@@ -67,7 +67,7 @@ class OrderManager:
         session = get_session()
         try:
             order = Order(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 ticker=ticker,
                 action=action,
                 order_type=order_type,

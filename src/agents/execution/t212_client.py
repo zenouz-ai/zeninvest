@@ -4,7 +4,7 @@ import base64
 import json
 import math
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -58,7 +58,7 @@ class T212Client:
         session = get_session()
         try:
             session.add(ApiLog(
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 service="t212",
                 method=method,
                 endpoint=endpoint,

@@ -125,7 +125,8 @@ class TestConsensusLogic:
         )
         assert result == "BLOCKED"
 
-    def test_high_risk_plus_disagree(self, panel):
+    def test_high_risk_plus_one_disagree_is_caution(self, panel):
+        """High risk + single moderator disagree → CAUTION (not BLOCKED)."""
         result = panel._determine_consensus(
             strategy_verdict="AGREE",
             gpt4o_result={"verdict": "DISAGREE"},
@@ -133,9 +134,22 @@ class TestConsensusLogic:
             conviction=78,
             moderators_available=2,
         )
+        assert result == "CAUTION"
+
+    def test_high_risk_plus_both_disagree_is_blocked(self, panel):
+        """High risk + both moderators disagree → BLOCKED."""
+        result = panel._determine_consensus(
+            strategy_verdict="AGREE",
+            gpt4o_result={"verdict": "DISAGREE"},
+            gemini_result={"verdict": "DISAGREE", "high_risk_flag": True},
+            conviction=78,
+            moderators_available=2,
+        )
         assert result == "BLOCKED"
 
-    def test_high_risk_via_scores(self, panel):
+    def test_high_risk_via_scores_needs_margin(self, panel):
+        """Risk must exceed growth by >2 to trigger high_risk flag."""
+        # risk=8, growth=4 → diff=4 > 2 → high_risk, but only 1 disagree → CAUTION
         result = panel._determine_consensus(
             strategy_verdict="AGREE",
             gpt4o_result={"verdict": "DISAGREE"},
@@ -143,7 +157,19 @@ class TestConsensusLogic:
             conviction=78,
             moderators_available=2,
         )
-        assert result == "BLOCKED"
+        assert result == "CAUTION"
+
+    def test_risk_slightly_above_growth_no_flag(self, panel):
+        """Risk exceeding growth by <=2 does NOT trigger high_risk."""
+        # risk=6, growth=5 → diff=1 ≤ 2 → no high_risk → normal 2/3 agree → CAUTION
+        result = panel._determine_consensus(
+            strategy_verdict="AGREE",
+            gpt4o_result={"verdict": "DISAGREE"},
+            gemini_result={"verdict": "AGREE", "risk_score": 6, "growth_score": 5},
+            conviction=78,
+            moderators_available=2,
+        )
+        assert result == "CAUTION"
 
     def test_one_moderator_agree_high_conviction(self, panel):
         result = panel._determine_consensus(
@@ -160,7 +186,7 @@ class TestConsensusLogic:
             strategy_verdict="AGREE",
             gpt4o_result={"verdict": "AGREE"},
             gemini_result=None,
-            conviction=60,
+            conviction=55,
             moderators_available=1,
         )
         assert result == "CAUTION"
@@ -190,7 +216,7 @@ class TestConsensusLogic:
             strategy_verdict="AGREE",
             gpt4o_result=None,
             gemini_result=None,
-            conviction=70,
+            conviction=65,
             moderators_available=0,
         )
         assert result == "BLOCKED"
@@ -255,7 +281,7 @@ class TestFullReview:
             sample_proposal, "Portfolio context", sample_market_context, 90, "cycle-1",
         )
         assert result.moderators_available == 0
-        assert result.consensus == "APPROVED"  # conviction 90 > 85
+        assert result.consensus == "APPROVED"  # conviction 90 > 70
 
     @patch("src.agents.moderation.panel.get_degradation_level")
     @patch("src.agents.moderation.panel.openai_mod.review_trade")

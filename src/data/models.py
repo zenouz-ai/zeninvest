@@ -1,6 +1,6 @@
 """SQLAlchemy ORM models for all database tables."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -31,7 +31,7 @@ class SystemState(Base):
     last_cycle_at = Column(DateTime, nullable=True)
     daily_loss_halt_until = Column(DateTime, nullable=True)
     paused = Column(Boolean, default=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     notes = Column(Text, nullable=True)
 
 
@@ -51,7 +51,8 @@ class Instrument(Base):
     type = Column(String(50), nullable=True)
     min_trade_quantity = Column(Float, nullable=True)
     max_open_quantity = Column(Float, nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow)
+    last_screened_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class PortfolioSnapshot(Base):
@@ -60,7 +61,7 @@ class PortfolioSnapshot(Base):
     __tablename__ = "portfolio_snapshots"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     total_value_gbp = Column(Float, nullable=False)
     cash_gbp = Column(Float, nullable=False)
     invested_gbp = Column(Float, nullable=False)
@@ -80,7 +81,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     ticker = Column(String(50), nullable=False, index=True)
     action = Column(String(10), nullable=False)  # BUY, SELL, REDUCE
     order_type = Column(String(20), nullable=False)  # market, limit, stop
@@ -106,7 +107,7 @@ class StrategyDecision(Base):
     __tablename__ = "strategy_decisions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     cycle_id = Column(String(50), nullable=False, index=True)
     ticker = Column(String(50), nullable=False)
     action = Column(String(10), nullable=False)
@@ -134,7 +135,7 @@ class ModerationLog(Base):
     __tablename__ = "moderation_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     cycle_id = Column(String(50), nullable=False, index=True)
     ticker = Column(String(50), nullable=False)
     moderator = Column(String(50), nullable=False)  # gpt-4o, gemini-2.0-flash, strategy
@@ -158,7 +159,7 @@ class RiskDecision(Base):
     __tablename__ = "risk_decisions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     cycle_id = Column(String(50), nullable=False, index=True)
     ticker = Column(String(50), nullable=False)
     proposed_action = Column(String(10), nullable=False)
@@ -179,7 +180,7 @@ class MarketDataCache(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     ticker = Column(String(50), nullable=False, index=True)
     data_type = Column(String(50), nullable=False)  # ohlcv, fundamentals, indicators, macro
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     data_json = Column(Text, nullable=False)
     expires_at = Column(DateTime, nullable=True)
 
@@ -193,7 +194,7 @@ class NewsSentimentCache(Base):
     ticker = Column(String(50), nullable=True, index=True)  # NULL for market-wide
     source = Column(String(50), nullable=False)  # finnhub, alpha_vantage
     data_type = Column(String(50), nullable=False)  # news_sentiment, analyst_rec, price_target, insider, market_news
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     data_json = Column(Text, nullable=False)
     buzz_score = Column(Float, nullable=True)
     bullish_pct = Column(Float, nullable=True)
@@ -208,7 +209,7 @@ class ApiLog(Base):
     __tablename__ = "api_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     service = Column(String(50), nullable=False)  # t212, finnhub, alpha_vantage, yfinance
     method = Column(String(10), nullable=False)
     endpoint = Column(String(500), nullable=False)
@@ -225,7 +226,7 @@ class CostLog(Base):
     __tablename__ = "cost_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     provider = Column(String(50), nullable=False)  # anthropic, openai, google
     model = Column(String(100), nullable=False)
     input_tokens = Column(Integer, nullable=False, default=0)
