@@ -1,6 +1,8 @@
 # Investment Agent
 
-Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. The goal is to outperform the S&P 500 by 10%+ over a 6-12 month horizon.
+Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
+
+**Status:** POC — 119 tests passing, deployment-ready for VPS.
 
 ## Architecture
 
@@ -124,10 +126,12 @@ src/
 └── utils/              # Config, logger, cost tracker
 docs/                   # Project documentation
 ├── ARCHITECTURE.md     # System architecture and component diagrams
+├── COMPETITIVE_ANALYSIS.md  # Assessment vs professional quant systems
 ├── DEPLOYMENT.md       # VPS deployment and monitoring guide
 ├── GOVERNANCE.md       # Governance framework and security guardrails
 ├── LOCAL_LIVE_RUN.md   # Local live run guide (Trading 212 Practice)
-└── PRESENTATION.md     # Project presentation and summary
+├── PRESENTATION.md     # Project presentation and summary
+└── SOPHISTICATION_ROADMAP.md  # Prioritised improvement roadmap
 notebooks/
 └── diagnostics.ipynb   # Component diagnostics and integration tests
 ```
@@ -135,6 +139,8 @@ notebooks/
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
+- [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — prioritised user stories for systematic improvement
+- [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
 - [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
 - [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts
 - [Governance](docs/GOVERNANCE.md) — security guardrails, kill switches, audit trail
@@ -176,3 +182,16 @@ LLM costs tracked per-call with daily/monthly budget enforcement:
 - Monthly cap: £50.00
 
 Graceful degradation: skip Gemini → skip GPT-4o → skip strategy cycle → halt
+
+## Project Evolution
+
+This is a **POC (v1.0)** designed to validate the architecture and begin collecting live performance data. The system will evolve through evidence-based phases:
+
+1. **Phase 1 (Current):** Deploy POC, build performance tracking and trade outcome feedback loop
+2. **Phase 2:** Calibrate conviction scores and strategy weights from live data (~50+ trades)
+3. **Phase 3:** Portfolio-level intelligence (risk-parity sizing, regime detection)
+4. **Phase 4:** Signal enhancement (volume, earnings calendar, sector rotation)
+5. **Phase 5:** Backtesting engine for historical validation
+6. **Phase 6:** ML-assisted improvements (only if justified by accumulated evidence)
+
+See [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) for full details, timelines, and priority matrix.

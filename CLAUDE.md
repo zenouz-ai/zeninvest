@@ -186,3 +186,13 @@ Key tuneable values:
 - Write tests using in-memory SQLite fixtures — stub heavy deps (yfinance, httpx) with `sys.modules` mocks if needed
 - Update `docs/` if the feature touches architecture, governance, or presentation
 - The orchestrator pipeline is in `src/orchestrator/main.py:run_cycle()` — follow the existing phase pattern
+- Consult `docs/SOPHISTICATION_ROADMAP.md` for the prioritised backlog and user story specifications
+- All new features must have a disable switch and fall back to current behaviour
+- No ML/RL technique adopted without literature review and clear expected impact documented
+
+## Project Evolution Context
+
+- **Current state:** POC v1.0 — deployed to VPS for live data collection on Trading 212 Practice
+- **Development team:** Project Lead (PhD Maths, DS Manager), Claude Code Opus 4.6 (cloud, primary dev), Codex 5.3+ (local VS Code, secondary dev)
+- **Principles:** Innovation, simplicity, elegance, transparency. No feature for technology's sake.
+- **Key docs:** `docs/SOPHISTICATION_ROADMAP.md` (backlog), `docs/COMPETITIVE_ANALYSIS.md` (positioning)
