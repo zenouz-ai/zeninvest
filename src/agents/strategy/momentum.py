@@ -89,7 +89,7 @@ def evaluate_momentum(
         reasons.append(f"RS near benchmark: {rs:.2f}")
 
     score = max(0, min(100, score))
-    action = "BUY" if score >= 60 and above_50ma else "HOLD"
+    action = "BUY" if score >= 69 and above_50ma else "HOLD"
 
     return MomentumSignal(
         ticker=ticker,

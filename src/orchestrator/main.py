@@ -554,6 +554,7 @@ class Orchestrator:
                     [c["ticker"] for c in candidates],
                 )
                 logger.info(f"Screening {len(candidates)} universe candidates...")
+                skipped_no_data = 0
                 for candidate in candidates:
                     c_ticker = candidate["ticker"]
                     yf_ticker = c_ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
@@ -562,10 +563,19 @@ class Orchestrator:
                     try:
                         cached = self.data_fetcher.get_cached_data(yf_ticker, "full_analysis")
                         if cached:
+                            # Skip cached entries that had no OHLCV data
+                            if cached.get("indicators", {}).get("error"):
+                                skipped_no_data += 1
+                                continue
                             stocks_data.append(cached)
                         else:
                             data = self.data_fetcher.get_stock_analysis(yf_ticker)
                             data["ticker"] = c_ticker
+                            # Skip stocks with no OHLCV data (delisted, invalid, etc.)
+                            if data.get("indicators", {}).get("error"):
+                                logger.debug(f"Skipping {c_ticker}: no OHLCV data available")
+                                skipped_no_data += 1
+                                continue
                             stocks_data.append(data)
                             # Back-fill sector/market_cap into instruments table
                             self.data_fetcher.enrich_instrument_metadata(
@@ -574,6 +584,8 @@ class Orchestrator:
                     except Exception as e:
                         logger.warning(f"Failed to fetch data for candidate {c_ticker}: {e}")
                     analyzed_tickers.add(c_ticker)
+                if skipped_no_data:
+                    logger.info(f"Skipped {skipped_no_data} candidates with no OHLCV data")
             except Exception as e:
                 logger.warning(f"Universe screening failed: {e}")
 
@@ -586,10 +598,10 @@ class Orchestrator:
         """Extract top tickers from sub-strategy results."""
         tickers: set[str] = set()
         for signal in sub_results.get("momentum", []):
-            if signal.action == "BUY" and signal.score >= 60:
+            if signal.action == "BUY" and signal.score >= 69:
                 tickers.add(signal.ticker)
         for signal in sub_results.get("mean_reversion", []):
-            if signal.action == "BUY" and signal.score >= 55:
+            if signal.action == "BUY" and signal.score >= 63:
                 tickers.add(signal.ticker)
         for score in sub_results.get("top_factor", []):
             tickers.add(score.ticker)
