@@ -154,7 +154,7 @@ class StrategyEngine:
         try:
             response = self.client.messages.create(
                 model=self.settings.strategy_model,
-                max_tokens=4096,
+                max_tokens=8192,
                 system=STRATEGY_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -169,6 +169,10 @@ class StrategyEngine:
                 purpose="strategy",
             )
 
+            # Check for truncation (stop_reason="end_turn" = complete, "max_tokens" = truncated)
+            if response.stop_reason == "max_tokens":
+                logger.warning("Claude response was truncated (hit max_tokens). Attempting partial parse.")
+
             # Parse response
             content = response.content[0].text
             # Try to extract JSON if wrapped in code blocks
@@ -177,7 +181,16 @@ class StrategyEngine:
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0]
 
-            result = json.loads(content)
+            try:
+                result = json.loads(content)
+            except json.JSONDecodeError:
+                # If truncated, try to salvage by closing the JSON structure
+                if response.stop_reason == "max_tokens":
+                    result = self._repair_truncated_json(content)
+                    if result is None:
+                        return {"error": "json_truncated", "decisions": []}
+                else:
+                    raise
 
             # Log decisions
             self._log_decisions(result, cycle_id, content)
@@ -190,6 +203,40 @@ class StrategyEngine:
         except Exception as e:
             logger.error(f"Claude synthesis failed: {e}")
             return {"error": str(e), "decisions": []}
+
+    @staticmethod
+    def _repair_truncated_json(content: str) -> dict[str, Any] | None:
+        """Attempt to salvage a truncated JSON response by closing open structures.
+
+        Finds the last complete decision object in the decisions array and closes
+        the JSON. Returns None if repair fails.
+        """
+        # Find the last complete decision object (ends with "}")
+        # by looking for the last '}' that could close a decision
+        last_complete = content.rfind("}")
+        if last_complete == -1:
+            return None
+
+        # Try progressively shorter substrings, closing the array and outer object
+        for i in range(last_complete + 1, max(last_complete - 500, 0), -1):
+            candidate = content[:i]
+            # Try closing with ], "portfolio_commentary": ""} variants
+            for suffix in [
+                '], "portfolio_commentary": "truncated"}',
+                "]}",
+                "}]}",
+            ]:
+                try:
+                    result = json.loads(candidate + suffix)
+                    if "decisions" in result:
+                        logger.warning(
+                            f"Repaired truncated JSON: {len(result['decisions'])} decisions recovered"
+                        )
+                        return result
+                except json.JSONDecodeError:
+                    continue
+
+        return None
 
     def _log_decisions(self, result: dict[str, Any], cycle_id: str, raw_json: str) -> None:
         """Log strategy decisions to database."""
