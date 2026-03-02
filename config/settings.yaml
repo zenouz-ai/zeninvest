@@ -25,9 +25,9 @@ strategy:
   momentum_weight: 0.35
   mean_reversion_weight: 0.30
   factor_weight: 0.35
-  min_conviction: 69
-  min_conviction_no_moderators: 80
-  min_conviction_one_moderator: 69
+  min_conviction: 75
+  min_conviction_no_moderators: 85
+  min_conviction_one_moderator: 75
 
 moderation:
   require_consensus: true
@@ -45,9 +45,9 @@ data_providers:
 universe:
   max_candidates: 30          # Max new stocks to screen per cycle
   candidates_per_sector: 3    # Min candidates sampled from each sector
-  large_cap_pct: 0.50         # 50% of candidates from large cap ($10B+)
-  mid_cap_pct: 0.30           # 30% from mid cap ($2B-$10B)
-  small_cap_pct: 0.20         # 20% from small cap ($300M-$2B)
+  large_cap_pct: 0.70         # 70% of candidates from large cap ($10B+)
+  mid_cap_pct: 0.20           # 20% from mid cap ($2B-$10B)
+  small_cap_pct: 0.10         # 10% from small cap ($300M-$2B)
   large_cap_min: 10000000000  # $10B
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M

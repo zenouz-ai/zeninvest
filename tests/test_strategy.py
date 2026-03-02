@@ -77,7 +77,7 @@ class TestMomentum:
     def test_strong_buy_signal(self):
         signal = evaluate_momentum("AAPL", _good_momentum_indicators(), 1.15)
         assert signal.action == "BUY"
-        assert signal.score >= 69
+        assert signal.score >= 75
 
     def test_weak_signal_below_ma(self):
         indicators = _good_momentum_indicators()
@@ -115,7 +115,7 @@ class TestMeanReversion:
             "XYZ", _oversold_indicators(), _good_fundamentals(), sector_avg_pe=22.0,
         )
         assert signal.action == "BUY"
-        assert signal.score >= 63
+        assert signal.score >= 70
 
     def test_no_buy_bad_fundamentals(self):
         bad_fund = _good_fundamentals()

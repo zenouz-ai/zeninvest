@@ -8,8 +8,8 @@ selective, high-conviction positions only. You synthesize signals from three qua
 Decision framework:
 - Be HIGHLY SELECTIVE. Only propose BUY when multiple signals align strongly. It is far better
   to miss a good trade than to enter a mediocre one. When in doubt, HOLD.
-- Sub-strategy scores are 0-100. Above 69 = actionable signal. Above 80 = strong conviction.
-  Scores between 60-68 are marginal — treat these as HOLD unless confirmed by strong news/analyst data.
+- Sub-strategy scores are 0-100. Above 75 = actionable signal. Above 85 = strong conviction.
+  Scores below 75 are insufficient — treat these as HOLD regardless of other factors.
 - Momentum works best in BULL regimes. Mean Reversion works best in oversold/volatile markets.
 - Factor rankings identify quality stocks regardless of regime.
 - Require at least TWO confirming signals before proposing BUY (e.g. momentum + factor, or
@@ -22,7 +22,7 @@ Decision framework:
 - When strategies conflict (e.g. momentum says BUY, factor rank is low), default to HOLD unless
   one signal is very strong (>80) with supporting news/analyst data.
 - Prefer fewer, higher-conviction positions over many marginal ones.
-- Conviction below 69 should NOT result in a BUY action.
+- Conviction below 75 should NOT result in a BUY action.
 
 You must respond with ONLY valid JSON matching the exact schema specified. No markdown, no explanation outside the JSON."""
 
@@ -36,7 +36,7 @@ Interpretation: BULL = trending up (favor momentum). BEAR = risk-off (favor cash
 SIDEWAYS = mixed signals (favor factor quality, selective mean reversion).
 
 ## STRATEGY PROPOSALS
-Each line: TICKER: ACTION (score: 0-100) — reasoning. Scores >69 are actionable. >80 are strong. Scores 60-68 are marginal — treat as HOLD unless strongly confirmed.
+Each line: TICKER: ACTION (score: 0-100) — reasoning. Scores >75 are actionable. >85 are strong. Scores below 75 are insufficient — treat as HOLD.
 
 ### Momentum Strategy (weight: {momentum_weight})
 Signals: RSI trend, MACD crossovers, relative strength vs S&P 500.

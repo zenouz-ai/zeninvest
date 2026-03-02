@@ -108,7 +108,7 @@ def evaluate_mean_reversion(
         score *= 0.3  # Heavily penalize bad fundamentals
 
     score = max(0, min(100, score))
-    action = "BUY" if score >= 63 and rsi < 35 and fundamental_ok else "HOLD"
+    action = "BUY" if score >= 70 and rsi < 35 and fundamental_ok else "HOLD"
 
     return MeanReversionSignal(
         ticker=ticker,
