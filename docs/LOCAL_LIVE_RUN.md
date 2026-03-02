@@ -7,9 +7,39 @@ Step-by-step checklist for running the Investment Agent locally with real Tradin
 - [ ] Python 3.11+ installed
 - [ ] Poetry installed (`pip install poetry`)
 - [ ] All dependencies installed (`poetry install`)
+- [ ] Database migrations applied (`poetry run alembic upgrade head`)
 - [ ] `.env` file configured with all 7 API keys
 - [ ] Trading 212 **Practice** account created (not Live)
 - [ ] Diagnostics notebook run successfully (all PASS)
+
+## Initial Setup (First Time Only)
+
+### Install and Migrate
+
+```bash
+# Install dependencies
+poetry install
+
+# Configure environment
+cp config/.env.example .env
+# Edit .env with your 7 API keys (see config/.env.example for the list)
+
+# Create/migrate the SQLite database
+poetry run alembic upgrade head
+```
+
+This creates `data/investment_agent.db` with all tables (instruments, orders, strategy_decisions, etc.).
+
+### How the Universe Works
+
+On first run, the instruments table is empty. The screener automatically seeds it with **~160 curated well-known US equities** (AAPL, MSFT, GOOGL, JPM, JNJ, XOM, etc.) across all 11 GICS sectors, sorted by market cap. This eliminates the "possibly delisted" noise from random T212 tickers.
+
+As cycles run:
+- **yfinance enrichment** back-fills real sector, industry, market_cap, and `longBusinessSummary` (company description) for each stock
+- Tickers that fail OHLCV fetch are flagged `data_available=False` and permanently excluded
+- The business summary is included in Claude's strategy prompt so it can reason about competitive moats and news impact
+
+After a few cycles, the instruments table is fully enriched and the screener uses real data instead of seed defaults.
 
 ## Pre-Flight Checklist
 
@@ -97,17 +127,21 @@ poetry run python -m src.orchestrator.main --dry-run
 ```
 
 **What this does:**
+- Seeds the universe with ~160 curated stocks (first run only, then uses enriched data)
 - Fetches real market data (yfinance, Finnhub, Alpha Vantage)
+- Fetches company business summaries from yfinance for qualitative analysis
 - Runs strategy synthesis with Claude (real API call, ~£0.01)
 - Runs moderation with GPT-4o + Gemini (real API calls, ~£0.005)
 - Runs risk checks (local, no API cost)
 - Logs orders as `dry_run` status (no real trades placed)
+- Flags any tickers that fail OHLCV fetch as `data_available=False`
 
 **Review the output:**
 - Check that decisions are reasonable (sensible tickers, appropriate allocations)
 - Verify moderation verdicts make sense
 - Confirm risk checks are applied correctly
 - Check cost summary is within budget
+- Check that "Skipped N candidates with no OHLCV data" is low (should decrease over cycles as bad tickers are flagged)
 
 ## Running a Live Cycle
 

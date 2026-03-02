@@ -25,7 +25,9 @@ def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
     - earnings_growth: mean reversion (growth check)
     - earnings_momentum_qoq: factor (momentum component)
     - sector: risk manager (sector allocation cap)
+    - industry: more granular than sector, used in company profiles for Claude
     - market_cap: universe ranking
+    - business_summary: yfinance longBusinessSummary for qualitative LLM analysis
 
     Args:
         ticker_symbol: Yahoo Finance ticker (e.g., "AAPL")
@@ -44,7 +46,9 @@ def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
         debt_equity = info.get("debtToEquity")
         earnings_growth = info.get("earningsGrowth")
         sector = info.get("sector", "Unknown")
+        industry = info.get("industry", "")
         market_cap = info.get("marketCap")
+        business_summary = info.get("longBusinessSummary", "")
 
         # Earnings momentum: use quarterly income statement (Net Income)
         earnings_momentum = None
@@ -72,7 +76,9 @@ def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
             "earnings_growth": _safe_float(earnings_growth),
             "earnings_momentum_qoq": _safe_float(earnings_momentum),
             "sector": sector,
+            "industry": industry,
             "market_cap": _safe_float(market_cap),
+            "business_summary": business_summary,
         }
 
     except Exception as e:

@@ -43,7 +43,7 @@ poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
 src/
 ├── orchestrator/          # Main cycle loop (main.py) + state machine (ACTIVE/CAUTIOUS/HALTED)
 ├── agents/
-│   ├── market_data/       # DataFetcher, FinnhubClient, AlphaVantageClient, universe screener
+│   ├── market_data/       # DataFetcher, FinnhubClient, AlphaVantageClient, universe screener, seed_universe
 │   ├── strategy/          # StrategyEngine (Claude synthesis), momentum, mean_reversion, factor
 │   ├── moderation/        # ModerationPanel — GPT-4o (skeptic) + Gemini (risk assessor) consensus
 │   ├── risk/              # RiskManager — 9 hard rules with VETO power, no LLM involvement
@@ -136,9 +136,11 @@ yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
 2. **Defense in depth** — every trade passes Strategy → Moderation → Risk → Execution. Any layer can block.
 3. **State machine** — ACTIVE → CAUTIOUS (>5% drawdown, no new positions) → HALTED (>15%, liquidate all). HALTED requires manual recovery.
 4. **Screening cooldown** — `Instrument.last_screened_at` is stamped after each screen. Stocks within the cooldown window (default 72h) are excluded from `get_screened_universe()` to ensure broad rotation.
-5. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap.
-6. **Order dedup** — 5-minute window prevents double-execution of the same order.
-7. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
+5. **Curated seed universe** — `seed_universe.py` contains ~160 well-known US equities. Used as fallback when instruments table lacks enriched data. Tickers that fail yfinance OHLCV fetch are flagged `data_available=False` and permanently excluded.
+6. **Company profiles** — `longBusinessSummary` + `industry` from yfinance are persisted in the `Instrument` model and included in the Claude strategy prompt for qualitative reasoning.
+7. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap.
+8. **Order dedup** — 5-minute window prevents double-execution of the same order.
+9. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
 
 ## Environment Variables
 
@@ -159,7 +161,7 @@ ALPHA_VANTAGE_API_KEY # AI news sentiment
 | Model | Table | Key Purpose |
 |-------|-------|-------------|
 | `SystemState` | `system_state` | State machine: ACTIVE/CAUTIOUS/HALTED, paused flag |
-| `Instrument` | `instruments` | Cached T212 instruments with sector, market_cap, `last_screened_at` |
+| `Instrument` | `instruments` | Cached T212 instruments with sector, industry, market_cap, business_summary, `data_available`, `last_screened_at` |
 | `Order` | `orders` | Every order (filled, dry_run, failed) with dedup_key |
 | `StrategyDecision` | `strategy_decisions` | Claude's proposals with conviction, reasoning |
 | `ModerationLog` | `moderation_logs` | GPT-4o + Gemini verdicts with scores |

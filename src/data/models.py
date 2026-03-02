@@ -46,12 +46,15 @@ class Instrument(Base):
     currency = Column(String(10), nullable=True)
     exchange = Column(String(50), nullable=True)
     sector = Column(String(100), nullable=True)
+    industry = Column(String(150), nullable=True)
     market_cap = Column(Float, nullable=True)
+    business_summary = Column(Text, nullable=True)
     isin = Column(String(20), nullable=True)
     type = Column(String(50), nullable=True)
     min_trade_quantity = Column(Float, nullable=True)
     max_open_quantity = Column(Float, nullable=True)
     last_screened_at = Column(DateTime, nullable=True)
+    data_available = Column(Boolean, default=True)  # False = yfinance can't fetch (delisted/invalid)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

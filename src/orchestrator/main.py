@@ -236,6 +236,9 @@ class Orchestrator:
         analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
         news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
 
+        # Build company profiles for top candidates
+        company_profiles = self._build_company_profiles(stocks_data, top_tickers)
+
         # Claude synthesis
         portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
         strategy_result = self.strategy_engine.synthesize_with_claude(
@@ -244,6 +247,7 @@ class Orchestrator:
             market_regime=market_regime,
             analyst_data=analyst_summary,
             news_sentiment=news_summary,
+            company_profiles=company_profiles,
             system_state=current_state,
             vix=vix,
             cash_pct=cash_pct,
@@ -572,8 +576,10 @@ class Orchestrator:
                             data = self.data_fetcher.get_stock_analysis(yf_ticker)
                             data["ticker"] = c_ticker
                             # Skip stocks with no OHLCV data (delisted, invalid, etc.)
+                            # and permanently flag them so they're excluded from future screens
                             if data.get("indicators", {}).get("error"):
                                 logger.debug(f"Skipping {c_ticker}: no OHLCV data available")
+                                self.data_fetcher.mark_instrument_unavailable(c_ticker)
                                 skipped_no_data += 1
                                 continue
                             stocks_data.append(data)
@@ -606,6 +612,50 @@ class Orchestrator:
         for score in sub_results.get("top_factor", []):
             tickers.add(score.ticker)
         return list(tickers)
+
+    @staticmethod
+    def _build_company_profiles(
+        stocks_data: list[dict[str, Any]],
+        top_tickers: list[str],
+    ) -> str:
+        """Build compact company profile text for Claude from fundamentals data.
+
+        Extracts business_summary, industry, and sector for each top candidate
+        so Claude can reason about qualitative factors like competitive moats,
+        regulatory risk, and how macro news impacts the business.
+        """
+        profiles: list[str] = []
+        # Build lookup from stocks_data
+        data_by_ticker: dict[str, dict] = {}
+        for stock in stocks_data:
+            data_by_ticker[stock.get("ticker", "")] = stock
+
+        for ticker in top_tickers[:15]:
+            stock = data_by_ticker.get(ticker, {})
+            fundamentals = stock.get("fundamentals", {})
+            summary = fundamentals.get("business_summary", "")
+            industry = fundamentals.get("industry", "")
+            sector = fundamentals.get("sector", "")
+            name = stock.get("name", ticker)
+
+            if not summary:
+                continue
+
+            # Truncate long summaries to ~300 chars to keep prompt compact
+            if len(summary) > 300:
+                summary = summary[:297] + "..."
+
+            header = f"**{ticker}** ({name})"
+            if industry:
+                header += f" | {industry}"
+            elif sector:
+                header += f" | {sector}"
+
+            profiles.append(f"{header}\n{summary}")
+
+        if not profiles:
+            return "Company profile data not yet available for these tickers."
+        return "\n\n".join(profiles)
 
     def _build_market_context(
         self,

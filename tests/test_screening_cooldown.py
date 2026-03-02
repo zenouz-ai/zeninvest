@@ -143,3 +143,50 @@ class TestScreeningCooldown:
     def test_empty_tickers_no_error(self, fetcher):
         """mark_instruments_screened with empty list should be a no-op."""
         fetcher.mark_instruments_screened([])  # Should not raise
+
+
+class TestDataAvailableFiltering:
+    def test_unavailable_instruments_excluded_from_screen(self, db_session, fetcher):
+        """Instruments with data_available=False should be excluded."""
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12)
+        _make_instrument(db_session, "BAD_US_EQ", "Technology", 2e12)
+        # Mark BAD as unavailable
+        bad = db_session.query(Instrument).filter_by(ticker="BAD_US_EQ").first()
+        bad.data_available = False
+        db_session.commit()
+
+        candidates = fetcher.get_screened_universe()
+        tickers = {c["ticker"] for c in candidates}
+        assert "AAPL_US_EQ" in tickers
+        assert "BAD_US_EQ" not in tickers
+
+    def test_mark_instrument_unavailable(self, db_session, fetcher):
+        """mark_instrument_unavailable should set data_available=False."""
+        _make_instrument(db_session, "DELIST_US_EQ", "Technology", 1e12)
+        fetcher.mark_instrument_unavailable("DELIST_US_EQ")
+
+        inst = db_session.query(Instrument).filter_by(ticker="DELIST_US_EQ").first()
+        assert inst.data_available is False
+
+    def test_fallback_uses_seed_universe(self, db_session, fetcher):
+        """When no enriched instruments exist, fallback should seed from curated list."""
+        # No instruments in DB at all — fallback should populate from seeds
+        candidates = fetcher.get_screened_universe()
+        assert len(candidates) > 0
+        # Should contain well-known stocks from the seed list
+        tickers = {c["ticker"] for c in candidates}
+        assert "AAPL_US_EQ" in tickers or "MSFT_US_EQ" in tickers
+
+    def test_fallback_excludes_unavailable_seeds(self, db_session, fetcher):
+        """Seed instruments marked unavailable should not appear in fallback."""
+        # Pre-insert an instrument that's flagged unavailable
+        db_session.add(Instrument(
+            ticker="AAPL_US_EQ", name="Apple", sector=None,
+            market_cap=None, data_available=False,
+        ))
+        db_session.commit()
+
+        candidates = fetcher.get_screened_universe()
+        tickers = {c["ticker"] for c in candidates}
+        # AAPL should not appear because it's flagged unavailable
+        assert "AAPL_US_EQ" not in tickers

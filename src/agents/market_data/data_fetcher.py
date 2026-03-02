@@ -14,6 +14,7 @@ from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.finnhub_client import FinnhubClient
 from src.agents.market_data.fundamentals import get_fundamentals
 from src.agents.market_data.indicators import calculate_indicators, calculate_relative_strength
+from src.agents.market_data.seed_universe import get_seed_instruments
 from src.data.database import get_session
 from src.data.models import Instrument, MarketDataCache, NewsSentimentCache
 from src.utils.config import get_settings
@@ -341,6 +342,8 @@ class DataFetcher:
                     Instrument.sector != "Unknown",
                     Instrument.market_cap.isnot(None),
                     Instrument.market_cap > settings.small_cap_min,
+                    # Exclude tickers flagged as unfetchable (delisted/invalid)
+                    Instrument.data_available != False,  # noqa: E712
                     # Exclude recently screened stocks
                     (Instrument.last_screened_at.is_(None))
                     | (Instrument.last_screened_at < cooldown_cutoff),
@@ -444,15 +447,49 @@ class DataFetcher:
         total: int,
         session: Any,
     ) -> list[dict[str, Any]]:
-        """Fallback when instruments lack sector/market_cap data."""
+        """Fallback using curated seed universe of well-known stocks.
+
+        When instruments table lacks sector/market_cap data (e.g. first run
+        before enrichment), use the curated seed list of known-good US equities
+        instead of random T212 picks that often include delisted/unfetchable tickers.
+        Seeds are upserted into the instruments table so they persist.
+        """
+        seed_stocks = get_seed_instruments()
+        logger.info(f"Seeding universe with {len(seed_stocks)} curated stocks")
+
+        # Upsert seed data into instruments table
+        for seed in seed_stocks:
+            existing = session.query(Instrument).filter_by(ticker=seed["ticker"]).first()
+            if existing:
+                # Back-fill sector/market_cap if missing
+                if not existing.sector or existing.sector == "Unknown":
+                    existing.sector = seed["sector"]
+                if not existing.market_cap:
+                    existing.market_cap = seed["market_cap"]
+                if not existing.name:
+                    existing.name = seed["name"]
+            else:
+                session.add(Instrument(
+                    ticker=seed["ticker"],
+                    name=seed["name"],
+                    sector=seed["sector"],
+                    market_cap=seed["market_cap"],
+                ))
+        session.commit()
+
+        # Now query back the seeded instruments, excluding bad tickers
         instruments = (
             session.query(Instrument)
-            .filter(Instrument.ticker.notin_(exclude) if exclude else True)
-            .order_by(func.random())
-            .limit(total)
+            .filter(
+                Instrument.sector.isnot(None),
+                Instrument.market_cap.isnot(None),
+                Instrument.data_available != False,  # noqa: E712
+            )
+            .order_by(Instrument.market_cap.desc())
             .all()
         )
-        return [
+
+        result = [
             {
                 "ticker": i.ticker,
                 "name": i.name,
@@ -462,13 +499,17 @@ class DataFetcher:
                 "currency": i.currency,
             }
             for i in instruments
+            if i.ticker not in exclude
         ]
+        return result[:total]
 
     def enrich_instrument_metadata(self, ticker: str, fundamentals: dict[str, Any]) -> None:
-        """Back-fill sector and market_cap into the instruments table from yfinance data."""
+        """Back-fill sector, market_cap, industry, and business_summary from yfinance data."""
         sector = fundamentals.get("sector")
         market_cap = fundamentals.get("market_cap")
-        if not sector and not market_cap:
+        industry = fundamentals.get("industry")
+        business_summary = fundamentals.get("business_summary")
+        if not sector and not market_cap and not business_summary:
             return
 
         session = get_session()
@@ -479,10 +520,30 @@ class DataFetcher:
                     inst.sector = sector
                 if market_cap and (inst.market_cap is None or inst.market_cap == 0):
                     inst.market_cap = market_cap
+                if industry and not inst.industry:
+                    inst.industry = industry
+                if business_summary and not inst.business_summary:
+                    inst.business_summary = business_summary
                 inst.updated_at = datetime.now(timezone.utc)
                 session.commit()
         except Exception as e:
             logger.error(f"Failed to enrich instrument {ticker}: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
+    def mark_instrument_unavailable(self, ticker: str) -> None:
+        """Flag an instrument as data_available=False so it's excluded from future screens."""
+        session = get_session()
+        try:
+            inst = session.query(Instrument).filter_by(ticker=ticker).first()
+            if inst:
+                inst.data_available = False
+                inst.updated_at = datetime.now(timezone.utc)
+                session.commit()
+                logger.info(f"Marked {ticker} as unavailable (no OHLCV data)")
+        except Exception as e:
+            logger.error(f"Failed to mark {ticker} unavailable: {e}")
             session.rollback()
         finally:
             session.close()

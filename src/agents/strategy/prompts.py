@@ -35,6 +35,11 @@ STRATEGY_USER_PROMPT = """Analyze the following data and make allocation decisio
 Interpretation: BULL = trending up (favor momentum). BEAR = risk-off (favor cash, reduce positions).
 SIDEWAYS = mixed signals (favor factor quality, selective mean reversion).
 
+## COMPANY PROFILES
+Use these business descriptions to assess qualitative factors: competitive moats, regulatory exposure,
+sector trends, and how macro news might impact each company's revenue streams.
+{company_profiles}
+
 ## STRATEGY PROPOSALS
 Each line: TICKER: ACTION (score: 0-100) — reasoning. Scores >75 are actionable. >85 are strong. Scores below 75 are insufficient — treat as HOLD.
 
@@ -106,6 +111,7 @@ def build_strategy_prompt(
     factor_proposals: str,
     analyst_data: str,
     news_sentiment: str,
+    company_profiles: str,
     system_state: str,
     vix: float | None,
     cash_pct: float,
@@ -128,6 +134,7 @@ def build_strategy_prompt(
     return STRATEGY_USER_PROMPT.format(
         portfolio_state=portfolio_state,
         market_regime=market_regime,
+        company_profiles=company_profiles,
         momentum_proposals=momentum_proposals,
         mean_reversion_proposals=mean_reversion_proposals,
         factor_proposals=factor_proposals,
