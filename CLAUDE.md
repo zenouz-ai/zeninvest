@@ -176,7 +176,7 @@ Key tuneable values:
 - **Risk**: `max_single_stock_pct: 15`, `max_sector_pct: 35`, `halt_drawdown_pct: 15`
 - **Strategy weights**: momentum `0.35`, mean_reversion `0.30`, factor `0.35`
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)
-- **Universe**: `max_candidates: 30`, cap tiers 40/35/25%, `screening_cooldown_hours: 72`
+- **Universe**: `max_candidates: 30`, cap tiers 70/20/10% (large/mid/small), `screening_cooldown_hours: 72`
 - **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50
 
 ## When Adding New Features

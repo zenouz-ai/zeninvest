@@ -53,7 +53,7 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |        |
                    |        +-- UNIVERSE SCREENER (get_screened_universe)
                    |              [Sector-balanced, cap-tiered sampling:
-                   |               40% large, 35% mid, 25% small cap]
+                   |               70% large, 20% mid, 10% small cap]
                    |              [72h screening cooldown prevents re-screening]
                    |              [Back-fills sector/market_cap to instruments]
                    |
