@@ -52,6 +52,7 @@ class Instrument(Base):
     min_trade_quantity = Column(Float, nullable=True)
     max_open_quantity = Column(Float, nullable=True)
     last_screened_at = Column(DateTime, nullable=True)
+    data_available = Column(Boolean, default=True)  # False = yfinance can't fetch (delisted/invalid)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

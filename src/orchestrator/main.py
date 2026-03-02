@@ -572,8 +572,10 @@ class Orchestrator:
                             data = self.data_fetcher.get_stock_analysis(yf_ticker)
                             data["ticker"] = c_ticker
                             # Skip stocks with no OHLCV data (delisted, invalid, etc.)
+                            # and permanently flag them so they're excluded from future screens
                             if data.get("indicators", {}).get("error"):
                                 logger.debug(f"Skipping {c_ticker}: no OHLCV data available")
+                                self.data_fetcher.mark_instrument_unavailable(c_ticker)
                                 skipped_no_data += 1
                                 continue
                             stocks_data.append(data)
