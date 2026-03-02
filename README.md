@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 119 tests passing, deployment-ready for VPS.
+**Status:** POC — 123 tests passing, deployment-ready for VPS.
 
 ## Architecture
 
@@ -106,7 +106,7 @@ poetry run pytest tests/test_execution.py     # Execution (14 tests)
 poetry run pytest tests/test_strategy.py      # Strategy (17 tests)
 poetry run pytest tests/test_moderation.py    # Moderation (21 tests)
 poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)
-poetry run pytest tests/test_screening_cooldown.py  # Screening cooldown (6 tests)
+poetry run pytest tests/test_screening_cooldown.py  # Screening + seed universe (10 tests)
 ```
 
 ## Project Structure
@@ -115,7 +115,7 @@ poetry run pytest tests/test_screening_cooldown.py  # Screening cooldown (6 test
 src/
 ├── orchestrator/       # Main control loop + state machine
 ├── agents/
-│   ├── market_data/    # yfinance, Finnhub, Alpha Vantage, per-ticker news, universe screener
+│   ├── market_data/    # yfinance, Finnhub, Alpha Vantage, per-ticker news, universe screener, seed universe
 │   ├── strategy/       # Momentum, mean reversion, factor, Claude synthesis
 │   ├── moderation/     # GPT-4o + Gemini investment committee (full data + strategy assessment)
 │   ├── risk/           # Hard rules with VETO power
@@ -167,10 +167,13 @@ notebooks/
 ## Universe Screening
 
 Each cycle discovers new candidates beyond existing positions:
+- **Curated seed universe** — ~160 well-known US equities across all 11 GICS sectors, used as fallback when instruments table hasn't been enriched yet. Eliminates delisted/unfetchable ticker noise from raw T212 data
 - **Sector-balanced sampling** — minimum 3 candidates per sector to avoid concentration
 - **Market-cap tiers** — 70% large cap ($10B+), 20% mid cap ($2B-$10B), 10% small cap ($300M-$2B)
 - **Screening cooldown** — stocks are stamped with `last_screened_at` after each screen and excluded for 72 hours (configurable via `screening_cooldown_hours`), ensuring broader universe coverage across cycles
-- **Metadata enrichment** — sector/market_cap back-filled from yfinance into instruments table over time
+- **Data availability filtering** — tickers that fail yfinance OHLCV fetch are permanently flagged `data_available=False` and excluded from all future screens
+- **Metadata enrichment** — sector, market_cap, industry, and business summary back-filled from yfinance into instruments table over time
+- **Company profiles** — `longBusinessSummary` from yfinance is included in the Claude strategy prompt so it can reason about competitive moats, regulatory exposure, and news impact
 - Skipped in CAUTIOUS mode (no new positions allowed)
 
 ## Cost Management
