@@ -504,10 +504,12 @@ class DataFetcher:
         return result[:total]
 
     def enrich_instrument_metadata(self, ticker: str, fundamentals: dict[str, Any]) -> None:
-        """Back-fill sector and market_cap into the instruments table from yfinance data."""
+        """Back-fill sector, market_cap, industry, and business_summary from yfinance data."""
         sector = fundamentals.get("sector")
         market_cap = fundamentals.get("market_cap")
-        if not sector and not market_cap:
+        industry = fundamentals.get("industry")
+        business_summary = fundamentals.get("business_summary")
+        if not sector and not market_cap and not business_summary:
             return
 
         session = get_session()
@@ -518,6 +520,10 @@ class DataFetcher:
                     inst.sector = sector
                 if market_cap and (inst.market_cap is None or inst.market_cap == 0):
                     inst.market_cap = market_cap
+                if industry and not inst.industry:
+                    inst.industry = industry
+                if business_summary and not inst.business_summary:
+                    inst.business_summary = business_summary
                 inst.updated_at = datetime.now(timezone.utc)
                 session.commit()
         except Exception as e:
