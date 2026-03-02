@@ -202,7 +202,7 @@ The Claude prompt contains these sections and this is how each should influence 
 |----------------|------------------|--------------------|
 | Portfolio State | JSON: cash, positions, returns | Position sizing, rebalancing needs |
 | Market Regime | BULL/BEAR/SIDEWAYS | Overall risk appetite — fewer/smaller buys in BEAR |
-| Momentum Proposals | `TICKER: BUY (score: 75) — reasoning` | Strong momentum (>60) should increase conviction |
+| Momentum Proposals | `TICKER: BUY (score: 75) — reasoning` | Strong momentum (>75) should increase conviction |
 | Mean Reversion Proposals | `TICKER: BUY (score: 70) — reasoning` | Oversold stocks with good fundamentals |
 | Factor Proposals | `TICKER: composite=72 (V=65 Q=80 M=70)` | Multi-factor quality ranking of top stocks |
 | Analyst Data | JSON: buy/hold/sell counts, insider MSPR | Confirmation or warning signal |
@@ -381,7 +381,7 @@ and reliability tradeoff of local deployment.
 | 2026-02-26 | Added paid vs. local models assessment (Section 11) | At $3-5/month, paid models are cheaper than local GPU infrastructure and more reliable. No change recommended. |
 | 2026-02-27 | Added per-ticker news extraction from Alpha Vantage | `extract_per_ticker_news()` parses AV `ticker_sentiments` to build per-stock summaries. Claude now sees which news belongs to which stock. Eliminates generic "no specific news" fallbacks. |
 | 2026-02-27 | Added strategy_assessment to moderator context | Claude's `market_assessment` thesis is now passed to GPT-4o and Gemini so moderators can challenge the overall market reasoning, not just individual trade proposals. |
-| 2026-02-27 | Added universe screening with sector/cap diversity | `get_screened_universe()` samples candidates across sectors (min 3 per sector) and market-cap tiers (40% large, 35% mid, 25% small). System can now discover new stocks beyond existing positions. |
+| 2026-02-27 | Added universe screening with sector/cap diversity | `get_screened_universe()` samples candidates across sectors (min 3 per sector) and market-cap tiers (70% large, 20% mid, 10% small). System can now discover new stocks beyond existing positions. |
 | 2026-02-27 | Added `enrich_instrument_metadata()` | Back-fills sector and market_cap from yfinance into the instruments table, improving future screening cycles. |
 | 2026-02-27 | Fixed REDUCE action in order manager | REDUCE now correctly negates quantity (partial sell). Previously would have tried to BUY instead. Risk manager also checks `min_positions` for REDUCE. |
 | 2026-02-27 | Added automatic stop-loss orders after BUY | `place_stop_loss()` uses T212's stop order API (GTC validity) with Claude's `stop_loss_pct`. Placed automatically after successful BUY executions. |

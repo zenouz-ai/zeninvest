@@ -381,7 +381,7 @@ These thresholds are configured in `settings.yaml`:
 
 ```yaml
 strategy:
-  min_conviction: 60
+  min_conviction: 75
   min_conviction_no_moderators: 85
   min_conviction_one_moderator: 75
 ```
@@ -703,7 +703,7 @@ strategy:
   momentum_weight: 0.35
   mean_reversion_weight: 0.30
   factor_weight: 0.35
-  min_conviction: 60
+  min_conviction: 75
   min_conviction_no_moderators: 85
   min_conviction_one_moderator: 75
 
@@ -719,9 +719,9 @@ models:
 universe:
   max_candidates: 30              # New stocks screened per cycle
   candidates_per_sector: 3        # Min per sector (avoid concentration)
-  large_cap_pct: 0.40             # 40% large cap ($10B+)
-  mid_cap_pct: 0.35               # 35% mid cap ($2B-$10B)
-  small_cap_pct: 0.25             # 25% small cap ($300M-$2B)
+  large_cap_pct: 0.70             # 70% large cap ($10B+)
+  mid_cap_pct: 0.20               # 20% mid cap ($2B-$10B)
+  small_cap_pct: 0.10             # 10% small cap ($300M-$2B)
   large_cap_min: 10000000000
   mid_cap_min: 2000000000
   small_cap_min: 300000000

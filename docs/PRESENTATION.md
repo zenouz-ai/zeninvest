@@ -240,7 +240,7 @@ docker compose logs -f investment-agent
 6. **Per-trade journaling** — Complete audit trail for learning and accountability
 7. **12-hour cycles over real-time** — Reduces costs, avoids overtrading
 8. **Conviction thresholds** — Higher bar when fewer moderators available
-9. **Universe screening over position-only analysis** — Discovers new opportunities via sector-balanced, cap-tiered sampling (40% large, 35% mid, 25% small) with 72-hour screening cooldown to ensure broad coverage
+9. **Universe screening over position-only analysis** — Discovers new opportunities via sector-balanced, cap-tiered sampling (70% large, 20% mid, 10% small) with 72-hour screening cooldown to ensure broad coverage
 10. **Automatic stop-loss over manual protection** — GTC stop orders placed after every BUY using Claude's downside estimate
 11. **Per-ticker news over combined dump** — Claude sees which articles belong to which stock, eliminating generic "no specific news" outputs
 

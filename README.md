@@ -168,7 +168,7 @@ notebooks/
 
 Each cycle discovers new candidates beyond existing positions:
 - **Sector-balanced sampling** — minimum 3 candidates per sector to avoid concentration
-- **Market-cap tiers** — 40% large cap ($10B+), 35% mid cap ($2B-$10B), 25% small cap ($300M-$2B)
+- **Market-cap tiers** — 70% large cap ($10B+), 20% mid cap ($2B-$10B), 10% small cap ($300M-$2B)
 - **Screening cooldown** — stocks are stamped with `last_screened_at` after each screen and excluded for 72 hours (configurable via `screening_cooldown_hours`), ensuring broader universe coverage across cycles
 - **Metadata enrichment** — sector/market_cap back-filled from yfinance into instruments table over time
 - Skipped in CAUTIOUS mode (no new positions allowed)
