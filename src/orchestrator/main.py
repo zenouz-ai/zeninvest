@@ -598,10 +598,10 @@ class Orchestrator:
         """Extract top tickers from sub-strategy results."""
         tickers: set[str] = set()
         for signal in sub_results.get("momentum", []):
-            if signal.action == "BUY" and signal.score >= 69:
+            if signal.action == "BUY" and signal.score >= 75:
                 tickers.add(signal.ticker)
         for signal in sub_results.get("mean_reversion", []):
-            if signal.action == "BUY" and signal.score >= 63:
+            if signal.action == "BUY" and signal.score >= 70:
                 tickers.add(signal.ticker)
         for score in sub_results.get("top_factor", []):
             tickers.add(score.ticker)
