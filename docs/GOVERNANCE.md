@@ -506,7 +506,7 @@ Risk thresholds are configured in `config/settings.yaml`. To adjust:
 
 ### 7.1 What Is Logged
 
-The system maintains a comprehensive audit trail across seven database tables:
+The system maintains a comprehensive audit trail across eight database tables:
 
 | Table | What Is Logged | Key Fields |
 |-------|---------------|------------|
@@ -518,6 +518,7 @@ The system maintains a comprehensive audit trail across seven database tables:
 | `cost_logs` | Every LLM API call cost | `provider`, `model`, `input_tokens`, `output_tokens`, `cost_gbp`, `cycle_id`, `purpose` |
 | `api_logs` | Every external API call | `service`, `method`, `endpoint`, `status_code`, `duration_ms`, `error` |
 | `portfolio_snapshots` | Portfolio state at end of each cycle | `total_value_gbp`, `cash_gbp`, `num_positions`, `positions_json`, `state` |
+| `instruments` | Company profiles and screening state | `ticker`, `sector`, `industry`, `market_cap`, `business_summary`, `data_available`, `last_screened_at` |
 
 ### 7.2 Traceability
 
@@ -531,6 +532,17 @@ cycle_20260225_0700_a1b2c3
   +-- cost_logs: Anthropic £0.042, OpenAI £0.018, Google £0.003
   +-- orders: BUY 5 x AAPL_US_EQ @ $187.50 = £750.00 -> filled
 ```
+
+### 7.2.1 Rejected Stock Tracking
+
+Stocks considered but **not traded** are also fully traceable. The cycle output includes a `rejected_stocks` list recording every rejection with:
+
+- **Stage** that blocked the trade: `strategy` (HOLD), `moderation` (BLOCKED), or `risk` (REJECT)
+- **Company metadata**: industry, market cap, business description
+- **Conviction** score from Claude's strategy assessment
+- **Rejection reason**: Claude's HOLD reasoning, moderation consensus, or triggered risk rules
+
+This enables post-cycle analysis of missed opportunities and filter calibration. All rejections are also persisted in the `strategy_decisions`, `moderation_logs`, and `risk_decisions` database tables for long-term querying across cycles.
 
 ### 7.3 Log Files
 
@@ -551,6 +563,7 @@ Each log entry includes timestamp, logger name, level, and message. File handler
 Every executed trade generates a detailed Markdown journal file with:
 
 - Trade details (action, ticker, shares, price, value, weight)
+- Company profile (industry, market cap, business description)
 - Strategy reasoning and conviction score
 - Moderation panel results (all three verdicts)
 - Risk verdict (rules checked, triggered rules, reasoning)

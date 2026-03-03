@@ -127,9 +127,11 @@ src/
 docs/                   # Project documentation
 ├── ARCHITECTURE.md     # System architecture and component diagrams
 ├── COMPETITIVE_ANALYSIS.md  # Assessment vs professional quant systems
+├── DATA_RATIONALE.md   # Every data point's purpose and keep/remove verdict
 ├── DEPLOYMENT.md       # VPS deployment and monitoring guide
 ├── GOVERNANCE.md       # Governance framework and security guardrails
 ├── LOCAL_LIVE_RUN.md   # Local live run guide (Trading 212 Practice)
+├── MAC_SETUP.md        # macOS-specific installation instructions
 ├── PRESENTATION.md     # Project presentation and summary
 └── SOPHISTICATION_ROADMAP.md  # Prioritised improvement roadmap
 notebooks/
@@ -157,6 +159,15 @@ notebooks/
 - Daily loss > 2%: no new buys for 24 hours
 - Cash floor: always >= 10%
 - Min 5 positions once invested (checked for SELL and REDUCE actions)
+
+## Cycle Output
+
+Each cycle returns a JSON result with:
+- **trades** — executed trades with industry, market cap, business description, reasoning, allocation, moderation/risk verdicts, stop-loss
+- **rejected_stocks** — stocks considered but not traded, tagged by the stage that blocked them (strategy HOLD, moderation BLOCKED, risk REJECT) with company metadata and rejection reason
+- **cost_summary** — LLM spend for the cycle
+
+This enables immediate post-cycle review and long-term analysis of missed opportunities.
 
 ## Order Types
 
