@@ -168,7 +168,7 @@ notebooks/
 
 Each cycle returns a JSON result with:
 - **trades** — executed trades with industry, market cap, business description, reasoning, allocation, moderation/risk verdicts, stop-loss
-- **rejected_stocks** — stocks considered but not traded, tagged by the stage that blocked them (strategy HOLD, moderation BLOCKED, risk REJECT) with company metadata and rejection reason
+- **rejected_stocks** — stocks considered but not traded, tagged by the stage that blocked them (`strategy_hold`, `moderation_blocked`, `risk_reject`, `opportunity_queue`, `opportunity_filtered`) with company metadata and rejection reason
 - **opportunity_ranking** — per-ticker UOV scores (`uov_raw`, `uov_z`, `uov_final`, `uov_ewma`) persisted each cycle
 - **queued_candidates** — BUY opportunities held in the UOV queue when not executed immediately
 - **swap_candidates** — non-executing suggestions where a candidate's UOV materially exceeds weakest held position
@@ -193,6 +193,7 @@ Execution behavior:
 - **Market orders** — BUY, SELL, REDUCE (partial sell) via T212 market order API
 - **Stop-loss orders** — Automatically placed after BUY executions using Claude's `stop_loss_pct` (GTC validity)
 - **Order deduplication** — 5-minute window prevents double-execution
+- **Ticker normalization** — plain symbols returned by strategy (e.g. `AAPL`) are normalized to T212 instrument IDs (e.g. `AAPL_US_EQ`) before execution when an unambiguous mapping exists
 
 ## Universe Screening
 

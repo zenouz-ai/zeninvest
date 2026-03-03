@@ -131,6 +131,8 @@ Trading 212 and yfinance use different ticker formats. **Always convert when cro
 yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
 ```
 
+Execution guardrail: strategy output may occasionally return plain symbols (`AAPL`, `NEM`, etc.). The orchestrator normalizes these to T212 instrument IDs (`AAPL_US_EQ`, `NEM_US_EQ`) via `stocks_data` and an instruments-table fallback before order placement.
+
 ## Architecture Rules
 
 1. **Risk rules are deterministic Python** — never call an LLM from `RiskManager`. Its VETO is final.

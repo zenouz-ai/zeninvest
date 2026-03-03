@@ -2,6 +2,8 @@
 
 This guide covers deploying the Investment Agent on a VPS, monitoring its operation, managing logs and backups, and retrieving activity data for local analysis.
 
+> Path and username note: examples use `/home/deploy` and user `deploy`. If your VPS user differs (for example `deploy_invest_ai`), replace those values consistently in all commands and service files.
+
 ---
 
 ## Table of Contents
@@ -266,6 +268,24 @@ Scheduled jobs:
   - daily_snapshot: cron[...]
   - weekly_report: cron[...]
   - instrument_refresh: cron[...]
+```
+
+### 3.7 Manual Cycle Validation (Recommended)
+
+Before relying on scheduler-only execution, trigger one manual dry cycle and one manual live cycle:
+
+```bash
+# Dry cycle (no real trades)
+docker compose run --rm investment-agent python -m src.orchestrator.main --dry-run
+
+# Live cycle (Practice account)
+docker compose run --rm investment-agent python -m src.orchestrator.main
+```
+
+Then scan logs for auth/order errors:
+
+```bash
+docker compose logs investment-agent 2>&1 | grep -Ei "401|403|404|invalid_api_key|unauthorized|forbidden|error"
 ```
 
 ---
@@ -989,6 +1009,12 @@ T212_API_KEY=abc123
 
 # Bad (quotes are included as part of the value)
 T212_API_KEY="abc123"
+
+# Bad (OpenAI key accidentally duplicated prefix)
+OPENAI_API_KEY=sk-sk-proj-...
+
+# Good (OpenAI project key)
+OPENAI_API_KEY=sk-proj-...
 ```
 
 After editing `.env`:
@@ -1000,6 +1026,8 @@ docker compose down && docker compose up -d
 # Non-Docker
 sudo systemctl restart investment-agent
 ```
+
+If keys were ever pasted into chat, screenshots, or public logs, rotate/revoke them in provider dashboards before restarting the service.
 
 ### 9.2 Rate Limiting
 
