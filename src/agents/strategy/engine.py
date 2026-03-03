@@ -123,6 +123,7 @@ class StrategyEngine:
         cash_pct: float,
         num_positions: int,
         cycle_id: str,
+        uov_swap_context: str = "",
     ) -> dict[str, Any]:
         """Send strategy data to Claude for final synthesis."""
         if not check_budget(Provider.ANTHROPIC.value):
@@ -151,6 +152,7 @@ class StrategyEngine:
             momentum_weight=self.settings.momentum_weight,
             mean_reversion_weight=self.settings.mean_reversion_weight,
             factor_weight=self.settings.factor_weight,
+            uov_swap_context=uov_swap_context,
         )
 
         try:

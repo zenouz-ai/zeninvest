@@ -22,9 +22,9 @@
 |                              |           |           |           |        |
 |                              v           v           v           v        |
 |                          +--------+  +--------+  +-------+  +--------+   |
-|                          | STEP 5 |  | STEP 6 |                          |
-|                          |EXECUTE |  |JOURNAL |                          |
-|                          +--------+  +--------+                          |
+|                          | STEP 5 |  | STEP 6 |  | STEP 7 |              |
+|                          |  UOV   |  |EXECUTE |  |JOURNAL |              |
+|                          +--------+  +--------+  +--------+              |
 |                                                                            |
 +===========================================================================+
 ```
@@ -93,10 +93,15 @@ Gemini ----------> GEMINI MODERATOR ---+    (consensus logic)   (moderation_logs
                     correlation, REDUCE check]
                             |
                             v
-Trading 212 <----- ORDER MANAGER -----------> SQLite (orders)
+Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue)
   (Practice API)   [Market orders (BUY/SELL/REDUCE),
                     stop-loss orders (GTC),
                     dedup + rate limit]
+                            ^
+                            |
+                   UOV SCORER + OPTIMIZER --> SQLite (opportunity_score_snapshots)
+                   [Cross-cycle UOV EWMA, BUY ranking, queueing]
+                   [Queue state persisted in opportunity_queue]
                             |
                             v
                    TRADE JOURNAL -----------> journals/*.md
@@ -216,6 +221,18 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders)
 +-------------------+     +-------------------+     | data_available   |
                                                     | last_screened_at |
                                                     +------------------+
+
++-------------------------+     +----------------------+
+| opportunity_score_snaps |     | opportunity_queue    |
+|-------------------------|     |----------------------|
+| cycle_id                |     | ticker               |
+| ticker                  |     | queued_cycles        |
+| stage                   |     | last_uov_ewma        |
+| uov_raw / z / final     |     | last_seen_cycle_id   |
+| uov_ewma                |     | metadata_json        |
+| moderation_consensus    |     |                      |
+| risk_verdict            |     |                      |
++-------------------------+     +----------------------+
 ```
 
 ---
@@ -265,6 +282,10 @@ graph TB
         RULES[Hard Rules<br/>VETO power, BUY/SELL/REDUCE]
     end
 
+    subgraph Opportunity["Opportunity Layer"]
+        UOV[UOV Scorer + Optimizer<br/>Rank + Queue + Swap Suggestions]
+    end
+
     subgraph Execution["Execution Layer"]
         OM[Order Manager<br/>Market + Stop-Loss + Dedup]
         T212[Trading 212 API<br/>Practice Mode]
@@ -302,10 +323,12 @@ graph TB
 
     CONS --> RULES
 
-    RULES --> OM
+    RULES --> UOV
+    UOV --> OM
     OM --> T212
 
     OM --> DB
+    UOV --> DB
     OM --> JOUR
     CLAUDE --> DB
     CONS --> DB
@@ -330,6 +353,7 @@ sequenceDiagram
     participant GP as GPT-4o
     participant GE as Gemini Flash
     participant R as Risk Manager
+    participant U as UOV Optimizer
     participant E as Order Manager
     participant T as Trading 212
     participant J as Journal
@@ -383,24 +407,38 @@ sequenceDiagram
                 alt REJECT
                     O->>O: Record to rejected_stocks (stage: risk)
                 else APPROVE or RESIZE
-                    O->>E: Execute market order
-                    E->>T: POST /equity/orders/market
-                    T-->>E: Order confirmation
-                    E-->>O: Execution result
-                    alt BUY with stop_loss_pct
-                        O->>E: Place stop-loss order (GTC)
-                        E->>T: POST /equity/orders/stop
-                        T-->>E: Stop-loss confirmation
+                    O->>U: Record evaluation for UOV (raw/z/final/ewma)
+                    alt BUY
+                        O->>U: Rank + queue candidates
+                    else SELL / REDUCE
+                        O->>E: Execute market order
+                        E->>T: POST /equity/orders/market
+                        T-->>E: Order confirmation
+                        E-->>O: Execution result
+                        O->>J: Generate trade journal
                     end
-                    O->>J: Generate trade journal
                 end
             end
         end
     end
 
+    O->>U: Select BUY execution order (active mode) or shadow-only output
+    loop Selected BUYs
+        O->>E: Execute ranked BUY
+        E->>T: POST /equity/orders/market
+        T-->>E: Order confirmation
+        E-->>O: Execution result
+        alt BUY with stop_loss_pct
+            O->>E: Place stop-loss order (GTC)
+            E->>T: POST /equity/orders/stop
+            T-->>E: Stop-loss confirmation
+        end
+        O->>J: Generate trade journal
+    end
+
     O->>O: Record cycle completion
     O->>O: Save portfolio snapshot
-    O->>O: Return trades + rejected_stocks + cost_summary
+    O->>O: Return trades + rejected_stocks + opportunity_ranking + queued_candidates + swap_candidates + cost_summary
 ```
 
 ### Cycle Output Structure
@@ -437,6 +475,22 @@ Each `run_cycle()` call returns a JSON result with:
       "description": "Tesla, Inc. designs, develops, manufactures ..."
     }
   ],
+  "opportunity_ranking": [
+    {
+      "ticker": "AAPL_US_EQ",
+      "uov_raw": 0.42,
+      "uov_z": 1.31,
+      "uov_final": 1.31,
+      "uov_ewma": 0.88,
+      "is_tradable": true
+    }
+  ],
+  "queued_candidates": [
+    { "ticker": "GOOG_US_EQ", "queued_cycles": 2, "uov_ewma": 0.56 }
+  ],
+  "swap_candidates": [
+    { "candidate_ticker": "NVDA_US_EQ", "weakest_held_ticker": "PFE_US_EQ", "delta": 1.12 }
+  ],
   "num_trades": 3,
   "num_rejected": 2,
   "cost_summary": { ... },
@@ -451,8 +505,9 @@ Rejected stocks are tagged by the pipeline stage that blocked them:
 | `strategy` | Claude returned HOLD | reasoning, conviction |
 | `moderation` | GPT-4o + Gemini consensus BLOCKED | moderation verdict |
 | `risk` | Hard rules REJECTED | triggered_rules list |
+| `opportunity_queue` | Approved BUY deferred by UOV queueing/capacity | queued reason + metadata |
 
-All rejection details are also persisted in the `strategy_decisions`, `moderation_logs`, and `risk_decisions` database tables for long-term analysis.
+All rejection details are also persisted in the `strategy_decisions`, `moderation_logs`, `risk_decisions`, and `opportunity_score_snapshots` tables for long-term analysis.
 
 ### State Machine
 

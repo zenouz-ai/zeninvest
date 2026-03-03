@@ -1,8 +1,8 @@
 # Investment Agent -- Governance, Security & Cost Controls
 
 **Document Owner:** Project Lead
-**Last Updated:** 2026-02-25
-**Version:** 1.0
+**Last Updated:** 2026-03-03
+**Version:** 1.1
 **Classification:** Internal -- Confidential
 
 ---
@@ -37,6 +37,7 @@ Orchestrator (every 12h, Mon-Fri)
   +-- Moderation Panel     -> GPT-4o (skeptical) + Gemini Flash (risk) -> consensus
   +--                         (receives Claude's market_assessment to challenge)
   +-- Risk Agent           -> Hard rules, VETO power, NEVER overridden by LLMs
+  +-- Opportunity Agent    -> UOV scoring + BUY ranking/queueing (no sell authority)
   +-- Execution Agent      -> Market orders + stop-loss + dedup + rate limiting
   +-- Journal & Reporting  -> Per-trade journals, daily + weekly reports
 ```
@@ -66,7 +67,8 @@ No single component has unchecked authority. Every trade must pass through multi
 | 1 | Strategy Agent (Claude Sonnet) | Proposes trades with conviction scores | N/A -- proposes only |
 | 2 | Moderation Panel (GPT-4o + Gemini Flash) | Can BLOCK any trade via consensus | N/A -- reviews only |
 | 3 | Risk Agent (deterministic Python) | Can REJECT or RESIZE any trade | **No -- never** |
-| 4 | Execution Agent (T212 client) | Executes with deduplication | **No -- never** |
+| 4 | Opportunity Agent (UOV optimizer) | Ranks/queues approved BUYs only (shadow or active mode) | **No -- deterministic Python** |
+| 5 | Execution Agent (T212 client) | Executes with deduplication | **No -- never** |
 
 The Risk Agent is implemented as pure deterministic Python code (`src/agents/risk/risk_manager.py`). It does not call any LLM and cannot be influenced by prompt injection or model hallucination. Its decisions are final.
 
@@ -241,6 +243,8 @@ The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules
 | 6 | **Daily Loss Halt** | Daily loss >2%: no new buys for 24 hours | REJECT | `check_daily_loss_halt()` |
 | 7 | **Cash Floor** | Always maintain >= 10% cash | REJECT or RESIZE | `check_cash_floor()` |
 | 8 | **Min Positions** | Minimum 5 positions once invested (prevents over-concentration) | REJECT (on SELL or REDUCE) | `check_min_positions()` |
+
+In addition to these risk rules, the Opportunity Agent enforces deterministic execution-capacity limits for BUY ordering (`max_positions` and investable cash above the configured cash floor) before order submission.
 
 #### Why These Rules Can Never Be Overridden
 
@@ -506,7 +510,7 @@ Risk thresholds are configured in `config/settings.yaml`. To adjust:
 
 ### 7.1 What Is Logged
 
-The system maintains a comprehensive audit trail across eight database tables:
+The system maintains a comprehensive audit trail across ten database tables:
 
 | Table | What Is Logged | Key Fields |
 |-------|---------------|------------|
@@ -519,6 +523,8 @@ The system maintains a comprehensive audit trail across eight database tables:
 | `api_logs` | Every external API call | `service`, `method`, `endpoint`, `status_code`, `duration_ms`, `error` |
 | `portfolio_snapshots` | Portfolio state at end of each cycle | `total_value_gbp`, `cash_gbp`, `num_positions`, `positions_json`, `state` |
 | `instruments` | Company profiles and screening state | `ticker`, `sector`, `industry`, `market_cap`, `business_summary`, `data_available`, `last_screened_at` |
+| `opportunity_score_snapshots` | Per-cycle UOV scores/components for every evaluated ticker | `cycle_id`, `ticker`, `stage`, `uov_raw`, `uov_z`, `uov_final`, `uov_ewma`, `moderation_consensus`, `risk_verdict` |
+| `opportunity_queue` | Active queued BUY opportunities awaiting execution | `ticker`, `queued_cycles`, `last_uov_ewma`, `last_seen_cycle_id`, `metadata_json` |
 
 ### 7.2 Traceability
 
@@ -538,11 +544,12 @@ cycle_20260225_0700_a1b2c3
 Stocks considered but **not traded** are also fully traceable. The cycle output includes a `rejected_stocks` list recording every rejection with:
 
 - **Stage** that blocked the trade: `strategy` (HOLD), `moderation` (BLOCKED), or `risk` (REJECT)
+- **Opportunity gate stage**: `opportunity_queue` when approved BUYs are deferred by UOV queueing/capacity rules
 - **Company metadata**: industry, market cap, business description
 - **Conviction** score from Claude's strategy assessment
 - **Rejection reason**: Claude's HOLD reasoning, moderation consensus, or triggered risk rules
 
-This enables post-cycle analysis of missed opportunities and filter calibration. All rejections are also persisted in the `strategy_decisions`, `moderation_logs`, and `risk_decisions` database tables for long-term querying across cycles.
+This enables post-cycle analysis of missed opportunities and filter calibration. All rejections are also persisted in the `strategy_decisions`, `moderation_logs`, `risk_decisions`, and `opportunity_score_snapshots` tables for long-term querying across cycles.
 
 ### 7.3 Log Files
 
@@ -747,6 +754,17 @@ cost_limits:
   google_daily_gbp: 0.50
   total_monthly_gbp: 50.00
   alert_threshold_pct: 80
+
+opportunity:
+  enabled: true
+  mode: shadow                      # shadow or active
+  immediate_threshold_z: 1.0
+  queue_threshold_z: 0.2
+  queue_ttl_cycles: 3
+  swap_delta_z: 1.0
+  ewma_half_life_cycles: 6
+  weights: {...}                    # deterministic weighted hybrid features
+  penalties: {...}                  # stage penalties (HOLD/BLOCKED/REJECT/RESIZE)
 ```
 
 ---
@@ -764,6 +782,8 @@ All data is stored in a SQLite database managed via SQLAlchemy + Alembic migrati
 | `strategy_decisions` | Claude's trade proposals | 0-15 per cycle |
 | `moderation_logs` | GPT-4o + Gemini verdicts | 0-45 per cycle (3 per trade) |
 | `risk_decisions` | Risk agent evaluations | 0-15 per cycle |
+| `opportunity_score_snapshots` | UOV scoring output per evaluated ticker | 0-30+ per cycle |
+| `opportunity_queue` | Active queued BUY opportunities | 0-30 active rows |
 | `cost_logs` | LLM API call costs | 1-5 per cycle |
 | `api_logs` | All external API calls | 10-50 per cycle |
 | `market_data_cache` | Cached OHLCV and fundamentals | Varies |

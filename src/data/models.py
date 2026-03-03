@@ -206,6 +206,60 @@ class NewsSentimentCache(Base):
     expires_at = Column(DateTime, nullable=True)
 
 
+class OpportunityScoreSnapshot(Base):
+    """Per-cycle Universal Opportunity Value (UOV) scores per ticker."""
+
+    __tablename__ = "opportunity_score_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    cycle_id = Column(String(50), nullable=False, index=True)
+    ticker = Column(String(50), nullable=False, index=True)
+    action = Column(String(10), nullable=True)
+    stage = Column(String(50), nullable=True)
+    is_tradable = Column(Boolean, nullable=False, default=False)
+    uov_raw = Column(Float, nullable=False, default=0.0)
+    uov_z = Column(Float, nullable=False, default=0.0)
+    uov_final = Column(Float, nullable=False, default=0.0)
+    uov_ewma = Column(Float, nullable=False, default=0.0)
+    previous_uov_ewma = Column(Float, nullable=True)
+    momentum_score = Column(Float, nullable=True)
+    mean_reversion_score = Column(Float, nullable=True)
+    factor_composite_score = Column(Float, nullable=True)
+    factor_quality_score = Column(Float, nullable=True)
+    factor_value_score = Column(Float, nullable=True)
+    conviction = Column(Integer, nullable=True)
+    expected_holding_period = Column(String(50), nullable=True)
+    gpt_verdict = Column(String(20), nullable=True)
+    gemini_growth_score = Column(Integer, nullable=True)
+    gemini_risk_score = Column(Integer, nullable=True)
+    gemini_confidence_score = Column(Integer, nullable=True)
+    moderation_consensus = Column(String(20), nullable=True)
+    risk_verdict = Column(String(20), nullable=True)
+    news_sentiment_score = Column(Float, nullable=True)
+    market_cap = Column(Float, nullable=True)
+    reason = Column(Text, nullable=True)
+
+
+class OpportunityQueue(Base):
+    """Active queue of UOV-ranked BUY opportunities pending execution."""
+
+    __tablename__ = "opportunity_queue"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String(50), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_seen_cycle_id = Column(String(50), nullable=True, index=True)
+    queued_cycles = Column(Integer, nullable=False, default=1)
+    last_uov_z = Column(Float, nullable=False, default=0.0)
+    last_uov_final = Column(Float, nullable=False, default=0.0)
+    last_uov_ewma = Column(Float, nullable=False, default=0.0)
+    action = Column(String(10), nullable=False, default="BUY")
+    reason = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+
+
 class ApiLog(Base):
     """Log of all API requests and responses."""
 

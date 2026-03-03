@@ -11,14 +11,15 @@ overloaded with noise. Every field must answer: "How does this change what we bu
 
 ## Decision Paths
 
-Data influences the final trading decision through four paths:
+Data influences the final trading decision through five paths:
 
 1. **Sub-strategy scoring** → Strategy reasoning text → Claude prompt → Claude decision
 2. **LLM prompt context** → Claude/GPT-4o/Gemini interprets directly
 3. **Hard risk rules** → APPROVE / REJECT / RESIZE (overrides LLM decisions)
-4. **Audit trail** → Trade journals, database records (no decision influence)
+4. **UOV optimizer** → Cross-cycle UOV ranking, BUY queueing, swap suggestions (strategy still controls SELL/REDUCE)
+5. **Audit trail** → Trade journals, database records (no decision influence)
 
-Only paths 1-3 matter for decision quality. Path 4 is for post-hoc analysis only.
+Only paths 1-4 matter for decision quality. Path 5 is for post-hoc analysis only.
 
 ---
 
@@ -96,7 +97,7 @@ fully cover the three active strategies (momentum, mean reversion, factor via re
 | `earnings_growth` | Mean Rev | Growth >0 = +10. Growth < -20% = fundamental_ok=False. |
 | `earnings_momentum_qoq` | Factor | QoQ momentum >10% = +15 momentum component. |
 | `sector` | Risk Mgr | Sector allocation cap (35%). Used for diversification checks. |
-| `market_cap` | Universe | Used to rank/filter instrument universe (top 200 by cap). |
+| `market_cap` | Universe + UOV | Used for universe cap-tiering and as a low-weight UOV size/liquidity proxy. |
 
 ### REMOVED — Never consumed by any strategy or rule
 
@@ -209,6 +210,7 @@ The Claude prompt contains these sections and this is how each should influence 
 | Per-Ticker News | Per-stock sentiment scores + headlines from AV | Specific catalysts/risks per stock (not a combined dump) |
 | Broad Market Sentiment | Aggregate headlines + sentiment | Overall market mood beyond numbers |
 | Risk Budget | VIX, cash %, position limits | Constrains position sizing |
+| Prior UOV Swap Context | Weakest held UOV + top non-held UOV names from prior cycles | Contextual signal for HOLD vs BUY prioritisation (advisory only) |
 
 ### GPT-4o (Skeptic Moderator)
 
@@ -316,6 +318,26 @@ The three sub-strategies are already 100% rule-based. A purely mathematical syst
 **Conclusion:** LLMs are necessary for news interpretation and nuanced signal synthesis.
 However, the sub-strategies themselves should remain rule-based — LLMs should not replace
 the scoring logic, only sit on top of it as a synthesis and sanity-check layer.
+
+---
+
+## 11. UOV Layer (Deterministic, Cross-Cycle)
+
+The Universal Opportunity Value (UOV) layer is deterministic Python logic that transforms existing cycle outputs into a persistent ranking signal:
+
+- `uov_raw` — weighted hybrid sum of normalized inputs:
+  - momentum/mean-reversion/factor scores
+  - conviction and expected holding period
+  - moderation fields (GPT verdict, Gemini growth/risk/confidence)
+  - news sentiment proxy and market-cap proxy
+- `uov_z` — within-cycle z-score of `uov_raw`
+- `uov_final` — `uov_z` + stage penalties (`strategy_hold`, `moderation_blocked`, `risk_reject`, `risk_resize`)
+- `uov_ewma` — cross-cycle smoothing (EWMA half-life configurable; default 6 cycles)
+
+Decision influence:
+- In `shadow` mode, UOV is logged only (`opportunity_score_snapshots`) and does not change execution ordering.
+- In `active` mode, approved BUYs are ranked by `uov_ewma`, then either executed or queued (`opportunity_queue`) subject to cash/slot constraints.
+- UOV emits swap suggestions when non-held candidate `uov_ewma` exceeds the weakest held score by a configured delta (default `>= 1.0`), but does not autonomously trigger SELL/REDUCE actions.
 
 ---
 

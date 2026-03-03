@@ -17,6 +17,8 @@ from src.agents.execution.t212_client import T212Client
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.data_fetcher import DataFetcher
 from src.agents.moderation.panel import ModerationPanel
+from src.agents.opportunity.optimizer import OpportunityOptimizer
+from src.agents.opportunity.scorer import OpportunityScorer
 from src.agents.reporting.journal import generate_trade_journal
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
@@ -41,6 +43,8 @@ class Orchestrator:
         self.strategy_engine = StrategyEngine()
         self.moderation_panel = ModerationPanel()
         self.risk_manager = RiskManager()
+        self.opportunity_scorer = OpportunityScorer()
+        self.opportunity_optimizer = OpportunityOptimizer()
 
         self._t212_client: T212Client | None = None
         self._order_manager: OrderManager | None = None
@@ -65,7 +69,15 @@ class Orchestrator:
         cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
         logger.info(f"Starting cycle {cycle_id} (dry_run={self.dry_run})")
 
-        result: dict[str, Any] = {"cycle_id": cycle_id, "trades": [], "rejected_stocks": [], "errors": []}
+        result: dict[str, Any] = {
+            "cycle_id": cycle_id,
+            "trades": [],
+            "rejected_stocks": [],
+            "errors": [],
+            "opportunity_ranking": [],
+            "queued_candidates": [],
+            "swap_candidates": [],
+        }
 
         # Check if system is paused
         if self.state_machine.is_paused:
@@ -238,6 +250,7 @@ class Orchestrator:
 
         # Build company profiles for top candidates
         company_profiles = self._build_company_profiles(stocks_data, top_tickers)
+        uov_swap_context = self.opportunity_scorer.build_swap_context(existing_tickers)
 
         # Claude synthesis
         portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
@@ -253,6 +266,7 @@ class Orchestrator:
             cash_pct=cash_pct,
             num_positions=len(existing_tickers),
             cycle_id=cycle_id,
+            uov_swap_context=uov_swap_context,
         )
 
         if "error" in strategy_result and not strategy_result.get("decisions"):
@@ -265,7 +279,11 @@ class Orchestrator:
         decisions = strategy_result.get("decisions", [])
         logger.info(f"Strategy produced {len(decisions)} decisions")
 
-        # --- STEP 5: Moderation -> Risk -> Execution ---
+        # --- STEP 5: Moderation -> Risk -> (Deferred BUY Execution) ---
+        pending_buys: list[dict[str, Any]] = []
+        opportunity_evaluations: list[dict[str, Any]] = []
+        projected_num_positions = len(existing_tickers)
+
         for decision in decisions:
             ticker = decision.get("ticker", "")
             action = decision.get("action", "HOLD")
@@ -273,13 +291,24 @@ class Orchestrator:
             target_alloc = decision.get("target_allocation_pct", 0)
 
             if action == "HOLD":
+                hold_reason = decision.get("reasoning", "HOLD — no action required")
                 result["rejected_stocks"].append({
                     "ticker": ticker,
                     "action": action,
                     "stage": "strategy",
-                    "reason": decision.get("reasoning", "HOLD — no action required"),
+                    "reason": hold_reason,
                     "conviction": conviction,
                     **self._get_stock_metadata(ticker, stocks_data),
+                })
+                opportunity_evaluations.append({
+                    "ticker": ticker,
+                    "action": action,
+                    "stage": "strategy_hold",
+                    "decision": decision,
+                    "reason": hold_reason,
+                    "moderation_consensus": None,
+                    "risk_verdict": None,
+                    "final_allocation_pct": None,
                 })
                 continue
 
@@ -307,17 +336,30 @@ class Orchestrator:
                 conviction=conviction,
                 cycle_id=cycle_id,
             )
+            mod_dict = mod_result.to_dict()
 
             if mod_result.consensus == "BLOCKED":
                 logger.info(f"{ticker} BLOCKED by moderation panel")
+                reason = "BLOCKED by moderation consensus"
                 result["rejected_stocks"].append({
                     "ticker": ticker,
                     "action": action,
                     "stage": "moderation",
-                    "reason": f"BLOCKED by moderation consensus",
+                    "reason": reason,
                     "conviction": conviction,
                     "moderation": mod_result.consensus,
                     **self._get_stock_metadata(ticker, stocks_data),
+                })
+                opportunity_evaluations.append({
+                    "ticker": ticker,
+                    "action": action,
+                    "stage": "moderation_blocked",
+                    "decision": decision,
+                    "moderation": mod_dict,
+                    "reason": reason,
+                    "moderation_consensus": mod_result.consensus,
+                    "risk_verdict": None,
+                    "final_allocation_pct": None,
                 })
                 continue
 
@@ -341,7 +383,7 @@ class Orchestrator:
                 vix=vix,
                 daily_pnl_pct=portfolio_data.get("daily_pnl_pct", 0),
                 daily_loss_halt_until=state_info.get("daily_loss_halt_until"),
-                num_positions=len(existing_tickers),
+                num_positions=projected_num_positions,
                 system_state=current_state,
                 is_existing_winner=ticker in existing_tickers,
                 cycle_id=cycle_id,
@@ -359,116 +401,143 @@ class Orchestrator:
                     "triggered_rules": risk_verdict.triggered_rules,
                     **self._get_stock_metadata(ticker, stocks_data),
                 })
+                opportunity_evaluations.append({
+                    "ticker": ticker,
+                    "action": action,
+                    "stage": "risk_reject",
+                    "decision": decision,
+                    "moderation": mod_dict,
+                    "reason": risk_verdict.reasoning,
+                    "moderation_consensus": mod_result.consensus,
+                    "risk_verdict": risk_verdict.verdict,
+                    "final_allocation_pct": None,
+                })
                 continue
 
             final_alloc = risk_verdict.adjusted_allocation_pct or target_alloc
-            trade_value = current_value * final_alloc / 100
-            current_price = self._get_current_price(ticker, stocks_data)
-
-            if current_price <= 0:
-                logger.warning(f"No price for {ticker}, skipping")
-                continue
-
-            # Execute
-            logger.info(f"Executing {action} {ticker} at {final_alloc:.1f}%...")
-            exec_result = self.order_manager.execute_market_order(
-                ticker=ticker,
-                action=action,
-                target_amount_gbp=trade_value,
-                current_price=current_price,
-                strategy=decision.get("primary_strategy"),
-                conviction=conviction,
-                moderation_result=mod_result.consensus,
-                risk_result=risk_verdict.verdict,
-            )
-
-            # Journal
-            try:
-                stock_data = next((s for s in stocks_data if s["ticker"] == ticker), {})
-                journal_path = generate_trade_journal(
-                    action=action,
-                    ticker=ticker,
-                    shares=exec_result.get("quantity", 0),
-                    price=current_price,
-                    value_gbp=exec_result.get("value_gbp", trade_value),
-                    weight_pct=final_alloc,
-                    conviction=conviction,
-                    strategy=decision.get("primary_strategy", "unknown"),
-                    reasoning=decision.get("reasoning", ""),
-                    growth_potential=decision.get("growth_potential", "MEDIUM"),
-                    risk_level=decision.get("risk_level", "MEDIUM"),
-                    catalysts=decision.get("catalysts", []),
-                    risks=decision.get("risks", []),
-                    exit_conditions=decision.get("exit_conditions", ""),
-                    upside_target_pct=decision.get("upside_target_pct", 0),
-                    stop_loss_pct=decision.get("stop_loss_pct", 0),
-                    expected_holding_period=decision.get("expected_holding_period", ""),
-                    market_regime=market_regime,
-                    vix=vix,
-                    sp500_trend=macro.get("sp500_pct_above_200ma", "N/A"),
-                    news_sentiment_overall=decision.get("news_sentiment_summary", ""),
-                    finnhub_data=analyst_data_map.get(ticker, {}),
-                    alpha_vantage_data=av_broad_sentiment,
-                    moderation_results=mod_result.to_dict(),
-                    risk_verdict={
-                        "verdict": risk_verdict.verdict,
-                        "rules_checked": risk_verdict.rules_checked,
-                        "triggered_rules": risk_verdict.triggered_rules,
-                        "reasoning": risk_verdict.reasoning,
-                    },
-                    indicators=stock_data.get("indicators", {}),
-                    fundamentals=stock_data.get("fundamentals", {}),
-                    portfolio_state={
-                        "total_value": current_value,
-                        "cash": cash_gbp,
-                        "invested": current_value - cash_gbp,
-                        "num_positions": len(existing_tickers),
-                        "total_return_pct": portfolio_data.get("total_return_pct", 0),
-                        "alpha_pct": portfolio_data.get("alpha_pct", 0),
-                        "positions": [],
-                    },
-                )
-                exec_result["journal_path"] = journal_path
-            except Exception as e:
-                logger.error(f"Journal generation failed for {ticker}: {e}")
-
-            # Place stop-loss order after successful BUY execution
-            stop_loss_result = None
-            stop_loss_pct = decision.get("stop_loss_pct", 0)
-            if (
-                action == "BUY"
-                and exec_result.get("status") in ("filled", "dry_run")
-                and stop_loss_pct
-                and stop_loss_pct < 0
-            ):
-                executed_qty = exec_result.get("quantity", 0)
-                if executed_qty > 0:
-                    try:
-                        stop_loss_result = self.order_manager.place_stop_loss(
-                            ticker=ticker,
-                            quantity=executed_qty,
-                            current_price=current_price,
-                            stop_loss_pct=stop_loss_pct,
-                            strategy=decision.get("primary_strategy"),
-                        )
-                        logger.info(
-                            f"Stop-loss for {ticker}: {stop_loss_result.get('status')} "
-                            f"@ {stop_loss_result.get('stop_price')}"
-                        )
-                    except Exception as e:
-                        logger.error(f"Failed to place stop-loss for {ticker}: {e}")
-
-            result["trades"].append({
+            stage = "risk_resize" if (action == "BUY" and risk_verdict.verdict == "RESIZE") else "approved"
+            opportunity_evaluations.append({
                 "ticker": ticker,
                 "action": action,
-                "allocation_pct": final_alloc,
-                "reasoning": decision.get("reasoning", ""),
-                **self._get_stock_metadata(ticker, stocks_data),
-                "execution": exec_result,
-                "moderation": mod_result.consensus,
-                "risk": risk_verdict.verdict,
-                "stop_loss": stop_loss_result,
+                "stage": stage,
+                "decision": decision,
+                "moderation": mod_dict,
+                "reason": decision.get("reasoning", ""),
+                "moderation_consensus": mod_result.consensus,
+                "risk_verdict": risk_verdict.verdict,
+                "final_allocation_pct": final_alloc,
             })
+
+            if action == "BUY":
+                pending_buys.append({
+                    "ticker": ticker,
+                    "action": action,
+                    "decision": decision,
+                    "moderation": mod_result,
+                    "risk_verdict": risk_verdict,
+                    "final_allocation_pct": final_alloc,
+                })
+                continue
+
+            trade_entry = self._execute_trade(
+                decision=decision,
+                action=action,
+                ticker=ticker,
+                final_alloc=final_alloc,
+                current_value=current_value,
+                cash_gbp=cash_gbp,
+                total_return_pct=portfolio_data.get("total_return_pct", 0),
+                alpha_pct=portfolio_data.get("alpha_pct", 0),
+                existing_tickers=existing_tickers,
+                market_regime=market_regime,
+                vix=vix,
+                macro=macro,
+                stocks_data=stocks_data,
+                analyst_data_map=analyst_data_map,
+                av_broad_sentiment=av_broad_sentiment,
+                mod_result=mod_result,
+                risk_verdict=risk_verdict,
+            )
+            if trade_entry:
+                result["trades"].append(trade_entry)
+                if action == "SELL" and trade_entry.get("execution", {}).get("status") in ("filled", "dry_run"):
+                    projected_num_positions = max(0, projected_num_positions - 1)
+
+        # --- STEP 6: UOV scoring + BUY optimization ---
+        selected_buy_order = [b["ticker"] for b in pending_buys]
+        if self.settings.opportunity_enabled:
+            scores = self.opportunity_scorer.score_cycle(
+                cycle_id=cycle_id,
+                evaluations=opportunity_evaluations,
+                sub_results=sub_results,
+                stocks_data=stocks_data,
+                per_ticker_news=per_ticker_news,
+            )
+            result["opportunity_ranking"] = [s.to_dict() for s in scores]
+            scores_by_ticker = {entry["ticker"]: entry for entry in result["opportunity_ranking"]}
+            if not scores_by_ticker and pending_buys:
+                logger.warning("UOV scoring unavailable, falling back to legacy BUY execution order.")
+            else:
+                plan = self.opportunity_optimizer.optimize_buys(
+                    cycle_id=cycle_id,
+                    approved_buys=pending_buys,
+                    scores_by_ticker=scores_by_ticker,
+                    existing_tickers=existing_tickers,
+                    cash_pct=cash_pct,
+                    num_positions=projected_num_positions,
+                )
+                result["queued_candidates"] = plan.get("queued_candidates", [])
+                result["swap_candidates"] = plan.get("swap_candidates", [])
+
+                if self.settings.opportunity_mode == "active":
+                    selected_buy_order = plan.get("execution_order", selected_buy_order)
+                    selected_set = set(selected_buy_order)
+                    queued_set = {item.get("ticker", "") for item in result["queued_candidates"]}
+                    for pending in pending_buys:
+                        ticker = pending.get("ticker", "")
+                        if ticker in selected_set:
+                            continue
+                        if ticker in queued_set:
+                            stage = "opportunity_queue"
+                            reason = "Queued by UOV optimizer (capacity/threshold gating)"
+                        else:
+                            stage = "opportunity_filtered"
+                            reason = "Filtered by UOV optimizer (below queue threshold or queue expiry)"
+                        result["rejected_stocks"].append({
+                            "ticker": ticker,
+                            "action": "BUY",
+                            "stage": stage,
+                            "reason": reason,
+                            "conviction": pending.get("decision", {}).get("conviction", 0),
+                            **self._get_stock_metadata(ticker, stocks_data),
+                        })
+
+        pending_by_ticker = {b["ticker"]: b for b in pending_buys}
+        for ticker in selected_buy_order:
+            pending = pending_by_ticker.get(ticker)
+            if pending is None:
+                continue
+            trade_entry = self._execute_trade(
+                decision=pending["decision"],
+                action="BUY",
+                ticker=ticker,
+                final_alloc=float(pending.get("final_allocation_pct", 0.0)),
+                current_value=current_value,
+                cash_gbp=cash_gbp,
+                total_return_pct=portfolio_data.get("total_return_pct", 0),
+                alpha_pct=portfolio_data.get("alpha_pct", 0),
+                existing_tickers=existing_tickers,
+                market_regime=market_regime,
+                vix=vix,
+                macro=macro,
+                stocks_data=stocks_data,
+                analyst_data_map=analyst_data_map,
+                av_broad_sentiment=av_broad_sentiment,
+                mod_result=pending["moderation"],
+                risk_verdict=pending["risk_verdict"],
+            )
+            if trade_entry:
+                result["trades"].append(trade_entry)
 
         # Record cycle completion
         self.state_machine.record_cycle()
@@ -630,6 +699,133 @@ class Orchestrator:
                      f"(positions: {len(current_positions)}, "
                      f"candidates: {len(stocks_data) - len(current_positions)})")
         return stocks_data
+
+    def _execute_trade(
+        self,
+        decision: dict[str, Any],
+        action: str,
+        ticker: str,
+        final_alloc: float,
+        current_value: float,
+        cash_gbp: float,
+        total_return_pct: float,
+        alpha_pct: float,
+        existing_tickers: set[str],
+        market_regime: str,
+        vix: float | None,
+        macro: dict[str, Any],
+        stocks_data: list[dict[str, Any]],
+        analyst_data_map: dict[str, dict],
+        av_broad_sentiment: dict[str, Any],
+        mod_result: Any,
+        risk_verdict: Any,
+    ) -> dict[str, Any] | None:
+        """Execute an approved trade and generate journal + stop-loss where relevant."""
+        trade_value = current_value * final_alloc / 100
+        current_price = self._get_current_price(ticker, stocks_data)
+
+        if current_price <= 0:
+            logger.warning(f"No price for {ticker}, skipping")
+            return None
+
+        conviction = decision.get("conviction", 0)
+        logger.info(f"Executing {action} {ticker} at {final_alloc:.1f}%...")
+        exec_result = self.order_manager.execute_market_order(
+            ticker=ticker,
+            action=action,
+            target_amount_gbp=trade_value,
+            current_price=current_price,
+            strategy=decision.get("primary_strategy"),
+            conviction=conviction,
+            moderation_result=mod_result.consensus,
+            risk_result=risk_verdict.verdict,
+        )
+
+        try:
+            stock_data = next((s for s in stocks_data if s["ticker"] == ticker), {})
+            journal_path = generate_trade_journal(
+                action=action,
+                ticker=ticker,
+                shares=exec_result.get("quantity", 0),
+                price=current_price,
+                value_gbp=exec_result.get("value_gbp", trade_value),
+                weight_pct=final_alloc,
+                conviction=conviction,
+                strategy=decision.get("primary_strategy", "unknown"),
+                reasoning=decision.get("reasoning", ""),
+                growth_potential=decision.get("growth_potential", "MEDIUM"),
+                risk_level=decision.get("risk_level", "MEDIUM"),
+                catalysts=decision.get("catalysts", []),
+                risks=decision.get("risks", []),
+                exit_conditions=decision.get("exit_conditions", ""),
+                upside_target_pct=decision.get("upside_target_pct", 0),
+                stop_loss_pct=decision.get("stop_loss_pct", 0),
+                expected_holding_period=decision.get("expected_holding_period", ""),
+                market_regime=market_regime,
+                vix=vix,
+                sp500_trend=macro.get("sp500_pct_above_200ma", "N/A"),
+                news_sentiment_overall=decision.get("news_sentiment_summary", ""),
+                finnhub_data=analyst_data_map.get(ticker, {}),
+                alpha_vantage_data=av_broad_sentiment,
+                moderation_results=mod_result.to_dict(),
+                risk_verdict={
+                    "verdict": risk_verdict.verdict,
+                    "rules_checked": risk_verdict.rules_checked,
+                    "triggered_rules": risk_verdict.triggered_rules,
+                    "reasoning": risk_verdict.reasoning,
+                },
+                indicators=stock_data.get("indicators", {}),
+                fundamentals=stock_data.get("fundamentals", {}),
+                portfolio_state={
+                    "total_value": current_value,
+                    "cash": cash_gbp,
+                    "invested": current_value - cash_gbp,
+                    "num_positions": len(existing_tickers),
+                    "total_return_pct": total_return_pct,
+                    "alpha_pct": alpha_pct,
+                    "positions": [],
+                },
+            )
+            exec_result["journal_path"] = journal_path
+        except Exception as e:
+            logger.error(f"Journal generation failed for {ticker}: {e}")
+
+        stop_loss_result = None
+        stop_loss_pct = decision.get("stop_loss_pct", 0)
+        if (
+            action == "BUY"
+            and exec_result.get("status") in ("filled", "dry_run")
+            and stop_loss_pct
+            and stop_loss_pct < 0
+        ):
+            executed_qty = exec_result.get("quantity", 0)
+            if executed_qty > 0:
+                try:
+                    stop_loss_result = self.order_manager.place_stop_loss(
+                        ticker=ticker,
+                        quantity=executed_qty,
+                        current_price=current_price,
+                        stop_loss_pct=stop_loss_pct,
+                        strategy=decision.get("primary_strategy"),
+                    )
+                    logger.info(
+                        f"Stop-loss for {ticker}: {stop_loss_result.get('status')} "
+                        f"@ {stop_loss_result.get('stop_price')}"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to place stop-loss for {ticker}: {e}")
+
+        return {
+            "ticker": ticker,
+            "action": action,
+            "allocation_pct": final_alloc,
+            "reasoning": decision.get("reasoning", ""),
+            **self._get_stock_metadata(ticker, stocks_data),
+            "execution": exec_result,
+            "moderation": mod_result.consensus,
+            "risk": risk_verdict.verdict,
+            "stop_loss": stop_loss_result,
+        }
 
     def _get_top_tickers(self, sub_results: dict[str, Any]) -> list[str]:
         """Extract top tickers from sub-strategy results."""

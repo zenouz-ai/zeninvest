@@ -216,6 +216,70 @@ class Settings:
     def screening_cooldown_hours(self) -> int:
         return int(self.universe.get("screening_cooldown_hours", 72))
 
+    # --- Opportunity Scoring / Optimizer ---
+    @property
+    def opportunity(self) -> dict[str, Any]:
+        return self._config.get("opportunity", {})
+
+    @property
+    def opportunity_enabled(self) -> bool:
+        return bool(self.opportunity.get("enabled", False))
+
+    @property
+    def opportunity_mode(self) -> str:
+        return str(self.opportunity.get("mode", "shadow"))
+
+    @property
+    def opportunity_immediate_threshold_z(self) -> float:
+        return float(self.opportunity.get("immediate_threshold_z", 1.0))
+
+    @property
+    def opportunity_queue_threshold_z(self) -> float:
+        return float(self.opportunity.get("queue_threshold_z", 0.2))
+
+    @property
+    def opportunity_queue_ttl_cycles(self) -> int:
+        return int(self.opportunity.get("queue_ttl_cycles", 3))
+
+    @property
+    def opportunity_swap_delta_z(self) -> float:
+        return float(self.opportunity.get("swap_delta_z", 1.0))
+
+    @property
+    def opportunity_ewma_half_life_cycles(self) -> float:
+        return float(self.opportunity.get("ewma_half_life_cycles", 6))
+
+    @property
+    def opportunity_weights(self) -> dict[str, float]:
+        defaults = {
+            "momentum": 0.12,
+            "mean_reversion": 0.10,
+            "factor_composite": 0.20,
+            "factor_quality": 0.08,
+            "factor_value": 0.05,
+            "conviction": 0.15,
+            "expected_holding_period": 0.05,
+            "gpt_verdict": 0.05,
+            "gemini_growth_vs_risk": 0.08,
+            "gemini_confidence": 0.04,
+            "news_sentiment": 0.05,
+            "market_cap": 0.03,
+        }
+        config_weights = self.opportunity.get("weights", {})
+        return {k: float(config_weights.get(k, v)) for k, v in defaults.items()}
+
+    @property
+    def opportunity_penalties(self) -> dict[str, float]:
+        defaults = {
+            "strategy_hold": -0.8,
+            "moderation_blocked": -1.2,
+            "risk_reject": -1.6,
+            "risk_resize": -0.35,
+            "unrated": -0.6,
+        }
+        config_penalties = self.opportunity.get("penalties", {})
+        return {k: float(config_penalties.get(k, v)) for k, v in defaults.items()}
+
     # --- Cost Limits ---
     @property
     def cost_limits(self) -> dict[str, Any]:

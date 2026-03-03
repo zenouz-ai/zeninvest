@@ -71,6 +71,9 @@ Use headlines to identify catalysts, risks, and market mood that numbers cannot 
 - Max position size: {max_position_pct}%
 - Positions: {num_positions}/{max_positions}
 
+## UOV SWAP CONTEXT (optional, from prior cycles)
+{uov_swap_context}
+
 ## CONSTRAINTS
 - Max 15 positions
 - Min 2% / Max {max_position_pct}% per position
@@ -121,6 +124,7 @@ def build_strategy_prompt(
     momentum_weight: float,
     mean_reversion_weight: float,
     factor_weight: float,
+    uov_swap_context: str = "",
 ) -> str:
     """Build the full strategy prompt for Claude."""
     state_constraints = ""
@@ -149,5 +153,6 @@ def build_strategy_prompt(
         momentum_weight=momentum_weight,
         mean_reversion_weight=mean_reversion_weight,
         factor_weight=factor_weight,
+        uov_swap_context=uov_swap_context or "No prior UOV swap signals available.",
         state_constraints=state_constraints,
     )

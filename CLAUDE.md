@@ -4,7 +4,7 @@ This file provides context to AI assistants (Claude Code, Codex, Cursor, etc.) w
 
 ## What This Project Is
 
-Autonomous investment agent that trades via the Trading 212 Practice API using a multi-LLM pipeline. Runs on 12-hour cycles (07:00 + 19:00 UTC, Mon-Fri). Pipeline: Data → Universe Screen → Strategy (Claude) → Moderation (GPT-4o + Gemini) → Risk (hard rules, VETO) → Execution (T212) → Journal.
+Autonomous investment agent that trades via the Trading 212 Practice API using a multi-LLM pipeline. Runs on 12-hour cycles (07:00 + 19:00 UTC, Mon-Fri). Pipeline: Data → Universe Screen → Strategy (Claude) → Moderation (GPT-4o + Gemini) → Risk (hard rules, VETO) → Opportunity (UOV rank/queue) → Execution (T212) → Journal.
 
 ## Quick Commands
 
@@ -47,6 +47,7 @@ src/
 │   ├── strategy/          # StrategyEngine (Claude synthesis), momentum, mean_reversion, factor
 │   ├── moderation/        # ModerationPanel — GPT-4o (skeptic) + Gemini (risk assessor) consensus
 │   ├── risk/              # RiskManager — 9 hard rules with VETO power, no LLM involvement
+│   ├── opportunity/       # OpportunityScorer + OpportunityOptimizer — UOV ranking, queueing, swap suggestions
 │   ├── execution/         # OrderManager + T212Client — market orders, stop-loss, dedup
 │   └── reporting/         # Trade journals (markdown per trade)
 ├── data/
@@ -141,6 +142,7 @@ yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
 7. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap.
 8. **Order dedup** — 5-minute window prevents double-execution of the same order.
 9. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
+10. **UOV optimizer guardrail** — UOV may reorder/queue BUYs, but it never directly triggers SELL/REDUCE. Strategy remains sell authority; Risk remains final veto.
 
 ## Environment Variables
 
@@ -169,6 +171,8 @@ ALPHA_VANTAGE_API_KEY # AI news sentiment
 | `CostLog` | `cost_logs` | Per-LLM-call cost tracking |
 | `MarketDataCache` | `market_data_cache` | OHLCV + fundamentals (12h TTL) |
 | `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state |
+| `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
+| `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities awaiting execution |
 
 ## Configuration (config/settings.yaml)
 
@@ -180,6 +184,7 @@ Key tuneable values:
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)
 - **Universe**: `max_candidates: 30`, cap tiers 70/20/10% (large/mid/small), `screening_cooldown_hours: 72`
 - **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50
+- **Opportunity**: `enabled`, `mode: shadow|active`, immediate/queue z-thresholds, queue TTL, swap delta, EWMA half-life, weighted feature map, stage penalties
 
 ## When Adding New Features
 

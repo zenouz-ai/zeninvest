@@ -178,19 +178,20 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | Logging | Rich |
 | CLI | Click |
 | Containerization | Docker + Docker Compose |
-| Testing | pytest (123 tests) |
+| Testing | pytest (128 tests) |
 
 ---
 
 ## Slide 11: Testing & Quality
 
-**123 unit tests covering:**
+**128 unit tests covering:**
 - Risk manager: 43 tests (all rules + state transitions + REDUCE check)
 - Strategy engine: 17 tests (momentum, mean reversion, factor, prompts, synthesis)
 - Moderation: 21 tests (consensus logic, panel integration, context formatting)
 - Execution: 14 tests (order management, dedup, portfolio state)
 - Cost tracker: 16 tests (budgets, degradation, logging)
 - Screening + seed universe: 10 tests (cooldown, seed fallback, data availability filtering)
+- Opportunity scoring + optimizer: 5 tests (UOV scoring, queue lifecycle, swap suggestions)
 
 **Diagnostics Notebook:**
 - 20-section Jupyter notebook testing each component independently
@@ -207,12 +208,14 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | `strategy_decisions` | Every Claude decision with reasoning, catalysts, risks |
 | `moderation_logs` | Every moderator verdict with scores (BLOCKED decisions preserved) |
 | `risk_decisions` | Every risk check with triggered rules (REJECTED decisions preserved) |
+| `opportunity_score_snapshots` | Per-cycle UOV score components and final/ewma values |
+| `opportunity_queue` | Active queued BUY opportunities with queued cycle count |
 | `orders` | Every order (executed, dry-run, failed) |
 | `cost_logs` | Every LLM API call with token counts |
 | `api_logs` | Every external API call with latency |
 | `instruments` | Company profiles: sector, industry, market_cap, business_summary |
 
-**Cycle output includes both executed trades and rejected stocks** (with stage, reason, company metadata) for post-cycle analysis.
+**Cycle output includes executed trades, rejected stocks, opportunity ranking, queued candidates, and swap suggestions** for post-cycle analysis and controlled BUY prioritisation.
 | `portfolio_snapshots` | Portfolio state after each cycle |
 | `system_state` | State machine transitions |
 

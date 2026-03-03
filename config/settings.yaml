@@ -1,5 +1,5 @@
 trading:
-  mode: practice
+  mode: active
   base_url: https://demo.trading212.com/api/v0
   cycle_hours: 12
   cycle_times_utc: ["07:00", "19:00"]
@@ -60,3 +60,31 @@ cost_limits:
   google_daily_gbp: 0.50
   total_monthly_gbp: 50.00
   alert_threshold_pct: 80
+
+opportunity:
+  enabled: true
+  mode: active  # shadow|active
+  immediate_threshold_z: 0.75
+  queue_threshold_z: 0.1
+  queue_ttl_cycles: 3
+  swap_delta_z: 1.0
+  ewma_half_life_cycles: 6
+  weights:
+    momentum: 0.12
+    mean_reversion: 0.10
+    factor_composite: 0.20
+    factor_quality: 0.08
+    factor_value: 0.05
+    conviction: 0.15
+    expected_holding_period: 0.05
+    gpt_verdict: 0.05
+    gemini_growth_vs_risk: 0.08
+    gemini_confidence: 0.04
+    news_sentiment: 0.05
+    market_cap: 0.03
+  penalties:
+    strategy_hold: -0.8
+    moderation_blocked: -1.2
+    risk_reject: -1.6
+    risk_resize: -0.35
+    unrated: -0.6

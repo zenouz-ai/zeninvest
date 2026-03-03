@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 123 tests passing, deployment-ready for VPS.
+**Status:** POC — 128 tests passing, deployment-ready for VPS.
 
 ## Architecture
 
@@ -13,6 +13,7 @@ Orchestrator (every 12h)
   ├── Strategy Agent       → Momentum + Mean Reversion + Factor → Claude Sonnet synthesis
   ├── Moderation Panel     → GPT-4o (skeptic) + Gemini (risk assessor) → consensus
   ├── Risk Agent           → Hard rules, VETO power, never overridden by LLMs
+  ├── Opportunity Agent    → Universal Opportunity Value (UOV) scoring + ranked BUY queue
   ├── Execution Agent      → Trading 212 API: market orders + stop-loss + dedup
   └── Journal & Reporting  → Per-trade journals, daily + weekly reports
 ```
@@ -50,6 +51,7 @@ Key settings:
 - **Trading:** cycle times, position limits, cash floor
 - **Risk:** drawdown thresholds, VIX limits, sector caps, correlation limits
 - **Universe:** candidate count, sector balance, market-cap tiers, screening cooldown
+- **Opportunity:** UOV mode (`shadow|active`), thresholds, EWMA half-life, queue TTL, swap delta
 - **Cost:** daily per-provider budgets, monthly total cap
 - **Models:** Claude Sonnet (strategy), GPT-4o + Gemini Flash (moderation)
 
@@ -107,6 +109,7 @@ poetry run pytest tests/test_strategy.py      # Strategy (17 tests)
 poetry run pytest tests/test_moderation.py    # Moderation (21 tests)
 poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)
 poetry run pytest tests/test_screening_cooldown.py  # Screening + seed universe (10 tests)
+poetry run pytest tests/test_opportunity_scorer.py tests/test_opportunity_optimizer.py  # UOV scoring + optimizer (5 tests)
 ```
 
 ## Project Structure
@@ -119,6 +122,7 @@ src/
 │   ├── strategy/       # Momentum, mean reversion, factor, Claude synthesis
 │   ├── moderation/     # GPT-4o + Gemini investment committee (full data + strategy assessment)
 │   ├── risk/           # Hard rules with VETO power
+│   ├── opportunity/    # UOV scorer + optimizer (ranking, queueing, swap suggestions)
 │   ├── execution/      # T212 client + order manager: market, stop-loss, dedup
 │   └── reporting/      # Trade journals, daily/weekly reports
 ├── data/               # SQLAlchemy models, Alembic migrations
@@ -165,9 +169,24 @@ notebooks/
 Each cycle returns a JSON result with:
 - **trades** — executed trades with industry, market cap, business description, reasoning, allocation, moderation/risk verdicts, stop-loss
 - **rejected_stocks** — stocks considered but not traded, tagged by the stage that blocked them (strategy HOLD, moderation BLOCKED, risk REJECT) with company metadata and rejection reason
+- **opportunity_ranking** — per-ticker UOV scores (`uov_raw`, `uov_z`, `uov_final`, `uov_ewma`) persisted each cycle
+- **queued_candidates** — BUY opportunities held in the UOV queue when not executed immediately
+- **swap_candidates** — non-executing suggestions where a candidate's UOV materially exceeds weakest held position
 - **cost_summary** — LLM spend for the cycle
 
 This enables immediate post-cycle review and long-term analysis of missed opportunities.
+
+### Universal Opportunity Value (UOV)
+
+The orchestrator computes a cross-cycle UOV for each assessed ticker:
+- `uov_raw` — weighted hybrid score from sub-strategy signals, conviction, moderation/risk outputs, sentiment proxy, and market-cap proxy
+- `uov_z` — cross-sectional z-score of `uov_raw` within the cycle
+- `uov_final` — `uov_z` plus deterministic stage penalties (HOLD/BLOCKED/REJECT/RESIZE)
+- `uov_ewma` — smoothed cross-cycle score (`half-life = 6 cycles` by default)
+
+Execution behavior:
+- `mode: shadow` — compute/log UOV and queue state but preserve legacy BUY execution ordering
+- `mode: active` — rank approved BUYs by `uov_ewma`, execute top opportunities first, queue remaining candidates, and emit conservative swap suggestions (no autonomous SELLs)
 
 ## Order Types
 

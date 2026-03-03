@@ -1,6 +1,6 @@
 # Sophistication Roadmap
 
-**Last Updated:** 2026-02-28
+**Last Updated:** 2026-03-03
 **Owner:** Project Lead (PhD Mathematics, Data Science Manager in Finance)
 **Developers:** Claude Code Opus 4.6 (cloud, primary), Codex 5.3+ (local VS Code, secondary)
 **Principle:** Innovation, simplicity, elegance, transparency. No feature for technology's sake — every addition must materially improve quality.
@@ -9,12 +9,13 @@
 
 ## Current State: POC (v1.0)
 
-The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 119 tests pass. It is ready for VPS deployment to begin gathering live performance data.
+The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 128 tests pass. It is ready for VPS deployment to begin gathering live performance data.
 
 **What the POC establishes:**
 - End-to-end pipeline: Data → Screen → Strategy → Moderation → Risk → Execution → Journal
 - Multi-LLM adversarial architecture (Claude + GPT-4o + Gemini)
 - Deterministic risk guardrails with VETO power
+- Deterministic UOV opportunity layer (shadow/active modes, ranked BUY queue, swap suggestions)
 - Cost-aware degradation
 - Comprehensive logging and audit trail
 
@@ -222,6 +223,28 @@ _Move from individual stock picks to portfolio-level thinking._
 - [ ] If avg correlation with portfolio > 0.6, flag as "high correlation" to Claude and moderators
 - [ ] Include in risk manager evaluation (soft signal, not hard veto — existing 0.7 portfolio veto remains)
 - [ ] Reduces unintentional sector concentration that passes individual-stock checks
+
+---
+
+### US-3.4: Universal Opportunity Value (UOV) Ranking and Queueing
+**Priority:** P1 (High)
+**Value:** High — solves capital saturation by ranking approved BUYs across cycles and preserving deferred opportunities in a deterministic queue
+**Effort:** Medium (implemented)
+**Data Sources:** strategy_decisions, moderation_logs, risk_decisions, sub-strategy outputs, per-ticker sentiment, instruments
+**Developer:** Codex
+
+**Status (2026-03-03):** Delivered
+
+**Delivered Scope:**
+- [x] UOV hybrid score (`uov_raw`) from strategy/moderation/risk/sentiment/fundamental proxies
+- [x] Cross-sectional z-score (`uov_z`) + stage penalties (`uov_final`)
+- [x] EWMA smoothing (`uov_ewma`) with configurable half-life (default 6 cycles)
+- [x] Shadow/active rollout switch in `settings.yaml`
+- [x] Active mode ranked BUY execution under cash/slot constraints
+- [x] Queue lifecycle with persistence, reranking, and TTL expiry
+- [x] Conservative swap suggestions (`delta_z >= 1.0`) without autonomous SELL authority
+- [x] Audit tables: `opportunity_score_snapshots`, `opportunity_queue`
+- [x] Cycle output extensions: `opportunity_ranking`, `queued_candidates`, `swap_candidates`
 
 ---
 
