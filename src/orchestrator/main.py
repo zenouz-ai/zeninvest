@@ -65,7 +65,7 @@ class Orchestrator:
         cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
         logger.info(f"Starting cycle {cycle_id} (dry_run={self.dry_run})")
 
-        result: dict[str, Any] = {"cycle_id": cycle_id, "trades": [], "errors": []}
+        result: dict[str, Any] = {"cycle_id": cycle_id, "trades": [], "rejected_stocks": [], "errors": []}
 
         # Check if system is paused
         if self.state_machine.is_paused:
@@ -273,6 +273,14 @@ class Orchestrator:
             target_alloc = decision.get("target_allocation_pct", 0)
 
             if action == "HOLD":
+                result["rejected_stocks"].append({
+                    "ticker": ticker,
+                    "action": action,
+                    "stage": "strategy",
+                    "reason": decision.get("reasoning", "HOLD — no action required"),
+                    "conviction": conviction,
+                    **self._get_stock_metadata(ticker, stocks_data),
+                })
                 continue
 
             # Moderation — build rich market context for moderators
@@ -302,6 +310,15 @@ class Orchestrator:
 
             if mod_result.consensus == "BLOCKED":
                 logger.info(f"{ticker} BLOCKED by moderation panel")
+                result["rejected_stocks"].append({
+                    "ticker": ticker,
+                    "action": action,
+                    "stage": "moderation",
+                    "reason": f"BLOCKED by moderation consensus",
+                    "conviction": conviction,
+                    "moderation": mod_result.consensus,
+                    **self._get_stock_metadata(ticker, stocks_data),
+                })
                 continue
 
             # Risk check
@@ -332,6 +349,16 @@ class Orchestrator:
 
             if risk_verdict.verdict == "REJECT":
                 logger.info(f"{ticker} REJECTED by risk: {risk_verdict.reasoning}")
+                result["rejected_stocks"].append({
+                    "ticker": ticker,
+                    "action": action,
+                    "stage": "risk",
+                    "reason": risk_verdict.reasoning,
+                    "conviction": conviction,
+                    "moderation": mod_result.consensus,
+                    "triggered_rules": risk_verdict.triggered_rules,
+                    **self._get_stock_metadata(ticker, stocks_data),
+                })
                 continue
 
             final_alloc = risk_verdict.adjusted_allocation_pct or target_alloc
@@ -435,6 +462,8 @@ class Orchestrator:
                 "ticker": ticker,
                 "action": action,
                 "allocation_pct": final_alloc,
+                "reasoning": decision.get("reasoning", ""),
+                **self._get_stock_metadata(ticker, stocks_data),
                 "execution": exec_result,
                 "moderation": mod_result.consensus,
                 "risk": risk_verdict.verdict,
@@ -447,8 +476,10 @@ class Orchestrator:
 
         result["status"] = "completed"
         result["num_trades"] = len(result["trades"])
+        result["num_rejected"] = len(result["rejected_stocks"])
         result["cost_summary"] = get_cost_summary(days=1)
-        logger.info(f"Cycle {cycle_id} completed: {len(result['trades'])} trades executed")
+        logger.info(f"Cycle {cycle_id} completed: {len(result['trades'])} trades executed, "
+                     f"{len(result['rejected_stocks'])} rejected")
         return result
 
     # --- Helper methods ---
@@ -752,6 +783,21 @@ class Orchestrator:
                 ind = s.get("indicators", {})
                 return float(ind.get("current_price", 0))
         return 0.0
+
+    def _get_stock_metadata(self, ticker: str, stocks_data: list[dict]) -> dict[str, Any]:
+        """Extract company metadata (industry, market_cap, description) for output."""
+        for s in stocks_data:
+            if s.get("ticker") == ticker:
+                fund = s.get("fundamentals", {})
+                summary = fund.get("business_summary", "")
+                if len(summary) > 200:
+                    summary = summary[:197] + "..."
+                return {
+                    "industry": fund.get("industry", "Unknown"),
+                    "market_cap": fund.get("market_cap"),
+                    "description": summary,
+                }
+        return {"industry": "Unknown", "market_cap": None, "description": ""}
 
     def _get_sector_allocations(self, portfolio_data: dict) -> dict[str, float]:
         # Simplified — would need instrument metadata for full implementation
