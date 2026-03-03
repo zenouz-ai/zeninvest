@@ -23,7 +23,7 @@ from src.agents.reporting.journal import generate_trade_journal
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
-from src.data.models import Base, PortfolioSnapshot
+from src.data.models import Base, Instrument, PortfolioSnapshot
 from src.orchestrator.state_machine import StateMachine
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
@@ -285,7 +285,11 @@ class Orchestrator:
         projected_num_positions = len(existing_tickers)
 
         for decision in decisions:
-            ticker = decision.get("ticker", "")
+            raw_ticker = str(decision.get("ticker", "")).strip().upper()
+            ticker = self._normalize_decision_ticker(raw_ticker, stocks_data)
+            if raw_ticker and ticker != raw_ticker:
+                logger.warning(f"Normalized strategy ticker '{raw_ticker}' -> '{ticker}'")
+                decision["ticker"] = ticker
             action = decision.get("action", "HOLD")
             conviction = decision.get("conviction", 0)
             target_alloc = decision.get("target_allocation_pct", 0)
@@ -994,6 +998,53 @@ class Orchestrator:
                     "description": summary,
                 }
         return {"industry": "Unknown", "market_cap": None, "description": ""}
+
+    @staticmethod
+    def _normalize_decision_ticker(ticker: str, stocks_data: list[dict[str, Any]]) -> str:
+        """Map raw strategy ticker symbols to instrument IDs used by execution.
+
+        Claude may occasionally output a plain symbol (e.g. ``GILD``) instead of
+        the expected Trading212 instrument ID (e.g. ``GILD_US_EQ``).
+        """
+        if not ticker:
+            return ticker
+        if ticker.endswith("_US_EQ") or ticker.endswith("_UK_EQ"):
+            return ticker
+
+        candidates: list[str] = []
+        for stock in stocks_data:
+            instrument_id = str(stock.get("ticker", "")).upper()
+            if not instrument_id:
+                continue
+            if instrument_id == ticker:
+                return instrument_id
+            if instrument_id.startswith(f"{ticker}_"):
+                candidates.append(instrument_id)
+
+        if len(candidates) == 1:
+            return candidates[0]
+
+        # Fallback to instrument table mapping when stocks_data contains raw symbols.
+        session = get_session()
+        try:
+            preferred = [f"{ticker}_US_EQ", f"{ticker}_UK_EQ"]
+            rows = (
+                session.query(Instrument.ticker)
+                .filter(Instrument.ticker.in_(preferred))
+                .all()
+            )
+            found = [str(r[0]).upper() for r in rows if r and r[0]]
+            for instrument_id in preferred:
+                if instrument_id in found:
+                    return instrument_id
+            if len(found) == 1:
+                return found[0]
+        except Exception:
+            pass
+        finally:
+            session.close()
+
+        return ticker
 
     def _get_sector_allocations(self, portfolio_data: dict) -> dict[str, float]:
         # Simplified — would need instrument metadata for full implementation
