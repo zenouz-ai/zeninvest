@@ -184,6 +184,10 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders)
 | target_alloc_pct  |     | reasoning         |     | adjusted_alloc   |
 | reasoning         |     | growth_score      |     | triggered_rules  |
 | catalysts_json    |     | risk_score        |     | reasoning        |
+| growth_potential  |     | confidence_score  |     | portfolio_state  |
+| risk_level        |     | consensus         |     |                  |
+| market_assessment |     |                   |     |                  |
+| raw_response_json |     |                   |     |                  |
 +-------------------+     +-------------------+     +------------------+
          |                         |                        |
          v                         v                        v
@@ -196,18 +200,22 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders)
 | price             |     | output_tokens     |     | status_code      |
 | status            |     | cost_gbp          |     | duration_ms      |
 | t212_order_id     |     | purpose           |     | error            |
+| strategy          |     |                   |     |                  |
+| conviction        |     |                   |     |                  |
 +-------------------+     +-------------------+     +------------------+
 
-+-------------------+     +-------------------+
-| portfolio_snaps   |     | system_state      |
-|-------------------|     |-------------------|
-| total_value_gbp   |     | state (ACTIVE/    |
-| cash_gbp          |     |   CAUTIOUS/HALTED)|
-| invested_gbp      |     | peak_portfolio    |
-| num_positions     |     | current_drawdown  |
-| positions_json    |     | paused            |
-| state             |     | last_cycle_at     |
-+-------------------+     +-------------------+
++-------------------+     +-------------------+     +------------------+
+| portfolio_snaps   |     | system_state      |     | instruments      |
+|-------------------|     |-------------------|     |------------------|
+| total_value_gbp   |     | state (ACTIVE/    |     | ticker           |
+| cash_gbp          |     |   CAUTIOUS/HALTED)|     | name             |
+| invested_gbp      |     | peak_portfolio    |     | sector           |
+| num_positions     |     | current_drawdown  |     | industry         |
+| positions_json    |     | paused            |     | market_cap       |
+| state             |     | last_cycle_at     |     | business_summary |
++-------------------+     +-------------------+     | data_available   |
+                                                    | last_screened_at |
+                                                    +------------------+
 ```
 
 ---
@@ -357,38 +365,94 @@ sequenceDiagram
     CL-->>O: Decisions with conviction + market_assessment
 
     loop For each decision
-        O->>O: Build market context (per-ticker news + strategy_assessment)
-        O->>GP: Review trade proposal + market context
-        GP-->>O: Verdict + reasoning
-        O->>GE: Review trade proposal + market context
-        GE-->>O: Verdict + scores
-        O->>O: Determine consensus
+        alt HOLD
+            O->>O: Record to rejected_stocks (stage: strategy)
+        else BUY / SELL / REDUCE
+            O->>O: Build market context (per-ticker news + strategy_assessment)
+            O->>GP: Review trade proposal + market context
+            GP-->>O: Verdict + reasoning
+            O->>GE: Review trade proposal + market context
+            GE-->>O: Verdict + scores
+            O->>O: Determine consensus
 
-        alt BLOCKED
-            O->>O: Skip trade
-        else APPROVED or CAUTION
-            O->>R: Evaluate trade (BUY/SELL/REDUCE)
-            R->>R: Check risk rules (incl. REDUCE)
-            alt REJECT
-                O->>O: Skip trade
-            else APPROVE or RESIZE
-                O->>E: Execute market order
-                E->>T: POST /equity/orders/market
-                T-->>E: Order confirmation
-                E-->>O: Execution result
-                alt BUY with stop_loss_pct
-                    O->>E: Place stop-loss order (GTC)
-                    E->>T: POST /equity/orders/stop
-                    T-->>E: Stop-loss confirmation
+            alt BLOCKED
+                O->>O: Record to rejected_stocks (stage: moderation)
+            else APPROVED or CAUTION
+                O->>R: Evaluate trade (BUY/SELL/REDUCE)
+                R->>R: Check risk rules (incl. REDUCE)
+                alt REJECT
+                    O->>O: Record to rejected_stocks (stage: risk)
+                else APPROVE or RESIZE
+                    O->>E: Execute market order
+                    E->>T: POST /equity/orders/market
+                    T-->>E: Order confirmation
+                    E-->>O: Execution result
+                    alt BUY with stop_loss_pct
+                        O->>E: Place stop-loss order (GTC)
+                        E->>T: POST /equity/orders/stop
+                        T-->>E: Stop-loss confirmation
+                    end
+                    O->>J: Generate trade journal
                 end
-                O->>J: Generate trade journal
             end
         end
     end
 
     O->>O: Record cycle completion
     O->>O: Save portfolio snapshot
+    O->>O: Return trades + rejected_stocks + cost_summary
 ```
+
+### Cycle Output Structure
+
+Each `run_cycle()` call returns a JSON result with:
+
+```json
+{
+  "cycle_id": "cycle_20260303_0700_a1b2c3",
+  "trades": [
+    {
+      "ticker": "AAPL_US_EQ",
+      "action": "BUY",
+      "allocation_pct": 8.5,
+      "reasoning": "Strong momentum above 200-day MA with ...",
+      "industry": "Consumer Electronics",
+      "market_cap": 3200000000000,
+      "description": "Apple Inc. designs, manufactures, and markets ...",
+      "execution": { "status": "filled", "quantity": 12.5, "value_gbp": 850.0 },
+      "moderation": "APPROVED",
+      "risk": "APPROVE",
+      "stop_loss": { "status": "filled", "stop_price": 168.0 }
+    }
+  ],
+  "rejected_stocks": [
+    {
+      "ticker": "TSLA_US_EQ",
+      "action": "BUY",
+      "stage": "moderation",
+      "reason": "BLOCKED by moderation consensus",
+      "conviction": 72,
+      "industry": "Auto Manufacturers",
+      "market_cap": 850000000000,
+      "description": "Tesla, Inc. designs, develops, manufactures ..."
+    }
+  ],
+  "num_trades": 3,
+  "num_rejected": 2,
+  "cost_summary": { ... },
+  "status": "completed"
+}
+```
+
+Rejected stocks are tagged by the pipeline stage that blocked them:
+
+| Stage | Meaning | Extra fields |
+|-------|---------|--------------|
+| `strategy` | Claude returned HOLD | reasoning, conviction |
+| `moderation` | GPT-4o + Gemini consensus BLOCKED | moderation verdict |
+| `risk` | Hard rules REJECTED | triggered_rules list |
+
+All rejection details are also persisted in the `strategy_decisions`, `moderation_logs`, and `risk_decisions` database tables for long-term analysis.
 
 ### State Machine
 

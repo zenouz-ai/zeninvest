@@ -186,11 +186,32 @@ Key tuneable values:
 - Add Alembic migrations for schema changes: `poetry run alembic revision --autogenerate -m "description"`
 - Add config properties to `Settings` class in `src/utils/config.py` if new YAML keys are introduced
 - Write tests using in-memory SQLite fixtures — stub heavy deps (yfinance, httpx) with `sys.modules` mocks if needed
-- Update `docs/` if the feature touches architecture, governance, or presentation
 - The orchestrator pipeline is in `src/orchestrator/main.py:run_cycle()` — follow the existing phase pattern
 - Consult `docs/SOPHISTICATION_ROADMAP.md` for the prioritised backlog and user story specifications
 - All new features must have a disable switch and fall back to current behaviour
 - No ML/RL technique adopted without literature review and clear expected impact documented
+
+### Documentation maintenance (mandatory on every feature)
+
+After any code change that adds, modifies, or removes functionality, **update all affected docs in the same PR**. This is not optional — treat docs as part of the definition of done.
+
+Files to check on every feature:
+
+| File | Update when... |
+|------|---------------|
+| `README.md` | Any user-facing change: new CLI flags, new output fields, new pipeline steps, test count changes |
+| `CLAUDE.md` | New architecture rules, new models/columns, new settings keys, new patterns |
+| `docs/ARCHITECTURE.md` | Pipeline flow changes, new database tables/columns, new component interactions |
+| `docs/GOVERNANCE.md` | Audit trail changes (new logged fields, new tables), risk rule changes, new kill switches |
+| `docs/PRESENTATION.md` | Major feature additions that change the project's story or metrics |
+| `docs/LOCAL_LIVE_RUN.md` | New setup steps, new pre-flight checks, new CLI commands |
+| `docs/DEPLOYMENT.md` | Infrastructure changes, new env vars, new Docker config, new systemd settings |
+| `docs/DATA_RATIONALE.md` | New data sources, removed data points, changed data flow |
+| `docs/SOPHISTICATION_ROADMAP.md` | Features completed (move to "done"), new user stories added |
+
+**How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
+
+**Test count:** Update `README.md` status line (`N tests passing`) whenever tests are added or removed.
 
 ## Project Evolution Context
 

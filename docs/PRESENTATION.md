@@ -149,13 +149,17 @@ FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED
 
 **Per-Trade Journal (Markdown):**
 Every executed trade generates a comprehensive report including:
-- Decision summary with conviction score
+- Decision summary with conviction score and reasoning
+- Company profile: industry, market cap, business description
 - Market context (regime, VIX, S&P trend)
 - Strategy rationale with catalysts and risks
 - Moderation panel review (all 3 verdicts)
 - Risk agent decision (rules checked, triggered)
 - Technical and fundamental snapshots
 - Post-trade portfolio state
+
+**Rejected Stock Tracking:**
+Stocks considered but not traded are recorded with the stage that blocked them (strategy HOLD, moderation BLOCKED, risk REJECT), including company metadata, conviction, and rejection reason — enabling future analysis of missed opportunities.
 
 ---
 
@@ -174,19 +178,19 @@ Every executed trade generates a comprehensive report including:
 | Logging | Rich |
 | CLI | Click |
 | Containerization | Docker + Docker Compose |
-| Testing | pytest (111 tests) |
+| Testing | pytest (123 tests) |
 
 ---
 
 ## Slide 11: Testing & Quality
 
-**117 unit tests covering:**
+**123 unit tests covering:**
 - Risk manager: 43 tests (all rules + state transitions + REDUCE check)
 - Strategy engine: 17 tests (momentum, mean reversion, factor, prompts, synthesis)
 - Moderation: 21 tests (consensus logic, panel integration, context formatting)
 - Execution: 14 tests (order management, dedup, portfolio state)
 - Cost tracker: 16 tests (budgets, degradation, logging)
-- Screening cooldown: 6 tests (cooldown inclusion/exclusion/expiry, mark + screen)
+- Screening + seed universe: 10 tests (cooldown, seed fallback, data availability filtering)
 
 **Diagnostics Notebook:**
 - 20-section Jupyter notebook testing each component independently
@@ -200,12 +204,15 @@ Every executed trade generates a comprehensive report including:
 
 | Table | Purpose |
 |-------|---------|
-| `strategy_decisions` | Every Claude decision with reasoning |
-| `moderation_logs` | Every moderator verdict with scores |
-| `risk_decisions` | Every risk check with triggered rules |
+| `strategy_decisions` | Every Claude decision with reasoning, catalysts, risks |
+| `moderation_logs` | Every moderator verdict with scores (BLOCKED decisions preserved) |
+| `risk_decisions` | Every risk check with triggered rules (REJECTED decisions preserved) |
 | `orders` | Every order (executed, dry-run, failed) |
 | `cost_logs` | Every LLM API call with token counts |
 | `api_logs` | Every external API call with latency |
+| `instruments` | Company profiles: sector, industry, market_cap, business_summary |
+
+**Cycle output includes both executed trades and rejected stocks** (with stage, reason, company metadata) for post-cycle analysis.
 | `portfolio_snapshots` | Portfolio state after each cycle |
 | `system_state` | State machine transitions |
 
@@ -271,6 +278,10 @@ docker compose logs -f investment-agent
 - ~~Stop-loss orders~~ → Auto-placed after BUY using Claude's stop_loss_pct
 - ~~REDUCE action~~ → Partial sell support in order manager and risk agent
 - ~~Strategy assessment to moderators~~ → GPT-4o and Gemini can challenge Claude's thesis
+- ~~Curated seed universe~~ → ~160 well-known US equities, eliminates delisted noise
+- ~~Company profiles~~ → Business summaries + industry from yfinance fed to Claude for qualitative reasoning
+- ~~Enriched cycle output~~ → Trades include industry, market cap, description, reasoning
+- ~~Rejected stock tracking~~ → Every non-traded stock recorded with stage, reason, and company metadata
 
 **Phase 2 — Enhanced Intelligence:**
 - Backtesting engine with historical data replay
@@ -298,7 +309,7 @@ docker compose logs -f investment-agent
 | Metric | Value |
 |--------|-------|
 | Components | 24+ Python modules |
-| Tests | 117 (all passing) |
+| Tests | 123 (all passing) |
 | LLM Providers | 3 (Anthropic, OpenAI, Google) |
 | Data Sources | 3 (yfinance, Finnhub, Alpha Vantage) |
 | Risk Rules | 9 (hard, never overridden by LLMs) |
