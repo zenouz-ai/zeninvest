@@ -134,6 +134,8 @@ docs/                   # Project documentation
 ├── DATA_RATIONALE.md   # Every data point's purpose and keep/remove verdict
 ├── DEPLOYMENT.md       # VPS deployment and monitoring guide
 ├── GOVERNANCE.md       # Governance framework and security guardrails
+├── CHAT_INTERFACE_PROJECT.md  # ChatOps project plan: trade alerts + future command interface
+├── BACKTESTING_PROJECT_PLAN.md  # Detailed implementation plan for the backtesting gap
 ├── LOCAL_LIVE_RUN.md   # Local live run guide (Trading 212 Practice)
 ├── MAC_SETUP.md        # macOS-specific installation instructions
 ├── PRESENTATION.md     # Project presentation and summary
@@ -151,6 +153,8 @@ notebooks/
 - [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — repeatable VPS-to-local export procedure with integrity checks for investigations
 - [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts
 - [Governance](docs/GOVERNANCE.md) — security guardrails, kill switches, audit trail
+- [Chat Interface Project](docs/CHAT_INTERFACE_PROJECT.md) — roadmap-aligned plan for real-time trade alerts and future chat command controls
+- [Backtesting Project Plan](docs/BACKTESTING_PROJECT_PLAN.md) — detailed implementation plan to close the biggest maturity gap (historical validation)
 - [Local Live Run](docs/LOCAL_LIVE_RUN.md) — step-by-step guide for Trading 212 Practice mode
 - [Presentation](docs/PRESENTATION.md) — project overview and summary
 

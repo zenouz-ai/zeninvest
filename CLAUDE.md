@@ -215,6 +215,8 @@ Files to check on every feature:
 | `docs/DEPLOYMENT.md` | Infrastructure changes, new env vars, new Docker config, new systemd settings |
 | `docs/DATA_RATIONALE.md` | New data sources, removed data points, changed data flow |
 | `docs/SOPHISTICATION_ROADMAP.md` | Features completed (move to "done"), new user stories added |
+| `docs/CHAT_INTERFACE_PROJECT.md` | Chat alerts / command interface scope, acceptance criteria, and rollout decisions |
+| `docs/BACKTESTING_PROJECT_PLAN.md` | Backtesting scope, validation assumptions, and release-gate criteria |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 
@@ -226,3 +228,12 @@ Files to check on every feature:
 - **Development team:** Project Lead (PhD Maths, DS Manager), Claude Code Opus 4.6 (cloud, primary dev), Codex 5.3+ (local VS Code, secondary dev)
 - **Principles:** Innovation, simplicity, elegance, transparency. No feature for technology's sake.
 - **Key docs:** `docs/SOPHISTICATION_ROADMAP.md` (backlog), `docs/COMPETITIVE_ANALYSIS.md` (positioning)
+
+
+## Near-term delivery focus (updated)
+
+Current primary user stories for next-week implementation:
+- **US-1.5 Chat Interface & Real-Time Trade Alerts** (`docs/CHAT_INTERFACE_PROJECT.md`)
+- **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`)
+
+When touching either track, keep `README.md`, `docs/ARCHITECTURE.md`, and `docs/SOPHISTICATION_ROADMAP.md` synchronized in the same PR.
