@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from src.agents.notifications import NotificationService
 from src.data.database import get_session
 from src.data.models import SystemState
 from src.utils.logger import get_logger
@@ -22,6 +23,7 @@ class StateMachine:
     VALID_STATES = {"ACTIVE", "CAUTIOUS", "HALTED"}
 
     def __init__(self) -> None:
+        self.notification_service = NotificationService()
         self._ensure_state_exists()
 
     def _ensure_state_exists(self) -> None:
@@ -86,6 +88,17 @@ class StateMachine:
             state.updated_at = datetime.now(timezone.utc)
             session.commit()
             logger.info(f"State transition: {old_state} -> {new_state}" + (f" ({notes})" if notes else ""))
+            self.notification_service.emit_state_transition(
+                cycle_id=None,
+                payload={
+                    "old_state": old_state,
+                    "new_state": new_state,
+                    "reason": notes,
+                    "drawdown_pct": state.current_drawdown_pct,
+                    "occurred_at": datetime.now(timezone.utc).isoformat(),
+                },
+                source="state_machine",
+            )
         finally:
             session.close()
 

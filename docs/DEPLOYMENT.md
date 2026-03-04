@@ -207,6 +207,21 @@ FINNHUB_API_KEY=your_finnhub_key
 ALPHA_VANTAGE_API_KEY=your_av_key
 ```
 
+Optional (recommended) for chat alerts:
+
+```env
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+ALERT_EMAIL_FROM=agent@yourdomain.com
+ALERT_EMAIL_TO=ops@yourdomain.com
+SMTP_HOST=smtp.yourprovider.com
+SMTP_PORT=587
+SMTP_USER=your_smtp_user
+SMTP_PASS=your_smtp_password
+SMTP_USE_TLS=true
+```
+
+For production email delivery, use a transactional SMTP provider (for example SendGrid/Postmark/Resend SMTP) with `SMTP_PORT=587` and `SMTP_USE_TLS=true`.
+
 Secure the file:
 
 ```bash
@@ -226,6 +241,21 @@ cost_limits:
   openai_daily_gbp: 0.75
   google_daily_gbp: 0.50
   total_monthly_gbp: 50.00
+notifications:
+  enabled: true
+  channels: ["slack", "email"]
+  routes:
+    trade_instruction_approved: ["slack"]
+    trade_execution_result: ["slack", "email"]
+    cycle_run_summary: ["slack", "email"]
+    state_transition: ["slack", "email"]
+    critical_cycle_failure: ["slack", "email"]
+  timeout_seconds: 5
+  max_retries: 2
+  dedup_window_seconds: 300
+  include_dry_run_alerts: true
+  command_gateway:
+    enabled: false
 ```
 
 ### 3.5 Build and Start
@@ -287,6 +317,31 @@ Then scan logs for auth/order errors:
 ```bash
 docker compose logs investment-agent 2>&1 | grep -Ei "401|403|404|invalid_api_key|unauthorized|forbidden|error"
 ```
+
+### 3.8 Notification Verification
+
+After the dry-run and live/practice validation cycles, verify notification delivery and audit logs:
+
+```bash
+# Confirm recent notification attempts
+docker compose exec investment-agent sqlite3 /app/data/investment_agent.db \
+"SELECT timestamp,event_type,channel,status,attempt_number,error_message
+ FROM notification_logs
+ ORDER BY id DESC LIMIT 30;"
+
+# Optional: focus on failures only
+docker compose exec investment-agent sqlite3 /app/data/investment_agent.db \
+"SELECT timestamp,event_type,channel,status,error_message
+ FROM notification_logs
+ WHERE status='failed'
+ ORDER BY id DESC LIMIT 20;"
+```
+
+Expected outcomes:
+- Slack rows should be present with `status='sent'`.
+- Email rows should be present with `status='sent'`.
+- Duplicates inside dedup windows can appear as `status='deduped'` by design.
+- If a provider is intentionally not configured, rows may appear as `status='skipped'`.
 
 ---
 
@@ -1180,6 +1235,25 @@ docker compose logs investment-agent 2>&1 | grep -i "alembic\|migration\|error"
 - **Migration error**: A migration fails due to schema conflict. Restore the database from backup or fix the migration.
 - **Import error**: A missing dependency. Rebuild with `docker compose build --no-cache`.
 - **Permission error**: Volume mount permissions. Ensure the `data/`, `journals/`, and `logs/` directories exist and are writable.
+
+### 9.8 SMTP TLS Mismatch (`STARTTLS extension not supported by server`)
+
+**Symptom**: `notification_logs` contains repeated email failures with `error_message` like `STARTTLS extension not supported by server`.
+
+**Diagnosis**: The SMTP server does not support STARTTLS while `SMTP_USE_TLS=true` is configured.
+
+**Fix**:
+- For production transactional SMTP on port `587`, keep `SMTP_USE_TLS=true`.
+- For local mail sinks (Mailpit/MailHog/debug SMTP server), set `SMTP_USE_TLS=false`.
+- Restart the service after `.env` changes:
+
+```bash
+# Docker
+docker compose down && docker compose up -d
+
+# Non-Docker
+sudo systemctl restart investment-agent
+```
 
 ---
 

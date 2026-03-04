@@ -31,6 +31,7 @@ This spec tightens US-1.5 into implementation-ready requirements that align with
 - Event triggers from orchestrator/state machine:
   - `trade_instruction_approved` (post moderation+risk, pre execution)
   - `trade_execution_result` (filled/dry_run/failed/skipped)
+  - `cycle_run_summary` (end-of-run report with all ticker decisions)
   - `state_transition` (ACTIVE/CAUTIOUS/HALTED)
   - `critical_cycle_failure` (cycle-aborting exceptions)
 - `notification_logs` database table.
@@ -241,14 +242,14 @@ Phase 2 (future only):
 ## Acceptance Criteria
 
 ### Phase 1
-- [ ] Notification service exists under `src/agents/notifications/` with provider abstraction.
-- [ ] All four event types emit from the defined integration points.
-- [ ] Slack and email channels work independently and can be enabled/disabled by config.
-- [ ] Notification failures never block or fail a trading cycle.
-- [ ] Retries/timeouts/dedup operate as configured.
-- [ ] Every send attempt persists to `notification_logs`.
-- [ ] Dry-run cycles produce alerts when `include_dry_run_alerts=true`.
-- [ ] Unit tests cover formatter correctness, routing, retry, dedup, and fail-open behavior.
+- [x] Notification service exists under `src/agents/notifications/` with provider abstraction.
+- [x] Five event types emit from the defined integration points (`trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`).
+- [x] Slack and email channels work independently and can be enabled/disabled by config.
+- [x] Notification failures never block or fail a trading cycle.
+- [x] Retries/timeouts/dedup operate as configured.
+- [x] Every send attempt persists to `notification_logs`.
+- [x] Dry-run cycles produce alerts when `include_dry_run_alerts=true`.
+- [x] Unit tests cover formatter correctness, routing, retry, dedup, and fail-open behavior.
 - [ ] End-to-end dry-run validation demonstrates event emission and persisted logs.
 
 ### Phase 2

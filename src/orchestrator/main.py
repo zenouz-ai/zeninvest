@@ -17,6 +17,7 @@ from src.agents.execution.t212_client import T212Client
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.data_fetcher import DataFetcher
 from src.agents.moderation.panel import ModerationPanel
+from src.agents.notifications import NotificationService
 from src.agents.opportunity.optimizer import OpportunityOptimizer
 from src.agents.opportunity.scorer import OpportunityScorer
 from src.agents.reporting.journal import generate_trade_journal
@@ -42,6 +43,7 @@ class Orchestrator:
         self.data_fetcher = DataFetcher()
         self.strategy_engine = StrategyEngine()
         self.moderation_panel = ModerationPanel()
+        self.notification_service = NotificationService()
         self.risk_manager = RiskManager()
         self.opportunity_scorer = OpportunityScorer()
         self.opportunity_optimizer = OpportunityOptimizer()
@@ -78,482 +80,536 @@ class Orchestrator:
             "queued_candidates": [],
             "swap_candidates": [],
         }
-
-        # Check if system is paused
-        if self.state_machine.is_paused:
-            logger.info("System is PAUSED. Skipping cycle.")
-            result["status"] = "paused"
-            return result
-
-        # Check cost degradation
-        degradation = get_degradation_level()
-        if degradation == DegradationLevel.HALTED:
-            logger.error("All LLM budgets exceeded. Skipping cycle.")
-            result["status"] = "budget_halted"
-            return result
-        if degradation == DegradationLevel.NO_STRATEGY:
-            logger.warning("Anthropic budget exceeded. Skipping strategy cycle.")
-            result["status"] = "budget_no_strategy"
-            return result
-
-        current_state = self.state_machine.current_state
-
-        # --- STEP 1: HALTED state handling ---
-        if current_state == "HALTED":
-            logger.error("System is HALTED. Liquidating all positions.")
-            if not self.dry_run:
-                liquidation = self.order_manager.liquidate_all()
-                result["liquidation"] = liquidation
-            result["status"] = "halted_liquidation"
-            return result
-
-        # --- STEP 2: Get portfolio state ---
-        try:
-            portfolio_data = self._get_portfolio_state()
-        except Exception as e:
-            logger.error(f"Failed to get portfolio state: {e}")
-            result["errors"].append(f"portfolio_state: {e}")
-            result["status"] = "error"
-            return result
-
-        current_value = portfolio_data["total_value"]
-        cash_gbp = portfolio_data["cash"]
-        cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
-
-        # Update peak and check drawdown
-        self.state_machine.update_peak(current_value)
-        state_info = self.state_machine.get_state()
-        peak_value = state_info.get("peak_portfolio_value", current_value)
-
-        drawdown_state = self.risk_manager.get_drawdown_state(current_value, peak_value)
-        if drawdown_state != current_state:
-            self.state_machine.transition(drawdown_state, f"Drawdown check at {current_value:.2f}")
-            current_state = drawdown_state
-
-        if current_state == "HALTED":
-            logger.error("Drawdown triggered HALT. Liquidating.")
-            if not self.dry_run:
-                self.order_manager.liquidate_all()
-            result["status"] = "halted_drawdown"
-            return result
-
-        drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
-        self.state_machine.update_drawdown(drawdown_pct)
-
-        # --- STEP 3: Fetch market data ---
-        logger.info("Fetching market data...")
-        try:
-            macro = self.data_fetcher.get_macro_data()
-            vix = macro.get("vix")
-            market_regime = macro.get("market_regime", "SIDEWAYS")
-        except Exception as e:
-            logger.error(f"Failed to get macro data: {e}")
-            macro = {}
-            vix = None
-            market_regime = "SIDEWAYS"
-
-        existing_tickers = {p.get("ticker", "") for p in portfolio_data.get("positions", [])}
-
-        # Get data for current positions AND screen universe for new candidates
-        stocks_data = self._fetch_stocks_data(
-            current_positions=portfolio_data.get("positions", []),
-            exclude_tickers=existing_tickers,
-            system_state=current_state,
-        )
-
-        # Get Alpha Vantage broad market sentiment (1 API call)
-        av_broad_sentiment: dict[str, Any] = {}
-        try:
-            av_broad_sentiment = self.data_fetcher.alpha_vantage.get_broad_market_sentiment()
-        except Exception as e:
-            logger.warning(f"Alpha Vantage broad sentiment unavailable: {e}")
-
-        # --- STEP 4: Run strategies ---
-        logger.info("Running strategies...")
-
-        sub_results = self.strategy_engine.run_sub_strategies(stocks_data, existing_tickers)
-
-        # Gather Finnhub analyst data (recommendations + insider) for top candidates
-        analyst_data_map: dict[str, dict] = {}
-        top_tickers = self._get_top_tickers(sub_results)
-        for ticker in top_tickers[:15]:
-            try:
-                yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
-                analyst_data_map[ticker] = self.data_fetcher.finnhub.get_analyst_data(yf_ticker)
-            except Exception as e:
-                logger.warning(f"Finnhub analyst data error for {ticker}: {e}")
-                analyst_data_map[ticker] = {}
-
-        # Get Alpha Vantage ticker-specific news sentiment (1 API call for all tickers)
-        av_ticker_sentiment: dict[str, Any] = {}
-        av_all_articles: list[dict[str, Any]] = []
-        if top_tickers:
-            try:
-                yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
-                tickers_str = ",".join(yf_tickers)
-                # Single API call — returns both aggregate stats and raw articles
-                raw_data = self.data_fetcher.alpha_vantage.get_market_news_sentiment(
-                    tickers=tickers_str, sort="RELEVANCE", limit=30,
-                )
-                if "error" not in raw_data:
-                    av_all_articles = raw_data.get("articles", [])
-                    av_ticker_sentiment = {
-                        "tickers_queried": tickers_str,
-                        "total_articles": raw_data.get("total_articles", 0),
-                        "average_sentiment": raw_data.get("average_sentiment", 0),
-                        "bullish_articles": raw_data.get("bullish_articles", 0),
-                        "bearish_articles": raw_data.get("bearish_articles", 0),
-                        "neutral_articles": raw_data.get("neutral_articles", 0),
-                        "top_articles_summary": AlphaVantageClient._summarize_articles(
-                            av_all_articles, max_articles=10,
-                        ),
-                    }
-            except Exception as e:
-                logger.warning(f"Alpha Vantage ticker sentiment unavailable: {e}")
-
-        # Extract per-ticker news from Alpha Vantage articles
-        per_ticker_news: dict[str, str] = {}
-        if av_all_articles:
-            all_yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
-            per_ticker_news = DataFetcher.extract_per_ticker_news(av_all_articles, all_yf_tickers)
-
-        # Build per-ticker news sections for Claude (structured by ticker)
-        news_parts: list[str] = []
-        if per_ticker_news:
-            news_parts.append("### Per-Ticker News Sentiment")
-            for yf_t, news_text in per_ticker_news.items():
-                if news_text:
-                    news_parts.append(f"\n**{yf_t}**:\n{news_text}")
-
-        # Add aggregate ticker sentiment summary
-        if av_ticker_sentiment and "error" not in av_ticker_sentiment:
-            news_parts.append(f"\n### Aggregate Ticker News ({av_ticker_sentiment.get('tickers_queried', 'N/A')})")
-            news_parts.append(f"Articles: {av_ticker_sentiment.get('total_articles', 0)} | "
-                              f"Avg sentiment: {av_ticker_sentiment.get('average_sentiment', 0):.4f} | "
-                              f"Bullish: {av_ticker_sentiment.get('bullish_articles', 0)} | "
-                              f"Bearish: {av_ticker_sentiment.get('bearish_articles', 0)}")
-
-        # Add broad market sentiment
-        if av_broad_sentiment and "error" not in av_broad_sentiment:
-            news_parts.append(f"\n### Broad Market Sentiment")
-            news_parts.append(f"Articles: {av_broad_sentiment.get('total_articles', 0)} | "
-                              f"Avg sentiment: {av_broad_sentiment.get('average_sentiment', 0):.4f} | "
-                              f"Bullish: {av_broad_sentiment.get('bullish_articles', 0)} | "
-                              f"Bearish: {av_broad_sentiment.get('bearish_articles', 0)}")
-            broad_articles = av_broad_sentiment.get("articles", [])
-            if broad_articles:
-                broad_summary = AlphaVantageClient._summarize_articles(broad_articles, max_articles=10)
-                news_parts.append(broad_summary)
-
-        analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
-        news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
-
-        # Build company profiles for top candidates
-        company_profiles = self._build_company_profiles(stocks_data, top_tickers)
-        uov_swap_context = self.opportunity_scorer.build_swap_context(existing_tickers)
-
-        # Claude synthesis
-        portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
-        strategy_result = self.strategy_engine.synthesize_with_claude(
-            sub_strategy_results=sub_results,
-            portfolio_state=portfolio_state_str,
-            market_regime=market_regime,
-            analyst_data=analyst_summary,
-            news_sentiment=news_summary,
-            company_profiles=company_profiles,
-            system_state=current_state,
-            vix=vix,
-            cash_pct=cash_pct,
-            num_positions=len(existing_tickers),
-            cycle_id=cycle_id,
-            uov_swap_context=uov_swap_context,
-        )
-
-        if "error" in strategy_result and not strategy_result.get("decisions"):
-            logger.error(f"Strategy synthesis failed: {strategy_result['error']}")
-            result["errors"].append(f"strategy: {strategy_result['error']}")
-            result["status"] = "strategy_error"
-            self.state_machine.record_cycle()
-            return result
-
-        decisions = strategy_result.get("decisions", [])
-        logger.info(f"Strategy produced {len(decisions)} decisions")
-
-        # --- STEP 5: Moderation -> Risk -> (Deferred BUY Execution) ---
-        pending_buys: list[dict[str, Any]] = []
+        strategy_decisions: list[dict[str, Any]] = []
         opportunity_evaluations: list[dict[str, Any]] = []
-        projected_num_positions = len(existing_tickers)
+        stocks_data: list[dict[str, Any]] = []
+        per_ticker_news: dict[str, str] = {}
 
-        for decision in decisions:
-            raw_ticker = str(decision.get("ticker", "")).strip().upper()
-            ticker = self._normalize_decision_ticker(raw_ticker, stocks_data)
-            if raw_ticker and ticker != raw_ticker:
-                logger.warning(f"Normalized strategy ticker '{raw_ticker}' -> '{ticker}'")
-                decision["ticker"] = ticker
-            action = decision.get("action", "HOLD")
-            conviction = decision.get("conviction", 0)
-            target_alloc = decision.get("target_allocation_pct", 0)
-
-            if action == "HOLD":
-                hold_reason = decision.get("reasoning", "HOLD — no action required")
-                result["rejected_stocks"].append({
-                    "ticker": ticker,
-                    "action": action,
-                    "stage": "strategy",
-                    "reason": hold_reason,
-                    "conviction": conviction,
-                    **self._get_stock_metadata(ticker, stocks_data),
-                })
-                opportunity_evaluations.append({
-                    "ticker": ticker,
-                    "action": action,
-                    "stage": "strategy_hold",
-                    "decision": decision,
-                    "reason": hold_reason,
-                    "moderation_consensus": None,
-                    "risk_verdict": None,
-                    "final_allocation_pct": None,
-                })
-                continue
-
-            # Moderation — build rich market context for moderators
-            logger.info(f"Moderating {action} {ticker}...")
-            yf_ticker_for_news = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
-            ticker_news = per_ticker_news.get(yf_ticker_for_news, "")
-            market_context = self._build_market_context(
-                ticker=ticker,
-                stocks_data=stocks_data,
-                sub_results=sub_results,
-                macro=macro,
-                market_regime=market_regime,
-                vix=vix,
-                analyst_data_map=analyst_data_map,
-                news_summary=news_summary,
-                ticker_news=ticker_news,
-                strategy_assessment=strategy_result.get("market_assessment", ""),
-            )
-
-            mod_result = self.moderation_panel.review_trade(
-                trade_proposal=decision,
-                portfolio_context=portfolio_state_str,
-                market_context=market_context,
-                conviction=conviction,
+        def _emit_cycle_summary() -> None:
+            payload = self._build_cycle_summary_payload(
                 cycle_id=cycle_id,
-            )
-            mod_dict = mod_result.to_dict()
-
-            if mod_result.consensus == "BLOCKED":
-                logger.info(f"{ticker} BLOCKED by moderation panel")
-                reason = "BLOCKED by moderation consensus"
-                result["rejected_stocks"].append({
-                    "ticker": ticker,
-                    "action": action,
-                    "stage": "moderation",
-                    "reason": reason,
-                    "conviction": conviction,
-                    "moderation": mod_result.consensus,
-                    **self._get_stock_metadata(ticker, stocks_data),
-                })
-                opportunity_evaluations.append({
-                    "ticker": ticker,
-                    "action": action,
-                    "stage": "moderation_blocked",
-                    "decision": decision,
-                    "moderation": mod_dict,
-                    "reason": reason,
-                    "moderation_consensus": mod_result.consensus,
-                    "risk_verdict": None,
-                    "final_allocation_pct": None,
-                })
-                continue
-
-            # Risk check
-            logger.info(f"Risk check for {action} {ticker}...")
-            sector = self._get_sector(ticker, stocks_data)
-            sector_allocs = self._get_sector_allocations(portfolio_data)
-            portfolio_allocs = self._get_position_allocations(portfolio_data)
-
-            risk_verdict = self.risk_manager.evaluate_trade(
-                ticker=ticker,
-                action=action,
-                proposed_allocation_pct=target_alloc,
-                sector=sector,
-                current_portfolio=portfolio_allocs,
-                sector_allocations=sector_allocs,
-                portfolio_returns={},
-                current_value=current_value,
-                peak_value=peak_value,
-                cash_pct=cash_pct,
-                vix=vix,
-                daily_pnl_pct=portfolio_data.get("daily_pnl_pct", 0),
-                daily_loss_halt_until=state_info.get("daily_loss_halt_until"),
-                num_positions=projected_num_positions,
-                system_state=current_state,
-                is_existing_winner=ticker in existing_tickers,
-                cycle_id=cycle_id,
-            )
-
-            if risk_verdict.verdict == "REJECT":
-                logger.info(f"{ticker} REJECTED by risk: {risk_verdict.reasoning}")
-                result["rejected_stocks"].append({
-                    "ticker": ticker,
-                    "action": action,
-                    "stage": "risk",
-                    "reason": risk_verdict.reasoning,
-                    "conviction": conviction,
-                    "moderation": mod_result.consensus,
-                    "triggered_rules": risk_verdict.triggered_rules,
-                    **self._get_stock_metadata(ticker, stocks_data),
-                })
-                opportunity_evaluations.append({
-                    "ticker": ticker,
-                    "action": action,
-                    "stage": "risk_reject",
-                    "decision": decision,
-                    "moderation": mod_dict,
-                    "reason": risk_verdict.reasoning,
-                    "moderation_consensus": mod_result.consensus,
-                    "risk_verdict": risk_verdict.verdict,
-                    "final_allocation_pct": None,
-                })
-                continue
-
-            final_alloc = risk_verdict.adjusted_allocation_pct or target_alloc
-            stage = "risk_resize" if (action == "BUY" and risk_verdict.verdict == "RESIZE") else "approved"
-            opportunity_evaluations.append({
-                "ticker": ticker,
-                "action": action,
-                "stage": stage,
-                "decision": decision,
-                "moderation": mod_dict,
-                "reason": decision.get("reasoning", ""),
-                "moderation_consensus": mod_result.consensus,
-                "risk_verdict": risk_verdict.verdict,
-                "final_allocation_pct": final_alloc,
-            })
-
-            if action == "BUY":
-                pending_buys.append({
-                    "ticker": ticker,
-                    "action": action,
-                    "decision": decision,
-                    "moderation": mod_result,
-                    "risk_verdict": risk_verdict,
-                    "final_allocation_pct": final_alloc,
-                })
-                continue
-
-            trade_entry = self._execute_trade(
-                decision=decision,
-                action=action,
-                ticker=ticker,
-                final_alloc=final_alloc,
-                current_value=current_value,
-                cash_gbp=cash_gbp,
-                total_return_pct=portfolio_data.get("total_return_pct", 0),
-                alpha_pct=portfolio_data.get("alpha_pct", 0),
-                existing_tickers=existing_tickers,
-                market_regime=market_regime,
-                vix=vix,
-                macro=macro,
-                stocks_data=stocks_data,
-                analyst_data_map=analyst_data_map,
-                av_broad_sentiment=av_broad_sentiment,
-                mod_result=mod_result,
-                risk_verdict=risk_verdict,
-            )
-            if trade_entry:
-                result["trades"].append(trade_entry)
-                if action == "SELL" and trade_entry.get("execution", {}).get("status") in ("filled", "dry_run"):
-                    projected_num_positions = max(0, projected_num_positions - 1)
-
-        # --- STEP 6: UOV scoring + BUY optimization ---
-        selected_buy_order = [b["ticker"] for b in pending_buys]
-        if self.settings.opportunity_enabled:
-            scores = self.opportunity_scorer.score_cycle(
-                cycle_id=cycle_id,
-                evaluations=opportunity_evaluations,
-                sub_results=sub_results,
+                result=result,
+                strategy_decisions=strategy_decisions,
+                opportunity_evaluations=opportunity_evaluations,
                 stocks_data=stocks_data,
                 per_ticker_news=per_ticker_news,
+                dry_run=self.dry_run,
             )
-            result["opportunity_ranking"] = [s.to_dict() for s in scores]
-            scores_by_ticker = {entry["ticker"]: entry for entry in result["opportunity_ranking"]}
-            if not scores_by_ticker and pending_buys:
-                logger.warning("UOV scoring unavailable, falling back to legacy BUY execution order.")
-            else:
-                plan = self.opportunity_optimizer.optimize_buys(
-                    cycle_id=cycle_id,
-                    approved_buys=pending_buys,
-                    scores_by_ticker=scores_by_ticker,
-                    existing_tickers=existing_tickers,
-                    cash_pct=cash_pct,
-                    num_positions=projected_num_positions,
-                )
-                result["queued_candidates"] = plan.get("queued_candidates", [])
-                result["swap_candidates"] = plan.get("swap_candidates", [])
+            self.notification_service.emit_cycle_run_summary(
+                cycle_id=cycle_id,
+                payload=payload,
+                source="orchestrator",
+            )
 
-                if self.settings.opportunity_mode == "active":
-                    selected_buy_order = plan.get("execution_order", selected_buy_order)
-                    selected_set = set(selected_buy_order)
-                    queued_set = {item.get("ticker", "") for item in result["queued_candidates"]}
-                    for pending in pending_buys:
-                        ticker = pending.get("ticker", "")
-                        if ticker in selected_set:
-                            continue
-                        if ticker in queued_set:
-                            stage = "opportunity_queue"
-                            reason = "Queued by UOV optimizer (capacity/threshold gating)"
-                        else:
-                            stage = "opportunity_filtered"
-                            reason = "Filtered by UOV optimizer (below queue threshold or queue expiry)"
-                        result["rejected_stocks"].append({
-                            "ticker": ticker,
-                            "action": "BUY",
-                            "stage": stage,
-                            "reason": reason,
-                            "conviction": pending.get("decision", {}).get("conviction", 0),
-                            **self._get_stock_metadata(ticker, stocks_data),
-                        })
+        def _finalize(status: str) -> dict[str, Any]:
+            result["status"] = status
+            result["num_trades"] = len(result["trades"])
+            result["num_rejected"] = len(result["rejected_stocks"])
+            result["cost_summary"] = get_cost_summary(days=1)
+            _emit_cycle_summary()
+            return result
 
-        pending_by_ticker = {b["ticker"]: b for b in pending_buys}
-        for ticker in selected_buy_order:
-            pending = pending_by_ticker.get(ticker)
-            if pending is None:
-                continue
-            trade_entry = self._execute_trade(
-                decision=pending["decision"],
-                action="BUY",
-                ticker=ticker,
-                final_alloc=float(pending.get("final_allocation_pct", 0.0)),
-                current_value=current_value,
-                cash_gbp=cash_gbp,
-                total_return_pct=portfolio_data.get("total_return_pct", 0),
-                alpha_pct=portfolio_data.get("alpha_pct", 0),
-                existing_tickers=existing_tickers,
+        try:
+            # Check if system is paused
+            if self.state_machine.is_paused:
+                logger.info("System is PAUSED. Skipping cycle.")
+                return _finalize("paused")
+
+            # Check cost degradation
+            degradation = get_degradation_level()
+            if degradation == DegradationLevel.HALTED:
+                logger.error("All LLM budgets exceeded. Skipping cycle.")
+                return _finalize("budget_halted")
+            if degradation == DegradationLevel.NO_STRATEGY:
+                logger.warning("Anthropic budget exceeded. Skipping strategy cycle.")
+                return _finalize("budget_no_strategy")
+
+            current_state = self.state_machine.current_state
+
+            # --- STEP 1: HALTED state handling ---
+            if current_state == "HALTED":
+                logger.error("System is HALTED. Liquidating all positions.")
+                if not self.dry_run:
+                    liquidation = self.order_manager.liquidate_all()
+                    result["liquidation"] = liquidation
+                return _finalize("halted_liquidation")
+
+            # --- STEP 2: Get portfolio state ---
+            try:
+                portfolio_data = self._get_portfolio_state()
+            except Exception as e:
+                logger.error(f"Failed to get portfolio state: {e}")
+                result["errors"].append(f"portfolio_state: {e}")
+                return _finalize("error")
+
+            current_value = portfolio_data["total_value"]
+            cash_gbp = portfolio_data["cash"]
+            cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
+
+            # Update peak and check drawdown
+            self.state_machine.update_peak(current_value)
+            state_info = self.state_machine.get_state()
+            peak_value = state_info.get("peak_portfolio_value", current_value)
+
+            drawdown_state = self.risk_manager.get_drawdown_state(current_value, peak_value)
+            if drawdown_state != current_state:
+                self.state_machine.transition(drawdown_state, f"Drawdown check at {current_value:.2f}")
+                current_state = drawdown_state
+
+            if current_state == "HALTED":
+                logger.error("Drawdown triggered HALT. Liquidating.")
+                if not self.dry_run:
+                    self.order_manager.liquidate_all()
+                return _finalize("halted_drawdown")
+
+            drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
+            self.state_machine.update_drawdown(drawdown_pct)
+
+            # --- STEP 3: Fetch market data ---
+            logger.info("Fetching market data...")
+            try:
+                macro = self.data_fetcher.get_macro_data()
+                vix = macro.get("vix")
+                market_regime = macro.get("market_regime", "SIDEWAYS")
+            except Exception as e:
+                logger.error(f"Failed to get macro data: {e}")
+                macro = {}
+                vix = None
+                market_regime = "SIDEWAYS"
+
+            existing_tickers = {p.get("ticker", "") for p in portfolio_data.get("positions", [])}
+
+            # Get data for current positions AND screen universe for new candidates
+            stocks_data = self._fetch_stocks_data(
+                current_positions=portfolio_data.get("positions", []),
+                exclude_tickers=existing_tickers,
+                system_state=current_state,
+            )
+
+            # Get Alpha Vantage broad market sentiment (1 API call)
+            av_broad_sentiment: dict[str, Any] = {}
+            try:
+                av_broad_sentiment = self.data_fetcher.alpha_vantage.get_broad_market_sentiment()
+            except Exception as e:
+                logger.warning(f"Alpha Vantage broad sentiment unavailable: {e}")
+
+            # --- STEP 4: Run strategies ---
+            logger.info("Running strategies...")
+
+            sub_results = self.strategy_engine.run_sub_strategies(stocks_data, existing_tickers)
+
+            # Gather Finnhub analyst data (recommendations + insider) for top candidates
+            analyst_data_map: dict[str, dict] = {}
+            top_tickers = self._get_top_tickers(sub_results)
+            for ticker in top_tickers[:15]:
+                try:
+                    yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                    analyst_data_map[ticker] = self.data_fetcher.finnhub.get_analyst_data(yf_ticker)
+                except Exception as e:
+                    logger.warning(f"Finnhub analyst data error for {ticker}: {e}")
+                    analyst_data_map[ticker] = {}
+
+            # Get Alpha Vantage ticker-specific news sentiment (1 API call for all tickers)
+            av_ticker_sentiment: dict[str, Any] = {}
+            av_all_articles: list[dict[str, Any]] = []
+            if top_tickers:
+                try:
+                    yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
+                    tickers_str = ",".join(yf_tickers)
+                    # Single API call — returns both aggregate stats and raw articles
+                    raw_data = self.data_fetcher.alpha_vantage.get_market_news_sentiment(
+                        tickers=tickers_str, sort="RELEVANCE", limit=30,
+                    )
+                    if "error" not in raw_data:
+                        av_all_articles = raw_data.get("articles", [])
+                        av_ticker_sentiment = {
+                            "tickers_queried": tickers_str,
+                            "total_articles": raw_data.get("total_articles", 0),
+                            "average_sentiment": raw_data.get("average_sentiment", 0),
+                            "bullish_articles": raw_data.get("bullish_articles", 0),
+                            "bearish_articles": raw_data.get("bearish_articles", 0),
+                            "neutral_articles": raw_data.get("neutral_articles", 0),
+                            "top_articles_summary": AlphaVantageClient._summarize_articles(
+                                av_all_articles, max_articles=10,
+                            ),
+                        }
+                except Exception as e:
+                    logger.warning(f"Alpha Vantage ticker sentiment unavailable: {e}")
+
+            # Extract per-ticker news from Alpha Vantage articles
+            if av_all_articles:
+                all_yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
+                per_ticker_news = DataFetcher.extract_per_ticker_news(av_all_articles, all_yf_tickers)
+
+            # Build per-ticker news sections for Claude (structured by ticker)
+            news_parts: list[str] = []
+            if per_ticker_news:
+                news_parts.append("### Per-Ticker News Sentiment")
+                for yf_t, news_text in per_ticker_news.items():
+                    if news_text:
+                        news_parts.append(f"\n**{yf_t}**:\n{news_text}")
+
+            # Add aggregate ticker sentiment summary
+            if av_ticker_sentiment and "error" not in av_ticker_sentiment:
+                news_parts.append(f"\n### Aggregate Ticker News ({av_ticker_sentiment.get('tickers_queried', 'N/A')})")
+                news_parts.append(f"Articles: {av_ticker_sentiment.get('total_articles', 0)} | "
+                                  f"Avg sentiment: {av_ticker_sentiment.get('average_sentiment', 0):.4f} | "
+                                  f"Bullish: {av_ticker_sentiment.get('bullish_articles', 0)} | "
+                                  f"Bearish: {av_ticker_sentiment.get('bearish_articles', 0)}")
+
+            # Add broad market sentiment
+            if av_broad_sentiment and "error" not in av_broad_sentiment:
+                news_parts.append(f"\n### Broad Market Sentiment")
+                news_parts.append(f"Articles: {av_broad_sentiment.get('total_articles', 0)} | "
+                                  f"Avg sentiment: {av_broad_sentiment.get('average_sentiment', 0):.4f} | "
+                                  f"Bullish: {av_broad_sentiment.get('bullish_articles', 0)} | "
+                                  f"Bearish: {av_broad_sentiment.get('bearish_articles', 0)}")
+                broad_articles = av_broad_sentiment.get("articles", [])
+                if broad_articles:
+                    broad_summary = AlphaVantageClient._summarize_articles(broad_articles, max_articles=10)
+                    news_parts.append(broad_summary)
+
+            analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
+            news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
+
+            # Build company profiles for top candidates
+            company_profiles = self._build_company_profiles(stocks_data, top_tickers)
+            uov_swap_context = self.opportunity_scorer.build_swap_context(existing_tickers)
+
+            # Claude synthesis
+            portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
+            strategy_result = self.strategy_engine.synthesize_with_claude(
+                sub_strategy_results=sub_results,
+                portfolio_state=portfolio_state_str,
                 market_regime=market_regime,
+                analyst_data=analyst_summary,
+                news_sentiment=news_summary,
+                company_profiles=company_profiles,
+                system_state=current_state,
                 vix=vix,
-                macro=macro,
-                stocks_data=stocks_data,
-                analyst_data_map=analyst_data_map,
-                av_broad_sentiment=av_broad_sentiment,
-                mod_result=pending["moderation"],
-                risk_verdict=pending["risk_verdict"],
+                cash_pct=cash_pct,
+                num_positions=len(existing_tickers),
+                cycle_id=cycle_id,
+                uov_swap_context=uov_swap_context,
             )
-            if trade_entry:
-                result["trades"].append(trade_entry)
 
-        # Record cycle completion
-        self.state_machine.record_cycle()
-        self._save_snapshot(portfolio_data, current_state)
+            if "error" in strategy_result and not strategy_result.get("decisions"):
+                logger.error(f"Strategy synthesis failed: {strategy_result['error']}")
+                result["errors"].append(f"strategy: {strategy_result['error']}")
+                self.state_machine.record_cycle()
+                return _finalize("strategy_error")
 
-        result["status"] = "completed"
-        result["num_trades"] = len(result["trades"])
-        result["num_rejected"] = len(result["rejected_stocks"])
-        result["cost_summary"] = get_cost_summary(days=1)
-        logger.info(f"Cycle {cycle_id} completed: {len(result['trades'])} trades executed, "
-                     f"{len(result['rejected_stocks'])} rejected")
-        return result
+            decisions = strategy_result.get("decisions", [])
+            strategy_decisions = decisions
+            logger.info(f"Strategy produced {len(decisions)} decisions")
+
+            # --- STEP 5: Moderation -> Risk -> (Deferred BUY Execution) ---
+            pending_buys: list[dict[str, Any]] = []
+            projected_num_positions = len(existing_tickers)
+
+            for decision in decisions:
+                raw_ticker = str(decision.get("ticker", "")).strip().upper()
+                ticker = self._normalize_decision_ticker(raw_ticker, stocks_data)
+                if raw_ticker and ticker != raw_ticker:
+                    logger.warning(f"Normalized strategy ticker '{raw_ticker}' -> '{ticker}'")
+                    decision["ticker"] = ticker
+                action = decision.get("action", "HOLD")
+                conviction = decision.get("conviction", 0)
+                target_alloc = decision.get("target_allocation_pct", 0)
+
+                if action == "HOLD":
+                    hold_reason = decision.get("reasoning", "HOLD — no action required")
+                    result["rejected_stocks"].append({
+                        "ticker": ticker,
+                        "action": action,
+                        "stage": "strategy",
+                        "reason": hold_reason,
+                        "conviction": conviction,
+                        **self._get_stock_metadata(ticker, stocks_data),
+                    })
+                    opportunity_evaluations.append({
+                        "ticker": ticker,
+                        "action": action,
+                        "stage": "strategy_hold",
+                        "decision": decision,
+                        "reason": hold_reason,
+                        "moderation_consensus": None,
+                        "risk_verdict": None,
+                        "final_allocation_pct": None,
+                    })
+                    continue
+
+                # Moderation — build rich market context for moderators
+                logger.info(f"Moderating {action} {ticker}...")
+                yf_ticker_for_news = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                ticker_news = per_ticker_news.get(yf_ticker_for_news, "")
+                market_context = self._build_market_context(
+                    ticker=ticker,
+                    stocks_data=stocks_data,
+                    sub_results=sub_results,
+                    macro=macro,
+                    market_regime=market_regime,
+                    vix=vix,
+                    analyst_data_map=analyst_data_map,
+                    news_summary=news_summary,
+                    ticker_news=ticker_news,
+                    strategy_assessment=strategy_result.get("market_assessment", ""),
+                )
+
+                mod_result = self.moderation_panel.review_trade(
+                    trade_proposal=decision,
+                    portfolio_context=portfolio_state_str,
+                    market_context=market_context,
+                    conviction=conviction,
+                    cycle_id=cycle_id,
+                )
+                mod_dict = mod_result.to_dict()
+
+                if mod_result.consensus == "BLOCKED":
+                    logger.info(f"{ticker} BLOCKED by moderation panel")
+                    reason = "BLOCKED by moderation consensus"
+                    result["rejected_stocks"].append({
+                        "ticker": ticker,
+                        "action": action,
+                        "stage": "moderation",
+                        "reason": reason,
+                        "conviction": conviction,
+                        "moderation": mod_result.consensus,
+                        **self._get_stock_metadata(ticker, stocks_data),
+                    })
+                    opportunity_evaluations.append({
+                        "ticker": ticker,
+                        "action": action,
+                        "stage": "moderation_blocked",
+                        "decision": decision,
+                        "moderation": mod_dict,
+                        "reason": reason,
+                        "moderation_consensus": mod_result.consensus,
+                        "risk_verdict": None,
+                        "final_allocation_pct": None,
+                    })
+                    continue
+
+                # Risk check
+                logger.info(f"Risk check for {action} {ticker}...")
+                sector = self._get_sector(ticker, stocks_data)
+                sector_allocs = self._get_sector_allocations(portfolio_data)
+                portfolio_allocs = self._get_position_allocations(portfolio_data)
+
+                risk_verdict = self.risk_manager.evaluate_trade(
+                    ticker=ticker,
+                    action=action,
+                    proposed_allocation_pct=target_alloc,
+                    sector=sector,
+                    current_portfolio=portfolio_allocs,
+                    sector_allocations=sector_allocs,
+                    portfolio_returns={},
+                    current_value=current_value,
+                    peak_value=peak_value,
+                    cash_pct=cash_pct,
+                    vix=vix,
+                    daily_pnl_pct=portfolio_data.get("daily_pnl_pct", 0),
+                    daily_loss_halt_until=state_info.get("daily_loss_halt_until"),
+                    num_positions=projected_num_positions,
+                    system_state=current_state,
+                    is_existing_winner=ticker in existing_tickers,
+                    cycle_id=cycle_id,
+                )
+
+                if risk_verdict.verdict == "REJECT":
+                    logger.info(f"{ticker} REJECTED by risk: {risk_verdict.reasoning}")
+                    result["rejected_stocks"].append({
+                        "ticker": ticker,
+                        "action": action,
+                        "stage": "risk",
+                        "reason": risk_verdict.reasoning,
+                        "conviction": conviction,
+                        "moderation": mod_result.consensus,
+                        "triggered_rules": risk_verdict.triggered_rules,
+                        **self._get_stock_metadata(ticker, stocks_data),
+                    })
+                    opportunity_evaluations.append({
+                        "ticker": ticker,
+                        "action": action,
+                        "stage": "risk_reject",
+                        "decision": decision,
+                        "moderation": mod_dict,
+                        "reason": risk_verdict.reasoning,
+                        "moderation_consensus": mod_result.consensus,
+                        "risk_verdict": risk_verdict.verdict,
+                        "final_allocation_pct": None,
+                    })
+                    continue
+
+                final_alloc = risk_verdict.adjusted_allocation_pct or target_alloc
+                stage = "risk_resize" if (action == "BUY" and risk_verdict.verdict == "RESIZE") else "approved"
+                opportunity_evaluations.append({
+                    "ticker": ticker,
+                    "action": action,
+                    "stage": stage,
+                    "decision": decision,
+                    "moderation": mod_dict,
+                    "reason": decision.get("reasoning", ""),
+                    "moderation_consensus": mod_result.consensus,
+                    "risk_verdict": risk_verdict.verdict,
+                    "final_allocation_pct": final_alloc,
+                })
+
+                self.notification_service.emit_trade_instruction_approved(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": self.dry_run,
+                        "ticker": ticker,
+                        "action": action,
+                        "target_allocation_pct": target_alloc,
+                        "final_allocation_pct": final_alloc,
+                        "conviction": conviction,
+                        "moderation_consensus": mod_result.consensus,
+                        "risk_verdict": risk_verdict.verdict,
+                        "reasoning_summary": decision.get("reasoning", ""),
+                        **self._get_stock_metadata(ticker, stocks_data),
+                    },
+                )
+
+                if action == "BUY":
+                    pending_buys.append({
+                        "ticker": ticker,
+                        "action": action,
+                        "decision": decision,
+                        "moderation": mod_result,
+                        "risk_verdict": risk_verdict,
+                        "final_allocation_pct": final_alloc,
+                    })
+                    continue
+
+                trade_entry = self._execute_trade(
+                    cycle_id=cycle_id,
+                    decision=decision,
+                    action=action,
+                    ticker=ticker,
+                    final_alloc=final_alloc,
+                    current_value=current_value,
+                    cash_gbp=cash_gbp,
+                    total_return_pct=portfolio_data.get("total_return_pct", 0),
+                    alpha_pct=portfolio_data.get("alpha_pct", 0),
+                    existing_tickers=existing_tickers,
+                    market_regime=market_regime,
+                    vix=vix,
+                    macro=macro,
+                    stocks_data=stocks_data,
+                    analyst_data_map=analyst_data_map,
+                    av_broad_sentiment=av_broad_sentiment,
+                    mod_result=mod_result,
+                    risk_verdict=risk_verdict,
+                )
+                if trade_entry:
+                    result["trades"].append(trade_entry)
+                    if action == "SELL" and trade_entry.get("execution", {}).get("status") in ("filled", "dry_run"):
+                        projected_num_positions = max(0, projected_num_positions - 1)
+
+            # --- STEP 6: UOV scoring + BUY optimization ---
+            selected_buy_order = [b["ticker"] for b in pending_buys]
+            if self.settings.opportunity_enabled:
+                scores = self.opportunity_scorer.score_cycle(
+                    cycle_id=cycle_id,
+                    evaluations=opportunity_evaluations,
+                    sub_results=sub_results,
+                    stocks_data=stocks_data,
+                    per_ticker_news=per_ticker_news,
+                )
+                result["opportunity_ranking"] = [s.to_dict() for s in scores]
+                scores_by_ticker = {entry["ticker"]: entry for entry in result["opportunity_ranking"]}
+                if not scores_by_ticker and pending_buys:
+                    logger.warning("UOV scoring unavailable, falling back to legacy BUY execution order.")
+                else:
+                    plan = self.opportunity_optimizer.optimize_buys(
+                        cycle_id=cycle_id,
+                        approved_buys=pending_buys,
+                        scores_by_ticker=scores_by_ticker,
+                        existing_tickers=existing_tickers,
+                        cash_pct=cash_pct,
+                        num_positions=projected_num_positions,
+                    )
+                    result["queued_candidates"] = plan.get("queued_candidates", [])
+                    result["swap_candidates"] = plan.get("swap_candidates", [])
+
+                    if self.settings.opportunity_mode == "active":
+                        selected_buy_order = plan.get("execution_order", selected_buy_order)
+                        selected_set = set(selected_buy_order)
+                        queued_set = {item.get("ticker", "") for item in result["queued_candidates"]}
+                        for pending in pending_buys:
+                            ticker = pending.get("ticker", "")
+                            if ticker in selected_set:
+                                continue
+                            if ticker in queued_set:
+                                stage = "opportunity_queue"
+                                reason = "Queued by UOV optimizer (capacity/threshold gating)"
+                            else:
+                                stage = "opportunity_filtered"
+                                reason = "Filtered by UOV optimizer (below queue threshold or queue expiry)"
+                            result["rejected_stocks"].append({
+                                "ticker": ticker,
+                                "action": "BUY",
+                                "stage": stage,
+                                "reason": reason,
+                                "conviction": pending.get("decision", {}).get("conviction", 0),
+                                **self._get_stock_metadata(ticker, stocks_data),
+                            })
+
+            pending_by_ticker = {b["ticker"]: b for b in pending_buys}
+            for ticker in selected_buy_order:
+                pending = pending_by_ticker.get(ticker)
+                if pending is None:
+                    continue
+                trade_entry = self._execute_trade(
+                    cycle_id=cycle_id,
+                    decision=pending["decision"],
+                    action="BUY",
+                    ticker=ticker,
+                    final_alloc=float(pending.get("final_allocation_pct", 0.0)),
+                    current_value=current_value,
+                    cash_gbp=cash_gbp,
+                    total_return_pct=portfolio_data.get("total_return_pct", 0),
+                    alpha_pct=portfolio_data.get("alpha_pct", 0),
+                    existing_tickers=existing_tickers,
+                    market_regime=market_regime,
+                    vix=vix,
+                    macro=macro,
+                    stocks_data=stocks_data,
+                    analyst_data_map=analyst_data_map,
+                    av_broad_sentiment=av_broad_sentiment,
+                    mod_result=pending["moderation"],
+                    risk_verdict=pending["risk_verdict"],
+                )
+                if trade_entry:
+                    result["trades"].append(trade_entry)
+
+            # Record cycle completion
+            self.state_machine.record_cycle()
+            self._save_snapshot(portfolio_data, current_state)
+
+            logger.info(f"Cycle {cycle_id} completed: {len(result['trades'])} trades executed, "
+                        f"{len(result['rejected_stocks'])} rejected")
+            return _finalize("completed")
+        except Exception as e:
+            logger.exception(f"Unhandled cycle failure in {cycle_id}: {e}")
+            result["errors"].append(f"unhandled: {e}")
+            result["status"] = "error"
+            self.notification_service.emit_critical_cycle_failure(
+                cycle_id=cycle_id,
+                payload={
+                    "cycle_id": cycle_id,
+                    "dry_run": self.dry_run,
+                    "stage": "run_cycle",
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "trace_id": cycle_id,
+                },
+                source="orchestrator",
+            )
+            _emit_cycle_summary()
+            raise
 
     # --- Helper methods ---
 
@@ -706,6 +762,7 @@ class Orchestrator:
 
     def _execute_trade(
         self,
+        cycle_id: str,
         decision: dict[str, Any],
         action: str,
         ticker: str,
@@ -730,6 +787,24 @@ class Orchestrator:
 
         if current_price <= 0:
             logger.warning(f"No price for {ticker}, skipping")
+            self.notification_service.emit_trade_execution_result(
+                cycle_id=cycle_id,
+                payload={
+                    "cycle_id": cycle_id,
+                    "dry_run": self.dry_run,
+                    "ticker": ticker,
+                    "action": action,
+                    "execution_status": "skipped",
+                    "quantity": 0,
+                    "price": None,
+                    "value_gbp": None,
+                    "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                    "stop_loss_status": None,
+                    "error_message": "no_price",
+                    "target_allocation_pct": final_alloc,
+                    "occurred_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
             return None
 
         conviction = decision.get("conviction", 0)
@@ -818,6 +893,25 @@ class Orchestrator:
                     )
                 except Exception as e:
                     logger.error(f"Failed to place stop-loss for {ticker}: {e}")
+
+        self.notification_service.emit_trade_execution_result(
+            cycle_id=cycle_id,
+            payload={
+                "cycle_id": cycle_id,
+                "dry_run": self.dry_run,
+                "ticker": ticker,
+                "action": action,
+                "target_allocation_pct": final_alloc,
+                "execution_status": exec_result.get("status"),
+                "quantity": exec_result.get("quantity"),
+                "price": current_price,
+                "value_gbp": exec_result.get("value_gbp", trade_value),
+                "stop_loss_pct": stop_loss_pct,
+                "stop_loss_status": (stop_loss_result or {}).get("status"),
+                "error_message": exec_result.get("error"),
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
 
         return {
             "ticker": ticker,
@@ -998,6 +1092,146 @@ class Orchestrator:
                     "description": summary,
                 }
         return {"industry": "Unknown", "market_cap": None, "description": ""}
+
+    def _build_cycle_summary_payload(
+        self,
+        *,
+        cycle_id: str,
+        result: dict[str, Any],
+        strategy_decisions: list[dict[str, Any]],
+        opportunity_evaluations: list[dict[str, Any]],
+        stocks_data: list[dict[str, Any]],
+        per_ticker_news: dict[str, str],
+        dry_run: bool,
+    ) -> dict[str, Any]:
+        """Build full cycle summary payload for notifications."""
+        decisions = self._collect_decision_records(
+            strategy_decisions=strategy_decisions,
+            opportunity_evaluations=opportunity_evaluations,
+            rejected_stocks=result.get("rejected_stocks", []),
+            trades=result.get("trades", []),
+            stocks_data=stocks_data,
+            per_ticker_news=per_ticker_news,
+        )
+
+        rejected = result.get("rejected_stocks", [])
+        queued = sum(1 for r in rejected if r.get("stage") == "opportunity_queue")
+        filtered = sum(1 for r in rejected if r.get("stage") == "opportunity_filtered")
+
+        return {
+            "cycle_id": cycle_id,
+            "status": result.get("status", "unknown"),
+            "dry_run": dry_run,
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "num_trades": len(result.get("trades", [])),
+            "num_rejected": len(rejected),
+            "counts": {
+                "decisions": len(strategy_decisions),
+                "trades": len(result.get("trades", [])),
+                "rejected": len(rejected),
+                "queued": queued,
+                "filtered": filtered,
+            },
+            "decisions": decisions,
+        }
+
+    def _collect_decision_records(
+        self,
+        *,
+        strategy_decisions: list[dict[str, Any]],
+        opportunity_evaluations: list[dict[str, Any]],
+        rejected_stocks: list[dict[str, Any]],
+        trades: list[dict[str, Any]],
+        stocks_data: list[dict[str, Any]],
+        per_ticker_news: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        """Build per-ticker decision records from cycle artifacts."""
+        eval_by_key = {
+            (str(e.get("ticker", "")), str(e.get("action", ""))): e
+            for e in opportunity_evaluations
+        }
+        rejected_by_key = {
+            (str(r.get("ticker", "")), str(r.get("action", ""))): r
+            for r in rejected_stocks
+        }
+        trade_by_key = {
+            (str(t.get("ticker", "")), str(t.get("action", ""))): t
+            for t in trades
+        }
+
+        records: list[dict[str, Any]] = []
+        for decision in strategy_decisions:
+            ticker = str(decision.get("ticker", "")).upper()
+            action = str(decision.get("action", "HOLD"))
+            key = (ticker, action)
+            evaluation = eval_by_key.get(key, {})
+            rejected = rejected_by_key.get(key, {})
+            trade = trade_by_key.get(key, {})
+            moderation = evaluation.get("moderation", {}) or {}
+            gpt_verdict = moderation.get("gpt4o_verdict") or {}
+            gemini_verdict = moderation.get("gemini_verdict") or {}
+            trade_exec = trade.get("execution", {}) or {}
+            stop_loss = trade.get("stop_loss", {}) or {}
+            metadata = self._get_stock_metadata(ticker, stocks_data)
+            fundamentals = self._get_stock_fundamentals(ticker, stocks_data)
+            yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+            news_excerpt = per_ticker_news.get(yf_ticker, decision.get("news_sentiment_summary", ""))
+
+            stage = (
+                rejected.get("stage")
+                or evaluation.get("stage")
+                or ("executed" if trade else "unrated")
+            )
+
+            records.append({
+                "ticker": ticker,
+                "action": action,
+                "stage": stage,
+                "conviction": decision.get("conviction"),
+                "target_allocation_pct": decision.get("target_allocation_pct"),
+                "final_allocation_pct": evaluation.get("final_allocation_pct"),
+                "moderation_consensus": evaluation.get("moderation_consensus"),
+                "risk_verdict": evaluation.get("risk_verdict"),
+                "strategy_reasoning_excerpt": self._excerpt(decision.get("reasoning", ""), max_len=350),
+                "gpt_reasoning_excerpt": self._excerpt(gpt_verdict.get("reasoning", ""), max_len=250),
+                "gemini_assessment_excerpt": self._excerpt(gemini_verdict.get("assessment", ""), max_len=250),
+                "gemini_growth_score": gemini_verdict.get("growth_score"),
+                "gemini_risk_score": gemini_verdict.get("risk_score"),
+                "gemini_confidence_score": gemini_verdict.get("confidence_score"),
+                "industry": metadata.get("industry"),
+                "market_cap": metadata.get("market_cap"),
+                "description_excerpt": self._excerpt(metadata.get("description", ""), max_len=220),
+                "trailing_pe": fundamentals.get("trailing_pe"),
+                "pb_ratio": fundamentals.get("pb_ratio"),
+                "roe": fundamentals.get("roe"),
+                "profit_margin": fundamentals.get("profit_margin"),
+                "debt_equity": fundamentals.get("debt_equity"),
+                "earnings_growth": fundamentals.get("earnings_growth"),
+                "news_excerpt": self._excerpt(news_excerpt, max_len=400),
+                "execution_status": trade_exec.get("status"),
+                "quantity": trade_exec.get("quantity"),
+                "value_gbp": trade_exec.get("value_gbp"),
+                "stop_loss_pct": decision.get("stop_loss_pct"),
+                "stop_loss_status": stop_loss.get("status"),
+            })
+
+        return records
+
+    @staticmethod
+    def _get_stock_fundamentals(ticker: str, stocks_data: list[dict[str, Any]]) -> dict[str, Any]:
+        for stock in stocks_data:
+            if stock.get("ticker") == ticker:
+                return stock.get("fundamentals", {}) or {}
+        return {}
+
+    @staticmethod
+    def _excerpt(text: Any, *, max_len: int) -> str:
+        if text is None:
+            return ""
+        value = str(text).strip()
+        if len(value) <= max_len:
+            return value
+        return value[: max_len - 3] + "..."
 
     @staticmethod
     def _normalize_decision_ticker(ticker: str, stocks_data: list[dict[str, Any]]) -> str:

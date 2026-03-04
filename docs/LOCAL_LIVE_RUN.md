@@ -8,7 +8,8 @@ Step-by-step checklist for running the Investment Agent locally with real Tradin
 - [ ] Poetry installed (`pip install poetry`)
 - [ ] All dependencies installed (`poetry install`)
 - [ ] Database migrations applied (`poetry run alembic upgrade head`)
-- [ ] `.env` file configured with all 7 API keys
+- [ ] `.env` file configured with all 7 required API keys
+- [ ] (Optional) Slack/SMTP notification keys configured for chat alerts
 - [ ] Trading 212 **Practice** account created (not Live)
 - [ ] Diagnostics notebook run successfully (all PASS)
 
@@ -22,7 +23,7 @@ poetry install
 
 # Configure environment
 cp config/.env.example .env
-# Edit .env with your 7 API keys (see config/.env.example for the list)
+# Edit .env with your 7 required API keys (and optional notification keys)
 
 # Create/migrate the SQLite database
 poetry run alembic upgrade head
@@ -118,6 +119,22 @@ print('Costs today:', get_cost_summary(days=1))
 "
 ```
 
+### 6. (Optional) Verify Notification Channel Config
+
+```bash
+poetry run python -c "
+from src.utils.config import get_settings
+s = get_settings()
+print('Notifications enabled:', s.notification_enabled)
+print('Channels:', s.notification_channels)
+print('Include dry-run alerts:', s.notification_include_dry_run_alerts)
+print('Slack configured:', bool(s.slack_webhook_url))
+print('Email configured:', bool(s.smtp_host and s.alert_email_to and s.alert_email_from))
+"
+```
+
+If you are testing email locally with Mailpit/MailHog (or another local SMTP sink), set `SMTP_USE_TLS=false` in `.env` because those sinks typically do not support STARTTLS on port `1025`.
+
 ## Running a Live Dry Run (Recommended First)
 
 Before executing real trades, run a dry-run cycle to verify the full pipeline:
@@ -142,6 +159,7 @@ poetry run python -m src.orchestrator.main --dry-run
 - Confirm risk checks are applied correctly
 - Check cost summary is within budget
 - Check that "Skipped N candidates with no OHLCV data" is low (should decrease over cycles as bad tickers are flagged)
+- If notifications are configured, confirm Slack receives concise alerts and email receives full cycle summaries
 
 ## Running a Live Cycle
 
@@ -198,6 +216,18 @@ from sqlalchemy import text
 from src.data.database import get_session
 s = get_session()
 rows = s.execute(text('SELECT timestamp, ticker, action, quantity, price, status FROM orders ORDER BY timestamp DESC LIMIT 10')).fetchall()
+for r in rows: print(r)
+s.close()
+"
+```
+
+### Check notification send logs
+```bash
+poetry run python -c "
+from sqlalchemy import text
+from src.data.database import get_session
+s = get_session()
+rows = s.execute(text('SELECT timestamp, event_type, channel, status, attempt_number FROM notification_logs ORDER BY timestamp DESC LIMIT 20')).fetchall()
 for r in rows: print(r)
 s.close()
 "

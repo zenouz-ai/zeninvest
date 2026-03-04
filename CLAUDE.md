@@ -49,6 +49,7 @@ src/
 │   ├── risk/              # RiskManager — 9 hard rules with VETO power, no LLM involvement
 │   ├── opportunity/       # OpportunityScorer + OpportunityOptimizer — UOV ranking, queueing, swap suggestions
 │   ├── execution/         # OrderManager + T212Client — market orders, stop-loss, dedup
+│   ├── notifications/     # NotificationService + Slack/Email providers + formatters + command gateway scaffold
 │   └── reporting/         # Trade journals (markdown per trade)
 ├── data/
 │   ├── database.py        # SQLite engine + get_session() factory (WAL mode)
@@ -60,8 +61,8 @@ src/
     ├── cost_tracker.py    # Per-provider budget enforcement + graceful degradation
     └── logger.py          # Rich logging
 config/
-├── settings.yaml          # All tuneable parameters (trading, risk, strategy, universe, costs)
-└── .env.example           # Required environment variables template
+├── settings.yaml          # All tuneable parameters (trading, risk, strategy, universe, costs, notifications)
+└── .env.example           # Environment variables template (required core API keys + optional notification keys)
 tests/                     # pytest — all use in-memory SQLite fixtures
 ```
 
@@ -145,10 +146,11 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 8. **Order dedup** — 5-minute window prevents double-execution of the same order.
 9. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
 10. **UOV optimizer guardrail** — UOV may reorder/queue BUYs, but it never directly triggers SELL/REDUCE. Strategy remains sell authority; Risk remains final veto.
+11. **Notification fail-open** — alert delivery failures (Slack/Email) must never block trade execution.
 
 ## Environment Variables
 
-All required, loaded from `.env` at project root:
+Required core keys (loaded from `.env` at project root):
 
 ```
 T212_API_KEY          # Trading 212 (practice/demo)
@@ -158,6 +160,19 @@ OPENAI_API_KEY        # GPT-4o (moderation)
 GOOGLE_AI_API_KEY     # Gemini Flash (moderation)
 FINNHUB_API_KEY       # Analyst recs, insider sentiment
 ALPHA_VANTAGE_API_KEY # AI news sentiment
+```
+
+Optional notification keys:
+
+```
+SLACK_WEBHOOK_URL
+ALERT_EMAIL_FROM
+ALERT_EMAIL_TO
+SMTP_HOST
+SMTP_PORT
+SMTP_USER
+SMTP_PASS
+SMTP_USE_TLS
 ```
 
 ## Database Models (src/data/models.py)
@@ -171,6 +186,7 @@ ALPHA_VANTAGE_API_KEY # AI news sentiment
 | `ModerationLog` | `moderation_logs` | GPT-4o + Gemini verdicts with scores |
 | `RiskDecision` | `risk_decisions` | Risk checks with triggered rules |
 | `CostLog` | `cost_logs` | Per-LLM-call cost tracking |
+| `NotificationLog` | `notification_logs` | Outbound alert audit trail (sent/failed/skipped/deduped attempts) |
 | `MarketDataCache` | `market_data_cache` | OHLCV + fundamentals (12h TTL) |
 | `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state |
 | `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
@@ -187,6 +203,7 @@ Key tuneable values:
 - **Universe**: `max_candidates: 30`, cap tiers 70/20/10% (large/mid/small), `screening_cooldown_hours: 72`
 - **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50
 - **Opportunity**: `enabled`, `mode: shadow|active`, immediate/queue z-thresholds, queue TTL, swap delta, EWMA half-life, weighted feature map, stage penalties
+- **Notifications**: `enabled`, channels/routes, retry/timeout/dedup config, dry-run alert policy, command gateway flag (disabled in v1)
 
 ## When Adding New Features
 

@@ -2,7 +2,7 @@
 
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -16,14 +16,28 @@ logger = get_logger("scheduler")
 
 def _run_analysis_cycle() -> None:
     """Run a full analysis/trading cycle."""
+    from src.agents.notifications import NotificationService
     from src.orchestrator.main import Orchestrator
     logger.info("Scheduled analysis cycle starting...")
     orchestrator = Orchestrator(dry_run=False)
+    notifications = NotificationService()
     try:
         result = orchestrator.run_cycle()
         logger.info(f"Cycle completed: {result.get('status')} — {result.get('num_trades', 0)} trades")
     except Exception as e:
         logger.error(f"Scheduled cycle failed: {e}")
+        notifications.emit_critical_cycle_failure(
+            cycle_id=None,
+            payload={
+                "cycle_id": None,
+                "dry_run": False,
+                "stage": "scheduler_analysis_cycle",
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "trace_id": f"scheduler_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}",
+            },
+            source="scheduler",
+        )
     finally:
         orchestrator.close()
 

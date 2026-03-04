@@ -305,6 +305,56 @@ class Settings:
     def alert_threshold_pct(self) -> float:
         return float(self.cost_limits["alert_threshold_pct"])
 
+    # --- Notifications ---
+    @property
+    def notifications(self) -> dict[str, Any]:
+        return self._config.get("notifications", {})
+
+    @property
+    def notification_enabled(self) -> bool:
+        return bool(self.notifications.get("enabled", False))
+
+    @property
+    def notification_channels(self) -> list[str]:
+        channels = self.notifications.get("channels", [])
+        if not isinstance(channels, list):
+            return []
+        return [str(c).lower() for c in channels]
+
+    @property
+    def notification_routes(self) -> dict[str, list[str]]:
+        routes = self.notifications.get("routes", {})
+        if not isinstance(routes, dict):
+            return {}
+        normalized: dict[str, list[str]] = {}
+        for event_type, channels in routes.items():
+            if isinstance(channels, list):
+                normalized[str(event_type)] = [str(c).lower() for c in channels]
+        return normalized
+
+    @property
+    def notification_timeout_seconds(self) -> float:
+        return float(self.notifications.get("timeout_seconds", 5))
+
+    @property
+    def notification_max_retries(self) -> int:
+        return int(self.notifications.get("max_retries", 2))
+
+    @property
+    def notification_dedup_window_seconds(self) -> int:
+        return int(self.notifications.get("dedup_window_seconds", 300))
+
+    @property
+    def notification_include_dry_run_alerts(self) -> bool:
+        return bool(self.notifications.get("include_dry_run_alerts", True))
+
+    @property
+    def notification_command_gateway_enabled(self) -> bool:
+        command_gateway = self.notifications.get("command_gateway", {})
+        if not isinstance(command_gateway, dict):
+            return False
+        return bool(command_gateway.get("enabled", False))
+
     # --- Environment variables ---
     @staticmethod
     def get_env(key: str) -> str:
@@ -312,6 +362,14 @@ class Settings:
         val = os.getenv(key)
         if val is None:
             raise EnvironmentError(f"Missing required environment variable: {key}")
+        return val
+
+    @staticmethod
+    def get_env_optional(key: str, default: str | None = None) -> str | None:
+        """Get optional environment variable."""
+        val = os.getenv(key)
+        if val is None or val == "":
+            return default
         return val
 
     @property
@@ -341,6 +399,40 @@ class Settings:
     @property
     def alpha_vantage_api_key(self) -> str:
         return self.get_env("ALPHA_VANTAGE_API_KEY")
+
+    @property
+    def slack_webhook_url(self) -> str | None:
+        return self.get_env_optional("SLACK_WEBHOOK_URL")
+
+    @property
+    def alert_email_from(self) -> str | None:
+        return self.get_env_optional("ALERT_EMAIL_FROM")
+
+    @property
+    def alert_email_to(self) -> str | None:
+        return self.get_env_optional("ALERT_EMAIL_TO")
+
+    @property
+    def smtp_host(self) -> str | None:
+        return self.get_env_optional("SMTP_HOST")
+
+    @property
+    def smtp_port(self) -> int:
+        raw = self.get_env_optional("SMTP_PORT", "587")
+        return int(raw) if raw is not None else 587
+
+    @property
+    def smtp_user(self) -> str | None:
+        return self.get_env_optional("SMTP_USER")
+
+    @property
+    def smtp_pass(self) -> str | None:
+        return self.get_env_optional("SMTP_PASS")
+
+    @property
+    def smtp_use_tls(self) -> bool:
+        raw = (self.get_env_optional("SMTP_USE_TLS", "true") or "true").strip().lower()
+        return raw in {"1", "true", "yes", "y", "on"}
 
 
 # Singleton

@@ -602,9 +602,10 @@ graph TB
 These are approved near-term projects that are intentionally documented before implementation.
 
 ### 1) Chat Interface & Real-Time Alerts (US-1.5)
-- Outbound notifications for instructed/executed trades and state transitions.
-- Initial channels: Slack webhook + email.
-- Future inbound command interface (`/status`, `/pause`, `/resume`, `/force-sell`) with auth and audit logs.
+- **Implemented in v1:** outbound notifications for trade instruction approvals, trade execution results, cycle run summaries, state transitions, and critical failures.
+- **Implemented channels:** Slack webhook + email (SMTP), with retries/timeouts/dedup and fail-open behavior.
+- **Implemented persistence:** `notification_logs` table for send-attempt audit trail.
+- **Future:** inbound command interface (`/status`, `/pause`, `/resume`, `/force-sell`) with auth and audit logs.
 - Detailed plan: `docs/CHAT_INTERFACE_PROJECT.md`.
 
 ### 2) Backtesting Engine (US-5.1)

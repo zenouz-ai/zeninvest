@@ -291,3 +291,24 @@ class CostLog(Base):
     cost_gbp = Column(Float, nullable=False, default=0.0)
     cycle_id = Column(String(50), nullable=True, index=True)
     purpose = Column(String(100), nullable=True)  # strategy, moderation, etc.
+
+
+class NotificationLog(Base):
+    """Outbound notification send attempts and outcomes."""
+
+    __tablename__ = "notification_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    event_id = Column(String(64), nullable=False, index=True)
+    cycle_id = Column(String(50), nullable=True, index=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    severity = Column(String(20), nullable=False)
+    channel = Column(String(20), nullable=False, index=True)
+    recipient = Column(String(200), nullable=True)
+    status = Column(String(20), nullable=False)  # sent, failed, skipped, deduped
+    attempt_number = Column(Integer, nullable=False, default=0)
+    dedup_key = Column(String(200), nullable=False, index=True)
+    payload_hash = Column(String(64), nullable=False)
+    error_message = Column(Text, nullable=True)
+    latency_ms = Column(Float, nullable=True)

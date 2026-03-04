@@ -9,7 +9,7 @@
 
 ## Current State: POC (v1.0)
 
-The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 128 tests pass. It is ready for VPS deployment to begin gathering live performance data.
+The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 146 tests pass. It is ready for VPS deployment to begin gathering live performance data.
 
 **What the POC establishes:**
 - End-to-end pipeline: Data → Screen → Strategy → Moderation → Risk → Execution → Journal
@@ -121,19 +121,20 @@ _Deploy POC, start collecting data, close the feedback loop._
 **Detailed implementation plan:** `docs/CHAT_INTERFACE_PROJECT.md`.
 
 **Acceptance Criteria:**
-- [ ] Add a transport-agnostic notification service under `src/agents/notifications/`.
-- [ ] Emit alerts for:
-  - [ ] trade instruction approved (post moderation+risk, pre execution)
-  - [ ] trade execution result (filled/dry_run/failed)
-  - [ ] state machine transitions (ACTIVE/CAUTIOUS/HALTED)
-  - [ ] critical cycle failures
-- [ ] Provide at least two outbound channels in v1:
-  - [ ] Slack webhook alerts
-  - [ ] Email alerts (SMTP)
-- [ ] Add channel configuration and feature flags in `config/settings.yaml`.
-- [ ] Add secrets to `.env.example` with safe placeholders.
-- [ ] Add retry + timeout + non-blocking send so notification failures never block trade execution.
-- [ ] Add `notification_logs` table with status, channel, payload hash, and error fields.
+- [x] Add a transport-agnostic notification service under `src/agents/notifications/`.
+- [x] Emit alerts for:
+  - [x] trade instruction approved (post moderation+risk, pre execution)
+  - [x] trade execution result (filled/dry_run/failed/skipped)
+  - [x] cycle run summary (all ticker decisions)
+  - [x] state machine transitions (ACTIVE/CAUTIOUS/HALTED)
+  - [x] critical cycle failures
+- [x] Provide at least two outbound channels in v1:
+  - [x] Slack webhook alerts
+  - [x] Email alerts (SMTP)
+- [x] Add channel configuration and feature flags in `config/settings.yaml`.
+- [x] Add secrets to `.env.example` with safe placeholders.
+- [x] Add retry + timeout + non-blocking send so notification failures never block trade execution.
+- [x] Add `notification_logs` table with status, channel, payload hash, and error fields.
 
 **Phase 1 Scope (Outbound only):**
 - Notify on instructed/executed trades and critical system events.
