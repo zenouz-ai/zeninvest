@@ -118,6 +118,8 @@ _Deploy POC, start collecting data, close the feedback loop._
 **Data Sources:** Existing orchestrator decisions, `orders`, `system_state`, `risk_decisions`, `moderation_logs`
 **Developer:** Codex (implementation) + Project Lead (security review)
 
+**Detailed implementation plan:** `docs/CHAT_INTERFACE_PROJECT.md`.
+
 **Acceptance Criteria:**
 - [ ] Add a transport-agnostic notification service under `src/agents/notifications/`.
 - [ ] Emit alerts for:
@@ -347,6 +349,8 @@ _Build confidence in the system with historical evidence._
 **Data Sources:** yfinance historical data
 **Developer:** Claude Code (architecture) + Codex (implementation)
 
+**Detailed implementation plan:** `docs/BACKTESTING_PROJECT_PLAN.md`.
+
 **Acceptance Criteria:**
 - [ ] Replay historical data through sub-strategy scoring (momentum, mean_rev, factor)
 - [ ] Simulate risk rules, position sizing, portfolio constraints
@@ -430,6 +434,26 @@ _ML-assisted improvements, only if justified by accumulated data._
 - [ ] Assess: can we maintain transparency and interpretability?
 - [ ] Decision gate: proceed only if expected Sharpe improvement > 0.3 with interpretable policy
 - [ ] Document findings regardless of decision
+
+---
+
+## Next Week Focus (Current Sprint)
+
+**Primary user stories for the upcoming week:**
+
+1. **US-1.5 — Chat Interface & Real-Time Trade Alerts**
+   - Finalise outbound event schema
+   - Ship Slack + Email notifications (non-blocking + retries)
+   - Wire orchestrator + state-machine hooks
+
+2. **US-5.1 — Backtesting Foundations**
+   - Ship replay engine + paper broker core
+   - Add deterministic LLM-free policy proxy
+   - Produce first benchmarked baseline report
+
+**Delivery references:**
+- Chat implementation details: `docs/CHAT_INTERFACE_PROJECT.md`
+- Backtesting implementation details: `docs/BACKTESTING_PROJECT_PLAN.md`
 
 ---
 
