@@ -2,169 +2,288 @@
 
 ## Objective
 
-Add a chat-ready notification interface so operators receive immediate alerts whenever BUY/SELL/REDUCE actions are instructed or executed, and provide a secure foundation for future two-way control (ChatOps) via Slack, Telegram, WhatsApp, and email.
+Build a reliable chat/notification layer for the Investment Agent that:
 
-This project is designed to integrate with the existing orchestrator pipeline and governance model.
+1. Gives operators immediate visibility into trade decisions and outcomes.
+2. Never interferes with execution safety or core trading flow.
+3. Provides a secure, auditable foundation for future inbound ChatOps commands.
+
+This spec tightens US-1.5 into implementation-ready requirements that align with the current codebase and governance model.
 
 ---
 
-## Why this matters
+## Product Outcomes
 
-- **Operational visibility:** Immediate awareness of agent intent and execution outcomes.
-- **Faster intervention:** Human can pause/resume/force-sell quickly when needed.
-- **Safer autonomy:** Supports future human-in-the-loop approval on high-risk trades.
-- **Roadmap fit:** Extends existing reporting and governance controls with real-time communication.
+- **Operational visibility:** Know what the agent is about to do and what actually happened.
+- **Faster intervention:** Receive HALTED/critical failures instantly.
+- **Auditability:** Every send attempt is persisted and attributable.
+- **Roadmap alignment:** Phase 1 delivers outbound alerts only; Phase 2 adds inbound control safely.
 
 ---
 
 ## Scope
 
-## Phase 1 — Outbound Alerts (MVP)
+## Phase 1 (MVP): Outbound Alerts Only
 
-### Channels (initial)
-- Slack (incoming webhook)
-- Email (SMTP)
+### In scope
+- Slack webhook alerts.
+- Email alerts (SMTP).
+- Event triggers from orchestrator/state machine:
+  - `trade_instruction_approved` (post moderation+risk, pre execution)
+  - `trade_execution_result` (filled/dry_run/failed/skipped)
+  - `state_transition` (ACTIVE/CAUTIOUS/HALTED)
+  - `critical_cycle_failure` (cycle-aborting exceptions)
+- `notification_logs` database table.
+- Config flags, channel routing, retries/timeouts, dedup/idempotency.
+- Unit tests + integration-style dry-run checks.
 
-### Event types
-- Trade instruction approved (after moderation + risk, before execution)
-- Trade execution result (filled / dry_run / failed / skipped)
-- State machine transitions (ACTIVE -> CAUTIOUS -> HALTED)
-- Critical cycle failures
+### Out of scope (Phase 1)
+- Inbound commands.
+- Human approval workflows.
+- Telegram and WhatsApp transport implementations.
+- Rich interactive UI blocks/buttons.
 
-### Non-functional requirements
-- Notification failure must never block trading flow.
-- Per-channel retry with bounded backoff and timeout.
-- Message dedup/idempotency key to prevent duplicates.
-- Structured audit trail of all sends.
+## Phase 2 (Future): Inbound Chat Commands
 
----
-
-## Phase 2 — Inbound Chat Commands (ChatOps)
-
-### Supported commands
+Commands to support:
 - `/status`
 - `/pause`
 - `/resume`
 - `/force-sell <ticker>`
 
-### Security requirements
-- Provider signature verification (Slack/Telegram webhook validation where available)
-- Optional shared secret / API key for command endpoint
-- Command allow-list by role/user ID/channel
-- Full command audit logs (who, what, when, result)
+Security and governance requirements are defined in this doc but implementation is deferred.
 
 ---
 
-## Proposed architecture
+## Architecture (Target)
 
 ```text
-Orchestrator / State Machine
-   ├─ emits domain events
-   │    (trade_instruction, trade_execution, state_transition, system_error)
-   │
-   └─ NotificationService (non-blocking)
-         ├─ SlackProvider
-         ├─ EmailProvider
-         ├─ TelegramProvider (future)
-         └─ WhatsAppProvider (future)
+Orchestrator + StateMachine + CLI actions
+   └─ emit typed notification events
+        └─ NotificationService (fail-open, non-blocking)
+             ├─ Router (event -> channels)
+             ├─ Formatter (event -> channel payload)
+             ├─ Sender (retry + timeout + dedup)
+             ├─ SlackProvider
+             └─ EmailProvider
+                  └─ NotificationLogRepository (persistent audit trail)
 
-Inbound Command Gateway (future)
-   └─ validates/authenticates command
-   └─ maps to existing orchestrator actions
+Phase 2:
+Inbound Command Gateway
+   └─ authenticate + authorize + audit
+   └─ map to existing orchestrator/state-machine actions
 ```
 
----
-
-## Integration points in current codebase
-
-- `Orchestrator._execute_trade()` for trade execution outcomes.
-- Decision pipeline section after moderation+risk verdict for “instruction approved” alerts.
-- `StateMachine.transition()` for state transition alerts.
-- Existing CLI actions (`--status`, `--pause`, `--resume`, `--force-sell`) as command targets for inbound chat controls.
+### Non-blocking contract
+- Notification send failures must be isolated from trade execution.
+- `NotificationService` must catch/log all provider exceptions and return control immediately.
+- Delivery is **at-least-once** (with idempotency key dedup on provider side where possible).
 
 ---
 
-## Data model additions
+## Integration Points in Current Codebase
 
-Add a new table: `notification_logs`
+- `src/orchestrator/main.py`
+  - Decision loop after moderation+risk approval emits `trade_instruction_approved`.
+  - `Orchestrator._execute_trade()` emits `trade_execution_result`.
+  - Top-level cycle exception handling emits `critical_cycle_failure`.
+- `src/orchestrator/state_machine.py`
+  - `StateMachine.transition()` emits `state_transition`.
+- Existing command surface for Phase 2 mapping:
+  - `--status`, `--pause`, `--resume`, `--force-sell`.
 
-Suggested fields:
-- `id`
-- `timestamp`
-- `cycle_id`
+---
+
+## Event Contract (Canonical)
+
+Each outbound event must include:
+- `event_id` (uuid4)
 - `event_type`
-- `channel` (slack/email/telegram/whatsapp)
-- `status` (sent/failed/skipped)
-- `idempotency_key`
-- `payload_hash`
-- `error_message`
-- `recipient`
+- `occurred_at` (UTC ISO8601)
+- `cycle_id` (nullable for non-cycle events)
+- `severity` (`info|warning|critical`)
+- `source` (`orchestrator|state_machine|command_gateway`)
+- `dedup_key` (stable hashable key per event intent)
+- `payload` (typed object)
 
-This supports incident review, reliability metrics, and compliance audit needs.
+### `trade_instruction_approved` payload
+- `ticker`
+- `action`
+- `target_allocation_pct`
+- `conviction`
+- `moderation_consensus`
+- `risk_verdict`
+- `reasoning_summary`
+
+### `trade_execution_result` payload
+- `ticker`
+- `action`
+- `target_allocation_pct`
+- `execution_status`
+- `quantity`
+- `price`
+- `value_gbp`
+- `order_id` (nullable)
+- `stop_loss_status` (nullable)
+- `error_message` (nullable)
+
+### `state_transition` payload
+- `old_state`
+- `new_state`
+- `reason`
+- `drawdown_pct` (nullable)
+
+### `critical_cycle_failure` payload
+- `stage`
+- `error_type`
+- `error_message`
+- `trace_id` (if available)
 
 ---
 
-## Configuration additions
+## Message Rendering Requirements
 
-### `config/settings.yaml`
-- `notifications.enabled`
-- `notifications.channels`
-- `notifications.trade_instruction_alerts`
-- `notifications.trade_execution_alerts`
-- `notifications.state_transition_alerts`
-- `notifications.error_alerts`
-- `notifications.max_retries`
-- `notifications.timeout_seconds`
+- Slack: concise, single-message summary with severity prefix.
+- Email: subject line includes `[Investment-Agent][SEVERITY]` and body contains full event details.
+- Messages must always include:
+  - environment (`practice`/`live`)
+  - cycle ID when available
+  - timestamp in UTC
 
-### `.env`
+---
+
+## Delivery and Reliability Requirements
+
+- Per-channel timeout: configurable (default 5s).
+- Retry policy: configurable bounded retries with exponential backoff (default 2 retries, 0.5s then 1.5s).
+- Dedup:
+  - compute `dedup_key` from event intent fields.
+  - do not send duplicate event to same channel within configurable window (default 300s).
+- Fail-open:
+  - notification failures never raise to trading path.
+  - all failures recorded in logs + `notification_logs`.
+
+---
+
+## Data Model Additions
+
+Add table: `notification_logs`
+
+Required fields:
+- `id` (PK)
+- `timestamp` (UTC, indexed)
+- `event_id` (indexed)
+- `cycle_id` (nullable, indexed)
+- `event_type` (indexed)
+- `severity`
+- `channel` (`slack|email|telegram|whatsapp`)
+- `recipient` (nullable)
+- `status` (`sent|failed|skipped|deduped`)
+- `attempt_number` (int)
+- `dedup_key` (indexed)
+- `payload_hash`
+- `error_message` (nullable)
+- `latency_ms` (nullable)
+
+Recommended constraints/indexes:
+- index on `(event_type, timestamp)`
+- index on `(channel, timestamp)`
+- unique constraint on `(channel, dedup_key, attempt_number)` to simplify replay auditing
+
+---
+
+## Configuration Additions
+
+## `config/settings.yaml`
+
+```yaml
+notifications:
+  enabled: true
+  channels: ["slack", "email"]
+  routes:
+    trade_instruction_approved: ["slack"]
+    trade_execution_result: ["slack", "email"]
+    state_transition: ["slack", "email"]
+    critical_cycle_failure: ["slack", "email"]
+  timeout_seconds: 5
+  max_retries: 2
+  dedup_window_seconds: 300
+  include_dry_run_alerts: true
+```
+
+## `.env` additions
+
 - `SLACK_WEBHOOK_URL`
+- `ALERT_EMAIL_FROM`
+- `ALERT_EMAIL_TO`
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USER`
 - `SMTP_PASS`
-- `ALERT_EMAIL_TO`
-- `TELEGRAM_BOT_TOKEN` (future)
-- `TELEGRAM_CHAT_ID` (future)
-- `WHATSAPP_PROVIDER_TOKEN` (future)
+- `SMTP_USE_TLS`
+
+Phase 2 (future only):
+- `COMMAND_GATEWAY_SHARED_SECRET`
+- Provider-specific signature secrets (e.g., Slack signing secret)
 
 ---
 
-## Acceptance criteria
+## Phase 2 Security Requirements (Locked Before Build)
 
-- [ ] Alerts are emitted for all configured events in Phase 1.
-- [ ] Alerts include ticker, action, allocation, conviction, moderation, risk verdict, and execution status when applicable.
-- [ ] Notification sending is non-blocking and resilient to provider outages.
-- [ ] Every send attempt is recorded in `notification_logs`.
-- [ ] Feature is fully disable-able via config flag.
-- [ ] Unit tests cover formatting, routing, retries, and failure isolation.
-- [ ] Inbound command endpoints (Phase 2) enforce authentication and audit logging.
+- Verify provider signatures where supported.
+- Reject unauthenticated requests with auditable deny log entries.
+- Enforce allow-list by user ID and/or channel ID.
+- Require command idempotency key and replay window checks.
+- Record full command audit trail: principal, command, args, timestamp, auth result, execution result.
 
 ---
 
-## Delivery plan
+## Acceptance Criteria
 
-1. Implement provider-agnostic notification interface.
-2. Implement Slack + email providers.
-3. Wire outbound hooks in orchestrator + state machine.
-4. Add database logging and migration.
-5. Add tests + dry-run verification.
-6. Add inbound command gateway (Phase 2).
-7. Add Telegram/WhatsApp providers as incremental extensions.
+### Phase 1
+- [ ] Notification service exists under `src/agents/notifications/` with provider abstraction.
+- [ ] All four event types emit from the defined integration points.
+- [ ] Slack and email channels work independently and can be enabled/disabled by config.
+- [ ] Notification failures never block or fail a trading cycle.
+- [ ] Retries/timeouts/dedup operate as configured.
+- [ ] Every send attempt persists to `notification_logs`.
+- [ ] Dry-run cycles produce alerts when `include_dry_run_alerts=true`.
+- [ ] Unit tests cover formatter correctness, routing, retry, dedup, and fail-open behavior.
+- [ ] End-to-end dry-run validation demonstrates event emission and persisted logs.
 
----
-
-## Risks and mitigations
-
-- **Alert spam/noise** -> severity routing + digest mode + channel filters.
-- **Provider outages** -> retries + fail-open behavior (trading continues).
-- **Unauthorized control commands** -> signature checks + allow-lists + auditable deny logs.
-- **Message duplication** -> idempotency keys and dedup checks.
+### Phase 2
+- [ ] Inbound command gateway supports `/status`, `/pause`, `/resume`, `/force-sell <ticker>`.
+- [ ] Authentication, authorization, and command audit logging are mandatory and tested.
 
 ---
 
-## Success metrics
+## Delivery Plan (Implementation Sequence)
 
-- P95 alert delivery latency < 10 seconds for outbound alerts.
-- >99% successful send rate across channels (excluding provider outages).
-- 0 trading cycles blocked by notification failures.
-- 100% command actions attributable in audit logs (Phase 2).
+1. Add notification domain models/events and provider interfaces.
+2. Implement `NotificationService` with router, retries, dedup, fail-open handling.
+3. Add Slack provider.
+4. Add SMTP email provider.
+5. Wire orchestrator/state-machine integration hooks.
+6. Add `notification_logs` model + Alembic migration + repository methods.
+7. Add config keys + `.env.example` placeholders + `Settings` accessors.
+8. Add tests and run dry-run verification.
+9. Phase 2: implement inbound command gateway only after Phase 1 stability criteria are met.
+
+---
+
+## Risks and Mitigations
+
+- **Alert noise/spam:** Severity routing and per-event channel selection.
+- **Provider outage:** Timeouts + bounded retries + fail-open.
+- **Duplicate sends:** Dedup keys + dedup window + dedup status logging.
+- **Security regression in Phase 2:** Signature validation + allow-list + full audit requirements as release gate.
+
+---
+
+## Success Metrics
+
+- P95 alert send latency < 10 seconds.
+- >99% successful sends excluding provider outages.
+- 0 trading cycles blocked by notification subsystem failures.
+- 100% send attempts represented in `notification_logs`.
+- Phase 2: 100% command actions attributable in audit logs.
