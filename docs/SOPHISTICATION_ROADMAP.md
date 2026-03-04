@@ -111,6 +111,42 @@ _Deploy POC, start collecting data, close the feedback loop._
 
 ---
 
+### US-1.5: Chat Interface & Real-Time Trade Alerts (ChatOps Foundation)
+**Priority:** P1 (High)
+**Value:** Immediate operator visibility and control. Enables real-time awareness of BUY/SELL instructions and lays the foundation for human-in-the-loop controls via Slack/Telegram/email.
+**Effort:** Medium (4-6 days)
+**Data Sources:** Existing orchestrator decisions, `orders`, `system_state`, `risk_decisions`, `moderation_logs`
+**Developer:** Codex (implementation) + Project Lead (security review)
+
+**Acceptance Criteria:**
+- [ ] Add a transport-agnostic notification service under `src/agents/notifications/`.
+- [ ] Emit alerts for:
+  - [ ] trade instruction approved (post moderation+risk, pre execution)
+  - [ ] trade execution result (filled/dry_run/failed)
+  - [ ] state machine transitions (ACTIVE/CAUTIOUS/HALTED)
+  - [ ] critical cycle failures
+- [ ] Provide at least two outbound channels in v1:
+  - [ ] Slack webhook alerts
+  - [ ] Email alerts (SMTP)
+- [ ] Add channel configuration and feature flags in `config/settings.yaml`.
+- [ ] Add secrets to `.env.example` with safe placeholders.
+- [ ] Add retry + timeout + non-blocking send so notification failures never block trade execution.
+- [ ] Add `notification_logs` table with status, channel, payload hash, and error fields.
+
+**Phase 1 Scope (Outbound only):**
+- Notify on instructed/executed trades and critical system events.
+
+**Phase 2 Scope (Inbound chat commands):**
+- [ ] Build command gateway for `/status`, `/pause`, `/resume`, `/force-sell <ticker>`.
+- [ ] Add authentication and command allow-listing.
+- [ ] Add full audit logging for all received commands.
+
+**Integration Point:**
+- Trigger from `Orchestrator._execute_trade()` and state transitions in the state machine.
+- Reuse existing control actions already exposed by the CLI (`--status`, `--pause`, `--resume`, `--force-sell`).
+
+---
+
 ## Phase 2: Calibration — Learning from Live Data (Weeks 4-10)
 
 _Use accumulated live data to calibrate and tune. Requires ~50-100 completed trades._
@@ -412,16 +448,17 @@ _ML-assisted improvements, only if justified by accumulated data._
 ```
 Week  1-2:  POC deployment to VPS (US-1.4) + Performance tracking (US-1.1)
 Week  3-4:  Trade outcome tracker (US-1.2) + Performance dashboard (US-1.3)
-Week  5-6:  Buffer / bug fixes from live running + data collection
-Week  7-8:  Conviction calibration (US-2.1) — needs ~50 trades first
-Week  9-10: Dynamic strategy weighting (US-2.2) + Moderator analysis (US-2.3)
-Week 11-12: Risk-parity sizing (US-3.1) + Volume signals (US-4.1)
-Week 13-14: Enhanced regime detection (US-3.2) + Correlation screening (US-3.3)
-Week 15-16: Earnings calendar (US-4.2) + Sector rotation (US-4.3)
-Week 17-20: Backtesting engine (US-5.1) + Parameter sensitivity (US-5.2)
-Week 21-24: ML investigation (US-6.1) — decision gate
-Week 25-30: ML implementation (if justified) or alternative enhancements
-Week 30-36: RL investigation (US-6.3), journal embeddings (US-6.2)
+Week  5-6:  Chat interface + real-time alerts (US-1.5)
+Week  7-8:  Buffer / bug fixes from live running + data collection
+Week  9-10: Conviction calibration (US-2.1) — needs ~50 trades first
+Week 11-12: Dynamic strategy weighting (US-2.2) + Moderator analysis (US-2.3)
+Week 13-14: Risk-parity sizing (US-3.1) + Volume signals (US-4.1)
+Week 15-16: Enhanced regime detection (US-3.2) + Correlation screening (US-3.3)
+Week 17-18: Earnings calendar (US-4.2) + Sector rotation (US-4.3)
+Week 19-22: Backtesting engine (US-5.1) + Parameter sensitivity (US-5.2)
+Week 23-26: ML investigation (US-6.1) — decision gate
+Week 27-32: ML implementation (if justified) or alternative enhancements
+Week 33-36: RL investigation (US-6.3), journal embeddings (US-6.2)
 ```
 
 ### Task Assignment Strategy
@@ -446,6 +483,7 @@ Week 30-36: RL investigation (US-6.3), journal embeddings (US-6.2)
 | 1.1 | Performance tracking | Critical | Easy | M | Existing DB | **P0** |
 | 1.2 | Trade outcome tracker | Critical | Easy | M | Existing DB | **P0** |
 | 1.3 | Performance dashboard | High | Easy | S | US-1.1, 1.2 | **P1** |
+| 1.5 | Chat interface + trade alerts | High | Easy-Med | M | Existing DB + orchestrator events | **P1** |
 | 2.1 | Conviction calibration | High | Medium | M | ~50 trades | **P1** |
 | 2.2 | Dynamic strategy weighting | High | Medium | M | ~50 trades | **P1** |
 | 3.1 | Risk-parity sizing | High | Easy | M | Historical prices | **P1** |
