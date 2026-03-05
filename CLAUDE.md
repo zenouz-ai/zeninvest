@@ -260,6 +260,8 @@ Files to check on every feature:
 | `docs/SOPHISTICATION_ROADMAP.md` | Features completed (move to "done"), new user stories added |
 | `docs/CHAT_INTERFACE_PROJECT.md` | Chat alerts / command interface scope, acceptance criteria, and rollout decisions |
 | `docs/BACKTESTING_PROJECT_PLAN.md` | Backtesting scope, validation assumptions, and release-gate criteria |
+| `docs/BACKTESTING.md` | What backtesting is, why it matters, how implemented, benefits |
+| `docs/WALK_FORWARD_VALIDATION.md` | Walk-forward validation and promotion report |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 

@@ -225,12 +225,14 @@ docs/                   # Project documentation
 ├── GOVERNANCE.md       # Governance framework and security guardrails
 ├── CHAT_INTERFACE_PROJECT.md  # ChatOps project plan: trade alerts + future command interface
 ├── BACKTESTING_PROJECT_PLAN.md  # Detailed implementation plan for the backtesting gap
+├── BACKTESTING.md       # What backtesting is, why it matters, how it's implemented, benefits
+├── WALK_FORWARD_VALIDATION.md  # Walk-forward validation and promotion report
 ├── LOCAL_LIVE_RUN.md   # Local live run guide (Trading 212 Practice)
 ├── MAC_SETUP.md        # macOS-specific installation instructions
 ├── PRESENTATION.md     # Project presentation and summary
 └── SOPHISTICATION_ROADMAP.md  # Prioritised improvement roadmap
 notebooks/
-└── diagnostics.ipynb   # Component diagnostics and integration tests
+└── diagnostics.ipynb   # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
 ```
 
 ## Documentation
@@ -244,6 +246,8 @@ notebooks/
 - [Governance](docs/GOVERNANCE.md) — security guardrails, kill switches, audit trail
 - [Chat Interface Project](docs/CHAT_INTERFACE_PROJECT.md) — roadmap-aligned plan for real-time trade alerts and future chat command controls
 - [Backtesting Project Plan](docs/BACKTESTING_PROJECT_PLAN.md) — detailed implementation plan to close the biggest maturity gap (historical validation)
+- [Backtesting](docs/BACKTESTING.md) — what backtesting is, why it matters, how it's implemented, benefits
+- [Walk-Forward Validation](docs/WALK_FORWARD_VALIDATION.md) — walk-forward validation and promotion report
 - [Local Live Run](docs/LOCAL_LIVE_RUN.md) — step-by-step guide for Trading 212 Practice mode
 - [Presentation](docs/PRESENTATION.md) — project overview and summary
 

@@ -664,11 +664,11 @@ The following enhancements are planned or recommended to strengthen the governan
 
 ### 9.5 Backtesting Validation
 
+- **Implemented.** A backtesting engine, paper broker, walk-forward runner, and promotion report (safe to deploy / hold) are in place. See `docs/BACKTESTING.md` and `docs/WALK_FORWARD_VALIDATION.md`.
 - Before deploying any strategy change to the live pipeline:
-  - Run the updated strategy against 12+ months of historical data.
+  - Run the updated strategy against 12+ months of historical data via the backtest CLI.
   - Compare Sharpe ratio, max drawdown, and alpha vs. the benchmark.
-  - Require backtested performance to meet minimum thresholds before approval.
-- Implement a `backtest` CLI command that replays historical data through the full pipeline.
+  - Require backtested performance (and walk-forward promotion outcome) to meet minimum thresholds before approval.
 
 ### 9.6 Enhanced Data Protection
 
@@ -788,6 +788,9 @@ All data is stored in a SQLite database managed via SQLAlchemy + Alembic migrati
 | `api_logs` | All external API calls | 10-50 per cycle |
 | `market_data_cache` | Cached OHLCV and fundamentals | Varies |
 | `news_sentiment_cache` | Cached news sentiment data | Varies |
+| `performance_metrics` | Rolling Sharpe, Sortino, drawdown, win rates by strategy | Updated per cycle / daily |
+| `trade_outcomes` | Per-trade P&L (BUY→SELL), conviction and moderator linkage | 0-15+ per cycle (on SELL) |
+| `notification_logs` | Outbound alert attempts (Slack/email): sent, failed, skipped, deduped | 0-20+ per cycle |
 
 ---
 

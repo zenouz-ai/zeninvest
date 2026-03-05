@@ -16,7 +16,7 @@ def test_check_no_lookahead_all_before() -> None:
         "date": pd.to_datetime(["2024-01-01", "2024-01-10", "2024-01-14"]),
         "close": [100.0, 101.0, 102.0],
     })
-    assert check_no_lookahead(df, pd.Timestamp("2024-01-15")) is True
+    assert check_no_lookahead(df, pd.Timestamp("2024-01-15"))
 
 
 def test_check_no_lookahead_fails_when_future() -> None:
@@ -24,4 +24,4 @@ def test_check_no_lookahead_fails_when_future() -> None:
         "date": pd.to_datetime(["2024-01-01", "2024-01-20"]),
         "close": [100.0, 102.0],
     })
-    assert check_no_lookahead(df, pd.Timestamp("2024-01-15")) is False
+    assert not check_no_lookahead(df, pd.Timestamp("2024-01-15"))

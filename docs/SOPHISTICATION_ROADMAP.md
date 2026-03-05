@@ -9,21 +9,22 @@
 
 ## Current State: POC (v1.0)
 
-The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 146 tests pass. It is ready for VPS deployment to begin gathering live performance data.
+The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 166 tests pass. It is ready for VPS deployment to begin gathering live performance data.
 
 **What the POC establishes:**
-- End-to-end pipeline: Data → Screen → Strategy → Moderation → Risk → Execution → Journal
+- End-to-end pipeline: Data → Screen → Strategy → Moderation → Risk → Execution → Journal → Notifications
 - Multi-LLM adversarial architecture (Claude + GPT-4o + Gemini)
 - Deterministic risk guardrails with VETO power
 - Deterministic UOV opportunity layer (shadow/active modes, ranked BUY queue, swap suggestions)
 - Cost-aware degradation
 - Comprehensive logging and audit trail
+- **Feedback loop:** performance_metrics (Sharpe, Sortino, drawdown, win rates by strategy), trade_outcomes (per-trade P&L, conviction linkage), CLI `--performance` / `--dashboard`
+- **Backtesting:** engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold)
 
-**What the POC lacks:**
-- No feedback loop (doesn't learn from outcomes)
-- No backtesting evidence
-- No portfolio-level optimisation
-- Static strategy parameters
+**What the POC still lacks:**
+- Calibration of strategy weights and conviction using live + backtest evidence
+- Portfolio-level optimisation (e.g. risk-parity sizing)
+- Learning/adaptation (static strategy parameters)
 
 ---
 
