@@ -139,8 +139,11 @@ Without backtesting + validation:
 - Reuse strategy sub-signal functions for consistency.
 - Reuse risk manager rule logic where possible.
 - Persist backtest summaries in a dedicated table (future migration).
-- Add CLI command (proposed):
+- CLI command (implemented):
   - `poetry run python -m src.backtesting.main --config backtests/default.yaml`
+  - `poetry run python -m src.backtesting.main --synthetic` (synthetic data)
+  - `poetry run python -m src.backtesting.main --walk-forward` (walk-forward validation + promotion report)
+  - `poetry run python -m src.backtesting.main --scenario bull|bear|sideways` (scenario configs)
 
 ---
 

@@ -312,3 +312,49 @@ class NotificationLog(Base):
     payload_hash = Column(String(64), nullable=False)
     error_message = Column(Text, nullable=True)
     latency_ms = Column(Float, nullable=True)
+
+
+class PerformanceMetric(Base):
+    """Daily and rolling performance metrics from portfolio snapshots and orders."""
+
+    __tablename__ = "performance_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_date = Column(DateTime, nullable=False, index=True)  # date of the metric (UTC midnight)
+    sharpe_30d = Column(Float, nullable=True)
+    sharpe_60d = Column(Float, nullable=True)
+    sharpe_90d = Column(Float, nullable=True)
+    sortino_30d = Column(Float, nullable=True)
+    sortino_60d = Column(Float, nullable=True)
+    sortino_90d = Column(Float, nullable=True)
+    max_drawdown_pct = Column(Float, nullable=True)
+    calmar_ratio = Column(Float, nullable=True)
+    win_rate_momentum = Column(Float, nullable=True)
+    win_rate_mean_reversion = Column(Float, nullable=True)
+    win_rate_factor = Column(Float, nullable=True)
+    alpha_vs_spy_pct = Column(Float, nullable=True)
+    num_trades = Column(Integer, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class TradeOutcome(Base):
+    """Per-trade P&L linking BUY to SELL/REDUCE with conviction and moderator linkage."""
+
+    __tablename__ = "trade_outcomes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    buy_order_id = Column(Integer, nullable=True, index=True)  # first/primary BUY order closed (FIFO)
+    sell_order_id = Column(Integer, nullable=False, index=True)  # the SELL/REDUCE order
+    ticker = Column(String(50), nullable=False, index=True)
+    buy_timestamp = Column(DateTime, nullable=True)
+    sell_timestamp = Column(DateTime, nullable=False)
+    holding_days = Column(Float, nullable=True)
+    buy_value_gbp = Column(Float, nullable=False)
+    sell_value_gbp = Column(Float, nullable=False)
+    pnl_gbp = Column(Float, nullable=False)
+    pnl_pct = Column(Float, nullable=False)
+    conviction = Column(Integer, nullable=True)
+    strategy = Column(String(50), nullable=True)
+    moderation_result = Column(String(20), nullable=True)
+    risk_result = Column(String(20), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))

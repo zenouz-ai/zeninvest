@@ -48,13 +48,15 @@ _Deploy POC, start collecting data, close the feedback loop._
 **Data Sources:** Existing database (portfolio_snapshots, orders, strategy_decisions)
 **Developer:** Claude Code
 
+**Status (2026-03-05):** Delivered
+
 **Acceptance Criteria:**
-- [ ] Daily Sharpe ratio (rolling 30/60/90 day) computed from portfolio_snapshots
-- [ ] Sortino ratio, max drawdown, Calmar ratio tracked
-- [ ] Win rate by strategy (momentum, mean_reversion, factor) computed from filled orders
-- [ ] Alpha vs S&P 500 benchmark tracked per snapshot
-- [ ] Stored in new `performance_metrics` table with Alembic migration
-- [ ] CLI command: `--performance` shows current metrics summary
+- [x] Daily Sharpe ratio (rolling 30/60/90 day) computed from portfolio_snapshots
+- [x] Sortino ratio, max drawdown, Calmar ratio tracked
+- [x] Win rate by strategy (momentum, mean_reversion, factor) computed from filled orders
+- [x] Alpha vs S&P 500 benchmark tracked per snapshot
+- [x] Stored in new `performance_metrics` table with Alembic migration
+- [x] CLI command: `--performance` shows current metrics summary
 
 **Integration Point:** Runs as post-cycle step in orchestrator, after portfolio snapshot.
 
@@ -67,15 +69,17 @@ _Deploy POC, start collecting data, close the feedback loop._
 **Data Sources:** Existing orders + portfolio data
 **Developer:** Claude Code
 
+**Status (2026-03-05):** Delivered
+
 **Acceptance Criteria:**
-- [ ] Each BUY decision tracked until corresponding SELL/REDUCE
-- [ ] Per-trade P&L (£ and %) recorded with holding period
-- [ ] Claude's conviction score linked to actual outcome
+- [x] Each BUY decision tracked until corresponding SELL/REDUCE
+- [x] Per-trade P&L (£ and %) recorded with holding period
+- [x] Claude's conviction score linked to actual outcome
 - [ ] Each moderator's verdict linked to trade outcome (was GPT-4o right to block?)
 - [ ] Risk decisions linked to outcomes (did resized trades perform differently?)
-- [ ] New `trade_outcomes` table with Alembic migration
+- [x] New `trade_outcomes` table with Alembic migration
 
-**Integration Point:** Updated on each SELL/REDUCE execution and daily snapshot.
+**Integration Point:** Updated on each SELL/REDUCE execution and after cycle snapshot (update_trade_outcomes).
 
 ---
 
@@ -84,10 +88,11 @@ _Deploy POC, start collecting data, close the feedback loop._
 **Value:** Personal quant experience — immediate visibility into system behaviour
 **Effort:** Small (2-3 days)
 **Data Sources:** performance_metrics, trade_outcomes, cost_logs
+**Status (2026-03-05):** CLI `--dashboard` and `--performance` delivered; CSV/JSON export can be added later.
 **Developer:** Claude Code or Codex
 
 **Acceptance Criteria:**
-- [ ] `--dashboard` CLI command shows: portfolio value, Sharpe, win rate, costs, active positions
+- [x] `--dashboard` CLI command shows: portfolio value, Sharpe, win rate, costs, active positions
 - [ ] CSV/JSON export for analysis in Jupyter notebooks
 - [ ] Weekly email-style summary (rendered to journal markdown)
 

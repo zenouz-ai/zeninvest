@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 146 tests passing, deployment-ready for VPS.
+**Status:** POC — 166+ tests passing (includes performance/trade-outcome and backtesting), deployment-ready for VPS.
 
 ## Architecture
 
@@ -73,10 +73,24 @@ poetry run python -m src.orchestrator.main
 
 ```bash
 poetry run python -m src.orchestrator.main --status       # System status
+poetry run python -m src.orchestrator.main --performance  # Performance metrics summary
+poetry run python -m src.orchestrator.main --dashboard   # Dashboard: portfolio, metrics, costs, positions
 poetry run python -m src.orchestrator.main --pause        # Pause trading
 poetry run python -m src.orchestrator.main --resume       # Resume trading
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ  # Force sell
 poetry run python -m src.orchestrator.main --report       # Generate daily report
+```
+
+### Backtesting
+
+```bash
+# Run with default config (use --synthetic if no bar data)
+poetry run python -m src.backtesting.main --config backtests/default.yaml
+poetry run python -m src.backtesting.main --synthetic --output-dir backtests/results/run1
+
+# Walk-forward validation and promotion report
+poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward --synthetic
+poetry run python -m src.backtesting.main --scenario bull --synthetic
 ```
 
 ### Run the scheduler (continuous)

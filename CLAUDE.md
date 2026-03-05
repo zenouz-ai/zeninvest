@@ -32,9 +32,14 @@ poetry run python -m src.scheduler.scheduler
 
 # System controls
 poetry run python -m src.orchestrator.main --status
+poetry run python -m src.orchestrator.main --performance
+poetry run python -m src.orchestrator.main --dashboard
 poetry run python -m src.orchestrator.main --pause
 poetry run python -m src.orchestrator.main --resume
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
+# Backtesting
+poetry run python -m src.backtesting.main --config backtests/default.yaml
+poetry run python -m src.backtesting.main --synthetic
 ```
 
 ## Project Layout
@@ -210,6 +215,8 @@ SMTP_USE_TLS
 | `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state |
 | `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
 | `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities awaiting execution |
+| `PerformanceMetric` | `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy, alpha |
+| `TradeOutcome` | `trade_outcomes` | Per-trade P&L linking BUY to SELL/REDUCE with conviction and moderator linkage |
 
 ## Configuration (config/settings.yaml)
 
