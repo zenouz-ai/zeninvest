@@ -101,6 +101,77 @@ docker compose up -d
 docker compose logs -f investment-agent
 ```
 
+## Chat Notifications (US-1.5 Delivered)
+
+Outbound chat interface v1 is live with persistent audit logging.
+
+- Channels: Slack webhook + SMTP email
+- Event types:
+  - `trade_instruction_approved`
+  - `trade_execution_result`
+  - `cycle_run_summary`
+  - `state_transition`
+  - `critical_cycle_failure`
+- Audit table: `notification_logs` (`sent|failed|skipped|deduped`)
+
+Default low-noise routing profile:
+- `trade_instruction_approved` -> Slack
+- `trade_execution_result` -> Slack + Email
+- `cycle_run_summary` -> Slack
+- `state_transition` -> Slack + Email
+- `critical_cycle_failure` -> Slack + Email
+- `include_dry_run_alerts: false`
+
+### Slack + Email hookup (VPS)
+
+1. Set `.env` values:
+
+```env
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+ALERT_EMAIL_FROM=alerts@yourdomain.com
+ALERT_EMAIL_TO=ops@yourdomain.com
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASS=SG_xxx
+SMTP_USE_TLS=true
+```
+
+2. Restart container:
+
+```bash
+docker compose down
+docker compose up -d --build
+```
+
+3. Verify effective config:
+
+```bash
+docker compose exec investment-agent python -c "
+from src.utils.config import get_settings
+s=get_settings()
+print(s.notification_include_dry_run_alerts, s.notification_routes.get('cycle_run_summary'))
+"
+```
+
+4. Verify email/slack send attempts:
+
+```bash
+docker compose exec investment-agent python -c "
+from sqlalchemy import text
+from src.data.database import get_session
+s=get_session()
+rows=s.execute(text(\"\"\"
+SELECT timestamp,event_type,channel,status,attempt_number,error_message
+FROM notification_logs
+ORDER BY id DESC
+LIMIT 20
+\"\"\")).fetchall()
+print(*rows, sep='\n')
+s.close()
+"
+```
+
 ## Testing
 
 ```bash

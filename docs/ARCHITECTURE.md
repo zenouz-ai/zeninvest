@@ -605,6 +605,17 @@ These are approved near-term projects that are intentionally documented before i
 - **Implemented in v1:** outbound notifications for trade instruction approvals, trade execution results, cycle run summaries, state transitions, and critical failures.
 - **Implemented channels:** Slack webhook + email (SMTP), with retries/timeouts/dedup and fail-open behavior.
 - **Implemented persistence:** `notification_logs` table for send-attempt audit trail.
+- **Operational profile (current default):**
+  - `trade_instruction_approved` -> Slack only
+  - `trade_execution_result` -> Slack + Email
+  - `cycle_run_summary` -> Slack only
+  - `state_transition` -> Slack + Email
+  - `critical_cycle_failure` -> Slack + Email
+  - `include_dry_run_alerts: false`
+- **Hookup path used in production rollout:**
+  - Slack: Incoming Webhook URL in `.env` via `SLACK_WEBHOOK_URL`
+  - Email: SendGrid SMTP via `smtp.sendgrid.net:587`, `SMTP_USER=apikey`, `SMTP_USE_TLS=true`
+  - Verification: inspect `notification_logs` via in-container Python query + SendGrid Email Logs for final delivery status
 - **Future:** inbound command interface (`/status`, `/pause`, `/resume`, `/force-sell`) with auth and audit logs.
 - Detailed plan: `docs/CHAT_INTERFACE_PROJECT.md`.
 

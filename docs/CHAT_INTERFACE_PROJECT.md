@@ -291,3 +291,52 @@ Phase 2 (future only):
 - 0 trading cycles blocked by notification subsystem failures.
 - 100% send attempts represented in `notification_logs`.
 - Phase 2: 100% command actions attributable in audit logs.
+
+---
+
+## Implementation Record (2026-03-05)
+
+US-1.5 Phase 1 was implemented and deployed to VPS with the following execution steps.
+
+### Build + integration steps completed
+
+1. Added `src/agents/notifications/` service, provider interfaces, Slack provider, email provider, formatters, and disabled command gateway scaffold.
+2. Added `NotificationLog` ORM model and Alembic migration (`notification_logs` table).
+3. Wired event emission into:
+   - `Orchestrator.run_cycle()` and `_execute_trade()`
+   - `StateMachine.transition()`
+   - scheduler exception path for critical failures.
+4. Added notification tests (`service`, `providers`, `formatters`, `integration`) and validated full suite (`146 passed`).
+5. Updated docs (`README`, `CLAUDE`, `ARCHITECTURE`, `DEPLOYMENT`, `LOCAL_LIVE_RUN`, `SOPHISTICATION_ROADMAP`).
+
+### Slack hookup steps used
+
+1. Created Slack Incoming Webhook.
+2. Set `SLACK_WEBHOOK_URL` in VPS `.env`.
+3. Restarted container with `docker compose up -d --build`.
+4. Verified receipt of `trade_instruction_approved` and `cycle_run_summary` Slack messages.
+
+### Email hookup steps used
+
+1. First tested local SMTP sink (Mailpit), with `SMTP_USE_TLS=false` on local port `1025`.
+2. Moved VPS to transactional SMTP (SendGrid):
+   - `SMTP_HOST=smtp.sendgrid.net`
+   - `SMTP_PORT=587`
+   - `SMTP_USER=apikey`
+   - `SMTP_PASS=<SendGrid API key>`
+   - `SMTP_USE_TLS=true`
+3. Verified sender identity in SendGrid and restarted container.
+4. Queried `notification_logs` inside container to verify status transitions (`skipped` -> `sent`).
+5. Confirmed final delivery in SendGrid Email Logs (`Delivered 250 OK`) for production recipient.
+
+### Operational incidents observed and resolved
+
+- `STARTTLS extension not supported by server` when using local Mailpit with TLS enabled; resolved by `SMTP_USE_TLS=false` for local sink testing.
+- Container lacked sqlite CLI binary; switched verification to Python/SQLAlchemy query inside container.
+- Gmail recipient-specific deferral (`421 4.7.32`) seen for one address; resolved by using alternate recipient and checking provider logs.
+
+### Current production defaults
+
+- `include_dry_run_alerts: false`
+- `cycle_run_summary` routed to Slack only
+- Email reserved for higher-signal events (`trade_execution_result`, `state_transition`, `critical_cycle_failure`)

@@ -175,6 +175,25 @@ SMTP_PASS
 SMTP_USE_TLS
 ```
 
+### Chat notifications rollout notes (US-1.5)
+
+- Notification service is fail-open by design: provider errors must not block cycle execution.
+- Current default routing in `config/settings.yaml`:
+  - `trade_instruction_approved` -> `["slack"]`
+  - `trade_execution_result` -> `["slack", "email"]`
+  - `cycle_run_summary` -> `["slack"]`
+  - `state_transition` -> `["slack", "email"]`
+  - `critical_cycle_failure` -> `["slack", "email"]`
+  - `include_dry_run_alerts: false`
+- SendGrid SMTP convention:
+  - `SMTP_HOST=smtp.sendgrid.net`
+  - `SMTP_PORT=587`
+  - `SMTP_USER=apikey`
+  - `SMTP_USE_TLS=true`
+- Known delivery gotcha observed during rollout:
+  - `notification_logs.status='sent'` can still correspond to inbox delays if provider returns deferred responses.
+  - Example seen: Gmail deferral `421 4.7.32` for one recipient; resolved by using a different recipient + checking SendGrid Email Logs.
+
 ## Database Models (src/data/models.py)
 
 | Model | Table | Key Purpose |
@@ -250,7 +269,9 @@ Files to check on every feature:
 ## Near-term delivery focus (updated)
 
 Current primary user stories for next-week implementation:
-- **US-1.5 Chat Interface & Real-Time Trade Alerts** (`docs/CHAT_INTERFACE_PROJECT.md`)
+- **US-1.5 Chat Interface & Real-Time Trade Alerts** (`docs/CHAT_INTERFACE_PROJECT.md`) [delivered; outbound phase complete]
 - **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`)
 
-When touching either track, keep `README.md`, `docs/ARCHITECTURE.md`, and `docs/SOPHISTICATION_ROADMAP.md` synchronized in the same PR.
+Primary build focus in the next coding session is US-5.1 backtesting kickoff.
+
+When touching this track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, and `docs/BACKTESTING_PROJECT_PLAN.md` synchronized in the same PR.

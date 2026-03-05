@@ -144,19 +144,49 @@ Without backtesting + validation:
 
 ---
 
-## Week-ahead execution plan (two main user stories)
+## Next Session Kickoff Plan (Backtesting-Only)
 
-## User Story A (Next Week): Chat Interface
-- Finalise outbound alert event schema.
-- Implement Slack + email transport adapters.
-- Add non-blocking notification service and retry behavior.
-- Wire orchestrator and state transition hooks.
+Chat notifications (US-1.5) are now delivered and operational. The next session should focus only on US-5.1 implementation startup.
 
-## User Story B (Next Week): Backtesting Foundations
-- Build replay loop and broker core.
-- Implement deterministic policy proxy (LLM-free simulation mode).
-- Produce first baseline benchmark report on a fixed ticker subset.
-- Publish limitations and assumptions in report footer.
+### Phase 0 (Day 1) — Scaffold and contract lock
+
+- Create package skeleton:
+  - `src/backtesting/__init__.py`
+  - `src/backtesting/main.py`
+  - `src/backtesting/engine.py`
+  - `src/backtesting/broker.py`
+  - `src/backtesting/io.py`
+  - `src/backtesting/metrics.py`
+  - `src/backtesting/policies/__init__.py`
+  - `src/backtesting/policies/deterministic_proxy.py`
+- Add config folder:
+  - `backtests/default.yaml`
+  - `backtests/scenarios/{bull.yaml,bear.yaml,sideways.yaml}`
+- Add first test modules:
+  - `tests/test_backtesting_broker.py`
+  - `tests/test_backtesting_engine.py`
+  - `tests/test_backtesting_metrics.py`
+  - `tests/test_backtesting_leakage_guards.py`
+
+### Decision locks for implementation
+
+- Frequency: daily bars only (v1).
+- Fill model default: next-open plus fixed slippage bps.
+- Costs default: slippage + spread in bps, no borrow/financing model in v1.
+- Strategy mode: deterministic LLM-free proxy only.
+- Reproducibility: explicit seed required for every run.
+- Output artifacts required per run:
+  - `results.json`
+  - `trades.csv`
+  - `equity_curve.csv`
+  - `run_metadata.json` (config hash, commit hash, timestamps)
+
+### First acceptance milestone (end of first backtesting session)
+
+- One command runs end-to-end on a fixed ticker subset and date window.
+- Produces all four artifacts above in a timestamped results directory.
+- Includes SPY benchmark series in output.
+- Determinism check: same seed + same config reproduces identical `results.json`.
 
 ---
 

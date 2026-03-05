@@ -1,6 +1,6 @@
 # Sophistication Roadmap
 
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-05
 **Owner:** Project Lead (PhD Mathematics, Data Science Manager in Finance)
 **Developers:** Claude Code Opus 4.6 (cloud, primary), Codex 5.3+ (local VS Code, secondary)
 **Principle:** Innovation, simplicity, elegance, transparency. No feature for technology's sake — every addition must materially improve quality.
@@ -120,6 +120,8 @@ _Deploy POC, start collecting data, close the feedback loop._
 
 **Detailed implementation plan:** `docs/CHAT_INTERFACE_PROJECT.md`.
 
+**Status (2026-03-05):** Delivered (Phase 1 outbound alerts)
+
 **Acceptance Criteria:**
 - [x] Add a transport-agnostic notification service under `src/agents/notifications/`.
 - [x] Emit alerts for:
@@ -135,6 +137,7 @@ _Deploy POC, start collecting data, close the feedback loop._
 - [x] Add secrets to `.env.example` with safe placeholders.
 - [x] Add retry + timeout + non-blocking send so notification failures never block trade execution.
 - [x] Add `notification_logs` table with status, channel, payload hash, and error fields.
+- [x] End-to-end VPS validation for Slack + SMTP delivery with provider-side confirmation.
 
 **Phase 1 Scope (Outbound only):**
 - Notify on instructed/executed trades and critical system events.
@@ -442,15 +445,16 @@ _ML-assisted improvements, only if justified by accumulated data._
 
 **Primary user stories for the upcoming week:**
 
-1. **US-1.5 — Chat Interface & Real-Time Trade Alerts**
-   - Finalise outbound event schema
-   - Ship Slack + Email notifications (non-blocking + retries)
-   - Wire orchestrator + state-machine hooks
-
-2. **US-5.1 — Backtesting Foundations**
-   - Ship replay engine + paper broker core
+1. **US-5.1 — Backtesting Foundations**
+   - Implement replay engine + paper broker core
    - Add deterministic LLM-free policy proxy
    - Produce first benchmarked baseline report
+   - Add walk-forward split runner skeleton + deterministic seed handling
+
+2. **US-5.2 prep — Parameter Sensitivity Harness Setup**
+   - Define parameter registry for sweeps (no optimisation yet)
+   - Add baseline config profiles for bull/bear/sideways windows
+   - Establish result artifact schema for later sensitivity analysis
 
 **Delivery references:**
 - Chat implementation details: `docs/CHAT_INTERFACE_PROJECT.md`
@@ -473,8 +477,8 @@ _ML-assisted improvements, only if justified by accumulated data._
 ```
 Week  1-2:  POC deployment to VPS (US-1.4) + Performance tracking (US-1.1)
 Week  3-4:  Trade outcome tracker (US-1.2) + Performance dashboard (US-1.3)
-Week  5-6:  Chat interface + real-time alerts (US-1.5)
-Week  7-8:  Buffer / bug fixes from live running + data collection
+Week  5-6:  Chat interface + real-time alerts (US-1.5) [delivered]
+Week  7-8:  Backtesting foundations kickoff (US-5.1 phase 1) + buffer for live-ops fixes
 Week  9-10: Conviction calibration (US-2.1) — needs ~50 trades first
 Week 11-12: Dynamic strategy weighting (US-2.2) + Moderator analysis (US-2.3)
 Week 13-14: Risk-parity sizing (US-3.1) + Volume signals (US-4.1)
