@@ -247,13 +247,13 @@ notifications:
   routes:
     trade_instruction_approved: ["slack"]
     trade_execution_result: ["slack", "email"]
-    cycle_run_summary: ["slack", "email"]
+    cycle_run_summary: ["slack"]
     state_transition: ["slack", "email"]
     critical_cycle_failure: ["slack", "email"]
   timeout_seconds: 5
   max_retries: 2
   dedup_window_seconds: 300
-  include_dry_run_alerts: true
+  include_dry_run_alerts: false
   command_gateway:
     enabled: false
 ```
