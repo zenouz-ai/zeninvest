@@ -697,7 +697,7 @@ All configurable parameters are in `config/settings.yaml`:
 
 ```yaml
 trading:
-  mode: practice                          # practice or live
+  mode: active                            # active or practice
   base_url: https://demo.trading212.com/api/v0
   cycle_hours: 12
   cycle_times_utc: ["07:00", "19:00"]
@@ -746,7 +746,6 @@ universe:
   mid_cap_min: 2000000000
   small_cap_min: 300000000
   screening_cooldown_hours: 72    # Hours before re-screening a stock
-  refresh_sector_data: true       # Back-fill from yfinance
 
 cost_limits:
   anthropic_daily_gbp: 1.00

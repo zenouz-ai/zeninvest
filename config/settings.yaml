@@ -52,7 +52,6 @@ universe:
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
   screening_cooldown_hours: 72  # Hours before a screened stock can be re-screened
-  refresh_sector_data: true   # Back-fill sector/market_cap from yfinance
 
 cost_limits:
   anthropic_daily_gbp: 1.00

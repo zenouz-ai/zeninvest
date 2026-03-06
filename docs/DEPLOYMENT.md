@@ -236,7 +236,7 @@ Review `config/settings.yaml` and adjust if needed. Key parameters:
 
 ```yaml
 trading:
-  mode: practice                          # practice or live
+  mode: active                            # active or practice
   cycle_times_utc: ["07:00", "19:00"]     # analysis cycle times
 cost_limits:
   anthropic_daily_gbp: 1.00
