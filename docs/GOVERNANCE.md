@@ -179,6 +179,14 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 - After successful BUY executions, the system automatically places a GTC stop-loss order via `OrderManager.place_stop_loss()` using the `stop_loss_pct` from Claude's decision. This protects against downside risk without requiring manual intervention.
 - The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation.
 
+#### Intelligent Order Management
+
+- **ATR-based stop reassessment**: After each cycle's execution phase, `StopLossManager.reassess_stops()` recalculates stop-loss levels for all held positions using 14-day ATR × configurable multiplier (default 2.0). Stops are clamped to `[min_stop_distance_pct, max_stop_distance_pct]`. By default, stops only tighten (never widen).
+- **Software trailing stops**: `StopLossManager.apply_trailing_stops()` tracks a high-water mark (HWM) per position. When price exceeds previous HWM, the stop ratchets up to `HWM × (1 - trail_pct/100)`. Implemented by cancelling the existing T212 stop order and placing a new one (T212 has no native trailing stop API).
+- **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, the orchestrator routes to `StopLossManager.place_limit_buy()` instead of a market order. The limit price is set at `current_price × (1 - offset_pct/100)`, with offset configurable per-decision or globally.
+- All adjustments are persisted to the `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
+- The feature is gated behind `order_management.enabled` in `settings.yaml` (default: `true`). Each sub-feature (reassess_stops, trailing_stops, limit_orders) has its own enable switch.
+
 ### 3.4 Network Security
 
 #### HTTPS Only
