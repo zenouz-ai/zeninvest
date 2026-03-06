@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from src.agents.market_data.macro_intelligence import (
@@ -9,6 +10,7 @@ from src.agents.market_data.macro_intelligence import (
     get_macro_intelligence,
     get_sector_headwind,
     get_sector_performance,
+    get_sector_performance_yfinance,
     _parse_pct,
 )
 
@@ -128,3 +130,49 @@ def test_get_macro_intelligence_disabled() -> None:
         assert result["enabled"] is False
         assert result["sector_trends"] == {}
         assert result["economic_highlights"] == ""
+
+
+def test_get_sector_performance_yfinance_returns_sectors() -> None:
+    """yfinance fallback returns sector data when OHLCV is available."""
+    dates = pd.date_range("2025-02-01", periods=10, freq="B")
+    df = pd.DataFrame(
+        {
+            "Close_XLK": [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 103.5, 105.0, 106.0, 107.0],
+            "Close_XLV": [150.0, 149.0, 148.0, 147.5, 148.0, 149.0, 148.5, 149.0, 150.0, 151.0],
+        },
+        index=dates,
+    )
+
+    with patch("src.agents.market_data.macro_intelligence.yf.download", return_value=df):
+        result = get_sector_performance_yfinance()
+
+    assert result.get("source") == "yfinance"
+    sectors = result.get("sectors", {})
+    assert "Information Technology" in sectors
+    assert "Health Care" in sectors
+    assert "real_time_pct" in sectors["Information Technology"]
+    assert "trend" in sectors["Information Technology"]
+
+
+def test_get_macro_intelligence_uses_yfinance_fallback_when_av_fails() -> None:
+    """When Alpha Vantage returns empty sectors, fallback to yfinance if enabled."""
+    av = MagicMock()
+    av.get_sector_performance.return_value = {"error": "Daily limit reached", "sectors": {}}
+    fh = MagicMock()
+    fh.get_market_news.return_value = []
+
+    dates = pd.date_range("2025-02-01", periods=10, freq="B")
+    df = pd.DataFrame(
+        {"Close_XLK": [100 + i * 0.5 for i in range(10)], "Close_XLV": [150 - i * 0.2 for i in range(10)]},
+        index=dates,
+    )
+
+    with patch("src.agents.market_data.macro_intelligence.yf.download", return_value=df), patch(
+        "src.agents.market_data.macro_intelligence.get_settings"
+    ) as mock_settings:
+        mock_settings.return_value.data_providers = {"sector_fallback_yfinance": True}
+        result = get_macro_intelligence(av, fh, enabled=True)
+
+    assert result["enabled"] is True
+    assert len(result["sector_trends"]) > 0
+    assert "Information Technology" in result["sector_trends"] or "Health Care" in result["sector_trends"]

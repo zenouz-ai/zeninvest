@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 178 tests passing (includes performance/trade-outcome, backtesting, macro intelligence, and 3-cycle scheduler config), deployment-ready for VPS.
+**Status:** POC — 180 tests passing (includes performance/trade-outcome, backtesting, macro intelligence, and 3-cycle scheduler config), deployment-ready for VPS.
 
 ## Architecture
 

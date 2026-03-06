@@ -229,7 +229,7 @@ SMTP_USE_TLS
 
 Gathers macro-level market intelligence to inform trading decisions:
 
-1. **Sector-level sentiment and trend** — Alpha Vantage SECTOR API (1 call) returns real-time S&P 500 sector performance. Sectors underperforming on multiple horizons are flagged as "underperform" for headwind detection.
+1. **Sector-level sentiment and trend** — Alpha Vantage SECTOR API (1 call) returns real-time S&P 500 sector performance. When AV fails (rate limit, error), fallback to yfinance SPDR ETFs (XLK, XLV, etc.). Sectors underperforming on multiple horizons are flagged as "underperform" for headwind detection.
 2. **Key economic news** — Finnhub `/news` (category=general) free tier: Fed, tariffs, earnings, inflation headlines. Used for timing context (e.g. earnings season flag).
 3. **Committee decision integration** — `get_sector_headwind(macro_intel, yf_sector)` returns a message when a sector is underperforming, enabling moderators to flag "fundamentally strong but sector headwind — defer buy"
 

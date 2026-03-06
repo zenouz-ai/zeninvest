@@ -140,10 +140,10 @@ inaccurate ^IRX proxy.
 
 | Data | Source | Decision Path | How It Alters Decisions |
 |------|--------|---------------|--------------------------|
-| Sector performance (real-time, 1d, 5d, 1m) | Alpha Vantage SECTOR | Path 2 | Per-sector trend labels (outperform/underperform). Enables moderators to flag "fundamentally strong but sector headwind — defer buy". |
+| Sector performance (real-time, 1d, 5d, 1m) | Alpha Vantage SECTOR; fallback: yfinance SPDR ETFs (XLK, XLV, etc.) | Path 2 | Per-sector trend labels (outperform/underperform). Enables moderators to flag "fundamentally strong but sector headwind — defer buy". Fallback when AV rate limit or error. |
 | Economic headlines (Fed, tariffs, earnings) | Finnhub /news (general) | Path 2 | Key headlines passed to strategy and moderation. Earnings season flag for timing context. |
 
-**Refresh:** Cached 4h (NewsSentimentCache, source=macro, data_type=macro_intelligence). Alpha Vantage SECTOR = 1 call; Finnhub /news = 1 call per refresh. Sector mapping: yfinance (Technology, Healthcare) → Alpha Vantage (Information Technology, Health Care) via `YF_TO_AV_SECTOR`.
+**Refresh:** Cached 4h (NewsSentimentCache, source=macro, data_type=macro_intelligence). Alpha Vantage SECTOR = 1 call; Finnhub /news = 1 call per refresh. If AV fails, `sector_fallback_yfinance: true` uses SPDR ETFs via yfinance. Sector mapping: yfinance (Technology, Healthcare) → Alpha Vantage (Information Technology, Health Care) via `YF_TO_AV_SECTOR`.
 
 ---
 
@@ -425,3 +425,4 @@ and reliability tradeoff of local deployment.
 | 2026-02-27 | Added automatic stop-loss orders after BUY | `place_stop_loss()` uses T212's stop order API (GTC validity) with Claude's `stop_loss_pct`. Placed automatically after successful BUY executions. |
 | 2026-02-27 | Added 72-hour screening cooldown | `last_screened_at` column on Instrument table. Screened stocks are excluded from future screens for 72 hours (configurable via `screening_cooldown_hours`), preventing the same candidates from appearing in consecutive cycles. |
 | 2026-03-06 | Added macro intelligence module | Sector performance (Alpha Vantage SECTOR) and economic headlines (Finnhub /news) feed strategy and moderation. Enables "fundamentally strong but sector headwind — defer buy" in committee decisions. Cached 4h. |
+| 2026-03-06 | yfinance sector fallback | When Alpha Vantage SECTOR fails (rate limit, error), fallback to SPDR sector ETFs via yfinance. Config: `sector_fallback_yfinance: true`. |

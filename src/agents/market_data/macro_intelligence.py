@@ -8,17 +8,37 @@ Gathers:
 
 Data sources:
 - Alpha Vantage SECTOR: Real-time S&P 500 sector performance (1 API call)
+- yfinance SPDR ETFs: Fallback when Alpha Vantage fails (rate limit, error)
 - Finnhub /news: General market news for economic headlines (free tier, 60/min)
 """
 
 from datetime import datetime, timezone
 from typing import Any
 
+import pandas as pd
+import yfinance as yf
+
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.finnhub_client import FinnhubClient
+from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
 logger = get_logger("macro_intelligence")
+
+# SPDR sector ETFs for yfinance fallback (maps AV sector name -> ticker)
+AV_SECTOR_TO_ETF: dict[str, str] = {
+    "Information Technology": "XLK",
+    "Health Care": "XLV",
+    "Financials": "XLF",
+    "Consumer Staples": "XLP",
+    "Industrials": "XLI",
+    "Materials": "XLB",
+    "Utilities": "XLU",
+    "Communication Services": "XLC",
+    "Energy": "XLE",
+    "Real Estate": "XLRE",
+    "Consumer Discretionary": "XLY",
+}
 
 # Map yfinance/fundamentals sector names to Alpha Vantage SECTOR keys
 # Alpha Vantage: Information Technology, Health Care, Consumer Discretionary, etc.
@@ -99,6 +119,66 @@ def _parse_pct(value: Any) -> float:
     return float(s) if s else 0.0
 
 
+def get_sector_performance_yfinance() -> dict[str, Any]:
+    """Fallback: derive sector performance from SPDR sector ETFs via yfinance.
+
+    Used when Alpha Vantage SECTOR fails (rate limit, error). No API key needed.
+    Returns same structure as get_sector_performance for compatibility.
+    """
+    result: dict[str, Any] = {"sectors": {}, "error": None, "source": "yfinance"}
+
+    try:
+        tickers = list(AV_SECTOR_TO_ETF.values())
+        df = yf.download(tickers, period="1mo", progress=False, auto_adjust=True)
+
+        if df.empty or len(df) < 2:
+            result["error"] = "Insufficient OHLCV data for sector ETFs"
+            return result
+
+        # Flatten MultiIndex: (Close, XLK) -> Close_XLK
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [f"{c[0]}_{c[1]}" if isinstance(c, tuple) and len(c) == 2 else str(c) for c in df.columns]
+
+        for sector_name, ticker in AV_SECTOR_TO_ETF.items():
+            close_col = f"Close_{ticker}" if f"Close_{ticker}" in df.columns else "Close"
+            if close_col not in df.columns:
+                continue
+            closes = df[close_col].dropna()
+            if len(closes) < 2:
+                continue
+
+            # % change: 1d (last 2 rows), 5d (last 6), 1m (full)
+            last = float(closes.iloc[-1])
+            prev_1d = float(closes.iloc[-2])
+            prev_5d = float(closes.iloc[-6]) if len(closes) >= 6 else prev_1d
+            prev_1m = float(closes.iloc[0])
+
+            rt_pct = 100 * (last - prev_1d) / prev_1d if prev_1d else 0.0
+            d5_pct = 100 * (last - prev_5d) / prev_5d if prev_5d else 0.0
+            m1_pct = 100 * (last - prev_1m) / prev_1m if prev_1m else 0.0
+
+            trend = "neutral"
+            if rt_pct < -0.5 and (d5_pct < 0 or m1_pct < 0):
+                trend = "underperform"
+            elif rt_pct > 0.5 and (d5_pct > 0 or m1_pct > 0):
+                trend = "outperform"
+
+            result["sectors"][sector_name] = {
+                "real_time_pct": rt_pct,
+                "1d_pct": rt_pct,
+                "5d_pct": d5_pct,
+                "1m_pct": m1_pct,
+                "trend": trend,
+            }
+
+        return result
+
+    except Exception as e:
+        logger.warning(f"yfinance sector fallback failed: {e}")
+        result["error"] = str(e)
+        return result
+
+
 def get_economic_headlines(finnhub: FinnhubClient, limit: int = 10) -> dict[str, Any]:
     """Fetch general market news from Finnhub for economic context.
 
@@ -169,9 +249,20 @@ def get_macro_intelligence(
         }
 
     sector_data = get_sector_performance(alpha_vantage)
-    headline_data = get_economic_headlines(finnhub, limit=8)
-
     sectors = sector_data.get("sectors", {})
+
+    # Fallback to yfinance SPDR ETFs when Alpha Vantage fails (rate limit, error)
+    sector_errors: list[str] = [e for e in [sector_data.get("error")] if e]
+    if not sectors and get_settings().data_providers.get("sector_fallback_yfinance", True):
+        fallback = get_sector_performance_yfinance()
+        if fallback.get("sectors"):
+            sectors = fallback["sectors"]
+            sector_data = fallback
+            logger.info("Using yfinance sector fallback (Alpha Vantage unavailable)")
+        elif fallback.get("error"):
+            sector_errors.append(f"Fallback: {fallback['error']}")
+
+    headline_data = get_economic_headlines(finnhub, limit=8)
     headlines = headline_data.get("headlines", [])
 
     # Build economic highlights summary for LLM consumption
@@ -196,9 +287,7 @@ def get_macro_intelligence(
         "economic_highlights": economic_highlights,
         "headlines": headlines,
         "earnings_season_flag": headline_data.get("earnings_season_flag", False),
-        "errors": [
-            e for e in [sector_data.get("error"), headline_data.get("error")] if e
-        ],
+        "errors": sector_errors + [e for e in [headline_data.get("error")] if e],
     }
 
 
