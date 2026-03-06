@@ -66,16 +66,16 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |
                    v
 Anthropic  -------> CLAUDE SONNET SYNTHESIS
-  (strategy LLM)    [Sub-strategy signals + per-ticker news
-                     + analyst data + portfolio state]
-                     → decisions with conviction
+  (strategy LLM)    [Sub-strategy signals + company_profiles + news_sentiment
+                     (per-ticker, aggregate, broad, sector, economic) + analyst data
+                     + portfolio state] → decisions with conviction
                      → market_assessment thesis
                             |
                             v
                    MARKET CONTEXT (context.py)
                    [indicators, fundamentals,
-                    macro, sector_headwind, economic_highlights,
-                    sub-strategy signals, analyst data, per-ticker news,
+                    macro (VIX, regime, sector_headwind, sector_summary, economic_highlights),
+                    sub-strategy signals, analyst data, news_sentiment,
                     strategy_assessment (challenge this)]
                             |
                             v

@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.data.models import Base, Order
-from src.agents.execution.t212_client import calculate_quantity
+from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.agents.execution.order_manager import OrderManager
 
 
@@ -28,6 +28,27 @@ def mock_get_session(db_session):
     """Patch get_session to use the test database."""
     with patch("src.agents.execution.order_manager.get_session", return_value=db_session):
         yield
+
+
+class TestT212Client:
+    def test_get_position_returns_empty_dict_on_404(self):
+        """404 'no position' is expected when ticker not held — should return {} not raise."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = '{"detail":"No open position found for AAPL_US_EQ"}'
+        mock_response.headers = {}
+
+        with patch("src.agents.execution.t212_client.get_session"), patch(
+            "httpx.Client"
+        ) as mock_client_class, patch.object(T212Client, "_check_rate_limit"):
+            mock_client_instance = MagicMock()
+            mock_client_class.return_value = mock_client_instance
+            mock_client_instance.request.return_value = mock_response
+            client = T212Client()
+            result = client.get_position("AAPL_US_EQ")
+
+        assert result == {}
+        assert result.get("quantity", 0) == 0
 
 
 class TestCalculateQuantity:

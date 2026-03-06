@@ -102,6 +102,8 @@ fully cover the three active strategies (momentum, mean reversion, factor via re
 | `earnings_momentum_qoq` | Factor | QoQ momentum >10% = +15 momentum component. |
 | `sector` | Risk Mgr | Sector allocation cap (35%). Used for diversification checks. |
 | `market_cap` | Universe + UOV | Used for universe cap-tiering and as a low-weight UOV size/liquidity proxy. |
+| `industry` | Path 2 | Company profiles: industry label in Claude prompt header. More granular than sector for qualitative reasoning. |
+| `business_summary` | Path 2 | Company profiles: yfinance longBusinessSummary (~300 chars) for Claude. Enables reasoning about moats, regulatory risk, how macro news impacts revenue. |
 
 ### REMOVED — Never consumed by any strategy or rule
 
@@ -109,7 +111,6 @@ fully cover the three active strategies (momentum, mean reversion, factor via re
 |--------|-------------|
 | `forward_pe` | Never read by any strategy. Same API call as trailing_pe (zero cost to fetch), but including unused data adds noise to the pipeline. |
 | `revenue_growth_yoy` | Never read by any strategy. Earnings_growth serves the same purpose. |
-| `industry` | Never read. `sector` is used for risk rules; industry adds no decision value. |
 
 ---
 
@@ -217,14 +218,24 @@ The Claude prompt contains these sections and this is how each should influence 
 |----------------|------------------|--------------------|
 | Portfolio State | JSON: cash, positions, returns | Position sizing, rebalancing needs |
 | Market Regime | BULL/BEAR/SIDEWAYS | Overall risk appetite — fewer/smaller buys in BEAR |
+| Company Profiles | `**TICKER** (name) \| industry` + business_summary (~300 chars each) from yfinance | Qualitative factors: moats, regulatory exposure, how macro news impacts each company's revenue |
 | Momentum Proposals | `TICKER: BUY (score: 75) — reasoning` | Strong momentum (>75) should increase conviction |
 | Mean Reversion Proposals | `TICKER: BUY (score: 70) — reasoning` | Oversold stocks with good fundamentals |
 | Factor Proposals | `TICKER: composite=72 (V=65 Q=80 M=70)` | Multi-factor quality ranking of top stocks |
 | Analyst Data | JSON: buy/hold/sell counts, insider MSPR | Confirmation or warning signal |
-| Per-Ticker News | Per-stock sentiment scores + headlines from AV | Specific catalysts/risks per stock (not a combined dump) |
-| Broad Market Sentiment | Aggregate headlines + sentiment | Overall market mood beyond numbers |
+| News Sentiment | Single concatenated string (see assembly order below), truncated to 3000 chars | Catalysts, risks, market mood; sector headwinds; economic context |
 | Risk Budget | VIX, cash %, position limits | Constrains position sizing |
 | Prior UOV Swap Context | Weakest held UOV + top non-held UOV names from prior cycles | Contextual signal for HOLD vs BUY prioritisation (advisory only) |
+
+**News Sentiment assembly order** (orchestrator builds `news_parts` then joins to 3000 chars):
+
+1. **Per-ticker news** — Alpha Vantage per-stock sentiment scores + headlines (`extract_per_ticker_news`)
+2. **Aggregate ticker** — Total articles, avg sentiment, bullish/bearish counts for queried tickers
+3. **Broad market** — Alpha Vantage broad market sentiment (economy, earnings, tech topics)
+4. **Sector performance** — S&P 500 sector performance (real-time, 1d, 5d, 1m) from macro intelligence
+5. **Economic highlights** — Fed, tariffs, earnings headlines from Finnhub /news (general)
+
+All five are concatenated into one `news_sentiment` string. Claude receives this single block under "## NEWS SENTIMENT" in the prompt.
 
 ### GPT-4o (Skeptic Moderator)
 
@@ -233,10 +244,10 @@ Receives the full market context via `market_context` dict (see context.py):
 - **Portfolio context** — Current cash, positions, returns
 - **Technical indicators** — RSI, MACD histogram/crossovers, Bollinger Band, MAs
 - **Fundamentals** — P/E, P/B, ROE, margins, debt, earnings trajectory
-- **Market conditions** — VIX (with severity label), regime, S&P 500 trend
+- **Market conditions** — VIX (with severity label), regime, S&P 500 trend, sector headwind (if sector underperforming), sector summary, economic highlights (Fed, tariffs, earnings)
 - **Sub-strategy signals** — Momentum, mean reversion, and factor scores with reasoning
 - **Analyst data** — Finnhub recommendation counts, consensus, insider MSPR
-- **Per-ticker news** — Alpha Vantage per-stock sentiment scores + headlines (not a combined dump)
+- **News sentiment** — Per-ticker Alpha Vantage headlines (or full news summary if per-ticker unavailable)
 - **Strategy Agent's Market Assessment** — Claude's overall market thesis, presented with the instruction "Challenge this thesis — do you agree with the reasoning?"
 
 Role: Challenge assumptions, identify recency bias, flag risks. When sub-strategies
@@ -408,7 +419,8 @@ and reliability tradeoff of local deployment.
 | Date | Change | Rationale |
 |------|--------|-----------|
 | 2026-02-26 | Removed 12 unused indicator outputs | Never consumed by any strategy. Reduced noise. |
-| 2026-02-26 | Removed forward_pe, revenue_growth_yoy, industry | Never consumed. Zero API cost savings but cleaner data. |
+| 2026-02-26 | Removed forward_pe, revenue_growth_yoy | Never consumed. Zero API cost savings but cleaner data. |
+| 2026-03-06 | Re-added industry, business_summary | Company profiles for Claude: qualitative reasoning about moats, regulatory risk, macro impact. |
 | 2026-02-26 | Removed yield spread (^TNX - ^IRX) from macro | Never used in market regime or any decision. Proxy was inaccurate. |
 | 2026-02-26 | Removed get_peers() from Finnhub client | Dead code, never called. |
 | 2026-02-26 | Enhanced Claude prompt with interpretation guidance | LLM had no instructions on how to weight data sections. |
