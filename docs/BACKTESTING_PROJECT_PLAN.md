@@ -1,5 +1,9 @@
 # Backtesting Project Plan (Biggest Gap)
 
+**Status (2026-03):** Core engine, walk-forward, promotion report, and yfinance fetch + CSV cache are implemented. See `docs/BACKTESTING.md` and `docs/WALK_FORWARD_VALIDATION.md`.
+
+---
+
 ## Objective
 
 Design and implement a robust, reproducible backtesting capability that closes the largest maturity gap in the project: **lack of historical evidence of edge**.
@@ -36,7 +40,7 @@ Without backtesting + validation:
 - `src/backtesting/engine.py` (event loop/replay coordinator)
 - `src/backtesting/broker.py` (paper broker, fills, cash/positions)
 - `src/backtesting/metrics.py` (Sharpe, Sortino, drawdown, hit rate, turnover)
-- `src/backtesting/io.py` (dataset loading and integrity checks)
+- `src/backtesting/io.py` (dataset loading, yfinance fetch when CSV missing, CSV cache to `data/backtest/`, integrity checks)
 - CLI entrypoint for backtest runs and result export
 
 ---
@@ -139,8 +143,11 @@ Without backtesting + validation:
 - Reuse strategy sub-signal functions for consistency.
 - Reuse risk manager rule logic where possible.
 - Persist backtest summaries in a dedicated table (future migration).
-- Add CLI command (proposed):
+- CLI command (implemented):
   - `poetry run python -m src.backtesting.main --config backtests/default.yaml`
+  - `poetry run python -m src.backtesting.main --synthetic` (synthetic data)
+  - `poetry run python -m src.backtesting.main --walk-forward` (walk-forward validation + promotion report)
+  - `poetry run python -m src.backtesting.main --scenario bull|bear|sideways` (scenario configs)
 
 ---
 

@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 146 tests passing, deployment-ready for VPS.
+**Status:** POC — 166+ tests passing (includes performance/trade-outcome and backtesting), deployment-ready for VPS.
 
 ## Architecture
 
@@ -73,11 +73,27 @@ poetry run python -m src.orchestrator.main
 
 ```bash
 poetry run python -m src.orchestrator.main --status       # System status
+poetry run python -m src.orchestrator.main --performance  # Performance metrics summary
+poetry run python -m src.orchestrator.main --dashboard   # Dashboard: portfolio, metrics, costs, positions
 poetry run python -m src.orchestrator.main --pause        # Pause trading
 poetry run python -m src.orchestrator.main --resume       # Resume trading
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ  # Force sell
 poetry run python -m src.orchestrator.main --report       # Generate daily report
 ```
+
+### Backtesting
+
+```bash
+# Run with real data (fetches from yfinance if data/backtest/ empty; caches to CSV)
+poetry run python -m src.backtesting.main --config backtests/default.yaml
+poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward
+
+# Synthetic data (no network, fast sanity check)
+poetry run python -m src.backtesting.main --synthetic --output-dir backtests/results/run1
+poetry run python -m src.backtesting.main --scenario bull --synthetic
+```
+
+See [Backtesting](docs/BACKTESTING.md) and [Walk-Forward Validation](docs/WALK_FORWARD_VALIDATION.md) for details.
 
 ### Run the scheduler (continuous)
 
@@ -199,9 +215,10 @@ src/
 │   ├── opportunity/    # UOV scorer + optimizer (ranking, queueing, swap suggestions)
 │   ├── execution/      # T212 client + order manager: market, stop-loss, dedup
 │   ├── notifications/  # Slack/email alerts, routing/retries/dedup, notification logging
-│   └── reporting/      # Trade journals, daily/weekly reports
+│   └── reporting/      # Trade journals, daily/weekly reports, performance tracker
 ├── data/               # SQLAlchemy models, Alembic migrations
 ├── scheduler/          # APScheduler with persistent job store
+├── backtesting/        # Engine, paper broker, io (yfinance fetch + CSV cache), walk-forward, promotion report
 └── utils/              # Config, logger, cost tracker
 docs/                   # Project documentation
 ├── ARCHITECTURE.md     # System architecture and component diagrams
@@ -211,12 +228,14 @@ docs/                   # Project documentation
 ├── GOVERNANCE.md       # Governance framework and security guardrails
 ├── CHAT_INTERFACE_PROJECT.md  # ChatOps project plan: trade alerts + future command interface
 ├── BACKTESTING_PROJECT_PLAN.md  # Detailed implementation plan for the backtesting gap
+├── BACKTESTING.md       # What backtesting is, why it matters, how it's implemented, benefits
+├── WALK_FORWARD_VALIDATION.md  # Walk-forward validation and promotion report
 ├── LOCAL_LIVE_RUN.md   # Local live run guide (Trading 212 Practice)
 ├── MAC_SETUP.md        # macOS-specific installation instructions
 ├── PRESENTATION.md     # Project presentation and summary
 └── SOPHISTICATION_ROADMAP.md  # Prioritised improvement roadmap
 notebooks/
-└── diagnostics.ipynb   # Component diagnostics and integration tests
+└── diagnostics.ipynb   # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
 ```
 
 ## Documentation
@@ -230,6 +249,8 @@ notebooks/
 - [Governance](docs/GOVERNANCE.md) — security guardrails, kill switches, audit trail
 - [Chat Interface Project](docs/CHAT_INTERFACE_PROJECT.md) — roadmap-aligned plan for real-time trade alerts and future chat command controls
 - [Backtesting Project Plan](docs/BACKTESTING_PROJECT_PLAN.md) — detailed implementation plan to close the biggest maturity gap (historical validation)
+- [Backtesting](docs/BACKTESTING.md) — what backtesting is, why it matters, how it's implemented, benefits
+- [Walk-Forward Validation](docs/WALK_FORWARD_VALIDATION.md) — walk-forward validation and promotion report
 - [Local Live Run](docs/LOCAL_LIVE_RUN.md) — step-by-step guide for Trading 212 Practice mode
 - [Presentation](docs/PRESENTATION.md) — project overview and summary
 
@@ -305,7 +326,7 @@ This is a **POC (v1.0)** designed to validate the architecture and begin collect
 2. **Phase 2:** Calibrate conviction scores and strategy weights from live data (~50+ trades)
 3. **Phase 3:** Portfolio-level intelligence (risk-parity sizing, regime detection)
 4. **Phase 4:** Signal enhancement (volume, earnings calendar, sector rotation)
-5. **Phase 5:** Backtesting engine for historical validation
+5. **Phase 5:** ~~Backtesting engine~~ — delivered (engine, walk-forward, promotion report, yfinance fetch + CSV cache)
 6. **Phase 6:** ML-assisted improvements (only if justified by accumulated evidence)
 
 See [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) for full details, timelines, and priority matrix.

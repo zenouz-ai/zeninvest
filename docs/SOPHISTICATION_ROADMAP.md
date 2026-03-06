@@ -9,21 +9,22 @@
 
 ## Current State: POC (v1.0)
 
-The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 146 tests pass. It is ready for VPS deployment to begin gathering live performance data.
+The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 166 tests pass. It is ready for VPS deployment to begin gathering live performance data.
 
 **What the POC establishes:**
-- End-to-end pipeline: Data → Screen → Strategy → Moderation → Risk → Execution → Journal
+- End-to-end pipeline: Data → Screen → Strategy → Moderation → Risk → Execution → Journal → Notifications
 - Multi-LLM adversarial architecture (Claude + GPT-4o + Gemini)
 - Deterministic risk guardrails with VETO power
 - Deterministic UOV opportunity layer (shadow/active modes, ranked BUY queue, swap suggestions)
 - Cost-aware degradation
 - Comprehensive logging and audit trail
+- **Feedback loop:** performance_metrics (Sharpe, Sortino, drawdown, win rates by strategy), trade_outcomes (per-trade P&L, conviction linkage), CLI `--performance` / `--dashboard`
+- **Backtesting:** engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); yfinance fetch + CSV cache when `data/backtest/` empty
 
-**What the POC lacks:**
-- No feedback loop (doesn't learn from outcomes)
-- No backtesting evidence
-- No portfolio-level optimisation
-- Static strategy parameters
+**What the POC still lacks:**
+- Calibration of strategy weights and conviction using live + backtest evidence
+- Portfolio-level optimisation (e.g. risk-parity sizing)
+- Learning/adaptation (static strategy parameters)
 
 ---
 
@@ -48,13 +49,15 @@ _Deploy POC, start collecting data, close the feedback loop._
 **Data Sources:** Existing database (portfolio_snapshots, orders, strategy_decisions)
 **Developer:** Claude Code
 
+**Status (2026-03-05):** Delivered
+
 **Acceptance Criteria:**
-- [ ] Daily Sharpe ratio (rolling 30/60/90 day) computed from portfolio_snapshots
-- [ ] Sortino ratio, max drawdown, Calmar ratio tracked
-- [ ] Win rate by strategy (momentum, mean_reversion, factor) computed from filled orders
-- [ ] Alpha vs S&P 500 benchmark tracked per snapshot
-- [ ] Stored in new `performance_metrics` table with Alembic migration
-- [ ] CLI command: `--performance` shows current metrics summary
+- [x] Daily Sharpe ratio (rolling 30/60/90 day) computed from portfolio_snapshots
+- [x] Sortino ratio, max drawdown, Calmar ratio tracked
+- [x] Win rate by strategy (momentum, mean_reversion, factor) computed from filled orders
+- [x] Alpha vs S&P 500 benchmark tracked per snapshot
+- [x] Stored in new `performance_metrics` table with Alembic migration
+- [x] CLI command: `--performance` shows current metrics summary
 
 **Integration Point:** Runs as post-cycle step in orchestrator, after portfolio snapshot.
 
@@ -67,15 +70,17 @@ _Deploy POC, start collecting data, close the feedback loop._
 **Data Sources:** Existing orders + portfolio data
 **Developer:** Claude Code
 
+**Status (2026-03-05):** Delivered
+
 **Acceptance Criteria:**
-- [ ] Each BUY decision tracked until corresponding SELL/REDUCE
-- [ ] Per-trade P&L (£ and %) recorded with holding period
-- [ ] Claude's conviction score linked to actual outcome
+- [x] Each BUY decision tracked until corresponding SELL/REDUCE
+- [x] Per-trade P&L (£ and %) recorded with holding period
+- [x] Claude's conviction score linked to actual outcome
 - [ ] Each moderator's verdict linked to trade outcome (was GPT-4o right to block?)
 - [ ] Risk decisions linked to outcomes (did resized trades perform differently?)
-- [ ] New `trade_outcomes` table with Alembic migration
+- [x] New `trade_outcomes` table with Alembic migration
 
-**Integration Point:** Updated on each SELL/REDUCE execution and daily snapshot.
+**Integration Point:** Updated on each SELL/REDUCE execution and after cycle snapshot (update_trade_outcomes).
 
 ---
 
@@ -84,10 +89,11 @@ _Deploy POC, start collecting data, close the feedback loop._
 **Value:** Personal quant experience — immediate visibility into system behaviour
 **Effort:** Small (2-3 days)
 **Data Sources:** performance_metrics, trade_outcomes, cost_logs
+**Status (2026-03-05):** CLI `--dashboard` and `--performance` delivered; CSV/JSON export can be added later.
 **Developer:** Claude Code or Codex
 
 **Acceptance Criteria:**
-- [ ] `--dashboard` CLI command shows: portfolio value, Sharpe, win rate, costs, active positions
+- [x] `--dashboard` CLI command shows: portfolio value, Sharpe, win rate, costs, active positions
 - [ ] CSV/JSON export for analysis in Jupyter notebooks
 - [ ] Weekly email-style summary (rendered to journal markdown)
 
@@ -347,25 +353,26 @@ _Better inputs to the pipeline, grounded in data we've now collected._
 _Build confidence in the system with historical evidence._
 
 ### US-5.1: Backtesting Engine
-**Priority:** P1 (High) — but deliberately delayed until we have live data to validate against
-**Value:** Critical for long-term confidence, but meaningless without calibrated strategies
+**Priority:** P1 (High)
+**Value:** Critical for long-term confidence; release gate before strategy changes
 **Effort:** Large (5-8 days)
-**Data Sources:** yfinance historical data
+**Data Sources:** yfinance historical data (fetch + CSV cache when `data/backtest/` empty)
 **Developer:** Claude Code (architecture) + Codex (implementation)
+
+**Status (2026-03):** Delivered. See `docs/BACKTESTING.md` and `docs/WALK_FORWARD_VALIDATION.md`.
 
 **Detailed implementation plan:** `docs/BACKTESTING_PROJECT_PLAN.md`.
 
 **Acceptance Criteria:**
-- [ ] Replay historical data through sub-strategy scoring (momentum, mean_rev, factor)
-- [ ] Simulate risk rules, position sizing, portfolio constraints
-- [ ] LLM calls mocked with simplified heuristic (backtesting 1000s of days with LLM calls is cost-prohibitive)
-- [ ] Output: equity curve, Sharpe ratio, max drawdown, win rate
-- [ ] Walk-forward validation: train on years 1-3, test on year 4-5
-- [ ] Compare: our strategies vs buy-and-hold SPY
+- [x] Replay historical data through deterministic policy (LLM-free proxy: close vs SMA)
+- [x] Simulate risk rules, position sizing, portfolio constraints (paper broker)
+- [x] LLM calls mocked with simplified heuristic (deterministic policy; no LLM in backtest)
+- [x] Output: equity curve, Sharpe ratio, max drawdown, win rate, trades.csv, results.json
+- [x] Walk-forward validation: fixed splits, promotion report (safe to deploy vs hold)
+- [x] Compare: strategy vs buy-and-hold SPY (excess_return_vs_benchmark)
+- [x] yfinance fetch when CSV missing; cache to `data/backtest/<TICKER>.csv`
 
-**Technical Approach:** Custom lightweight engine using pandas, not an external framework. Keeps us in control and avoids dependency bloat. Consider vectorbt only if performance is an issue.
-
-**Why delayed:** Backtesting before calibration is misleading. We need live performance data (Phase 1-2) to know what to validate.
+**Technical Approach:** Custom lightweight engine using pandas. CLI: `--config`, `--synthetic`, `--walk-forward`, `--scenario bull|bear|sideways`.
 
 ---
 
@@ -445,11 +452,12 @@ _ML-assisted improvements, only if justified by accumulated data._
 
 **Primary user stories for the upcoming week:**
 
-1. **US-5.1 — Backtesting Foundations**
-   - Implement replay engine + paper broker core
-   - Add deterministic LLM-free policy proxy
-   - Produce first benchmarked baseline report
-   - Add walk-forward split runner skeleton + deterministic seed handling
+1. **US-5.1 — Backtesting Foundations** [delivered]
+   - Replay engine + paper broker core
+   - Deterministic LLM-free policy proxy
+   - Benchmarked baseline report (results.json, trades.csv, equity_curve.csv)
+   - Walk-forward split runner + promotion report
+   - yfinance fetch + CSV cache for real data
 
 2. **US-5.2 prep — Parameter Sensitivity Harness Setup**
    - Define parameter registry for sweeps (no optimisation yet)

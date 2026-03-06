@@ -1,0 +1,12 @@
+# Bear market scenario: 2022 drawdown window
+seed: 42
+initial_cash: 10000.0
+slippage_bps: 10.0
+max_positions: 10
+sma_period: 20
+tickers:
+  - AAPL
+  - MSFT
+  - SPY
+start_date: "2022-01-01"
+end_date: "2022-12-31"

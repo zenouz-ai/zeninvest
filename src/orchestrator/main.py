@@ -21,10 +21,12 @@ from src.agents.notifications import NotificationService
 from src.agents.opportunity.optimizer import OpportunityOptimizer
 from src.agents.opportunity.scorer import OpportunityScorer
 from src.agents.reporting.journal import generate_trade_journal
+from src.agents.reporting.performance_tracker import update_performance_metrics
+from src.agents.reporting.trade_outcome_tracker import update_trade_outcomes
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
-from src.data.models import Base, Instrument, PortfolioSnapshot
+from src.data.models import Base, Instrument, PerformanceMetric, PortfolioSnapshot
 from src.orchestrator.state_machine import StateMachine
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
@@ -588,6 +590,11 @@ class Orchestrator:
             # Record cycle completion
             self.state_machine.record_cycle()
             self._save_snapshot(portfolio_data, current_state)
+            try:
+                update_trade_outcomes()
+                update_performance_metrics()
+            except Exception as perf_err:
+                logger.warning(f"Performance/trade-outcome update skipped: {perf_err}")
 
             logger.info(f"Cycle {cycle_id} completed: {len(result['trades'])} trades executed, "
                         f"{len(result['rejected_stocks'])} rejected")
@@ -1355,6 +1362,73 @@ class Orchestrator:
 
 # --- CLI ---
 
+def _get_performance_summary() -> dict[str, Any]:
+    """Load latest performance metrics and cost summary for CLI."""
+    from src.agents.reporting.performance_tracker import update_performance_metrics
+
+    session = get_session()
+    try:
+        update_performance_metrics(session=session)
+        latest = (
+            session.query(PortfolioSnapshot)
+            .order_by(PortfolioSnapshot.timestamp.desc())
+            .first()
+        )
+        perf = (
+            session.query(PerformanceMetric)
+            .order_by(PerformanceMetric.snapshot_date.desc())
+            .first()
+        )
+        cost = get_cost_summary(days=1)
+        return {
+            "portfolio": {
+                "total_value_gbp": latest.total_value_gbp if latest else None,
+                "cash_gbp": latest.cash_gbp if latest else None,
+                "num_positions": latest.num_positions if latest else None,
+                "state": latest.state if latest else None,
+                "timestamp": latest.timestamp.isoformat() if latest else None,
+            },
+            "metrics": {
+                "sharpe_30d": perf.sharpe_30d if perf else None,
+                "sharpe_60d": perf.sharpe_60d if perf else None,
+                "sharpe_90d": perf.sharpe_90d if perf else None,
+                "sortino_30d": perf.sortino_30d if perf else None,
+                "max_drawdown_pct": perf.max_drawdown_pct if perf else None,
+                "calmar_ratio": perf.calmar_ratio if perf else None,
+                "win_rate_momentum": perf.win_rate_momentum if perf else None,
+                "win_rate_mean_reversion": perf.win_rate_mean_reversion if perf else None,
+                "win_rate_factor": perf.win_rate_factor if perf else None,
+                "alpha_vs_spy_pct": perf.alpha_vs_spy_pct if perf else None,
+                "num_trades": perf.num_trades if perf else None,
+            },
+            "cost_today": cost,
+        }
+    finally:
+        session.close()
+
+
+def _get_dashboard_summary() -> dict[str, Any]:
+    """Dashboard: portfolio, performance, costs, active positions."""
+    summary = _get_performance_summary()
+    session = get_session()
+    try:
+        latest = (
+            session.query(PortfolioSnapshot)
+            .order_by(PortfolioSnapshot.timestamp.desc())
+            .first()
+        )
+        positions: list[dict[str, Any]] = []
+        if latest and latest.positions_json:
+            positions = json.loads(latest.positions_json)
+        summary["active_positions"] = [
+            {"ticker": p.get("ticker"), "quantity": p.get("quantity"), "value_gbp": p.get("value", 0)}
+            for p in positions[:20]
+        ]
+        return summary
+    finally:
+        session.close()
+
+
 @click.command()
 @click.option("--dry-run", is_flag=True, help="Run without executing trades")
 @click.option("--force-sell", "force_sell_ticker", default=None, help="Force sell a position")
@@ -1362,6 +1436,8 @@ class Orchestrator:
 @click.option("--resume", "do_resume", is_flag=True, help="Resume the system")
 @click.option("--report", is_flag=True, help="Generate a status report")
 @click.option("--status", is_flag=True, help="Show system status")
+@click.option("--performance", is_flag=True, help="Show performance metrics summary")
+@click.option("--dashboard", is_flag=True, help="Show dashboard: portfolio, metrics, costs, positions")
 def main(
     dry_run: bool,
     force_sell_ticker: str | None,
@@ -1369,6 +1445,8 @@ def main(
     do_resume: bool,
     report: bool,
     status: bool,
+    performance: bool,
+    dashboard: bool,
 ) -> None:
     """Investment Agent Orchestrator."""
     orchestrator = Orchestrator(dry_run=dry_run)
@@ -1377,6 +1455,14 @@ def main(
         if status:
             s = orchestrator.get_status()
             click.echo(json.dumps(s, indent=2, default=str))
+            return
+
+        if performance:
+            click.echo(json.dumps(_get_performance_summary(), indent=2, default=str))
+            return
+
+        if dashboard:
+            click.echo(json.dumps(_get_dashboard_summary(), indent=2, default=str))
             return
 
         if pause:

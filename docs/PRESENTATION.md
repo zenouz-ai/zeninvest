@@ -178,13 +178,13 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | Logging | Rich |
 | CLI | Click |
 | Containerization | Docker + Docker Compose |
-| Testing | pytest (128 tests) |
+| Testing | pytest (166 tests) |
 
 ---
 
 ## Slide 11: Testing & Quality
 
-**128 unit tests covering:**
+**166 unit tests covering:**
 - Risk manager: 43 tests (all rules + state transitions + REDUCE check)
 - Strategy engine: 17 tests (momentum, mean reversion, factor, prompts, synthesis)
 - Moderation: 21 tests (consensus logic, panel integration, context formatting)
@@ -192,9 +192,12 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 - Cost tracker: 16 tests (budgets, degradation, logging)
 - Screening + seed universe: 10 tests (cooldown, seed fallback, data availability filtering)
 - Opportunity scoring + optimizer: 5 tests (UOV scoring, queue lifecycle, swap suggestions)
+- Notifications: 17 tests (service, providers, formatters, integration)
+- Performance tracker + trade-outcome tracker: 6 tests
+- Backtesting: 12 tests (broker, engine, metrics, leakage guards, walk-forward)
 
 **Diagnostics Notebook:**
-- 20-section Jupyter notebook testing each component independently
+- 24-section Jupyter notebook (sections 0–24) testing every component: config, data, strategies, moderation, risk, execution, journal, performance/trade outcomes, notifications, backtesting, walk-forward, orchestrator, post-run inspection
 - Run before every deployment to verify all APIs and agents
 
 ---
@@ -214,10 +217,13 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | `cost_logs` | Every LLM API call with token counts |
 | `api_logs` | Every external API call with latency |
 | `instruments` | Company profiles: sector, industry, market_cap, business_summary |
-
-**Cycle output includes executed trades, rejected stocks, opportunity ranking, queued candidates, and swap suggestions** for post-cycle analysis and controlled BUY prioritisation.
 | `portfolio_snapshots` | Portfolio state after each cycle |
 | `system_state` | State machine transitions |
+| `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy |
+| `trade_outcomes` | Per-trade P&L (BUY→SELL), conviction and moderator linkage |
+| `notification_logs` | Outbound alert attempts (Slack/email): sent, failed, skipped, deduped |
+
+**Cycle output includes executed trades, rejected stocks, opportunity ranking, queued candidates, and swap suggestions** for post-cycle analysis and controlled BUY prioritisation.
 
 ---
 
@@ -285,9 +291,11 @@ docker compose logs -f investment-agent
 - ~~Company profiles~~ → Business summaries + industry from yfinance fed to Claude for qualitative reasoning
 - ~~Enriched cycle output~~ → Trades include industry, market cap, description, reasoning
 - ~~Rejected stock tracking~~ → Every non-traded stock recorded with stage, reason, and company metadata
+- ~~Chat/notifications~~ → Slack + email alerts (trade approved, execution result, cycle summary, state transition, critical failure); notification_logs audit trail
+- ~~Performance & trade outcomes~~ → performance_metrics (Sharpe, Sortino, drawdown, win rates), trade_outcomes (per-trade P&L, conviction linkage), --performance / --dashboard CLI
+- ~~Backtesting~~ → Engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); see docs/BACKTESTING.md and WALK_FORWARD_VALIDATION.md
 
 **Phase 2 — Enhanced Intelligence:**
-- Backtesting engine with historical data replay
 - Portfolio optimization (Markowitz / risk parity)
 - Alternative data: earnings call transcripts, SEC filings
 - Regime-dependent strategy weighting (adjust 35/30/35 split based on market regime)
