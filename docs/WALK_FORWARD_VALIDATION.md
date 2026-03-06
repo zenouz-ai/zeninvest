@@ -35,7 +35,9 @@ In this project we do **not** retrain a model between folds; the policy is deter
 - **Module:** `src/backtesting/walk_forward.py` (splits, runner, aggregation).
 - **Promotion report:** `src/backtesting/promotion_report.py`.
 - **CLI:**  
-  `poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward [--synthetic]`  
+  `poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward [--synthetic]`
+
+With real data (default): if `data/backtest/` has no CSVs, the CLI fetches from yfinance and caches to CSV.  
   Writes results under the configured or default output dir.
 
 ### Main components

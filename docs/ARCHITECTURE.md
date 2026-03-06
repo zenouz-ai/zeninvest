@@ -620,8 +620,9 @@ These are approved near-term projects that are intentionally documented before i
 - Detailed plan: `docs/CHAT_INTERFACE_PROJECT.md`.
 
 ### 2) Backtesting Engine (US-5.1)
-- Implemented: `src/backtesting/` — engine, paper broker, io, metrics, deterministic policy, walk-forward runner, promotion report.
+- Implemented: `src/backtesting/` — engine, paper broker, io (load CSV + fetch yfinance + cache), metrics, deterministic policy, walk-forward runner, promotion report.
 - Deterministic historical replay with next-open fill and slippage; LLM-free policy proxy.
+- **Data:** If `data/backtest/<TICKER>.csv` is missing, CLI fetches OHLCV from yfinance and caches to CSV for subsequent runs.
 - Walk-forward validation and benchmark comparison; scenario configs (bull/bear/sideways); promotion report (safe to deploy vs hold).
 - CLI: `python -m src.backtesting.main --config backtests/default.yaml`, `--synthetic`, `--walk-forward`, `--scenario bull|bear|sideways`.
 - Detailed plan: `docs/BACKTESTING_PROJECT_PLAN.md`.

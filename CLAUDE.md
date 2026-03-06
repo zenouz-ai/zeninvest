@@ -37,9 +37,10 @@ poetry run python -m src.orchestrator.main --dashboard
 poetry run python -m src.orchestrator.main --pause
 poetry run python -m src.orchestrator.main --resume
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
-# Backtesting
+# Backtesting (real data: fetches yfinance if data/backtest/ empty, caches to CSV)
 poetry run python -m src.backtesting.main --config backtests/default.yaml
-poetry run python -m src.backtesting.main --synthetic
+poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward
+poetry run python -m src.backtesting.main --synthetic --output-dir backtests/results/run1
 ```
 
 ## Project Layout
@@ -61,6 +62,7 @@ src/
 │   ├── models.py          # All SQLAlchemy ORM models
 │   └── migrations/        # Alembic migrations
 ├── scheduler/             # APScheduler with persistent job store
+├── backtesting/           # Engine, paper broker, io (load/fetch yfinance + CSV cache), metrics, walk-forward, promotion report
 └── utils/
     ├── config.py          # Settings singleton via get_settings()
     ├── cost_tracker.py    # Per-provider budget enforcement + graceful degradation
@@ -279,8 +281,8 @@ Files to check on every feature:
 
 Current primary user stories for next-week implementation:
 - **US-1.5 Chat Interface & Real-Time Trade Alerts** (`docs/CHAT_INTERFACE_PROJECT.md`) [delivered; outbound phase complete]
-- **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`)
+- **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
 
-Primary build focus in the next coding session is US-5.1 backtesting kickoff.
+Primary build focus in the next coding session is calibration (US-2.1, US-2.2) and portfolio optimisation (US-3.1).
 
 When touching this track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, and `docs/BACKTESTING_PROJECT_PLAN.md` synchronized in the same PR.

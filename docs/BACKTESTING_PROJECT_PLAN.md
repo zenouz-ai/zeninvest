@@ -1,5 +1,9 @@
 # Backtesting Project Plan (Biggest Gap)
 
+**Status (2026-03):** Core engine, walk-forward, promotion report, and yfinance fetch + CSV cache are implemented. See `docs/BACKTESTING.md` and `docs/WALK_FORWARD_VALIDATION.md`.
+
+---
+
 ## Objective
 
 Design and implement a robust, reproducible backtesting capability that closes the largest maturity gap in the project: **lack of historical evidence of edge**.
@@ -36,7 +40,7 @@ Without backtesting + validation:
 - `src/backtesting/engine.py` (event loop/replay coordinator)
 - `src/backtesting/broker.py` (paper broker, fills, cash/positions)
 - `src/backtesting/metrics.py` (Sharpe, Sortino, drawdown, hit rate, turnover)
-- `src/backtesting/io.py` (dataset loading and integrity checks)
+- `src/backtesting/io.py` (dataset loading, yfinance fetch when CSV missing, CSV cache to `data/backtest/`, integrity checks)
 - CLI entrypoint for backtest runs and result export
 
 ---

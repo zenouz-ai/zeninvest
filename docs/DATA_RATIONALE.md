@@ -40,6 +40,10 @@ moving averages, and Bollinger Bands. High/Low feed Bollinger Bands. Volume is n
 used — a potential future enhancement for confirming price moves, but omitting it keeps the
 model simpler.
 
+**Backtesting:** The backtest engine (`src/backtesting/`) uses the same OHLCV schema. When
+`data/backtest/<TICKER>.csv` is missing, it fetches from yfinance for the config date range
+and caches to CSV. This enables historical validation without pre-downloading data.
+
 ---
 
 ## 2. Technical Indicators
