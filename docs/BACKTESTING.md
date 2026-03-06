@@ -57,6 +57,7 @@ In this project, backtesting:
 - **Fill model:** next-day open plus fixed slippage (bps).
 - **No lookahead:** at each date, only data on or before that date is used to compute signals.
 - **Reproducibility:** every run uses an explicit **seed**; same config + seed produce the same results.
+- **Data sources:** If no CSV files exist in `data/backtest/<TICKER>.csv`, the CLI automatically fetches OHLCV from **yfinance** for the config date range and **caches** them to CSV for subsequent runs. Delete the CSV files to force a refresh.
 
 ### Outputs (per run)
 

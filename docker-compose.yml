@@ -9,6 +9,7 @@ services:
       - ./data:/app/data
       - ./journals:/app/journals
       - ./logs:/app/logs
+      - ./backtests/results:/app/backtests/results
     deploy:
       resources:
         limits:

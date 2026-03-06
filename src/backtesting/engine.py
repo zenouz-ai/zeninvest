@@ -94,7 +94,7 @@ class BacktestEngine:
                         self.broker.submit_order(sig.ticker, "SELL", pos.quantity, date)
                 elif sig.action == "BUY" and len(current_positions) < self.max_positions:
                     if sig.ticker in day_bars and next_date is not None:
-                        alloc = self.broker.cash * 0.95 / self.max_positions * sig.weight
+                        alloc = self.broker.cash * 0.95 / self.max_positions
                         price = day_bars[sig.ticker]["close"]
                         if price > 0 and alloc >= price:
                             qty = alloc / price

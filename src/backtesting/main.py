@@ -8,7 +8,7 @@ import click
 import pandas as pd
 
 from src.backtesting.engine import BacktestEngine
-from src.backtesting.io import generate_synthetic_bars, load_bars, load_benchmark
+from src.backtesting.io import fetch_bars_yfinance, generate_synthetic_bars, load_bars, load_benchmark
 from src.backtesting.promotion_report import write_promotion_report
 from src.backtesting.walk_forward import aggregate_fold_metrics, make_splits, run_walk_forward
 from src.utils.logger import get_logger
@@ -76,10 +76,24 @@ def main(
             benchmark = None
     else:
         bars = load_bars(tickers, start, end)
-        benchmark = load_benchmark("SPY", start, end)
+        if not bars:
+            click.echo("No CSV data in data/backtest/; fetching from yfinance...")
+            bars = fetch_bars_yfinance(tickers, start, end)
+            if bars:
+                data_dir = base_dir / "data" / "backtest"
+                data_dir.mkdir(parents=True, exist_ok=True)
+                for t, df in bars.items():
+                    path = data_dir / f"{t.replace(' ', '_')}.csv"
+                    df.to_csv(path, index=False)
+                    click.echo(f"Cached {t} to {path}")
+        benchmark = bars.get("SPY", pd.DataFrame())
+        if not benchmark.empty:
+            benchmark = benchmark.set_index("date")["close"]
+        else:
+            benchmark = load_benchmark("SPY", start, end)
 
     if not bars:
-        click.echo("No bar data loaded. Use --synthetic for a quick test.")
+        click.echo("No bar data loaded. Use --synthetic for a quick test, or ensure data/backtest/<TICKER>.csv exists.")
         raise SystemExit(1)
 
     if output_dir is None:
@@ -118,3 +132,7 @@ def main(
 
     click.echo(f"Results written to {output_dir}")
     click.echo(json.dumps(result.get("metrics", {}), indent=2))
+
+
+if __name__ == "__main__":
+    main()

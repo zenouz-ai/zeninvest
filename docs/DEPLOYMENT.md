@@ -18,6 +18,8 @@ This guide covers deploying the Investment Agent on a VPS, monitoring its operat
 8. [Updating](#8-updating)
 9. [Troubleshooting](#9-troubleshooting)
 10. [Retrieving Activity Data](#10-retrieving-activity-data)
+11. [Backtesting on VPS](#11-backtesting-on-vps)
+12. [Transferring Project to VPS](#12-transferring-project-to-vps)
 
 ---
 
@@ -1496,6 +1498,111 @@ sqlite3 -header -csv ./local_analysis/investment_agent.db \
      FROM cost_logs ORDER BY timestamp;" \
     > cost_history.csv
 ```
+
+---
+
+## 11. Backtesting on VPS
+
+The backtesting engine runs strategy validation on historical data. Use it before deploying strategy or config changes (see `docs/GOVERNANCE.md` §9.5).
+
+### 11.1 Docker
+
+```bash
+cd /home/deploy/investment-agent
+
+# Single backtest with real data (fetches from yfinance if data/backtest/ is empty; caches to CSV)
+docker compose run --rm investment-agent python -m src.backtesting.main \
+  --config backtests/default.yaml \
+  --output-dir backtests/results/latest
+
+# Walk-forward validation + promotion report
+docker compose run --rm investment-agent python -m src.backtesting.main \
+  --config backtests/default.yaml \
+  --walk-forward \
+  --output-dir backtests/results/walk_forward
+
+# Synthetic data (no network, fast sanity check)
+docker compose run --rm investment-agent python -m src.backtesting.main --synthetic
+```
+
+Results are written to `backtests/results/` and persisted via the `./backtests/results` volume mount in `docker-compose.yml`.
+
+### 11.2 Non-Docker
+
+```bash
+cd /home/deploy/investment-agent
+
+poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward
+```
+
+### 11.3 Data Caching
+
+On first run with real data, the CLI fetches OHLCV from yfinance and caches to `data/backtest/<TICKER>.csv`. Subsequent runs use the cache. To refresh data, delete the CSV files and re-run.
+
+---
+
+## 12. Transferring Project to VPS
+
+### 12.1 Deploy Updates (Git Push + Pull)
+
+1. **Local:** Commit and push your changes (including backtesting, feedback loop, etc.):
+
+   ```bash
+   git add -A
+   git commit -m "feat: backtesting with yfinance fetch, CSV cache, walk-forward"
+   git push origin main   # or your branch name
+   ```
+
+2. **VPS:** Pull and rebuild:
+
+   ```bash
+   ssh -p 2222 deploy@your-vps-ip
+   cd /home/deploy/investment-agent
+
+   git fetch origin
+   git pull origin main
+
+   # Docker
+   docker compose down
+   docker compose up -d --build
+
+   # Non-Docker
+   poetry install --without dev
+   poetry run alembic upgrade head
+   sudo systemctl restart investment-agent
+   ```
+
+### 12.2 Initial Clone (Fresh VPS)
+
+```bash
+cd /home/deploy
+git clone https://github.com/your-org/Investment-agent.git investment-agent
+cd investment-agent
+
+cp config/.env.example .env
+# Edit .env with API keys
+
+# Docker
+docker compose up -d --build
+
+# Or Non-Docker
+poetry install --without dev
+poetry run alembic upgrade head
+# Create systemd service (see §4.6)
+```
+
+### 12.3 rsync (Alternative to Git)
+
+If you prefer to sync files without Git:
+
+```bash
+# From local to VPS (excludes .env, .venv, __pycache__)
+rsync -avz --exclude='.env' --exclude='.venv' --exclude='__pycache__' \
+  -e "ssh -p 2222" \
+  ./investment-agent/ deploy@your-vps-ip:/home/deploy/investment-agent/
+```
+
+Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart investment-agent`.
 
 ---
 
