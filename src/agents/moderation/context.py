@@ -89,6 +89,15 @@ def format_market_context(market_context: dict[str, Any]) -> str:
         sp_above = macro.get("sp500_above_200ma")
         if sp_above is not None:
             lines.append(f"- S&P 500 Above 200-day MA: {'Yes' if sp_above else 'No'}")
+        sector_headwind = macro.get("sector_headwind")
+        if sector_headwind:
+            lines.append(f"- Sector Headwind: {sector_headwind}")
+        sector_summary = macro.get("sector_summary")
+        if sector_summary:
+            lines.append(f"- Sector Performance: {sector_summary[:400]}")
+        economic_highlights = macro.get("economic_highlights")
+        if economic_highlights:
+            lines.append(f"- Economic Highlights: {economic_highlights[:500]}")
         sections.append("\n".join(lines))
 
     # --- Sub-Strategy Signals ---

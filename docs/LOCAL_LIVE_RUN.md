@@ -145,7 +145,7 @@ poetry run python -m src.orchestrator.main --dry-run
 
 **What this does:**
 - Seeds the universe with ~160 curated stocks (first run only, then uses enriched data)
-- Fetches real market data (yfinance, Finnhub, Alpha Vantage)
+- Fetches real market data (yfinance, Finnhub, Alpha Vantage, macro intelligence: sector performance + economic headlines)
 - Fetches company business summaries from yfinance for qualitative analysis
 - Runs strategy synthesis with Claude (real API call, ~£0.01)
 - Runs moderation with GPT-4o + Gemini (real API calls, ~£0.005)
@@ -189,8 +189,7 @@ echo $! > scheduler.pid
 **Scheduled jobs:**
 | Job | Schedule | Description |
 |-----|----------|-------------|
-| Analysis cycle | 07:00 UTC Mon-Fri | Morning trading cycle |
-| Analysis cycle | 19:00 UTC Mon-Fri | Evening trading cycle |
+| Analysis cycle | From `cycle_times_utc` (intraday: 08/12/16 UTC; standard: 07/19 UTC) Mon-Fri | Trading cycle |
 | Daily snapshot | 21:30 UTC daily | Portfolio snapshot + daily report |
 | Weekly report | Fri 22:00 UTC | Weekly performance summary |
 | Instrument refresh | Sun 12:00 UTC | Update tradable instrument universe |

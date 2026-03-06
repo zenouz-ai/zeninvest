@@ -135,3 +135,18 @@ def test_render_cycle_summary_email_uses_readable_non_execution_labels() -> None
 
     assert "Execution: status=not_executed" in body
     assert "status=not_applicable" in body
+
+
+def test_render_cycle_summary_slack_includes_queued_reason() -> None:
+    event = _cycle_event()
+    event.payload["decisions"][0]["stage"] = "opportunity_queue"
+    event.payload["decisions"][0]["quantity"] = None
+    event.payload["decisions"][0]["stage_reason"] = "Queued by UOV optimizer (capacity/threshold gating)"
+
+    messages = render_event(event, "slack", slack_max_chars=10_000)
+    text = messages[0].body
+
+    assert "AAPL_US_EQ BUY" in text
+    assert "queued" in text
+    assert "opportunity_queue" in text
+    assert "Queued by UOV optimizer (capacity/threshold gating)" in text

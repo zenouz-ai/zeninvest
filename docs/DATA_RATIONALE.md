@@ -27,11 +27,11 @@ Only paths 1-4 matter for decision quality. Path 5 is for post-hoc analysis only
 
 | Field | Source | Refresh | Decision Path | Influence |
 |-------|--------|---------|---------------|-----------|
-| Open | yfinance `download()` | 12h cycle | None directly | Intermediate for indicator calc |
-| High | yfinance `download()` | 12h cycle | Path 1 | Feeds Bollinger Bands |
-| Low | yfinance `download()` | 12h cycle | Path 1 | Feeds Bollinger Bands |
-| Close | yfinance `download()` | 12h cycle | Path 1 | Core input for all indicators |
-| Volume | yfinance `download()` | 12h cycle | **NONE** | Fetched but never used |
+| Open | yfinance `download()` | Per cycle | None directly | Intermediate for indicator calc |
+| High | yfinance `download()` | Per cycle | Path 1 | Feeds Bollinger Bands |
+| Low | yfinance `download()` | Per cycle | Path 1 | Feeds Bollinger Bands |
+| Close | yfinance `download()` | Per cycle | Path 1 | Core input for all indicators |
+| Volume | yfinance `download()` | Per cycle | **NONE** | Fetched but never used |
 
 **Period:** 1 year daily (needed for 200-day MA calculation, ~252 trading days).
 
@@ -136,6 +136,15 @@ fully cover the three active strategies (momentum, mean reversion, factor via re
 use it. Currently, the simpler VIX + S&P 200MA approach is sufficient and avoids the
 inaccurate ^IRX proxy.
 
+### Macro Intelligence (Sector + Economic News)
+
+| Data | Source | Decision Path | How It Alters Decisions |
+|------|--------|---------------|--------------------------|
+| Sector performance (real-time, 1d, 5d, 1m) | Alpha Vantage SECTOR | Path 2 | Per-sector trend labels (outperform/underperform). Enables moderators to flag "fundamentally strong but sector headwind — defer buy". |
+| Economic headlines (Fed, tariffs, earnings) | Finnhub /news (general) | Path 2 | Key headlines passed to strategy and moderation. Earnings season flag for timing context. |
+
+**Refresh:** Cached 4h (NewsSentimentCache, source=macro, data_type=macro_intelligence). Alpha Vantage SECTOR = 1 call; Finnhub /news = 1 call per refresh. Sector mapping: yfinance (Technology, Healthcare) → Alpha Vantage (Information Technology, Health Care) via `YF_TO_AV_SECTOR`.
+
 ---
 
 ## 5. Finnhub Data (Analyst + Insider)
@@ -154,8 +163,9 @@ inaccurate ^IRX proxy.
 |------|-------------|
 | `get_peers()` | Method existed but was never called from any pipeline stage. Dead code. |
 
-**Refresh:** Per-cycle (12h). Rate limited at 60 req/min. Up to 15 tickers per cycle × 2 calls
-(recommendations + insider) = 30 Finnhub calls per cycle.
+**Refresh:** Per-cycle. When `cycle_frequency: intraday`, Finnhub is deferred to active-review
+tickers only (positions ∪ top_tickers), with NewsSentimentCache (6h TTL). Rate limited at 60 req/min.
+~15 tickers × 2 calls = ~30 Finnhub calls per cycle.
 
 ---
 
@@ -181,8 +191,8 @@ Ticker avg sentiment: +0.250 (Bullish: 3, Bearish: 0, Articles: 5)
 **Format for LLM (broad):** Each article distilled to one line: `[Bullish +0.234] Headline text (Source)`.
 This is an efficient format — compact enough for token budget, rich enough for LLM reasoning.
 
-**Refresh:** 3 API calls per cycle (broad + ticker summary + raw articles for per-ticker parsing).
-Free tier: 25 calls/day. Two 12h cycles = 6 calls/day, well within limits.
+**Refresh:** 2 API calls per cycle (broad + ticker sentiment). Broad sentiment cached 4h (NewsSentimentCache).
+Free tier: 25 calls/day. With 3 intraday cycles = 6 calls/day, well within limits.
 
 ---
 
@@ -250,6 +260,8 @@ information. Key formatting features:
 - VIX labels: low (<15), normal (15-20), elevated (20-30), high (30-35), extreme (>35)
 - Bollinger Band: "Yes (oversold)" when below lower band
 - MACD crossover: "Bullish crossover (buy signal)" / "Bearish crossover (sell signal)"
+- Sector headwind: When macro intelligence flags a sector as underperforming, moderators see "Sector X underperforming (Y% real-time)" — enables "fundamentally strong but sector headwind — defer buy"
+- Economic highlights: Fed, tariffs, earnings headlines from Finnhub /news
 - Strategy assessment: Claude's market thesis is shown under "Strategy Agent's Market Assessment" with a prompt to challenge it
 
 ---
@@ -356,7 +368,7 @@ Decision influence:
 | Gemini Flash 2.0 | Risk assessor | ~2K in / ~0.5K out per trade (×3-5 trades) | ~$0.001-0.003 |
 | **Total** | | | **~$0.05-0.08/cycle** |
 
-With 2 cycles/day: **$0.10-0.16/day** or **$3-5/month**.
+With 2–3 cycles/day (configurable): **$0.10-0.24/day** or **$3-7/month**.
 
 ### Could local/free models replace paid ones?
 
@@ -386,7 +398,7 @@ not switching to cheaper models. The conviction-based bypass already saves money
 moderators are unavailable.
 
 **Local model viable only if:** The system were running 100+ cycles/day (quant-style), making
-API costs $100+/month. At 2 cycles/day, the $3-5/month cost does not justify the complexity
+API costs $100+/month. At 2–3 cycles/day, the $3-7/month cost does not justify the complexity
 and reliability tradeoff of local deployment.
 
 ---
@@ -412,3 +424,4 @@ and reliability tradeoff of local deployment.
 | 2026-02-27 | Fixed REDUCE action in order manager | REDUCE now correctly negates quantity (partial sell). Previously would have tried to BUY instead. Risk manager also checks `min_positions` for REDUCE. |
 | 2026-02-27 | Added automatic stop-loss orders after BUY | `place_stop_loss()` uses T212's stop order API (GTC validity) with Claude's `stop_loss_pct`. Placed automatically after successful BUY executions. |
 | 2026-02-27 | Added 72-hour screening cooldown | `last_screened_at` column on Instrument table. Screened stocks are excluded from future screens for 72 hours (configurable via `screening_cooldown_hours`), preventing the same candidates from appearing in consecutive cycles. |
+| 2026-03-06 | Added macro intelligence module | Sector performance (Alpha Vantage SECTOR) and economic headlines (Finnhub /news) feed strategy and moderation. Enables "fundamentally strong but sector headwind — defer buy" in committee decisions. Cached 4h. |

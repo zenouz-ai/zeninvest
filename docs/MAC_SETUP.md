@@ -197,22 +197,23 @@ This opens the notebook in your browser. Select the **"Investment Agent (Python)
 | 6. Indicators | RSI, MACD, Bollinger Bands, 50MA | None |
 | 7. Fundamentals | P/E, P/B, ROE, margins, debt/equity | None (free) |
 | 8. Macro Data | VIX, S&P 500 vs 200MA, market regime | None (free) |
-| 9. Finnhub API | Analyst recommendations, insider sentiment | `FINNHUB_API_KEY` |
-| 10. Alpha Vantage | News sentiment (broad + per-ticker) | `ALPHA_VANTAGE_API_KEY` |
-| 11. Sub-Strategies | Momentum, mean reversion, factor scoring | None |
-| 12. Claude Synthesis | Strategy decisions via Anthropic API | `ANTHROPIC_API_KEY` |
-| 13. Moderation Panel | GPT-4o + Gemini consensus | `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY` |
-| 14. Risk Manager | All 9 hard risk rules | None |
-| 15. T212 Client | Account cash, positions | `T212_API_KEY` |
-| 16. Order Manager | Dry-run order execution | None |
-| 17. Trade Journal | Markdown journal generation | None |
-| 18. Orchestrator | Full dry-run cycle (end-to-end) | All keys |
-| 19. Database Inspection | Recent activity across all tables | None |
-| 20. Summary Report | Pass/warn/fail for every component | None |
+| 9. Macro Intelligence | Sector performance (AV SECTOR), economic headlines (Finnhub /news) | `FINNHUB_API_KEY`, `ALPHA_VANTAGE_API_KEY` |
+| 10. Finnhub API | Analyst recommendations, insider sentiment, market news | `FINNHUB_API_KEY` |
+| 11. Alpha Vantage | News sentiment (broad + per-ticker), sector performance | `ALPHA_VANTAGE_API_KEY` |
+| 12. Sub-Strategies | Momentum, mean reversion, factor scoring | None |
+| 13. Claude Synthesis | Strategy decisions via Anthropic API | `ANTHROPIC_API_KEY` |
+| 14. Moderation Panel | GPT-4o + Gemini consensus | `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY` |
+| 15. Risk Manager | All 9 hard risk rules | None |
+| 16. T212 Client | Account cash, positions | `T212_API_KEY` |
+| 17. Order Manager | Dry-run order execution | None |
+| 18. Trade Journal | Markdown journal generation | None |
+| 19. Orchestrator | Full dry-run cycle (end-to-end) | All keys |
+| 20. Database Inspection | Recent activity across all tables | None |
+| 21. Summary Report | Pass/warn/fail for every component | None |
 
 ### Running without API keys
 
-Sections 0-8, 11, 14, and 16-17 work **without any API keys** (they use free yfinance data and local computations). You can run these first to verify the local setup is correct before adding paid API keys.
+Sections 0-8, 12, 15, and 17-18 work **without any API keys** (they use free yfinance data and local computations). You can run these first to verify the local setup is correct before adding paid API keys.
 
 ### Expected LLM costs per notebook run
 

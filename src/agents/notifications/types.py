@@ -2,12 +2,48 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 
 NotificationSeverity = Literal["info", "warning", "critical"]
 NotificationChannel = Literal["slack", "email"]
 NotificationStatus = Literal["sent", "failed", "skipped", "deduped"]
+
+
+class TradeInstructionPayload(TypedDict, total=False):
+    """Payload shape for trade_instruction_approved events."""
+
+    cycle_id: str
+    dry_run: bool
+    ticker: str
+    action: str
+    target_allocation_pct: float
+    final_allocation_pct: float
+    conviction: int | float
+    moderation_consensus: str | None
+    risk_verdict: str | None
+    reasoning_summary: str
+    occurred_at: str
+
+
+class TradeExecutionPayload(TypedDict, total=False):
+    """Payload shape for trade_execution_result events."""
+
+    cycle_id: str
+    dry_run: bool
+    ticker: str
+    action: str
+    execution_status: str
+    quantity: int | float | None
+    price: float | None
+    value_gbp: float | None
+    stop_loss_pct: float | None
+    stop_loss_status: str | None
+    error_message: str | None
+    reasoning_summary: str
+    moderation_consensus: str | None
+    risk_verdict: str | None
+    occurred_at: str
 
 
 @dataclass(slots=True)
@@ -34,3 +70,7 @@ class NotificationMessage:
 
     subject: str
     body: str
+
+
+class NotificationError(Exception):
+    """Raised when a notification send fails; caught and logged by service (fail-open)."""

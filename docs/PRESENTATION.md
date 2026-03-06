@@ -16,7 +16,7 @@ to autonomously analyze markets and execute trades.*
 
 **Opportunity:** LLMs can process vast amounts of data, maintain consistency, and operate 24/7 — but a single model carries concentration risk.
 
-**Solution:** A multi-LLM investment committee with hard safety guardrails, operating autonomously on a 12-hour cycle.
+**Solution:** A multi-LLM investment committee with hard safety guardrails, operating autonomously on a configurable schedule (intraday: 3 cycles at 08/12/16 UTC; standard: 2 cycles at 07/19 UTC).
 
 ---
 
@@ -45,8 +45,10 @@ to autonomously analyze markets and execute trades.*
 | Source | Data | Rate Limit | Cost |
 |--------|------|-----------|------|
 | Yahoo Finance | OHLCV, fundamentals, earnings | Unlimited | Free |
-| Finnhub | Analyst recommendations, insider sentiment | 60 req/min | Free |
-| Alpha Vantage | AI-powered news sentiment (**per-ticker extraction**) | 25 req/day | Free |
+| Finnhub | Analyst recommendations, insider sentiment, market news (macro headlines) | 60 req/min | Free |
+| Alpha Vantage | AI-powered news sentiment (**per-ticker extraction**), sector performance (SECTOR) | 25 req/day | Free |
+
+**Macro Intelligence:** Sector performance (Alpha Vantage SECTOR) and economic headlines (Finnhub /news) feed strategy and moderation. Enables "sector headwind — defer buy" when a stock's sector is underperforming.
 
 **Per-Ticker News:** Alpha Vantage articles are parsed via `extract_per_ticker_news()` to build per-stock summaries with sentiment scores, bullish/bearish counts, and top headlines. Claude sees which news belongs to which stock.
 
@@ -133,7 +135,7 @@ FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED
 ```
 
 **Estimated cost per cycle:** ~£0.03-0.05
-**Cycles per day:** 2 (07:00 + 19:00 UTC)
+**Cycles per day:** 2 (standard) or 3 (intraday) — configurable via `cycle_frequency`
 **Monthly estimate:** ~£2-3 (well within budget)
 
 ---
@@ -192,7 +194,7 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 - Cost tracker: 16 tests (budgets, degradation, logging)
 - Screening + seed universe: 10 tests (cooldown, seed fallback, data availability filtering)
 - Opportunity scoring + optimizer: 5 tests (UOV scoring, queue lifecycle, swap suggestions)
-- Notifications: 17 tests (service, providers, formatters, integration)
+- Notifications: 19 tests (service, providers, formatters, integration)
 - Performance tracker + trade-outcome tracker: 6 tests
 - Backtesting: 12 tests (broker, engine, metrics, leakage guards, walk-forward)
 
@@ -254,7 +256,7 @@ docker compose logs -f investment-agent
 4. **Practice API first** — Safe development and testing before real capital
 5. **Graceful degradation over hard failure** — System continues with reduced capability
 6. **Per-trade journaling** — Complete audit trail for learning and accountability
-7. **12-hour cycles over real-time** — Reduces costs, avoids overtrading
+7. **Scheduled cycles (2–3/day) over real-time** — Reduces costs, avoids overtrading
 8. **Conviction thresholds** — Higher bar when fewer moderators available
 9. **Universe screening over position-only analysis** — Discovers new opportunities via sector-balanced, cap-tiered sampling (70% large, 20% mid, 10% small) with 72-hour screening cooldown to ensure broad coverage
 10. **Automatic stop-loss over manual protection** — GTC stop orders placed after every BUY using Claude's downside estimate

@@ -1,8 +1,9 @@
 trading:
   mode: active
   base_url: https://demo.trading212.com/api/v0
-  cycle_hours: 12
-  cycle_times_utc: ["07:00", "19:00"]
+  cycle_frequency: intraday  # standard = 2 cycles (07:00, 19:00), intraday = 3 cycles (08:00, 12:00, 16:00)
+  cycle_hours: 4
+  cycle_times_utc: ["08:00", "12:00", "16:00"]
   market_days: [0, 1, 2, 3, 4]  # Mon-Fri
   max_positions: 15
   min_position_pct: 2
@@ -41,6 +42,14 @@ models:
 data_providers:
   finnhub_base_url: https://finnhub.io/api/v1
   alpha_vantage_base_url: https://www.alphavantage.co/query
+  macro_intelligence_enabled: true
+  cache_ttl_hours:
+    ohlcv_indicators: 4
+    fundamentals: 12
+    finnhub_analyst: 6
+    alpha_vantage_broad: 4
+    alpha_vantage_ticker: 4
+    macro_intelligence: 4
 
 universe:
   max_candidates: 30          # Max new stocks to screen per cycle

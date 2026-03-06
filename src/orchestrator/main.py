@@ -16,6 +16,7 @@ from src.agents.execution.order_manager import OrderManager
 from src.agents.execution.t212_client import T212Client
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.data_fetcher import DataFetcher
+from src.agents.market_data.macro_intelligence import get_sector_headwind
 from src.agents.moderation.panel import ModerationPanel
 from src.agents.notifications import NotificationService
 from src.agents.opportunity.optimizer import OpportunityOptimizer
@@ -188,25 +189,42 @@ class Orchestrator:
                 system_state=current_state,
             )
 
-            # Get Alpha Vantage broad market sentiment (1 API call)
-            av_broad_sentiment: dict[str, Any] = {}
-            try:
-                av_broad_sentiment = self.data_fetcher.alpha_vantage.get_broad_market_sentiment()
-            except Exception as e:
-                logger.warning(f"Alpha Vantage broad sentiment unavailable: {e}")
-
             # --- STEP 4: Run strategies ---
             logger.info("Running strategies...")
 
             sub_results = self.strategy_engine.run_sub_strategies(stocks_data, existing_tickers)
-
-            # Gather Finnhub analyst data (recommendations + insider) for top candidates
-            analyst_data_map: dict[str, dict] = {}
             top_tickers = self._get_top_tickers(sub_results)
-            for ticker in top_tickers[:15]:
+
+            # Deferred Finnhub/AV: only for positions ∪ top_tickers (active review)
+            active_review_tickers = list(existing_tickers | set(top_tickers[:15]))[:15]
+
+            # Get Alpha Vantage broad market sentiment (1 API call, cached 4h)
+            av_broad_sentiment: dict[str, Any] = {}
+            try:
+                cached_broad = self.data_fetcher.get_cached_news_sentiment(
+                    ticker=None, source="alpha_vantage", data_type="market_news_broad",
+                )
+                if cached_broad:
+                    av_broad_sentiment = cached_broad
+                else:
+                    av_broad_sentiment = self.data_fetcher.alpha_vantage.get_broad_market_sentiment()
+                    if "error" not in av_broad_sentiment:
+                        self.data_fetcher.cache_news_sentiment(
+                            ticker=None,
+                            source="alpha_vantage",
+                            data_type="market_news_broad",
+                            data=av_broad_sentiment,
+                            ttl_hours=self.settings.cache_ttl_hours("alpha_vantage_broad"),
+                        )
+            except Exception as e:
+                logger.warning(f"Alpha Vantage broad sentiment unavailable: {e}")
+
+            # Gather Finnhub analyst data (cached) for active-review tickers only
+            analyst_data_map: dict[str, dict] = {}
+            for ticker in active_review_tickers:
                 try:
                     yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
-                    analyst_data_map[ticker] = self.data_fetcher.finnhub.get_analyst_data(yf_ticker)
+                    analyst_data_map[ticker] = self.data_fetcher.get_analyst_data_cached(yf_ticker)
                 except Exception as e:
                     logger.warning(f"Finnhub analyst data error for {ticker}: {e}")
                     analyst_data_map[ticker] = {}
@@ -214,9 +232,9 @@ class Orchestrator:
             # Get Alpha Vantage ticker-specific news sentiment (1 API call for all tickers)
             av_ticker_sentiment: dict[str, Any] = {}
             av_all_articles: list[dict[str, Any]] = []
-            if top_tickers:
+            if active_review_tickers:
                 try:
-                    yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
+                    yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in active_review_tickers]
                     tickers_str = ",".join(yf_tickers)
                     # Single API call — returns both aggregate stats and raw articles
                     raw_data = self.data_fetcher.alpha_vantage.get_market_news_sentiment(
@@ -240,7 +258,7 @@ class Orchestrator:
 
             # Extract per-ticker news from Alpha Vantage articles
             if av_all_articles:
-                all_yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in top_tickers[:15]]
+                all_yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in active_review_tickers]
                 per_ticker_news = DataFetcher.extract_per_ticker_news(av_all_articles, all_yf_tickers)
 
             # Build per-ticker news sections for Claude (structured by ticker)
@@ -270,6 +288,16 @@ class Orchestrator:
                 if broad_articles:
                     broad_summary = AlphaVantageClient._summarize_articles(broad_articles, max_articles=10)
                     news_parts.append(broad_summary)
+
+            # Add macro intelligence (sector trends + economic headlines)
+            macro_intel = macro.get("macro_intelligence", {})
+            if macro_intel.get("enabled"):
+                if macro_intel.get("sector_summary"):
+                    news_parts.append(f"\n### Sector Performance (S&P 500)")
+                    news_parts.append(macro_intel["sector_summary"])
+                if macro_intel.get("economic_highlights"):
+                    news_parts.append(f"\n### Economic Highlights (Fed, tariffs, earnings)")
+                    news_parts.append(macro_intel["economic_highlights"])
 
             analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
             news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
@@ -345,6 +373,7 @@ class Orchestrator:
                 logger.info(f"Moderating {action} {ticker}...")
                 yf_ticker_for_news = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
                 ticker_news = per_ticker_news.get(yf_ticker_for_news, "")
+                sector = self._get_sector(ticker, stocks_data)
                 market_context = self._build_market_context(
                     ticker=ticker,
                     stocks_data=stocks_data,
@@ -356,6 +385,7 @@ class Orchestrator:
                     news_summary=news_summary,
                     ticker_news=ticker_news,
                     strategy_assessment=strategy_result.get("market_assessment", ""),
+                    sector=sector,
                 )
 
                 mod_result = self.moderation_panel.review_trade(
@@ -686,7 +716,15 @@ class Orchestrator:
         1. Analyze all current positions (always).
         2. Screen the instrument universe for new candidates using sector-balanced,
            market-cap-tiered sampling (skip in CAUTIOUS — no new positions allowed).
+
+        When cycle_frequency is intraday: uses get_stock_analysis_lite (Tier 1 only,
+        no Finnhub) for screening. Finnhub/AV fetched later for active-review tickers.
+        When standard: uses get_stock_analysis (includes Finnhub) for backward compat.
         """
+        use_lite = self.settings.cycle_frequency == "intraday"
+        cache_key = "lite_analysis" if use_lite else "full_analysis"
+        fetch_fn = self.data_fetcher.get_stock_analysis_lite if use_lite else self.data_fetcher.get_stock_analysis
+
         stocks_data: list[dict[str, Any]] = []
         analyzed_tickers: set[str] = set()
 
@@ -697,14 +735,14 @@ class Orchestrator:
                 continue
             yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
             try:
-                cached = self.data_fetcher.get_cached_data(yf_ticker, "full_analysis")
+                cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
                 if cached:
+                    cached["ticker"] = ticker
                     stocks_data.append(cached)
                 else:
-                    data = self.data_fetcher.get_stock_analysis(yf_ticker)
+                    data = fetch_fn(yf_ticker)
                     data["ticker"] = ticker
                     stocks_data.append(data)
-                    # Back-fill sector/market_cap into instruments table
                     self.data_fetcher.enrich_instrument_metadata(
                         ticker, data.get("fundamentals", {}),
                     )
@@ -720,7 +758,6 @@ class Orchestrator:
                 candidates = self.data_fetcher.get_screened_universe(
                     exclude_tickers=all_exclude,
                 )
-                # Mark screened candidates so they enter the cooldown window
                 self.data_fetcher.mark_instruments_screened(
                     [c["ticker"] for c in candidates],
                 )
@@ -732,25 +769,22 @@ class Orchestrator:
                     if c_ticker in analyzed_tickers:
                         continue
                     try:
-                        cached = self.data_fetcher.get_cached_data(yf_ticker, "full_analysis")
+                        cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
                         if cached:
-                            # Skip cached entries that had no OHLCV data
                             if cached.get("indicators", {}).get("error"):
                                 skipped_no_data += 1
                                 continue
+                            cached["ticker"] = c_ticker
                             stocks_data.append(cached)
                         else:
-                            data = self.data_fetcher.get_stock_analysis(yf_ticker)
+                            data = fetch_fn(yf_ticker)
                             data["ticker"] = c_ticker
-                            # Skip stocks with no OHLCV data (delisted, invalid, etc.)
-                            # and permanently flag them so they're excluded from future screens
                             if data.get("indicators", {}).get("error"):
                                 logger.debug(f"Skipping {c_ticker}: no OHLCV data available")
                                 self.data_fetcher.mark_instrument_unavailable(c_ticker)
                                 skipped_no_data += 1
                                 continue
                             stocks_data.append(data)
-                            # Back-fill sector/market_cap into instruments table
                             self.data_fetcher.enrich_instrument_metadata(
                                 c_ticker, data.get("fundamentals", {}),
                             )
@@ -808,6 +842,7 @@ class Orchestrator:
                     "stop_loss_pct": decision.get("stop_loss_pct", 0),
                     "stop_loss_status": None,
                     "error_message": "no_price",
+                    "reasoning_summary": decision.get("reasoning", ""),
                     "target_allocation_pct": final_alloc,
                     "occurred_at": datetime.now(timezone.utc).isoformat(),
                 },
@@ -916,6 +951,9 @@ class Orchestrator:
                 "stop_loss_pct": stop_loss_pct,
                 "stop_loss_status": (stop_loss_result or {}).get("status"),
                 "error_message": exec_result.get("error"),
+                "reasoning_summary": decision.get("reasoning", ""),
+                "moderation_consensus": mod_result.consensus,
+                "risk_verdict": risk_verdict.verdict,
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -1001,12 +1039,14 @@ class Orchestrator:
         news_summary: str,
         ticker_news: str = "",
         strategy_assessment: str = "",
+        sector: str = "Unknown",
     ) -> dict[str, Any]:
         """Build rich market context dict for moderator review.
 
         Gives moderators the same data quality as the strategy agent:
         technical indicators, fundamentals, market regime, sub-strategy
-        signals, analyst data, news sentiment, and Claude's market assessment.
+        signals, analyst data, news sentiment, sector headwinds, economic
+        highlights, and Claude's market assessment.
         """
         # Find stock-specific data
         stock_data = next((s for s in stocks_data if s.get("ticker") == ticker), {})
@@ -1053,6 +1093,13 @@ class Orchestrator:
         elif news_summary and news_summary != "News sentiment data unavailable.":
             effective_news = news_summary
 
+        macro_intel = macro.get("macro_intelligence", {})
+        sector_headwind = (
+            get_sector_headwind(macro_intel, sector) if macro_intel.get("enabled") else None
+        )
+        economic_highlights = macro_intel.get("economic_highlights", "")
+        sector_summary = macro_intel.get("sector_summary", "")
+
         return {
             "indicators": indicators,
             "fundamentals": fundamentals,
@@ -1060,6 +1107,9 @@ class Orchestrator:
                 "vix": vix,
                 "market_regime": market_regime,
                 "sp500_above_200ma": macro.get("sp500_above_200ma"),
+                "sector_headwind": sector_headwind,
+                "economic_highlights": economic_highlights,
+                "sector_summary": sector_summary,
             },
             "sub_strategies": {
                 "momentum": momentum_signal,
@@ -1189,6 +1239,7 @@ class Orchestrator:
                 or evaluation.get("stage")
                 or ("executed" if trade else "unrated")
             )
+            stage_reason = rejected.get("reason") or evaluation.get("reason")
 
             records.append({
                 "ticker": ticker,
@@ -1220,6 +1271,7 @@ class Orchestrator:
                 "value_gbp": trade_exec.get("value_gbp"),
                 "stop_loss_pct": decision.get("stop_loss_pct"),
                 "stop_loss_status": stop_loss.get("status"),
+                "stage_reason": stage_reason,
             })
 
         return records

@@ -202,6 +202,22 @@ class FinnhubClient:
             "insider_sentiment": self.get_insider_sentiment(symbol),
         }
 
+    def get_market_news(self, category: str = "general") -> list[dict[str, Any]]:
+        """Get general market news (free tier).
+
+        Args:
+            category: 'general' for broad market news (Fed, tariffs, earnings, etc.)
+
+        Returns:
+            List of article dicts with headline, summary, source, url, datetime.
+        """
+        try:
+            data = self._request("/news", {"category": category})
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.warning(f"Finnhub market news unavailable: {e}")
+            return []
+
     def close(self) -> None:
         self._client.close()
 

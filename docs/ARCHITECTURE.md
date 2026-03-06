@@ -10,10 +10,9 @@
 |  +-----------------+     +------------------------------------------+     |
 |  | APScheduler     |     |           ORCHESTRATOR                    |     |
 |  |                 |---->|  State Machine: ACTIVE/CAUTIOUS/HALTED    |     |
-|  | 07:00 UTC cycle |     |  Cycle ID tracking                       |     |
-|  | 19:00 UTC cycle |     |  Error handling & recovery                |     |
-|  | 21:30 snapshot  |     +----+-----------+-----------+----------+---+     |
-|  | Fri 22:00 weekly|          |           |           |          |        |
+|  | 08/12/16 or 07/19 UTC cycles |     |  Cycle ID tracking                       |     |
+|  | 21:30 snapshot  |     |  Error handling & recovery                |     |
+|  | Fri 22:00 weekly|     +----+-----------+-----------+----------+---+     |
 |  | Sun 12:00 instr |          v           v           v          v        |
 |  +-----------------+     +--------+  +--------+  +-------+  +--------+   |
 |                          | STEP 1 |  | STEP 2 |  | STEP 3|  | STEP 4 |   |
@@ -38,14 +37,15 @@ EXTERNAL APIs                    AGENTS                         STORAGE
 Yahoo Finance  ----+
   (OHLCV, info)    |
                    v
-Finnhub --------> DATA FETCHER ----+---> SQLite (market_data_cache)
-  (analyst recs,   |               |
+Finnhub --------> DATA FETCHER ----+---> SQLite (market_data_cache, news_sentiment_cache)
+  (analyst recs,   |               |     [Deferred when intraday: only for active-review tickers]
    insider sent.)  |               v
                    |        +-- INDICATORS (RSI, MACD, BB, 50MA)
 Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
   (news sentiment) |        +-- FUNDAMENTALS (P/E, P/B, ROE, margins, D/E)
                    |        |     (9 fields — see docs/DATA_RATIONALE.md)
                    |        +-- MACRO (VIX, S&P vs 200MA, market regime)
+                   |        +-- MACRO INTELLIGENCE (sector performance, economic headlines)
                    |        |
                    |        +-- PER-TICKER NEWS (extract_per_ticker_news)
                    |        |     [Parsed from AV ticker_sentiments array,
@@ -74,8 +74,8 @@ Anthropic  -------> CLAUDE SONNET SYNTHESIS
                             v
                    MARKET CONTEXT (context.py)
                    [indicators, fundamentals,
-                    macro, sub-strategy signals,
-                    analyst data, per-ticker news,
+                    macro, sector_headwind, economic_highlights,
+                    sub-strategy signals, analyst data, per-ticker news,
                     strategy_assessment (challenge this)]
                             |
                             v
@@ -244,11 +244,10 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue)
 ```mermaid
 graph TB
     subgraph Scheduler["APScheduler"]
-        S1[07:00 UTC Cycle]
-        S2[19:00 UTC Cycle]
-        S3[21:30 Daily Snapshot]
-        S4[Fri 22:00 Weekly Report]
-        S5[Sun 12:00 Instrument Refresh]
+        S1[Analysis Cycles<br/>From cycle_times_utc]
+        S2[21:30 Daily Snapshot]
+        S3[Fri 22:00 Weekly Report]
+        S4[Sun 12:00 Instrument Refresh]
     end
 
     subgraph Orchestrator["Orchestrator"]
@@ -261,7 +260,7 @@ graph TB
         FH[Finnhub<br/>Analyst + Insider]
         AV[Alpha Vantage<br/>Per-Ticker News Sentiment]
         IND[Technical Indicators<br/>RSI, MACD, BB, 50MA]
-        MACRO[Macro Data<br/>VIX, S&P vs 200MA]
+        MACRO[Macro Data<br/>VIX, S&P vs 200MA<br/>+ sector perf, economic headlines]
         UNIV[Universe Screener<br/>Sector-balanced, cap-tiered<br/>72h cooldown]
     end
 
@@ -298,7 +297,6 @@ graph TB
     end
 
     S1 --> CYCLE
-    S2 --> CYCLE
     SM --> CYCLE
 
     CYCLE --> UNIV
@@ -370,7 +368,7 @@ sequenceDiagram
 
     O->>D: Fetch market data (positions + universe candidates)
     D->>D: yfinance: OHLCV + fundamentals
-    D->>D: Macro: VIX, yields, S&P
+    D->>D: Macro: VIX, S&P, sector performance, economic headlines
     D->>D: Universe screener: sector-balanced, cap-tiered (72h cooldown)
     D->>D: Mark screened instruments (cooldown stamp)
     D->>D: Enrich instruments: back-fill sector/market_cap
@@ -602,7 +600,7 @@ graph TB
 These are approved near-term projects that are intentionally documented before implementation.
 
 ### 1) Chat Interface & Real-Time Alerts (US-1.5)
-- **Implemented in v1:** outbound notifications for trade instruction approvals, trade execution results, cycle run summaries, state transitions, and critical failures.
+- **Implemented in v1:** outbound notifications for trade instruction approvals, trade execution results, cycle run summaries, state transitions, and critical failures. Slack/email cycle summaries include per-decision ticker, action, quantity (or "queued"), committee summary, reasoning excerpt, and stage reason for queued/filtered decisions.
 - **Implemented channels:** Slack webhook + email (SMTP), with retries/timeouts/dedup and fail-open behavior.
 - **Implemented persistence:** `notification_logs` table for send-attempt audit trail.
 - **Operational profile (current default):**

@@ -173,7 +173,11 @@ class NotificationService:
                 self._send_to_channel(event, channel)
         except Exception as exc:
             logger.error(
-                f"Notification emit failed (fail-open): event={event_type} cycle_id={cycle_id} error={exc}",
+                "Notification emit failed (fail-open: pipeline continues): event=%s cycle_id=%s error=%s",
+                event_type,
+                cycle_id,
+                exc,
+                exc_info=True,
             )
 
     def _send_to_channel(self, event: NotificationEvent, channel: str) -> None:
@@ -241,8 +245,12 @@ class NotificationService:
                         time.sleep(delay)
                     else:
                         logger.warning(
-                            "Notification failed after retries",
-                            extra={"event_type": event.event_type, "channel": channel},
+                            "Notification failed after retries (fail-open: pipeline continues)",
+                            extra={
+                                "event_type": event.event_type,
+                                "channel": channel,
+                                "error": str(exc),
+                            },
                         )
 
     def _is_duplicate(self, channel: str, dedup_key: str) -> bool:

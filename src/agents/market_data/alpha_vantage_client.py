@@ -235,5 +235,16 @@ class AlphaVantageClient:
             limit=50,
         )
 
+    def get_sector_performance(self) -> dict[str, Any]:
+        """Get S&P 500 sector performance (real-time, 1d, 5d, 1m).
+
+        Uses SECTOR function. Returns raw API response for macro intelligence.
+        """
+        try:
+            return self._request({"function": "SECTOR"})
+        except Exception as e:
+            logger.error(f"Alpha Vantage SECTOR failed: {e}")
+            return {"error": str(e)}
+
     def close(self) -> None:
         self._client.close()
