@@ -215,7 +215,7 @@ src/
 │   ├── opportunity/    # UOV scorer + optimizer (ranking, queueing, swap suggestions)
 │   ├── execution/      # T212 client + order manager: market, stop-loss, dedup
 │   ├── notifications/  # Slack/email alerts, routing/retries/dedup, notification logging
-│   └── reporting/      # Trade journals, daily/weekly reports, performance tracker
+│   └── reporting/      # Trade journals, daily/weekly reports, performance tracker, trade outcome tracker
 ├── data/               # SQLAlchemy models, Alembic migrations
 ├── scheduler/          # APScheduler with persistent job store
 ├── backtesting/        # Engine, paper broker, io (yfinance fetch + CSV cache), walk-forward, promotion report
@@ -230,6 +230,7 @@ docs/                   # Project documentation
 ├── BACKTESTING_PROJECT_PLAN.md  # Detailed implementation plan for the backtesting gap
 ├── BACKTESTING.md       # What backtesting is, why it matters, how it's implemented, benefits
 ├── WALK_FORWARD_VALIDATION.md  # Walk-forward validation and promotion report
+├── DATA_EXPORT_RUNBOOK.md  # VPS-to-local data export with integrity checks
 ├── LOCAL_LIVE_RUN.md   # Local live run guide (Trading 212 Practice)
 ├── MAC_SETUP.md        # macOS-specific installation instructions
 ├── PRESENTATION.md     # Project presentation and summary
