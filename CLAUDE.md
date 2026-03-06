@@ -37,6 +37,7 @@ poetry run python -m src.orchestrator.main --dashboard
 poetry run python -m src.orchestrator.main --pause
 poetry run python -m src.orchestrator.main --resume
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
+poetry run python -m src.orchestrator.main --report
 # Backtesting (real data: fetches yfinance if data/backtest/ empty, caches to CSV)
 poetry run python -m src.backtesting.main --config backtests/default.yaml
 poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward
@@ -56,7 +57,7 @@ src/
 │   ├── opportunity/       # OpportunityScorer + OpportunityOptimizer — UOV ranking, queueing, swap suggestions
 │   ├── execution/         # OrderManager + T212Client — market orders, stop-loss, dedup
 │   ├── notifications/     # NotificationService + Slack/Email providers + formatters + command gateway scaffold
-│   └── reporting/         # Trade journals (markdown per trade)
+│   └── reporting/         # Trade journals, daily/weekly reports, performance tracker, trade outcome tracker
 ├── data/
 │   ├── database.py        # SQLite engine + get_session() factory (WAL mode)
 │   ├── models.py          # All SQLAlchemy ORM models
@@ -212,7 +213,9 @@ SMTP_USE_TLS
 | `ModerationLog` | `moderation_logs` | GPT-4o + Gemini verdicts with scores |
 | `RiskDecision` | `risk_decisions` | Risk checks with triggered rules |
 | `CostLog` | `cost_logs` | Per-LLM-call cost tracking |
+| `ApiLog` | `api_logs` | External API call audit trail (T212, Finnhub, Alpha Vantage) |
 | `NotificationLog` | `notification_logs` | Outbound alert audit trail (sent/failed/skipped/deduped attempts) |
+| `NewsSentimentCache` | `news_sentiment_cache` | Per-ticker and market-wide news sentiment (buzz, bullish/bearish %, overall score) |
 | `MarketDataCache` | `market_data_cache` | OHLCV + fundamentals (12h TTL) |
 | `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state |
 | `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
@@ -224,7 +227,7 @@ SMTP_USE_TLS
 
 Key tuneable values:
 
-- **Trading**: `mode: practice`, `max_positions: 15`, `cash_floor_pct: 10`
+- **Trading**: `mode: active`, `max_positions: 15`, `cash_floor_pct: 10`
 - **Risk**: `max_single_stock_pct: 15`, `max_sector_pct: 35`, `halt_drawdown_pct: 15`
 - **Strategy weights**: momentum `0.35`, mean_reversion `0.30`, factor `0.35`
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)
@@ -264,6 +267,7 @@ Files to check on every feature:
 | `docs/BACKTESTING_PROJECT_PLAN.md` | Backtesting scope, validation assumptions, and release-gate criteria |
 | `docs/BACKTESTING.md` | What backtesting is, why it matters, how implemented, benefits |
 | `docs/WALK_FORWARD_VALIDATION.md` | Walk-forward validation and promotion report |
+| `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 
