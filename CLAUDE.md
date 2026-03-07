@@ -314,10 +314,13 @@ Files to check on every feature:
 | `docs/DATA_RATIONALE.md` | New data sources, removed data points, changed data flow |
 | `docs/SOPHISTICATION_ROADMAP.md` | Features completed (move to "done"), new user stories added |
 | `docs/CHAT_INTERFACE_PROJECT.md` | Chat alerts / command interface scope, acceptance criteria, and rollout decisions |
+| `docs/SLACK_TRADE_COMMANDS_PROJECT.md` | Planned inbound Slack NL trade commands (buy/sell/review), single-ticker pipeline, audit |
+| `docs/ORDER_MANAGEMENT_PROJECT.md` | Stop-loss and limit order management: current design, config, future sophistication |
 | `docs/BACKTESTING_PROJECT_PLAN.md` | Backtesting scope, validation assumptions, and release-gate criteria |
 | `docs/BACKTESTING.md` | What backtesting is, why it matters, how implemented, benefits |
 | `docs/WALK_FORWARD_VALIDATION.md` | Walk-forward validation and promotion report |
 | `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
+| `docs/DASHBOARD_VISUALISATION_PROJECT.md` | Dashboard & Visualisation System: architecture, phases, data alignment, Claude prompts |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 

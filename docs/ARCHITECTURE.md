@@ -622,8 +622,8 @@ These are approved near-term projects that are intentionally documented before i
   - Slack: Incoming Webhook URL in `.env` via `SLACK_WEBHOOK_URL`
   - Email: SendGrid SMTP via `smtp.sendgrid.net:587`, `SMTP_USER=apikey`, `SMTP_USE_TLS=true`
   - Verification: inspect `notification_logs` via in-container Python query + SendGrid Email Logs for final delivery status
-- **Future:** inbound command interface (`/status`, `/pause`, `/resume`, `/force-sell`) with auth and audit logs.
-- Detailed plan: `docs/CHAT_INTERFACE_PROJECT.md`.
+- **Future:** inbound command interface (`/status`, `/pause`, `/resume`, `/force-sell`) with auth and audit logs (see `docs/CHAT_INTERFACE_PROJECT.md`).
+- **Planned (US-1.6):** inbound natural language trade commands via Slack (e.g. "Buy 10 shares of AAPL", "Sell TSLA", "Review MSFT") — full single-ticker pipeline with user intent override; see `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.
 
 ### 2) Backtesting Engine (US-5.1)
 - Implemented: `src/backtesting/` — engine, paper broker, io (load CSV + fetch yfinance + cache), metrics, deterministic policy, walk-forward runner, promotion report.

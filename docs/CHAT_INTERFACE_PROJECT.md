@@ -54,6 +54,8 @@ Commands to support:
 
 Security and governance requirements are defined in this doc but implementation is deferred.
 
+**Separate planned feature (US-1.6):** Natural language trade commands via Slack (e.g. "Buy 10 shares of AAPL", "Sell my position in TSLA", "Review MSFT") — triggers full single-ticker pipeline with user intent override; Risk can still veto. Full spec: `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.
+
 ---
 
 ## Architecture (Target)
