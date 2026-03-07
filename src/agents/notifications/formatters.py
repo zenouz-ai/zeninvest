@@ -34,6 +34,8 @@ def _render_slack(event: NotificationEvent, *, slack_max_chars: int) -> list[Not
         body = _slack_state_transition(event.payload, prefix=prefix)
     elif event.event_type == "critical_cycle_failure":
         body = _slack_critical_failure(event.payload, prefix=prefix)
+    elif event.event_type == "order_adjustment":
+        body = _slack_order_adjustment(event.payload, prefix=prefix)
     else:
         body = _fallback_body(event)
 
@@ -55,6 +57,8 @@ def _render_email(event: NotificationEvent) -> list[NotificationMessage]:
         body = _email_state_transition(event.payload, prefix=prefix)
     elif event.event_type == "critical_cycle_failure":
         body = _email_critical_failure(event.payload, prefix=prefix)
+    elif event.event_type == "order_adjustment":
+        body = _email_order_adjustment(event.payload, prefix=prefix)
     else:
         body = _fallback_body(event)
 
@@ -68,6 +72,7 @@ def _title_for_event(event: NotificationEvent) -> str:
         "cycle_run_summary": "Cycle Run Summary",
         "state_transition": "State Transition",
         "critical_cycle_failure": "Critical Cycle Failure",
+        "order_adjustment": "Order Adjustment",
     }
     return mapping.get(event.event_type, event.event_type)
 
@@ -315,6 +320,68 @@ def _email_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
             f"   Stop-loss: pct={decision.get('stop_loss_pct', 'N/A')} "
             f"status={_display_stop_status(decision.get('stop_loss_status'))}"
         )
+
+    return "\n".join(lines)
+
+
+def _slack_order_adjustment(payload: dict[str, Any], *, prefix: str) -> str:
+    adj_type = payload.get("adjustment_type", "N/A")
+    lines: list[str] = [f"{prefix} [ORDER-ADJUSTMENT]"]
+    lines.append(
+        f"Cycle: {payload.get('cycle_id', 'N/A')} | Dry-run: {payload.get('dry_run', False)}"
+    )
+
+    adjustments = payload.get("adjustments", [])
+    if adjustments:
+        lines.append(f"Adjustments: {len(adjustments)}")
+        for adj in adjustments:
+            old_s = adj.get("old_stop_price", "N/A")
+            new_s = adj.get("new_stop_price", "N/A")
+            lines.append(
+                f"- {adj.get('ticker', 'N/A')} [{adj.get('adjustment_type', adj_type)}] "
+                f"stop: {old_s} -> {new_s} (price={adj.get('current_price', 'N/A')}) "
+                f"status={adj.get('status', 'N/A')}"
+            )
+    else:
+        lines.append(
+            f"{payload.get('ticker', 'N/A')} [{adj_type}] "
+            f"stop: {payload.get('old_stop_price', 'N/A')} -> {payload.get('new_stop_price', 'N/A')} "
+            f"(price={payload.get('current_price', 'N/A')}) "
+            f"status={payload.get('status', 'N/A')}"
+        )
+    return "\n".join(lines)
+
+
+def _email_order_adjustment(payload: dict[str, Any], *, prefix: str) -> str:
+    lines: list[str] = [f"{prefix} Order Adjustment"]
+    lines.append(f"Timestamp UTC: {payload.get('occurred_at', 'N/A')}")
+    lines.append(f"Cycle: {payload.get('cycle_id', 'N/A')}")
+    lines.append(f"Dry-run: {payload.get('dry_run', False)}")
+    lines.append("")
+
+    adjustments = payload.get("adjustments", [])
+    if adjustments:
+        for idx, adj in enumerate(adjustments, start=1):
+            lines.append(f"{idx}. {adj.get('ticker', 'N/A')}")
+            lines.append(f"   Type: {adj.get('adjustment_type', 'N/A')}")
+            lines.append(f"   Trigger: {adj.get('trigger_reason', 'N/A')}")
+            lines.append(
+                f"   Stop: {adj.get('old_stop_price', 'N/A')} -> {adj.get('new_stop_price', 'N/A')}"
+            )
+            lines.append(f"   Current price: {adj.get('current_price', 'N/A')}")
+            if adj.get("high_water_mark"):
+                lines.append(f"   High-water mark: {adj['high_water_mark']}")
+            if adj.get("atr"):
+                lines.append(f"   ATR: {adj['atr']}")
+            lines.append(f"   Status: {adj.get('status', 'N/A')}")
+            lines.append("")
+    else:
+        lines.append(f"Ticker: {payload.get('ticker', 'N/A')}")
+        lines.append(f"Type: {payload.get('adjustment_type', 'N/A')}")
+        lines.append(
+            f"Stop: {payload.get('old_stop_price', 'N/A')} -> {payload.get('new_stop_price', 'N/A')}"
+        )
+        lines.append(f"Status: {payload.get('status', 'N/A')}")
 
     return "\n".join(lines)
 

@@ -9,6 +9,7 @@ Autonomous investment agent that trades via the Trading 212 Practice API using a
 **Scheduling architecture:** Configurable via `cycle_frequency` in `config/settings.yaml`:
 - **intraday** (default): 3 cycles at 08:00, 12:00, 16:00 UTC — more timely decisions, uses deferred Finnhub/AV and tiered caching to stay within API limits.
 - **standard**: 2 cycles at 07:00, 19:00 UTC — original 12-hour cadence.
+Autonomous investment agent that trades via the Trading 212 Practice API using a multi-LLM pipeline. Runs on 12-hour cycles (07:00 + 19:00 UTC, Mon-Fri). Pipeline: Data → Universe Screen → Strategy (Claude) → Moderation (GPT-4o + Gemini) → Risk (hard rules, VETO) → Opportunity (UOV rank/queue) → Execution (T212) → Order Management (stop-loss reassessment, trailing stops, limit orders) → Journal.
 
 ## Quick Commands
 
@@ -41,6 +42,7 @@ poetry run python -m src.orchestrator.main --dashboard
 poetry run python -m src.orchestrator.main --pause
 poetry run python -m src.orchestrator.main --resume
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
+poetry run python -m src.orchestrator.main --report
 # Backtesting (real data: fetches yfinance if data/backtest/ empty, caches to CSV)
 poetry run python -m src.backtesting.main --config backtests/default.yaml
 poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward
@@ -58,9 +60,9 @@ src/
 │   ├── moderation/        # ModerationPanel — GPT-4o (skeptic) + Gemini (risk assessor) consensus
 │   ├── risk/              # RiskManager — 9 hard rules with VETO power, no LLM involvement
 │   ├── opportunity/       # OpportunityScorer + OpportunityOptimizer — UOV ranking, queueing, swap suggestions
-│   ├── execution/         # OrderManager + T212Client — market orders, stop-loss, dedup
+│   ├── execution/         # OrderManager + T212Client + StopLossManager — market/limit/stop orders, trailing stops, dedup
 │   ├── notifications/     # NotificationService + Slack/Email providers + formatters + command gateway scaffold
-│   └── reporting/         # Trade journals (markdown per trade)
+│   └── reporting/         # Trade journals, daily/weekly reports, performance tracker, trade outcome tracker
 ├── data/
 │   ├── database.py        # SQLite engine + get_session() factory (WAL mode)
 │   ├── models.py          # All SQLAlchemy ORM models
@@ -159,6 +161,11 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 9. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
 10. **UOV optimizer guardrail** — UOV may reorder/queue BUYs, but it never directly triggers SELL/REDUCE. Strategy remains sell authority; Risk remains final veto.
 11. **Notification fail-open** — alert delivery failures (Slack/Email) must never block trade execution.
+12. **Intelligent order management** — `StopLossManager` runs after execution each cycle. Three capabilities:
+    - **ATR-based stop reassessment**: Recalculates stops using 14-day ATR × configurable multiplier, clamped to [min, max] distance. By default only tightens (never widens).
+    - **Software trailing stops**: Tracks high-water mark per position. Ratchets stop up as price rises. Implemented by cancel + replace since T212 has no native trailing stop.
+    - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
+    - All adjustments logged to `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
 
 ## Scheduling Architecture
 
@@ -207,6 +214,7 @@ SMTP_USE_TLS
   - `cycle_run_summary` -> `["slack"]`
   - `state_transition` -> `["slack", "email"]`
   - `critical_cycle_failure` -> `["slack", "email"]`
+  - `order_adjustment` -> `["slack"]`
   - `include_dry_run_alerts: false`
 - SendGrid SMTP convention:
   - `SMTP_HOST=smtp.sendgrid.net`
@@ -253,6 +261,7 @@ Gathers macro-level market intelligence to inform trading decisions:
 | `ModerationLog` | `moderation_logs` | GPT-4o + Gemini verdicts with scores |
 | `RiskDecision` | `risk_decisions` | Risk checks with triggered rules |
 | `CostLog` | `cost_logs` | Per-LLM-call cost tracking |
+| `ApiLog` | `api_logs` | External API call audit trail (T212, Finnhub, Alpha Vantage) |
 | `NotificationLog` | `notification_logs` | Outbound alert audit trail (sent/failed/skipped/deduped attempts) |
 | `MarketDataCache` | `market_data_cache` | OHLCV + indicators + fundamentals (configurable TTL: lite_analysis 4h, full_analysis 4h) |
 | `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state |
@@ -260,6 +269,7 @@ Gathers macro-level market intelligence to inform trading decisions:
 | `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities awaiting execution |
 | `PerformanceMetric` | `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy, alpha |
 | `TradeOutcome` | `trade_outcomes` | Per-trade P&L linking BUY to SELL/REDUCE with conviction and moderator linkage |
+| `StopLossAdjustment` | `stop_loss_adjustments` | Audit trail for stop-loss reassessments, trailing ratchets, and limit orders |
 
 ## Configuration (config/settings.yaml)
 
@@ -273,6 +283,7 @@ Key tuneable values:
 - **Data cache TTLs** (configurable): `ohlcv_indicators: 4h`, `fundamentals: 12h`, `finnhub_analyst: 6h`, `alpha_vantage_broad: 4h`, `macro_intelligence: 4h`
 - **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50
 - **Opportunity**: `enabled`, `mode: shadow|active`, immediate/queue z-thresholds, queue TTL, swap delta, EWMA half-life, weighted feature map, stage penalties
+- **Order management**: `enabled`, `reassess_stops`, `trailing_stops` (enabled, trail_pct), `limit_orders` (enabled, offset_pct, validity), ATR multiplier, min/max stop distance, only_tighten_stops
 - **Notifications**: `enabled`, channels/routes, retry/timeout/dedup config, dry-run alert policy, command gateway flag (disabled in v1)
 
 ## When Adding New Features
@@ -306,6 +317,7 @@ Files to check on every feature:
 | `docs/BACKTESTING_PROJECT_PLAN.md` | Backtesting scope, validation assumptions, and release-gate criteria |
 | `docs/BACKTESTING.md` | What backtesting is, why it matters, how implemented, benefits |
 | `docs/WALK_FORWARD_VALIDATION.md` | Walk-forward validation and promotion report |
+| `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 

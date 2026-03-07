@@ -334,6 +334,60 @@ class Settings:
     def alert_threshold_pct(self) -> float:
         return float(self.cost_limits["alert_threshold_pct"])
 
+    # --- Order Management ---
+    @property
+    def order_management(self) -> dict[str, Any]:
+        return self._config.get("order_management", {})
+
+    @property
+    def order_management_enabled(self) -> bool:
+        return bool(self.order_management.get("enabled", False))
+
+    @property
+    def reassess_stops_enabled(self) -> bool:
+        return bool(self.order_management.get("reassess_stops", False))
+
+    @property
+    def trailing_stops_enabled(self) -> bool:
+        ts = self.order_management.get("trailing_stops", {})
+        return bool(ts.get("enabled", False)) if isinstance(ts, dict) else False
+
+    @property
+    def trailing_stop_default_trail_pct(self) -> float:
+        ts = self.order_management.get("trailing_stops", {})
+        return float(ts.get("default_trail_pct", 5.0)) if isinstance(ts, dict) else 5.0
+
+    @property
+    def limit_orders_enabled(self) -> bool:
+        lo = self.order_management.get("limit_orders", {})
+        return bool(lo.get("enabled", False)) if isinstance(lo, dict) else False
+
+    @property
+    def limit_order_default_offset_pct(self) -> float:
+        lo = self.order_management.get("limit_orders", {})
+        return float(lo.get("default_offset_pct", 2.0)) if isinstance(lo, dict) else 2.0
+
+    @property
+    def limit_order_time_validity(self) -> str:
+        lo = self.order_management.get("limit_orders", {})
+        return str(lo.get("time_validity", "GTC")) if isinstance(lo, dict) else "GTC"
+
+    @property
+    def atr_multiplier(self) -> float:
+        return float(self.order_management.get("atr_multiplier", 2.0))
+
+    @property
+    def min_stop_distance_pct(self) -> float:
+        return float(self.order_management.get("min_stop_distance_pct", 3.0))
+
+    @property
+    def max_stop_distance_pct(self) -> float:
+        return float(self.order_management.get("max_stop_distance_pct", 15.0))
+
+    @property
+    def only_tighten_stops(self) -> bool:
+        return bool(self.order_management.get("only_tighten_stops", True))
+
     # --- Notifications ---
     @property
     def notifications(self) -> dict[str, Any]:

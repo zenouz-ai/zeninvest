@@ -337,6 +337,27 @@ class PerformanceMetric(Base):
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
+class StopLossAdjustment(Base):
+    """Audit trail for stop-loss reassessments, trailing ratchets, and limit orders."""
+
+    __tablename__ = "stop_loss_adjustments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    cycle_id = Column(String(50), nullable=True, index=True)
+    ticker = Column(String(50), nullable=False, index=True)
+    adjustment_type = Column(String(30), nullable=False)  # reassess, trailing, limit_order
+    old_stop_price = Column(Float, nullable=True)
+    new_stop_price = Column(Float, nullable=True)
+    current_price = Column(Float, nullable=True)
+    high_water_mark = Column(Float, nullable=True)
+    atr_value = Column(Float, nullable=True)
+    trigger_reason = Column(String(100), nullable=True)  # volatility_adjust, trailing_ratchet, limit_dip
+    t212_cancelled_order_id = Column(String(100), nullable=True)
+    t212_new_order_id = Column(String(100), nullable=True)
+    status = Column(String(20), nullable=False, default="pending")  # placed, cancelled, failed, dry_run, skipped
+
+
 class TradeOutcome(Base):
     """Per-trade P&L linking BUY to SELL/REDUCE with conviction and moderator linkage."""
 

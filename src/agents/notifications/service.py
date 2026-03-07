@@ -117,6 +117,27 @@ class NotificationService:
             dedup_parts=[payload.get("old_state"), payload.get("new_state"), payload.get("reason")],
         )
 
+    def emit_order_adjustment(
+        self,
+        *,
+        cycle_id: str | None,
+        payload: dict[str, Any],
+        source: str = "stop_loss_manager",
+    ) -> None:
+        self._emit(
+            event_type="order_adjustment",
+            severity="info",
+            cycle_id=cycle_id,
+            payload=payload,
+            source=source,
+            dedup_parts=[
+                cycle_id,
+                payload.get("ticker"),
+                payload.get("adjustment_type"),
+                payload.get("new_stop_price"),
+            ],
+        )
+
     def emit_critical_cycle_failure(
         self,
         *,

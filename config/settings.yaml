@@ -62,7 +62,6 @@ universe:
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
   screening_cooldown_hours: 72  # Hours before a screened stock can be re-screened
-  refresh_sector_data: true   # Back-fill sector/market_cap from yfinance
 
 cost_limits:
   anthropic_daily_gbp: 1.00
@@ -99,6 +98,21 @@ opportunity:
     risk_resize: -0.35
     unrated: -0.6
 
+order_management:
+  enabled: true
+  reassess_stops: true            # Reassess stop-losses each cycle based on ATR
+  trailing_stops:
+    enabled: false                # Software-based trailing stops (cancel + replace)
+    default_trail_pct: 5.0        # Trail distance as % below high-water mark
+  limit_orders:
+    enabled: true                 # Allow limit orders for dip-buy entries
+    default_offset_pct: 2.0       # Default % below current price for limit buys
+    time_validity: GTC            # DAY or GTC
+  atr_multiplier: 2.0            # ATR multiplier for volatility-based stop distance
+  min_stop_distance_pct: 3.0     # Never place stop closer than this % below price
+  max_stop_distance_pct: 15.0    # Never place stop further than this % below price
+  only_tighten_stops: true       # Only move stops up, never widen them
+
 notifications:
   enabled: true
   channels: ["slack", "email"]
@@ -108,6 +122,7 @@ notifications:
     cycle_run_summary: ["slack"]
     state_transition: ["slack", "email"]
     critical_cycle_failure: ["slack", "email"]
+    order_adjustment: ["slack"]
   timeout_seconds: 5
   max_retries: 2
   dedup_window_seconds: 300

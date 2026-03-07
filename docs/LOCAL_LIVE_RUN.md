@@ -83,9 +83,9 @@ finally:
 ### 3. Verify Config Settings
 
 ```bash
-# Ensure practice mode
+# Verify trading mode
 grep "mode:" config/settings.yaml
-# Should show: mode: practice
+# Should show: mode: active
 
 # Ensure demo URL
 grep "base_url:" config/settings.yaml
