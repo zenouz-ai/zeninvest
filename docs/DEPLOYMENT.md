@@ -224,6 +224,8 @@ SMTP_USE_TLS=true
 
 For production email delivery, use a transactional SMTP provider (for example SendGrid/Postmark/Resend SMTP) with `SMTP_PORT=587` and `SMTP_USE_TLS=true`.
 
+**Planned (US-1.6 — Slack natural language trade commands):** When implemented, inbound Slack will require `SLACK_APP_TOKEN` (xapp-…) and `SLACK_BOT_TOKEN` (xoxb-…), and an optional long-running `slack_trade_listener` process or container. See `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.
+
 Secure the file:
 
 ```bash

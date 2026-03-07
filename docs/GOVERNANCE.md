@@ -800,6 +800,7 @@ All data is stored in a SQLite database managed via SQLAlchemy + Alembic migrati
 | `performance_metrics` | Rolling Sharpe, Sortino, drawdown, win rates by strategy | Updated per cycle / daily |
 | `trade_outcomes` | Per-trade P&L (BUY→SELL), conviction and moderator linkage | 0-15+ per cycle (on SELL) |
 | `notification_logs` | Outbound alert attempts (Slack/email): sent, failed, skipped, deduped | 0-20+ per cycle |
+| *(planned)* `slack_command_log` | Inbound Slack trade command audit: raw message, parsed intent, cycle_id, order_id, status | When US-1.6 implemented |
 
 ---
 

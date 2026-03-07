@@ -2,8 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 181 tests passing (includes performance/trade-outcome, backtesting, macro intelligence, and 3-cycle scheduler config), deployment-ready for VPS.
-**Status:** POC — 190 tests passing (includes performance/trade-outcome, backtesting, and order management), deployment-ready for VPS.
+**Status:** POC — 190 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler), deployment-ready for VPS.
 
 ## Architecture
 
@@ -127,7 +126,8 @@ docker compose logs -f investment-agent
 
 Outbound chat interface v1 is live with persistent audit logging.
 
-- Channels: Slack webhook + SMTP email
+- **Planned (US-1.6):** Inbound Slack natural language trade commands — e.g. "Buy 10 shares of AAPL", "Sell my position in TSLA", "Review MSFT". Triggers a full single-ticker pipeline (data → strategy → moderation → risk) with final decision overwritten by user intent; Risk can still veto. See [Slack Trade Commands Project](docs/SLACK_TRADE_COMMANDS_PROJECT.md).
+- Channels (outbound): Slack webhook + SMTP email
 - Event types:
   - `trade_instruction_approved`
   - `trade_execution_result`
@@ -233,6 +233,8 @@ docs/                   # Project documentation
 ├── DEPLOYMENT.md       # VPS deployment and monitoring guide
 ├── GOVERNANCE.md       # Governance framework and security guardrails
 ├── CHAT_INTERFACE_PROJECT.md  # ChatOps project plan: trade alerts + future command interface
+├── SLACK_TRADE_COMMANDS_PROJECT.md  # Planned: inbound Slack NL trade commands (buy/sell/review)
+├── ORDER_MANAGEMENT_PROJECT.md  # Stop-loss and limit order management: design, config, future options
 ├── BACKTESTING_PROJECT_PLAN.md  # Detailed implementation plan for the backtesting gap
 ├── BACKTESTING.md       # What backtesting is, why it matters, how it's implemented, benefits
 ├── WALK_FORWARD_VALIDATION.md  # Walk-forward validation and promotion report
@@ -249,12 +251,15 @@ notebooks/
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
 - [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — prioritised user stories for systematic improvement
+- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — planned web dashboard (activity feed, universe, run history, portfolio; phases 1–4)
 - [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
 - [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
 - [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — repeatable VPS-to-local export procedure with integrity checks for investigations
 - [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts
 - [Governance](docs/GOVERNANCE.md) — security guardrails, kill switches, audit trail
 - [Chat Interface Project](docs/CHAT_INTERFACE_PROJECT.md) — roadmap-aligned plan for real-time trade alerts and future chat command controls
+- [Slack Trade Commands Project](docs/SLACK_TRADE_COMMANDS_PROJECT.md) — planned: inbound natural language trade commands via Slack (buy/sell/review, full pipeline + user override)
+- [Order Management Project](docs/ORDER_MANAGEMENT_PROJECT.md) — stop-loss (GTC, ATR reassessment, trailing) and limit dip-buy: current design, config, future sophistication
 - [Backtesting Project Plan](docs/BACKTESTING_PROJECT_PLAN.md) — detailed implementation plan to close the biggest maturity gap (historical validation)
 - [Backtesting](docs/BACKTESTING.md) — what backtesting is, why it matters, how it's implemented, benefits
 - [Walk-Forward Validation](docs/WALK_FORWARD_VALIDATION.md) — walk-forward validation and promotion report

@@ -1,6 +1,6 @@
 # Sophistication Roadmap
 
-**Last Updated:** 2026-03-05
+**Last Updated:** 2026-03-07
 **Owner:** Project Lead (PhD Mathematics, Data Science Manager in Finance)
 **Developers:** Claude Code Opus 4.6 (cloud, primary), Codex 5.3+ (local VS Code, secondary)
 **Principle:** Innovation, simplicity, elegance, transparency. No feature for technology's sake — every addition must materially improve quality.
@@ -152,6 +152,56 @@ _Deploy POC, start collecting data, close the feedback loop._
 - [ ] Build command gateway for `/status`, `/pause`, `/resume`, `/force-sell <ticker>`.
 - [ ] Add authentication and command allow-listing.
 - [ ] Add full audit logging for all received commands.
+
+---
+
+### US-1.6: Slack Natural Language Trade Commands (Planned)
+**Priority:** P1 (High)
+**Value:** Manual override with full audit trail — user triggers a single-ticker run (data → strategy → moderation → risk), with final decision overwritten by user intent (buy/sell/review). Same pipeline, same logging; Risk can still VETO.
+**Effort:** Medium–Large (5–8 days)
+**Data Sources:** Same as full cycle (DataFetcher, StrategyEngine, ModerationPanel, RiskManager, Order); new `slack_command_log` table.
+**Developer:** TBD
+
+**Detailed implementation plan:** `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.
+
+**Acceptance Criteria:**
+- [ ] Inbound Slack listener (Socket Mode) in designated channel.
+- [ ] NL parser: BUY/SELL/REVIEW + ticker + quantity or amount (£).
+- [ ] Single-ticker pipeline: data → strategy → moderation → risk, all logged (cycle_id = `slack-{ts}`); final action = user intent; risk can veto.
+- [ ] REVIEW: run pipeline, post summary to Slack, no order.
+- [ ] Execute via OrderManager; Order.strategy = `slack_command`; confirm in Slack with order details.
+- [ ] Safety: ticker validation, cash/position checks, large-order confirmation, risk veto messaging.
+- [ ] New table `slack_command_log`; optional quantity-based `execute_market_order`; CLI `slack_trade_listener`.
+
+**Integration Point:** New long-running process; invokes single-ticker run and OrderManager; reuses existing Strategy/Moderation/Risk/Execution stack.
+
+---
+
+### US-1.7: Dashboard & Visualisation System (Phase 1 — MVP)
+**Priority:** P1 (High)
+**Value:** Full operational visibility — activity feed, universe explorer, run history, portfolio snapshot. Personal quant experience; aligns with “prioritise insights, dashboards, and learning”.
+**Effort:** Large (Phase 1: 8–12 days for backend + instrumentation + frontend MVP + deploy)
+**Data Sources:** Existing DB (instruments, orders, portfolio_snapshots, strategy_decisions, moderation_logs, risk_decisions); new `events_log` (and optionally lightweight `runs`) for real-time feed
+**Developer:** TBD
+
+**Detailed implementation plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.
+
+**Status:** Planned
+
+**Phase 1 (MVP) Acceptance Criteria:**
+- [ ] FastAPI backend under `dashboard/backend/`: REST for runs, universe, portfolio, orders; SSE at `/events/stream`
+- [ ] Read universe/portfolio/orders from existing agent tables; add only `events_log` (and optionally `runs`) as new tables
+- [ ] Event logger service: non-blocking, fail-open; agent instruments scheduler, screener, committee, execution, notifications to log events
+- [ ] React + Vite + Tailwind frontend: Dashboard Home (activity feed via SSE, portfolio summary, sector donut), Stock Universe (searchable/sortable table, expand for committee reasoning), Run History (timeline + drill-down), Portfolio (positions, P&L, history chart)
+- [ ] Dark terminal aesthetic; Recharts/TanStack Table; ticker display clean symbol, API T212 format
+- [ ] Config: `dashboard_enabled`, `dashboard_events_enabled` in settings.yaml
+- [ ] Deployment: nginx reverse proxy, SSE buffering disabled, basic auth or API key; deploy script for frontend build + backend static serve
+
+**Phases 2–4 (future):** Analytics & Insights (decision explorer, performance attribution, sector heatmap, news timeline); ML & Advanced (prediction confidence, backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run trigger, strategy tuning UI, Slack mirror). See project doc.
+
+**Integration Point:** Dashboard backend reads from same SQLite (or shared DB) as agent. Agent calls event_logger at pipeline touchpoints; no change to core pipeline logic.
+
+---
 
 **Integration Point:**
 - Trigger from `Orchestrator._execute_trade()` and state transitions in the state machine.
@@ -466,7 +516,10 @@ _ML-assisted improvements, only if justified by accumulated data._
 
 **Delivery references:**
 - Chat implementation details: `docs/CHAT_INTERFACE_PROJECT.md`
+- Slack natural language trade commands (planned): `docs/SLACK_TRADE_COMMANDS_PROJECT.md`
+- Order management (stop-loss, ATR reassessment, trailing, limit dip-buy): `docs/ORDER_MANAGEMENT_PROJECT.md`
 - Backtesting implementation details: `docs/BACKTESTING_PROJECT_PLAN.md`
+- Dashboard & Visualisation (phases 1–4): `docs/DASHBOARD_VISUALISATION_PROJECT.md`
 
 ---
 
@@ -487,6 +540,7 @@ Week  1-2:  POC deployment to VPS (US-1.4) + Performance tracking (US-1.1)
 Week  3-4:  Trade outcome tracker (US-1.2) + Performance dashboard (US-1.3)
 Week  5-6:  Chat interface + real-time alerts (US-1.5) [delivered]
 Week  7-8:  Backtesting foundations kickoff (US-5.1 phase 1) + buffer for live-ops fixes
+            Dashboard & Visualisation Phase 1 (US-1.7) can run in parallel or next sprint
 Week  9-10: Conviction calibration (US-2.1) — needs ~50 trades first
 Week 11-12: Dynamic strategy weighting (US-2.2) + Moderator analysis (US-2.3)
 Week 13-14: Risk-parity sizing (US-3.1) + Volume signals (US-4.1)
@@ -521,6 +575,8 @@ Week 33-36: RL investigation (US-6.3), journal embeddings (US-6.2)
 | 1.2 | Trade outcome tracker | Critical | Easy | M | Existing DB | **P0** |
 | 1.3 | Performance dashboard | High | Easy | S | US-1.1, 1.2 | **P1** |
 | 1.5 | Chat interface + trade alerts | High | Easy-Med | M | Existing DB + orchestrator events | **P1** |
+| 1.6 | Slack natural language trade commands | High | Medium | M-L | Full pipeline + slack_command_log | **P1** |
+| 1.7 | Dashboard & Visualisation (Phase 1 MVP) | High | Medium | L | Existing DB + events_log | **P1** |
 | 2.1 | Conviction calibration | High | Medium | M | ~50 trades | **P1** |
 | 2.2 | Dynamic strategy weighting | High | Medium | M | ~50 trades | **P1** |
 | 3.1 | Risk-parity sizing | High | Easy | M | Historical prices | **P1** |
