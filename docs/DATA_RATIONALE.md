@@ -27,11 +27,11 @@ Only paths 1-4 matter for decision quality. Path 5 is for post-hoc analysis only
 
 | Field | Source | Refresh | Decision Path | Influence |
 |-------|--------|---------|---------------|-----------|
-| Open | yfinance `download()` | 12h cycle | None directly | Intermediate for indicator calc |
-| High | yfinance `download()` | 12h cycle | Path 1 | Feeds Bollinger Bands |
-| Low | yfinance `download()` | 12h cycle | Path 1 | Feeds Bollinger Bands |
-| Close | yfinance `download()` | 12h cycle | Path 1 | Core input for all indicators |
-| Volume | yfinance `download()` | 12h cycle | **NONE** | Fetched but never used |
+| Open | yfinance `download()` | Per cycle | None directly | Intermediate for indicator calc |
+| High | yfinance `download()` | Per cycle | Path 1 | Feeds Bollinger Bands |
+| Low | yfinance `download()` | Per cycle | Path 1 | Feeds Bollinger Bands |
+| Close | yfinance `download()` | Per cycle | Path 1 | Core input for all indicators |
+| Volume | yfinance `download()` | Per cycle | **NONE** | Fetched but never used |
 
 **Period:** 1 year daily (needed for 200-day MA calculation, ~252 trading days).
 
@@ -102,6 +102,8 @@ fully cover the three active strategies (momentum, mean reversion, factor via re
 | `earnings_momentum_qoq` | Factor | QoQ momentum >10% = +15 momentum component. |
 | `sector` | Risk Mgr | Sector allocation cap (35%). Used for diversification checks. |
 | `market_cap` | Universe + UOV | Used for universe cap-tiering and as a low-weight UOV size/liquidity proxy. |
+| `industry` | Path 2 | Company profiles: industry label in Claude prompt header. More granular than sector for qualitative reasoning. |
+| `business_summary` | Path 2 | Company profiles: yfinance longBusinessSummary (~300 chars) for Claude. Enables reasoning about moats, regulatory risk, how macro news impacts revenue. |
 
 ### REMOVED — Never consumed by any strategy or rule
 
@@ -109,7 +111,6 @@ fully cover the three active strategies (momentum, mean reversion, factor via re
 |--------|-------------|
 | `forward_pe` | Never read by any strategy. Same API call as trailing_pe (zero cost to fetch), but including unused data adds noise to the pipeline. |
 | `revenue_growth_yoy` | Never read by any strategy. Earnings_growth serves the same purpose. |
-| `industry` | Never read. `sector` is used for risk rules; industry adds no decision value. |
 
 ---
 
@@ -136,6 +137,15 @@ fully cover the three active strategies (momentum, mean reversion, factor via re
 use it. Currently, the simpler VIX + S&P 200MA approach is sufficient and avoids the
 inaccurate ^IRX proxy.
 
+### Macro Intelligence (Sector + Economic News)
+
+| Data | Source | Decision Path | How It Alters Decisions |
+|------|--------|---------------|--------------------------|
+| Sector performance (real-time, 1d, 5d, 1m) | Alpha Vantage SECTOR; fallback: yfinance SPDR ETFs (XLK, XLV, etc.) | Path 2 | Per-sector trend labels (outperform/underperform). Enables moderators to flag "fundamentally strong but sector headwind — defer buy". Fallback when AV rate limit or error. |
+| Economic headlines (Fed, tariffs, earnings) | Finnhub /news (general) | Path 2 | Key headlines passed to strategy and moderation. Earnings season flag for timing context. |
+
+**Refresh:** Cached 4h (NewsSentimentCache, source=macro, data_type=macro_intelligence). Alpha Vantage SECTOR = 1 call; Finnhub /news = 1 call per refresh. If AV fails, `sector_fallback_yfinance: true` uses SPDR ETFs via yfinance. Sector mapping: yfinance (Technology, Healthcare) → Alpha Vantage (Information Technology, Health Care) via `YF_TO_AV_SECTOR`.
+
 ---
 
 ## 5. Finnhub Data (Analyst + Insider)
@@ -154,8 +164,9 @@ inaccurate ^IRX proxy.
 |------|-------------|
 | `get_peers()` | Method existed but was never called from any pipeline stage. Dead code. |
 
-**Refresh:** Per-cycle (12h). Rate limited at 60 req/min. Up to 15 tickers per cycle × 2 calls
-(recommendations + insider) = 30 Finnhub calls per cycle.
+**Refresh:** Per-cycle. When `cycle_frequency: intraday`, Finnhub is deferred to active-review
+tickers only (positions ∪ top_tickers), with NewsSentimentCache (6h TTL). Rate limited at 60 req/min.
+~15 tickers × 2 calls = ~30 Finnhub calls per cycle.
 
 ---
 
@@ -181,8 +192,8 @@ Ticker avg sentiment: +0.250 (Bullish: 3, Bearish: 0, Articles: 5)
 **Format for LLM (broad):** Each article distilled to one line: `[Bullish +0.234] Headline text (Source)`.
 This is an efficient format — compact enough for token budget, rich enough for LLM reasoning.
 
-**Refresh:** 3 API calls per cycle (broad + ticker summary + raw articles for per-ticker parsing).
-Free tier: 25 calls/day. Two 12h cycles = 6 calls/day, well within limits.
+**Refresh:** 2 API calls per cycle (broad + ticker sentiment). Broad sentiment cached 4h (NewsSentimentCache).
+Free tier: 25 calls/day. With 3 intraday cycles = 6 calls/day, well within limits.
 
 ---
 
@@ -207,14 +218,24 @@ The Claude prompt contains these sections and this is how each should influence 
 |----------------|------------------|--------------------|
 | Portfolio State | JSON: cash, positions, returns | Position sizing, rebalancing needs |
 | Market Regime | BULL/BEAR/SIDEWAYS | Overall risk appetite — fewer/smaller buys in BEAR |
+| Company Profiles | `**TICKER** (name) \| industry` + business_summary (~300 chars each) from yfinance | Qualitative factors: moats, regulatory exposure, how macro news impacts each company's revenue |
 | Momentum Proposals | `TICKER: BUY (score: 75) — reasoning` | Strong momentum (>75) should increase conviction |
 | Mean Reversion Proposals | `TICKER: BUY (score: 70) — reasoning` | Oversold stocks with good fundamentals |
 | Factor Proposals | `TICKER: composite=72 (V=65 Q=80 M=70)` | Multi-factor quality ranking of top stocks |
 | Analyst Data | JSON: buy/hold/sell counts, insider MSPR | Confirmation or warning signal |
-| Per-Ticker News | Per-stock sentiment scores + headlines from AV | Specific catalysts/risks per stock (not a combined dump) |
-| Broad Market Sentiment | Aggregate headlines + sentiment | Overall market mood beyond numbers |
+| News Sentiment | Single concatenated string (see assembly order below), truncated to 3000 chars | Catalysts, risks, market mood; sector headwinds; economic context |
 | Risk Budget | VIX, cash %, position limits | Constrains position sizing |
 | Prior UOV Swap Context | Weakest held UOV + top non-held UOV names from prior cycles | Contextual signal for HOLD vs BUY prioritisation (advisory only) |
+
+**News Sentiment assembly order** (orchestrator builds `news_parts` then joins to 3000 chars):
+
+1. **Per-ticker news** — Alpha Vantage per-stock sentiment scores + headlines (`extract_per_ticker_news`)
+2. **Aggregate ticker** — Total articles, avg sentiment, bullish/bearish counts for queried tickers
+3. **Broad market** — Alpha Vantage broad market sentiment (economy, earnings, tech topics)
+4. **Sector performance** — S&P 500 sector performance (real-time, 1d, 5d, 1m) from macro intelligence
+5. **Economic highlights** — Fed, tariffs, earnings headlines from Finnhub /news (general)
+
+All five are concatenated into one `news_sentiment` string. Claude receives this single block under "## NEWS SENTIMENT" in the prompt.
 
 ### GPT-4o (Skeptic Moderator)
 
@@ -223,10 +244,10 @@ Receives the full market context via `market_context` dict (see context.py):
 - **Portfolio context** — Current cash, positions, returns
 - **Technical indicators** — RSI, MACD histogram/crossovers, Bollinger Band, MAs
 - **Fundamentals** — P/E, P/B, ROE, margins, debt, earnings trajectory
-- **Market conditions** — VIX (with severity label), regime, S&P 500 trend
+- **Market conditions** — VIX (with severity label), regime, S&P 500 trend, sector headwind (if sector underperforming), sector summary, economic highlights (Fed, tariffs, earnings)
 - **Sub-strategy signals** — Momentum, mean reversion, and factor scores with reasoning
 - **Analyst data** — Finnhub recommendation counts, consensus, insider MSPR
-- **Per-ticker news** — Alpha Vantage per-stock sentiment scores + headlines (not a combined dump)
+- **News sentiment** — Per-ticker Alpha Vantage headlines (or full news summary if per-ticker unavailable)
 - **Strategy Agent's Market Assessment** — Claude's overall market thesis, presented with the instruction "Challenge this thesis — do you agree with the reasoning?"
 
 Role: Challenge assumptions, identify recency bias, flag risks. When sub-strategies
@@ -250,6 +271,8 @@ information. Key formatting features:
 - VIX labels: low (<15), normal (15-20), elevated (20-30), high (30-35), extreme (>35)
 - Bollinger Band: "Yes (oversold)" when below lower band
 - MACD crossover: "Bullish crossover (buy signal)" / "Bearish crossover (sell signal)"
+- Sector headwind: When macro intelligence flags a sector as underperforming, moderators see "Sector X underperforming (Y% real-time)" — enables "fundamentally strong but sector headwind — defer buy"
+- Economic highlights: Fed, tariffs, earnings headlines from Finnhub /news
 - Strategy assessment: Claude's market thesis is shown under "Strategy Agent's Market Assessment" with a prompt to challenge it
 
 ---
@@ -356,7 +379,7 @@ Decision influence:
 | Gemini Flash 2.0 | Risk assessor | ~2K in / ~0.5K out per trade (×3-5 trades) | ~$0.001-0.003 |
 | **Total** | | | **~$0.05-0.08/cycle** |
 
-With 2 cycles/day: **$0.10-0.16/day** or **$3-5/month**.
+With 2–3 cycles/day (configurable): **$0.10-0.24/day** or **$3-7/month**.
 
 ### Could local/free models replace paid ones?
 
@@ -386,7 +409,7 @@ not switching to cheaper models. The conviction-based bypass already saves money
 moderators are unavailable.
 
 **Local model viable only if:** The system were running 100+ cycles/day (quant-style), making
-API costs $100+/month. At 2 cycles/day, the $3-5/month cost does not justify the complexity
+API costs $100+/month. At 2–3 cycles/day, the $3-7/month cost does not justify the complexity
 and reliability tradeoff of local deployment.
 
 ---
@@ -396,7 +419,8 @@ and reliability tradeoff of local deployment.
 | Date | Change | Rationale |
 |------|--------|-----------|
 | 2026-02-26 | Removed 12 unused indicator outputs | Never consumed by any strategy. Reduced noise. |
-| 2026-02-26 | Removed forward_pe, revenue_growth_yoy, industry | Never consumed. Zero API cost savings but cleaner data. |
+| 2026-02-26 | Removed forward_pe, revenue_growth_yoy | Never consumed. Zero API cost savings but cleaner data. |
+| 2026-03-06 | Re-added industry, business_summary | Company profiles for Claude: qualitative reasoning about moats, regulatory risk, macro impact. |
 | 2026-02-26 | Removed yield spread (^TNX - ^IRX) from macro | Never used in market regime or any decision. Proxy was inaccurate. |
 | 2026-02-26 | Removed get_peers() from Finnhub client | Dead code, never called. |
 | 2026-02-26 | Enhanced Claude prompt with interpretation guidance | LLM had no instructions on how to weight data sections. |
@@ -412,3 +436,5 @@ and reliability tradeoff of local deployment.
 | 2026-02-27 | Fixed REDUCE action in order manager | REDUCE now correctly negates quantity (partial sell). Previously would have tried to BUY instead. Risk manager also checks `min_positions` for REDUCE. |
 | 2026-02-27 | Added automatic stop-loss orders after BUY | `place_stop_loss()` uses T212's stop order API (GTC validity) with Claude's `stop_loss_pct`. Placed automatically after successful BUY executions. |
 | 2026-02-27 | Added 72-hour screening cooldown | `last_screened_at` column on Instrument table. Screened stocks are excluded from future screens for 72 hours (configurable via `screening_cooldown_hours`), preventing the same candidates from appearing in consecutive cycles. |
+| 2026-03-06 | Added macro intelligence module | Sector performance (Alpha Vantage SECTOR) and economic headlines (Finnhub /news) feed strategy and moderation. Enables "fundamentally strong but sector headwind — defer buy" in committee decisions. Cached 4h. |
+| 2026-03-06 | yfinance sector fallback | When Alpha Vantage SECTOR fails (rate limit, error), fallback to SPDR sector ETFs via yfinance. Config: `sector_fallback_yfinance: true`. |

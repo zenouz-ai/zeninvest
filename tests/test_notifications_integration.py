@@ -126,8 +126,11 @@ def test_orchestrator_emits_instruction_and_summary(monkeypatch) -> None:
 
     orchestrator.data_fetcher = SimpleNamespace(
         get_macro_data=lambda: {"vix": 18, "market_regime": "BULL"},
+        get_cached_news_sentiment=lambda ticker, source, data_type: None,
+        cache_news_sentiment=lambda *args, **kwargs: None,
+        get_analyst_data_cached=lambda ticker: {},
         alpha_vantage=SimpleNamespace(get_broad_market_sentiment=lambda: {}),
-        finnhub=SimpleNamespace(get_analyst_data=lambda ticker: {}),
+        get_market_news_sentiment=lambda **kwargs: {"articles": [], "total_articles": 0},
         close=lambda: None,
     )
 

@@ -13,6 +13,7 @@ from sqlalchemy import func
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.finnhub_client import FinnhubClient
 from src.agents.market_data.fundamentals import get_fundamentals
+from src.agents.market_data.macro_intelligence import get_macro_intelligence
 from src.agents.market_data.indicators import calculate_indicators, calculate_relative_strength
 from src.agents.market_data.seed_universe import get_seed_instruments
 from src.data.database import get_session
@@ -42,6 +43,25 @@ class DataFetcher:
         if self._alpha_vantage is None:
             self._alpha_vantage = AlphaVantageClient()
         return self._alpha_vantage
+
+    def get_analyst_data_cached(self, yf_ticker: str) -> dict[str, Any]:
+        """Get Finnhub analyst data with NewsSentimentCache lookup first."""
+        cached = self.get_cached_news_sentiment(yf_ticker, "finnhub", "analyst_data")
+        if cached:
+            return cached
+        try:
+            data = self.finnhub.get_analyst_data(yf_ticker)
+            self.cache_news_sentiment(
+                ticker=yf_ticker,
+                source="finnhub",
+                data_type="analyst_data",
+                data=data,
+                ttl_hours=self.settings.cache_ttl_hours("finnhub_analyst"),
+            )
+            return data
+        except Exception as e:
+            logger.error(f"Finnhub analyst data error for {yf_ticker}: {e}")
+            return {"error": str(e)}
 
     # --- yfinance data ---
 
@@ -119,9 +139,90 @@ class DataFetcher:
         else:
             result["market_regime"] = "SIDEWAYS"
 
+        # Macro intelligence: sector trends + economic headlines (cached)
+        macro_intel = self.get_macro_intelligence_cached()
+        result["macro_intelligence"] = macro_intel
+
         return result
 
+    def get_macro_intelligence_cached(self) -> dict[str, Any]:
+        """Get sector performance and economic headlines, with cache lookup first."""
+        if not self.settings.macro_intelligence_enabled:
+            return {
+                "enabled": False,
+                "sector_trends": {},
+                "economic_highlights": "",
+                "sector_summary": "",
+                "headlines": [],
+            }
+
+        cached = self.get_cached_news_sentiment(
+            ticker=None, source="macro", data_type="macro_intelligence"
+        )
+        if cached:
+            return cached
+
+        try:
+            macro_intel = get_macro_intelligence(
+                self.alpha_vantage,
+                self.finnhub,
+                enabled=True,
+            )
+            if macro_intel.get("enabled"):
+                self.cache_news_sentiment(
+                    ticker=None,
+                    source="macro",
+                    data_type="macro_intelligence",
+                    data=macro_intel,
+                    ttl_hours=self.settings.cache_ttl_hours("macro_intelligence"),
+                )
+            return macro_intel
+        except Exception as e:
+            logger.warning(f"Macro intelligence fetch failed: {e}")
+            return {
+                "enabled": False,
+                "sector_trends": {},
+                "economic_highlights": "",
+                "sector_summary": "",
+                "headlines": [],
+                "errors": [str(e)],
+            }
+
     # --- Full stock analysis ---
+
+    def get_stock_analysis_lite(self, yf_ticker: str) -> dict[str, Any]:
+        """Get OHLCV + indicators + fundamentals only (no Finnhub).
+
+        Used for screening and sub-strategy scoring. Tier 1 data only.
+        Cached with configurable TTL (default 4h for intraday cycles).
+        """
+        cached = self.get_cached_data(yf_ticker, "lite_analysis")
+        if cached:
+            return cached
+
+        result: dict[str, Any] = {
+            "ticker": yf_ticker,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # OHLCV + Technical Indicators
+        df = self.get_ohlcv(yf_ticker, period="1y")
+        if not df.empty:
+            result["indicators"] = calculate_indicators(df)
+            benchmark_df = self.get_benchmark_data()
+            if not benchmark_df.empty:
+                result["relative_strength_6m"] = calculate_relative_strength(df, benchmark_df)
+            else:
+                result["relative_strength_6m"] = None
+        else:
+            result["indicators"] = {"error": "No OHLCV data"}
+            result["relative_strength_6m"] = None
+
+        # Fundamentals
+        result["fundamentals"] = get_fundamentals(yf_ticker)
+
+        self._cache_market_data(yf_ticker, "lite_analysis", result)
+        return result
 
     def get_stock_analysis(self, yf_ticker: str, finnhub_symbol: str | None = None) -> dict[str, Any]:
         """Get complete analysis for a stock: indicators + fundamentals + sentiment.
@@ -237,8 +338,16 @@ class DataFetcher:
 
     # --- Caching ---
 
-    def _cache_market_data(self, ticker: str, data_type: str, data: dict[str, Any]) -> None:
-        """Cache market data in SQLite."""
+    def _cache_market_data(
+        self,
+        ticker: str,
+        data_type: str,
+        data: dict[str, Any],
+        ttl_hours: int | None = None,
+    ) -> None:
+        """Cache market data in SQLite with configurable TTL."""
+        if ttl_hours is None:
+            ttl_hours = self.settings.cache_ttl_hours(data_type)
         session = get_session()
         try:
             session.add(MarketDataCache(
@@ -246,7 +355,7 @@ class DataFetcher:
                 data_type=data_type,
                 timestamp=datetime.now(timezone.utc),
                 data_json=json.dumps(data, default=str),
-                expires_at=datetime.now(timezone.utc) + timedelta(hours=12),
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=ttl_hours),
             ))
             session.commit()
         except Exception as e:
@@ -275,6 +384,31 @@ class DataFetcher:
         finally:
             session.close()
 
+    def get_cached_news_sentiment(
+        self,
+        ticker: str | None,
+        source: str,
+        data_type: str,
+    ) -> dict[str, Any] | None:
+        """Retrieve cached news sentiment if still valid."""
+        session = get_session()
+        try:
+            q = session.query(NewsSentimentCache).filter(
+                NewsSentimentCache.source == source,
+                NewsSentimentCache.data_type == data_type,
+                NewsSentimentCache.expires_at > datetime.now(timezone.utc),
+            )
+            if ticker is not None:
+                q = q.filter(NewsSentimentCache.ticker == ticker)
+            else:
+                q = q.filter(NewsSentimentCache.ticker.is_(None))
+            entry = q.order_by(NewsSentimentCache.timestamp.desc()).first()
+            if entry:
+                return json.loads(entry.data_json)
+            return None
+        finally:
+            session.close()
+
     def cache_news_sentiment(
         self,
         ticker: str | None,
@@ -282,8 +416,12 @@ class DataFetcher:
         data_type: str,
         data: dict[str, Any],
         overall_score: float | None = None,
+        ttl_hours: int | None = None,
     ) -> None:
-        """Cache news sentiment data."""
+        """Cache news sentiment data with configurable TTL."""
+        if ttl_hours is None:
+            ttl_key = "finnhub_analyst" if source == "finnhub" else "alpha_vantage_ticker"
+            ttl_hours = self.settings.cache_ttl_hours(ttl_key)
         session = get_session()
         try:
             session.add(NewsSentimentCache(
@@ -293,7 +431,7 @@ class DataFetcher:
                 timestamp=datetime.now(timezone.utc),
                 data_json=json.dumps(data, default=str),
                 overall_score=overall_score,
-                expires_at=datetime.now(timezone.utc) + timedelta(hours=6),
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=ttl_hours),
             ))
             session.commit()
         except Exception as e:

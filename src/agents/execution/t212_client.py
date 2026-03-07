@@ -82,6 +82,8 @@ class T212Client:
         endpoint: str,
         json_body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        *,
+        ignore_404: bool = False,
     ) -> dict[str, Any] | list[Any]:
         """Make an authenticated API request with retry logic."""
         self._check_rate_limit()
@@ -105,6 +107,10 @@ class T212Client:
             remaining = response.headers.get("x-ratelimit-remaining")
             if remaining is not None:
                 self._rate_remaining = int(remaining)
+
+            # 404 "no position" is expected when querying a ticker not held — don't retry
+            if status_code == 404 and ignore_404:
+                return {}
 
             response.raise_for_status()
             return response.json()
@@ -156,8 +162,12 @@ class T212Client:
         return self._request("GET", "/equity/portfolio")  # type: ignore[return-value]
 
     def get_position(self, ticker: str) -> dict[str, Any]:
-        """GET /equity/portfolio/{ticker} — single position."""
-        return self._request("GET", f"/equity/portfolio/{ticker}")  # type: ignore[return-value]
+        """GET /equity/portfolio/{ticker} — single position.
+
+        Returns {} when no open position exists (API returns 404). Callers can use
+        pos.get('quantity', 0) to treat missing position as zero.
+        """
+        return self._request("GET", f"/equity/portfolio/{ticker}", ignore_404=True)  # type: ignore[return-value]
 
     # --- Orders ---
 

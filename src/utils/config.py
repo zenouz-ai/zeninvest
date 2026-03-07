@@ -39,12 +39,21 @@ class Settings:
         return self.trading["base_url"]
 
     @property
+    def cycle_frequency(self) -> str:
+        """standard = 2 cycles/day, intraday = 3 cycles/day during market hours."""
+        return self.trading.get("cycle_frequency", "standard")
+
+    @property
     def cycle_hours(self) -> int:
-        return self.trading["cycle_hours"]
+        if self.cycle_frequency == "standard":
+            return 12
+        return self.trading.get("cycle_hours", 4)
 
     @property
     def cycle_times_utc(self) -> list[str]:
-        return self.trading["cycle_times_utc"]
+        if self.cycle_frequency == "standard":
+            return ["07:00", "19:00"]
+        return self.trading.get("cycle_times_utc", ["08:00", "12:00", "16:00"])
 
     @property
     def market_days(self) -> list[int]:
@@ -174,6 +183,26 @@ class Settings:
     @property
     def alpha_vantage_base_url(self) -> str:
         return self.data_providers["alpha_vantage_base_url"]
+
+    @property
+    def macro_intelligence_enabled(self) -> bool:
+        """Whether to fetch sector performance and economic headlines for committee context."""
+        return bool(self.data_providers.get("macro_intelligence_enabled", True))
+
+    def cache_ttl_hours(self, data_type: str) -> int:
+        """Cache TTL in hours for a data type (ohlcv_indicators, fundamentals, etc.)."""
+        defaults = {
+            "ohlcv_indicators": 4,
+            "fundamentals": 12,
+            "finnhub_analyst": 6,
+            "alpha_vantage_broad": 4,
+            "alpha_vantage_ticker": 4,
+            "macro_intelligence": 4,
+            "lite_analysis": 4,
+            "full_analysis": 4,
+        }
+        ttls = self.data_providers.get("cache_ttl_hours", {})
+        return ttls.get(data_type, defaults.get(data_type, 4))
 
     # --- Universe Screening ---
     @property

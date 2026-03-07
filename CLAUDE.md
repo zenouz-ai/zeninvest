@@ -4,6 +4,11 @@ This file provides context to AI assistants (Claude Code, Codex, Cursor, etc.) w
 
 ## What This Project Is
 
+Autonomous investment agent that trades via the Trading 212 Practice API using a multi-LLM pipeline. Pipeline: Data → Universe Screen → Strategy (Claude) → Moderation (GPT-4o + Gemini) → Risk (hard rules, VETO) → Opportunity (UOV rank/queue) → Execution (T212) → Journal.
+
+**Scheduling architecture:** Configurable via `cycle_frequency` in `config/settings.yaml`:
+- **intraday** (default): 3 cycles at 08:00, 12:00, 16:00 UTC — more timely decisions, uses deferred Finnhub/AV and tiered caching to stay within API limits.
+- **standard**: 2 cycles at 07:00, 19:00 UTC — original 12-hour cadence.
 Autonomous investment agent that trades via the Trading 212 Practice API using a multi-LLM pipeline. Runs on 12-hour cycles (07:00 + 19:00 UTC, Mon-Fri). Pipeline: Data → Universe Screen → Strategy (Claude) → Moderation (GPT-4o + Gemini) → Risk (hard rules, VETO) → Opportunity (UOV rank/queue) → Execution (T212) → Order Management (stop-loss reassessment, trailing stops, limit orders) → Journal.
 
 ## Quick Commands
@@ -50,7 +55,7 @@ poetry run python -m src.backtesting.main --synthetic --output-dir backtests/res
 src/
 ├── orchestrator/          # Main cycle loop (main.py) + state machine (ACTIVE/CAUTIOUS/HALTED)
 ├── agents/
-│   ├── market_data/       # DataFetcher, FinnhubClient, AlphaVantageClient, universe screener, seed_universe
+│   ├── market_data/       # DataFetcher, FinnhubClient, AlphaVantageClient, macro_intelligence, universe screener, seed_universe
 │   ├── strategy/          # StrategyEngine (Claude synthesis), momentum, mean_reversion, factor
 │   ├── moderation/        # ModerationPanel — GPT-4o (skeptic) + Gemini (risk assessor) consensus
 │   ├── risk/              # RiskManager — 9 hard rules with VETO power, no LLM involvement
@@ -62,7 +67,7 @@ src/
 │   ├── database.py        # SQLite engine + get_session() factory (WAL mode)
 │   ├── models.py          # All SQLAlchemy ORM models
 │   └── migrations/        # Alembic migrations
-├── scheduler/             # APScheduler with persistent job store
+├── scheduler/             # APScheduler: analysis cycles from cycle_times_utc, daily snapshot, weekly report, instrument refresh
 ├── backtesting/           # Engine, paper broker, io (load/fetch yfinance + CSV cache), metrics, walk-forward, promotion report
 └── utils/
     ├── config.py          # Settings singleton via get_settings()
@@ -149,6 +154,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 3. **State machine** — ACTIVE → CAUTIOUS (>5% drawdown, no new positions) → HALTED (>15%, liquidate all). HALTED requires manual recovery.
 4. **Screening cooldown** — `Instrument.last_screened_at` is stamped after each screen. Stocks within the cooldown window (default 72h) are excluded from `get_screened_universe()` to ensure broad rotation.
 5. **Curated seed universe** — `seed_universe.py` contains ~160 well-known US equities. Used as fallback when instruments table lacks enriched data. Tickers that fail yfinance OHLCV fetch are flagged `data_available=False` and permanently excluded.
+5a. **Deferred Finnhub/AV (intraday)** — When `cycle_frequency: intraday`, screening uses `get_stock_analysis_lite` (yfinance only). Finnhub and Alpha Vantage are fetched only for `positions ∪ top_tickers` (active-review tickers), with `NewsSentimentCache` lookup first.
 6. **Company profiles** — `longBusinessSummary` + `industry` from yfinance are persisted in the `Instrument` model and included in the Claude strategy prompt for qualitative reasoning.
 7. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap.
 8. **Order dedup** — 5-minute window prevents double-execution of the same order.
@@ -160,6 +166,17 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
     - **Software trailing stops**: Tracks high-water mark per position. Ratchets stop up as price rises. Implemented by cancel + replace since T212 has no native trailing stop.
     - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
     - All adjustments logged to `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
+
+## Scheduling Architecture
+
+The scheduler (`src/scheduler/scheduler.py`) creates one cron job per entry in `settings.cycle_times_utc`. Cycle times are resolved from `cycle_frequency`:
+
+| `cycle_frequency` | `cycle_times_utc` | `cycle_hours` | Use case |
+|------------------|------------------|---------------|----------|
+| `intraday` | 08:00, 12:00, 16:00 UTC | 4 | 3 runs during market hours; deferred Finnhub/AV + tiered cache |
+| `standard` | 07:00, 19:00 UTC | 12 | Original 2-cycle cadence |
+
+Other scheduled jobs (unchanged): daily snapshot 21:30 UTC, weekly report Fri 22:00 UTC, instrument refresh Sun 12:00 UTC.
 
 ## Environment Variables
 
@@ -208,6 +225,31 @@ SMTP_USE_TLS
   - `notification_logs.status='sent'` can still correspond to inbox delays if provider returns deferred responses.
   - Example seen: Gmail deferral `421 4.7.32` for one recipient; resolved by using a different recipient + checking SendGrid Email Logs.
 
+### Notification module structure (`src/agents/notifications/`)
+
+- **types.py** — `NotificationEvent`, `NotificationMessage`, `TradeInstructionPayload`, `TradeExecutionPayload`, `NotificationError`
+- **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y), reasoning excerpt, and stage reason for queued/filtered decisions (e.g. "Queued by UOV optimizer (capacity/threshold gating)").
+- **service.py** — `NotificationService` with `emit_*` methods. Fail-open: all exceptions caught, logged with `exc_info`, and never propagated. Retries with backoff; failed attempts recorded in `notification_logs`.
+- **providers/** — Slack webhook, SMTP email. Providers implement `send(subject, body)` and raise on failure.
+- **Event types**: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`
+
+### Macro intelligence module (`src/agents/market_data/macro_intelligence.py`)
+
+Gathers macro-level market intelligence to inform trading decisions:
+
+1. **Sector-level sentiment and trend** — Alpha Vantage SECTOR API (1 call) returns real-time S&P 500 sector performance. When AV fails (rate limit, error), fallback to yfinance SPDR ETFs (XLK, XLV, etc.). Sectors underperforming on multiple horizons are flagged as "underperform" for headwind detection.
+2. **Key economic news** — Finnhub `/news` (category=general) free tier: Fed, tariffs, earnings, inflation headlines. Used for timing context (e.g. earnings season flag).
+3. **Committee decision integration** — `get_sector_headwind(macro_intel, yf_sector)` returns a message when a sector is underperforming, enabling moderators to flag "fundamentally strong but sector headwind — defer buy"
+
+**Data flow**:
+- `get_macro_data()` in DataFetcher now includes `macro_intelligence` (cached 4h via `NewsSentimentCache`).
+- Strategy prompt receives sector summary + economic highlights in news section.
+- Moderation context receives `sector_headwind`, `economic_highlights`, `sector_summary` in Market Conditions.
+
+**Config**: `data_providers.macro_intelligence_enabled: true`, `cache_ttl_hours.macro_intelligence: 4`
+
+**Sector mapping**: yfinance sectors (Technology, Healthcare, etc.) → Alpha Vantage (Information Technology, Health Care, etc.) via `YF_TO_AV_SECTOR`.
+
 ## Database Models (src/data/models.py)
 
 | Model | Table | Key Purpose |
@@ -221,8 +263,7 @@ SMTP_USE_TLS
 | `CostLog` | `cost_logs` | Per-LLM-call cost tracking |
 | `ApiLog` | `api_logs` | External API call audit trail (T212, Finnhub, Alpha Vantage) |
 | `NotificationLog` | `notification_logs` | Outbound alert audit trail (sent/failed/skipped/deduped attempts) |
-| `NewsSentimentCache` | `news_sentiment_cache` | Per-ticker and market-wide news sentiment (buzz, bullish/bearish %, overall score) |
-| `MarketDataCache` | `market_data_cache` | OHLCV + fundamentals (12h TTL) |
+| `MarketDataCache` | `market_data_cache` | OHLCV + indicators + fundamentals (configurable TTL: lite_analysis 4h, full_analysis 4h) |
 | `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state |
 | `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
 | `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities awaiting execution |
@@ -234,11 +275,12 @@ SMTP_USE_TLS
 
 Key tuneable values:
 
-- **Trading**: `mode: active`, `max_positions: 15`, `cash_floor_pct: 10`
+- **Trading**: `mode: practice`, `cycle_frequency: intraday|standard`, `cycle_times_utc`, `max_positions: 15`, `cash_floor_pct: 10`
 - **Risk**: `max_single_stock_pct: 15`, `max_sector_pct: 35`, `halt_drawdown_pct: 15`
 - **Strategy weights**: momentum `0.35`, mean_reversion `0.30`, factor `0.35`
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)
 - **Universe**: `max_candidates: 30`, cap tiers 70/20/10% (large/mid/small), `screening_cooldown_hours: 72`
+- **Data cache TTLs** (configurable): `ohlcv_indicators: 4h`, `fundamentals: 12h`, `finnhub_analyst: 6h`, `alpha_vantage_broad: 4h`, `macro_intelligence: 4h`
 - **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50
 - **Opportunity**: `enabled`, `mode: shadow|active`, immediate/queue z-thresholds, queue TTL, swap delta, EWMA half-life, weighted feature map, stage penalties
 - **Order management**: `enabled`, `reassess_stops`, `trailing_stops` (enabled, trail_pct), `limit_orders` (enabled, offset_pct, validity), ATR multiplier, min/max stop distance, only_tighten_stops

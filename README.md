@@ -2,12 +2,13 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
+**Status:** POC — 181 tests passing (includes performance/trade-outcome, backtesting, macro intelligence, and 3-cycle scheduler config), deployment-ready for VPS.
 **Status:** POC — 190 tests passing (includes performance/trade-outcome, backtesting, and order management), deployment-ready for VPS.
 
 ## Architecture
 
 ```
-Orchestrator (every 12h)
+Orchestrator (configurable: 3 cycles at 08/12/16 UTC or 2 at 07/19 UTC)
   ├── Market Data Agent    → yfinance + Finnhub + Alpha Vantage (per-ticker news)
   ├── Universe Screener    → Sector-balanced, cap-tiered candidate discovery
   ├── Strategy Agent       → Momentum + Mean Reversion + Factor → Claude Sonnet synthesis
@@ -49,7 +50,7 @@ poetry run alembic upgrade head
 Edit `config/settings.yaml` for trading parameters, risk limits, cost budgets, and model selection.
 
 Key settings:
-- **Trading:** cycle times, position limits, cash floor
+- **Trading:** `cycle_frequency` (intraday | standard), cycle times, position limits, cash floor
 - **Risk:** drawdown thresholds, VIX limits, sector caps, correlation limits
 - **Universe:** candidate count, sector balance, market-cap tiers, screening cooldown
 - **Opportunity:** UOV mode (`shadow|active`), thresholds, EWMA half-life, queue TTL, swap delta
@@ -101,11 +102,16 @@ See [Backtesting](docs/BACKTESTING.md) and [Walk-Forward Validation](docs/WALK_F
 poetry run python -m src.scheduler.scheduler
 ```
 
-Schedule:
-- Analysis cycles: 07:00 and 19:00 UTC, Mon-Fri
-- Daily snapshot: 21:30 UTC
-- Weekly report: Friday 22:00 UTC
-- Instrument refresh: Sunday 12:00 UTC
+**Schedule (configurable):**
+
+| Job | When | Notes |
+|-----|------|-------|
+| Analysis cycles | Mon–Fri, from `cycle_times_utc` | `intraday`: 08:00, 12:00, 16:00 UTC (3 cycles). `standard`: 07:00, 19:00 UTC (2 cycles). |
+| Daily snapshot | 21:30 UTC daily | Portfolio snapshot + daily report |
+| Weekly report | Friday 22:00 UTC | End-of-week summary |
+| Instrument refresh | Sunday 12:00 UTC | Update tradable universe from T212 |
+
+Set `cycle_frequency: intraday` in `config/settings.yaml` for 3 cycles during market hours; use `standard` for the original 2-cycle cadence.
 
 ### Docker
 
@@ -199,7 +205,7 @@ poetry run pytest tests/test_moderation.py    # Moderation (21 tests)
 poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)
 poetry run pytest tests/test_screening_cooldown.py  # Screening + seed universe (10 tests)
 poetry run pytest tests/test_opportunity_scorer.py tests/test_opportunity_optimizer.py  # UOV scoring + optimizer (5 tests)
-poetry run pytest tests/test_notifications_service.py tests/test_notifications_providers.py tests/test_notifications_formatters.py tests/test_notifications_integration.py  # Notifications (17 tests)
+poetry run pytest tests/test_notifications_service.py tests/test_notifications_providers.py tests/test_notifications_formatters.py tests/test_notifications_integration.py  # Notifications (19 tests)
 ```
 
 ## Project Structure

@@ -236,8 +236,9 @@ Review `config/settings.yaml` and adjust if needed. Key parameters:
 
 ```yaml
 trading:
-  mode: active                            # active or practice
-  cycle_times_utc: ["07:00", "19:00"]     # analysis cycle times
+  mode: practice                          # practice or live
+  cycle_frequency: intraday                # intraday (3 cycles) or standard (2 cycles)
+  cycle_times_utc: ["08:00", "12:00", "16:00"]  # when intraday; ["07:00", "19:00"] when standard
 cost_limits:
   anthropic_daily_gbp: 1.00
   openai_daily_gbp: 0.75
@@ -295,8 +296,7 @@ You should see output like:
 ```
 Investment Agent Scheduler starting...
 Scheduled jobs:
-  - analysis_cycle_0700: cron[...]
-  - analysis_cycle_1900: cron[...]
+  - analysis_cycle_0800: cron[...]   # (and 1200, 1600 when intraday; or 0700, 1900 when standard)
   - daily_snapshot: cron[...]
   - weekly_report: cron[...]
   - instrument_refresh: cron[...]
@@ -1610,8 +1610,7 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 | Job | Schedule | Description |
 |-----|----------|-------------|
-| `analysis_cycle_0700` | 07:00 UTC Mon-Fri | Morning analysis + trading cycle |
-| `analysis_cycle_1900` | 19:00 UTC Mon-Fri | Evening analysis + trading cycle |
+| `analysis_cycle_*` | From cycle_times_utc (intraday: 08/12/16 UTC; standard: 07/19 UTC) Mon-Fri | Analysis + trading cycle |
 | `daily_snapshot` | 21:30 UTC daily | Portfolio snapshot + daily report |
 | `weekly_report` | 22:00 UTC Friday | Weekly performance report |
 | `instrument_refresh` | 12:00 UTC Sunday | Refresh tradeable instrument universe from T212 |

@@ -25,7 +25,7 @@
 | Area | Our System | Professional Standard | Gap |
 |------|-----------|----------------------|-----|
 | **Data sources** | 4 free APIs (yfinance, Finnhub, Alpha Vantage, T212) | 50+ feeds (Bloomberg, FactSet, satellite, web traffic) | Critical |
-| **Data frequency** | Daily OHLCV, 12-hour cycles | Tick-level to intraday, real-time | Significant |
+| **Data frequency** | Daily OHLCV, configurable cycles (2 or 3/day) | Tick-level to intraday, real-time | Significant |
 | **Indicators** | 8 textbook signals (RSI, MACD, Bollinger, MA) | 100-1000+ signals, many ML-derived | Critical |
 | **Backtesting** | Implemented: daily replay engine, paper broker, walk-forward runner, promotion report (safe to deploy / hold) | Continuous walk-forward validation | **Gap reduced** — foundations in place; next step is calibration vs live data |
 | **Portfolio optimisation** | Rule-based vetoes, no joint optimisation | Markowitz, risk parity, convex optimisation | Major |

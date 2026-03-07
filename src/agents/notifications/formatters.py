@@ -78,27 +78,48 @@ def _title_for_event(event: NotificationEvent) -> str:
 
 
 def _slack_trade_instruction(payload: dict[str, Any], *, prefix: str) -> str:
+    ticker = payload.get("ticker", "N/A")
+    action = payload.get("action", "N/A")
+    alloc = payload.get("final_allocation_pct") or payload.get("target_allocation_pct")
+    qty_display = f"Target: {alloc}% allocation" if alloc is not None else "Target: pending"
+    committee = _committee_summary(
+        payload.get("moderation_consensus"),
+        payload.get("risk_verdict"),
+    )
+    reasoning = _excerpt(payload.get("reasoning_summary", ""), 300)
     return (
         f"{prefix} [TRADE-INSTRUCTION]\n"
-        f"Cycle: {payload.get('cycle_id', 'N/A')} | Dry-run: {payload.get('dry_run', False)}\n"
-        f"{payload.get('ticker', 'N/A')} {payload.get('action', 'N/A')} at {payload.get('final_allocation_pct')}% "
-        f"(conviction {payload.get('conviction', 'N/A')})\n"
-        f"Moderation: {payload.get('moderation_consensus', 'N/A')} | Risk: {payload.get('risk_verdict', 'N/A')}\n"
-        f"Reason: {_excerpt(payload.get('reasoning_summary', ''), 200)}"
+        f"Ticker: {ticker} | Action: {action} | {qty_display}\n"
+        f"Committee: {committee}\n"
+        f"Conviction: {payload.get('conviction', 'N/A')}\n"
+        f"Reasoning: {reasoning or 'N/A'}"
     )
 
 
 def _slack_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
+    ticker = payload.get("ticker", "N/A")
+    action = payload.get("action", "N/A")
+    qty = payload.get("quantity")
+    qty_display = qty if qty is not None else "N/A"
     execution_status = _display_exec_status(payload.get("execution_status"))
     stop_status = _display_stop_status(payload.get("stop_loss_status"))
-    return (
-        f"{prefix} [TRADE-EXECUTION]\n"
-        f"Cycle: {payload.get('cycle_id', 'N/A')} | Dry-run: {payload.get('dry_run', False)}\n"
-        f"{payload.get('ticker', 'N/A')} {payload.get('action', 'N/A')} -> {execution_status}\n"
-        f"Qty: {payload.get('quantity', 'N/A')} | Value GBP: {payload.get('value_gbp', 'N/A')} | "
-        f"Stop-loss: {stop_status} ({payload.get('stop_loss_pct', 'N/A')}%)\n"
-        f"Error: {_excerpt(payload.get('error_message', ''), 200)}"
+    committee = _committee_summary(
+        payload.get("moderation_consensus"),
+        payload.get("risk_verdict"),
     )
+    reasoning = _excerpt(payload.get("reasoning_summary", ""), 250)
+    error_msg = _excerpt(payload.get("error_message", ""), 150)
+    lines = [
+        f"{prefix} [TRADE-EXECUTION]",
+        f"Ticker: {ticker} | Action: {action} | Qty: {qty_display} | Status: {execution_status}",
+        f"Value GBP: {payload.get('value_gbp', 'N/A')} | Stop-loss: {stop_status} ({payload.get('stop_loss_pct', 'N/A')}%)",
+        f"Committee: {committee}",
+    ]
+    if reasoning:
+        lines.append(f"Reasoning: {reasoning}")
+    if error_msg:
+        lines.append(f"Error: {error_msg}")
+    return "\n".join(lines)
 
 
 def _slack_state_transition(payload: dict[str, Any], *, prefix: str) -> str:
@@ -144,14 +165,24 @@ def _slack_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
     rows_for_slack = non_hold_rows if non_hold_rows else decisions
 
     for d in rows_for_slack:
+        ticker = d.get("ticker", "N/A")
+        action = d.get("action", "N/A")
+        stage = d.get("stage", "N/A")
+        qty = d.get("quantity")
+        qty_display = qty if qty is not None else "queued"
         exec_status = _display_exec_status(d.get("execution_status"))
         stop_status = _display_stop_status(d.get("stop_loss_status"))
+        committee = _committee_summary(d.get("moderation_consensus"), d.get("risk_verdict"))
+        reasoning = _excerpt(d.get("strategy_reasoning_excerpt", ""), 120)
+        stage_reason = d.get("stage_reason", "")
         lines.append(
-            f"- {d.get('ticker', 'N/A')} {d.get('action', 'N/A')} [{d.get('stage', 'N/A')}] "
-            f"conv={d.get('conviction', 'N/A')} mod={d.get('moderation_consensus', 'N/A')} "
-            f"risk={d.get('risk_verdict', 'N/A')} exec={exec_status} "
-            f"stop={stop_status}"
+            f"- {ticker} {action} | Qty: {qty_display} | Stage: {stage} | {committee}"
         )
+        lines.append(f"  Conv={d.get('conviction', 'N/A')} exec={exec_status} stop={stop_status}")
+        if stage_reason and stage in ("opportunity_queue", "opportunity_filtered"):
+            lines.append(f"  Reason: {stage_reason}")
+        if reasoning:
+            lines.append(f"  Reasoning: {reasoning}")
 
     if hold_count > 0 and non_hold_rows:
         lines.append(f"- (trimmed {hold_count} HOLD rows; see email for full detail)")
@@ -247,6 +278,8 @@ def _email_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
         lines.append("")
         lines.append(f"{idx}. {decision.get('ticker', 'N/A')} {decision.get('action', 'N/A')}")
         lines.append(f"   Stage: {decision.get('stage', 'N/A')}")
+        if decision.get("stage_reason"):
+            lines.append(f"   Reason: {decision.get('stage_reason')}")
         lines.append(f"   Conviction: {decision.get('conviction', 'N/A')}")
         lines.append(
             f"   Allocations: target={decision.get('target_allocation_pct', 'N/A')}% "
@@ -419,6 +452,13 @@ def _severity_prefix(severity: str) -> str:
     if sev == "warning":
         return "⚠️ WARN"
     return "ℹ️ INFO"
+
+
+def _committee_summary(moderation: Any, risk: Any) -> str:
+    """Format moderation + risk verdict as committee vote summary."""
+    mod = str(moderation).strip() if moderation else "N/A"
+    rsk = str(risk).strip() if risk else "N/A"
+    return f"Moderation={mod} | Risk={rsk}"
 
 
 def _display_exec_status(value: Any) -> str:
