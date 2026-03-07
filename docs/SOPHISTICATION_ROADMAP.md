@@ -1,25 +1,117 @@
 # Sophistication Roadmap
 
-**Last Updated:** 2026-03-07
-**Owner:** Project Lead (PhD Mathematics, Data Science Manager in Finance)
-**Developers:** Claude Code Opus 4.6 (cloud, primary), Codex 5.3+ (local VS Code, secondary)
+**Last Updated:** 2026-03-07  
+**Owner:** Project Lead (PhD Mathematics, Data Science Manager in Finance)  
+**Developers:** Claude Code Opus 4.6 (cloud, primary), Codex 5.3+ (local VS Code, secondary)  
 **Principle:** Innovation, simplicity, elegance, transparency. No feature for technology's sake — every addition must materially improve quality.
 
 ---
 
-## Current State: POC (v1.0)
+## Roadmap overview (Delivered vs pipeline)
 
-The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All 166 tests pass. It is ready for VPS deployment to begin gathering live performance data.
+**At a glance:** Delivered **6** · Pipeline **16** (order by priority and feasibility below)
+
+### Timeline view
+
+```mermaid
+timeline
+    title Roadmap
+    section Delivered
+        US-1.1 : Performance Tracking
+        US-1.2 : Trade Outcome Tracker
+        US-1.3 : CLI Dashboard
+        US-1.5 : Chat Interface & Alerts
+        US-3.4 : UOV Ranking & Queue
+        US-5.1 : Backtesting Engine
+    section Pipeline (priority order)
+        US-1.4 : Deploy POC to VPS
+        US-1.7 : Dashboard & Visualisation
+        US-1.6 : Slack NL Trade Commands
+        US-2.1 : Conviction Calibration
+        US-2.2 : Dynamic Strategy Weighting
+        US-3.1 : Risk-Parity Sizing
+        US-2.3 : Moderator Effectiveness
+        US-4.1 : Volume Signals
+        US-5.2 : Parameter Sensitivity
+        US-3.2 : Regime Detection
+        US-3.3 : Correlation Screening
+        US-4.2 : Earnings Calendar
+        US-4.3 : Sector Rotation
+        US-6.1 : ML Trade Scoring (investigation)
+        US-6.2 : Journal Embeddings
+        US-6.3 : RL Investigation
+```
+
+### Scannable roadmap (no diagram needed)
+
+| Status | # | ID | Project |
+|--------|---|-----|---------|
+| **Delivered** | 1 | US-1.1 | Performance Tracking |
+| | 2 | US-1.2 | Trade Outcome Tracker |
+| | 3 | US-1.3 | CLI Dashboard |
+| | 4 | US-1.5 | Chat Interface & Alerts |
+| | 5 | US-3.4 | UOV Ranking & Queue |
+| | 6 | US-5.1 | Backtesting Engine |
+| **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
+| | 2 | US-1.7 | Dashboard & Visualisation |
+| | 3 | US-1.6 | Slack NL Trade Commands |
+| | 4 | US-2.1 | Conviction Calibration |
+| | 5 | US-2.2 | Dynamic Strategy Weighting |
+| | 6 | US-3.1 | Risk-Parity Sizing |
+| | 7 | US-2.3 | Moderator Effectiveness |
+| | 8 | US-4.1 | Volume Signals |
+| | 9 | US-5.2 | Parameter Sensitivity |
+| | 10 | US-3.2 | Regime Detection |
+| | 11 | US-3.3 | Correlation Screening |
+| | 12 | US-4.2 | Earnings Calendar |
+| | 13 | US-4.3 | Sector Rotation |
+| | 14 | US-6.1 | ML Trade Scoring (investigation) |
+| | 15 | US-6.2 | Journal Embeddings |
+| | 16 | US-6.3 | RL Investigation |
+
+---
+
+## Summary: All projects
+
+| ID | Project | Description | Benefit | Stage |
+|----|---------|-------------|---------|--------|
+| **US-1.1** | Performance Tracking | Daily Sharpe/Sortino/drawdown, win rate by strategy, alpha vs benchmark; `performance_metrics` table, CLI `--performance` | Enables all future improvements; can't improve what you can't measure | **Delivered** |
+| **US-1.2** | Trade Outcome Tracker | Link each BUY to SELL/REDUCE; per-trade P&L, conviction linkage; `trade_outcomes` table | Core data for calibration and strategy tuning | **Delivered** |
+| **US-1.3** | Performance Dashboard (CLI) | CLI `--dashboard`: portfolio value, Sharpe, win rate, costs, active positions | Immediate visibility into system behaviour | **Delivered** (export/summary open) |
+| **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Planned** |
+| **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
+| **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
+| **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer, run history, portfolio; FastAPI + React (Phase 1 MVP) | Full operational visibility; personal quant experience | **Planned** |
+| **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
+| **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
+| **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
+| **US-3.1** | Risk-Parity Position Sizing | Size positions inversely to trailing volatility; equal risk contribution | Reduces volatility without reducing returns; strong academic evidence | **Planned** |
+| **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Regime-aware strategy selection improves hit rate | **Planned** |
+| **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; soft signal to committee | **Planned** |
+| **US-3.4** | UOV Ranking & Queueing | Hybrid score, z-score, EWMA; ranked BUY execution; queue + swap suggestions | Solves capital saturation; deterministic opportunity ranking | **Delivered** |
+| **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
+| **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
+| **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
+| **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
+| **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
+| **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
+| **US-6.2** | Trade Journal Embeddings | Embeddings for journals; similarity search on new proposals | "Have we seen this pattern before?" context | **Planned** |
+| **US-6.3** | RL Investigation | Literature + data assessment; decision gate before any implementation | Evidence-based decision on RL; document findings | **Planned** |
+
+---
+
+## Current state: POC (v1.0)
+
+The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All tests pass. It is ready for VPS deployment to begin gathering live performance data.
 
 **What the POC establishes:**
 - End-to-end pipeline: Data → Screen → Strategy → Moderation → Risk → Execution → Journal → Notifications
 - Multi-LLM adversarial architecture (Claude + GPT-4o + Gemini)
 - Deterministic risk guardrails with VETO power
 - Deterministic UOV opportunity layer (shadow/active modes, ranked BUY queue, swap suggestions)
-- Cost-aware degradation
-- Comprehensive logging and audit trail
-- **Feedback loop:** performance_metrics (Sharpe, Sortino, drawdown, win rates by strategy), trade_outcomes (per-trade P&L, conviction linkage), CLI `--performance` / `--dashboard`
-- **Backtesting:** engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); yfinance fetch + CSV cache when `data/backtest/` empty
+- Cost-aware degradation; comprehensive logging and audit trail
+- **Feedback loop:** performance_metrics, trade_outcomes, CLI `--performance` / `--dashboard`
+- **Backtesting:** engine, paper broker, walk-forward validation, promotion report; yfinance fetch + CSV cache
 
 **What the POC still lacks:**
 - Calibration of strategy weights and conviction using live + backtest evidence
@@ -28,85 +120,59 @@ The POC is a fully functional autonomous trading agent running on Trading 212 Pr
 
 ---
 
-## Design Principles for Evolution
+## Design principles
 
-1. **Measure before you build** — collect live data first, only build what the data justifies
-2. **Incremental, not revolutionary** — each phase builds on the previous, no big rewrites
-3. **POC compatibility** — all enhancements integrate with the existing pipeline architecture
-4. **Evidence-based decisions** — no technique adopted without literature review and clear expected impact
-5. **Personal quant experience first** — prioritise insights, dashboards, and learning over institutional features
-
----
-
-## Phase 1: Foundation — Feedback Loop & Measurement (Weeks 1-6)
-
-_Deploy POC, start collecting data, close the feedback loop._
-
-### US-1.1: Performance Tracking Module
-**Priority:** P0 (Critical)
-**Value:** Enables all future improvements — can't improve what you can't measure
-**Effort:** Medium (3-5 days)
-**Data Sources:** Existing database (portfolio_snapshots, orders, strategy_decisions)
-**Developer:** Claude Code
-
-**Status (2026-03-05):** Delivered
-
-**Acceptance Criteria:**
-- [x] Daily Sharpe ratio (rolling 30/60/90 day) computed from portfolio_snapshots
-- [x] Sortino ratio, max drawdown, Calmar ratio tracked
-- [x] Win rate by strategy (momentum, mean_reversion, factor) computed from filled orders
-- [x] Alpha vs S&P 500 benchmark tracked per snapshot
-- [x] Stored in new `performance_metrics` table with Alembic migration
-- [x] CLI command: `--performance` shows current metrics summary
-
-**Integration Point:** Runs as post-cycle step in orchestrator, after portfolio snapshot.
+1. **Measure before you build** — collect live data first; only build what the data justifies  
+2. **Incremental, not revolutionary** — each phase builds on the previous; no big rewrites  
+3. **POC compatibility** — all enhancements integrate with the existing pipeline architecture  
+4. **Evidence-based decisions** — no technique adopted without literature review and clear expected impact  
+5. **Personal quant experience first** — prioritise insights, dashboards, and learning over institutional features  
 
 ---
 
-### US-1.2: Trade Outcome Tracker
-**Priority:** P0 (Critical)
-**Value:** Links strategy decisions to actual P&L — the core data for calibration
-**Effort:** Medium (3-5 days)
-**Data Sources:** Existing orders + portfolio data
-**Developer:** Claude Code
+## Priority matrix
 
-**Status (2026-03-05):** Delivered
+Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Hard).
 
-**Acceptance Criteria:**
-- [x] Each BUY decision tracked until corresponding SELL/REDUCE
-- [x] Per-trade P&L (£ and %) recorded with holding period
-- [x] Claude's conviction score linked to actual outcome
-- [ ] Each moderator's verdict linked to trade outcome (was GPT-4o right to block?)
-- [ ] Risk decisions linked to outcomes (did resized trades perform differently?)
-- [x] New `trade_outcomes` table with Alembic migration
-
-**Integration Point:** Updated on each SELL/REDUCE execution and after cycle snapshot (update_trade_outcomes).
-
----
-
-### US-1.3: Performance Dashboard (CLI + Export)
-**Priority:** P1 (High)
-**Value:** Personal quant experience — immediate visibility into system behaviour
-**Effort:** Small (2-3 days)
-**Data Sources:** performance_metrics, trade_outcomes, cost_logs
-**Status (2026-03-05):** CLI `--dashboard` and `--performance` delivered; CSV/JSON export can be added later.
-**Developer:** Claude Code or Codex
-
-**Acceptance Criteria:**
-- [x] `--dashboard` CLI command shows: portfolio value, Sharpe, win rate, costs, active positions
-- [ ] CSV/JSON export for analysis in Jupyter notebooks
-- [ ] Weekly email-style summary (rendered to journal markdown)
-
-**Integration Point:** Extension of existing reporting module.
+| # | User Story | Value | Feasibility | Effort | Data Needed | Priority |
+|---|------------|-------|-------------|--------|-------------|----------|
+| 1.4 | Deploy POC to VPS | Critical | Easy | S | None | **P0** |
+| 1.1 | Performance tracking | Critical | Easy | M | Existing DB | **P0** |
+| 1.2 | Trade outcome tracker | Critical | Easy | M | Existing DB | **P0** |
+| 1.3 | Performance dashboard (CLI) | High | Easy | S | US-1.1, 1.2 | **P1** |
+| 1.5 | Chat interface + trade alerts | High | Easy–Med | M | Existing DB + events | **P1** |
+| 3.1 | Risk-parity sizing | High | Easy | M | Historical prices | **P1** |
+| 5.1 | Backtesting engine | High | Medium | L | yfinance history | **P1** |
+| 2.1 | Conviction calibration | High | Medium | M | ~50 trades | **P1** |
+| 2.2 | Dynamic strategy weighting | High | Medium | M | ~50 trades | **P1** |
+| 1.6 | Slack NL trade commands | High | Medium | M–L | Full pipeline | **P1** |
+| 1.7 | Dashboard & Visualisation (Phase 1) | High | Medium | L | Existing DB + events_log | **P1** |
+| 2.3 | Moderator effectiveness | Medium | Easy | S | ~100 trades | **P2** |
+| 3.3 | Correlation-aware screening | Medium | Easy | S | Historical prices | **P2** |
+| 4.1 | Volume-weighted signals | Medium | Easy | S | Already fetched | **P2** |
+| 4.2 | Earnings calendar | Medium | Easy | M | yfinance (free) | **P2** |
+| 3.2 | Enhanced regime detection | Medium | Medium | M | Existing macro | **P2** |
+| 5.2 | Parameter sensitivity | Medium | Medium | M | Backtest engine | **P2** |
+| 6.1 | ML trade scoring | Medium | Hard | L | 500+ trades | **P2** |
+| 4.3 | Sector rotation signal | Low–Med | Easy | M | ETF data (free) | **P3** |
+| 6.2 | Journal embeddings | Low | Medium | M | Trade journals | **P3** |
+| 6.3 | RL investigation | Low | Hard | M | Academic lit | **P3** |
 
 ---
 
-### US-1.4: Deploy POC to VPS
-**Priority:** P0 (Critical)
-**Value:** Begin gathering live market data and performance evidence
-**Effort:** Small (1-2 days, following existing DEPLOYMENT.md)
-**Data Sources:** N/A
-**Developer:** Project Lead (manual deployment)
+## Project details (by priority)
+
+*Phase labels (Foundation, Calibration, etc.) are thematic; execution order follows the priority matrix above.*
+
+---
+
+### P0 — Critical (Foundation)
+
+#### US-1.4: Deploy POC to VPS
+**Value:** Begin gathering live market data and performance evidence  
+**Effort:** Small (1–2 days, following DEPLOYMENT.md)  
+**Data Sources:** N/A  
+**Stage:** Planned  
 
 **Acceptance Criteria:**
 - [ ] Docker container running on VPS
@@ -117,492 +183,404 @@ _Deploy POC, start collecting data, close the feedback loop._
 
 ---
 
-### US-1.5: Chat Interface & Real-Time Trade Alerts (ChatOps Foundation)
-**Priority:** P1 (High)
-**Value:** Immediate operator visibility and control. Enables real-time awareness of BUY/SELL instructions and lays the foundation for human-in-the-loop controls via Slack/Telegram/email.
-**Effort:** Medium (4-6 days)
-**Data Sources:** Existing orchestrator decisions, `orders`, `system_state`, `risk_decisions`, `moderation_logs`
-**Developer:** Codex (implementation) + Project Lead (security review)
+#### US-1.1: Performance Tracking Module
+**Value:** Enables all future improvements — can't improve what you can't measure  
+**Effort:** Medium (3–5 days)  
+**Data Sources:** Existing database (portfolio_snapshots, orders, strategy_decisions)  
+**Stage:** Delivered  
 
-**Detailed implementation plan:** `docs/CHAT_INTERFACE_PROJECT.md`.
-
-**Status (2026-03-05):** Delivered (Phase 1 outbound alerts)
+**Status (2026-03-05):** Delivered  
 
 **Acceptance Criteria:**
-- [x] Add a transport-agnostic notification service under `src/agents/notifications/`.
-- [x] Emit alerts for:
-  - [x] trade instruction approved (post moderation+risk, pre execution)
-  - [x] trade execution result (filled/dry_run/failed/skipped)
-  - [x] cycle run summary (all ticker decisions)
-  - [x] state machine transitions (ACTIVE/CAUTIOUS/HALTED)
-  - [x] critical cycle failures
-- [x] Provide at least two outbound channels in v1:
-  - [x] Slack webhook alerts
-  - [x] Email alerts (SMTP)
-- [x] Add channel configuration and feature flags in `config/settings.yaml`.
-- [x] Add secrets to `.env.example` with safe placeholders.
-- [x] Add retry + timeout + non-blocking send so notification failures never block trade execution.
-- [x] Add `notification_logs` table with status, channel, payload hash, and error fields.
-- [x] End-to-end VPS validation for Slack + SMTP delivery with provider-side confirmation.
+- [x] Daily Sharpe ratio (rolling 30/60/90 day) computed from portfolio_snapshots
+- [x] Sortino ratio, max drawdown, Calmar ratio tracked
+- [x] Win rate by strategy (momentum, mean_reversion, factor) computed from filled orders
+- [x] Alpha vs S&P 500 benchmark tracked per snapshot
+- [x] Stored in `performance_metrics` table with Alembic migration
+- [x] CLI command: `--performance` shows current metrics summary
 
-**Phase 1 Scope (Outbound only):**
-- Notify on instructed/executed trades and critical system events.
-
-**Phase 2 Scope (Inbound chat commands):**
-- [ ] Build command gateway for `/status`, `/pause`, `/resume`, `/force-sell <ticker>`.
-- [ ] Add authentication and command allow-listing.
-- [ ] Add full audit logging for all received commands.
+**Integration:** Post-cycle step in orchestrator, after portfolio snapshot.
 
 ---
 
-### US-1.6: Slack Natural Language Trade Commands (Planned)
-**Priority:** P1 (High)
-**Value:** Manual override with full audit trail — user triggers a single-ticker run (data → strategy → moderation → risk), with final decision overwritten by user intent (buy/sell/review). Same pipeline, same logging; Risk can still VETO.
-**Effort:** Medium–Large (5–8 days)
-**Data Sources:** Same as full cycle (DataFetcher, StrategyEngine, ModerationPanel, RiskManager, Order); new `slack_command_log` table.
-**Developer:** TBD
+#### US-1.2: Trade Outcome Tracker
+**Value:** Links strategy decisions to actual P&L — core data for calibration  
+**Effort:** Medium (3–5 days)  
+**Data Sources:** Existing orders + portfolio data  
+**Stage:** Delivered  
 
-**Detailed implementation plan:** `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.
+**Status (2026-03-05):** Delivered  
 
 **Acceptance Criteria:**
-- [ ] Inbound Slack listener (Socket Mode) in designated channel.
-- [ ] NL parser: BUY/SELL/REVIEW + ticker + quantity or amount (£).
-- [ ] Single-ticker pipeline: data → strategy → moderation → risk, all logged (cycle_id = `slack-{ts}`); final action = user intent; risk can veto.
-- [ ] REVIEW: run pipeline, post summary to Slack, no order.
-- [ ] Execute via OrderManager; Order.strategy = `slack_command`; confirm in Slack with order details.
-- [ ] Safety: ticker validation, cash/position checks, large-order confirmation, risk veto messaging.
-- [ ] New table `slack_command_log`; optional quantity-based `execute_market_order`; CLI `slack_trade_listener`.
+- [x] Each BUY tracked until corresponding SELL/REDUCE
+- [x] Per-trade P&L (£ and %) with holding period
+- [x] Claude conviction score linked to outcome
+- [ ] Moderator verdict linked to trade outcome (optional follow-up)
+- [ ] Risk decisions linked to outcomes (optional follow-up)
+- [x] `trade_outcomes` table with Alembic migration
 
-**Integration Point:** New long-running process; invokes single-ticker run and OrderManager; reuses existing Strategy/Moderation/Risk/Execution stack.
-
----
-
-### US-1.7: Dashboard & Visualisation System (Phase 1 — MVP)
-**Priority:** P1 (High)
-**Value:** Full operational visibility — activity feed, universe explorer, run history, portfolio snapshot. Personal quant experience; aligns with “prioritise insights, dashboards, and learning”.
-**Effort:** Large (Phase 1: 8–12 days for backend + instrumentation + frontend MVP + deploy)
-**Data Sources:** Existing DB (instruments, orders, portfolio_snapshots, strategy_decisions, moderation_logs, risk_decisions); new `events_log` (and optionally lightweight `runs`) for real-time feed
-**Developer:** TBD
-
-**Detailed implementation plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.
-
-**Status:** Planned
-
-**Phase 1 (MVP) Acceptance Criteria:**
-- [ ] FastAPI backend under `dashboard/backend/`: REST for runs, universe, portfolio, orders; SSE at `/events/stream`
-- [ ] Read universe/portfolio/orders from existing agent tables; add only `events_log` (and optionally `runs`) as new tables
-- [ ] Event logger service: non-blocking, fail-open; agent instruments scheduler, screener, committee, execution, notifications to log events
-- [ ] React + Vite + Tailwind frontend: Dashboard Home (activity feed via SSE, portfolio summary, sector donut), Stock Universe (searchable/sortable table, expand for committee reasoning), Run History (timeline + drill-down), Portfolio (positions, P&L, history chart)
-- [ ] Dark terminal aesthetic; Recharts/TanStack Table; ticker display clean symbol, API T212 format
-- [ ] Config: `dashboard_enabled`, `dashboard_events_enabled` in settings.yaml
-- [ ] Deployment: nginx reverse proxy, SSE buffering disabled, basic auth or API key; deploy script for frontend build + backend static serve
-
-**Phases 2–4 (future):** Analytics & Insights (decision explorer, performance attribution, sector heatmap, news timeline); ML & Advanced (prediction confidence, backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run trigger, strategy tuning UI, Slack mirror). See project doc.
-
-**Integration Point:** Dashboard backend reads from same SQLite (or shared DB) as agent. Agent calls event_logger at pipeline touchpoints; no change to core pipeline logic.
+**Integration:** Updated on each SELL/REDUCE and after cycle snapshot.
 
 ---
 
-**Integration Point:**
-- Trigger from `Orchestrator._execute_trade()` and state transitions in the state machine.
-- Reuse existing control actions already exposed by the CLI (`--status`, `--pause`, `--resume`, `--force-sell`).
+### P1 — High (Foundation & Calibration)
 
----
-
-## Phase 2: Calibration — Learning from Live Data (Weeks 4-10)
-
-_Use accumulated live data to calibrate and tune. Requires ~50-100 completed trades._
-
-### US-2.1: Conviction Calibration
-**Priority:** P1 (High)
-**Value:** Significant — if conviction 80+ trades win 70% but conviction 50-60 win only 45%, position sizing by calibrated conviction adds 2-5% annually
-**Effort:** Medium (3-4 days)
-**Data Sources:** trade_outcomes (from US-1.2), strategy_decisions
-**Developer:** Claude Code
+#### US-1.3: Performance Dashboard (CLI + Export)
+**Value:** Personal quant experience — immediate visibility  
+**Effort:** Small (2–3 days)  
+**Data Sources:** performance_metrics, trade_outcomes, cost_logs  
+**Stage:** Delivered (CLI); export/summary open  
 
 **Acceptance Criteria:**
-- [ ] Calibration curve: conviction score vs actual win rate (binned: 50-60, 60-70, 70-80, 80+)
-- [ ] Minimum 30 trades per bin before activating calibration
-- [ ] Position sizing adjusted by calibrated confidence: `size = base_size * calibration_factor`
-- [ ] Logged to strategy_decisions for audit trail
-- [ ] Falls back to current behaviour if insufficient data
+- [x] `--dashboard` CLI: portfolio value, Sharpe, win rate, costs, active positions
+- [ ] CSV/JSON export for Jupyter analysis
+- [ ] Weekly email-style summary (journal markdown)
 
-**Technical Approach:** Simple logistic regression or empirical calibration curve. No ML needed.
+**Integration:** Extension of reporting module.
 
 ---
 
-### US-2.2: Dynamic Strategy Weighting
-**Priority:** P1 (High)
-**Value:** Moderate-High — stops allocating to strategies that aren't working in current regime
-**Effort:** Medium (3-4 days)
-**Data Sources:** trade_outcomes, strategy_decisions
-**Developer:** Claude Code
+#### US-1.5: Chat Interface & Real-Time Trade Alerts
+**Value:** Immediate operator visibility; foundation for human-in-the-loop  
+**Effort:** Medium (4–6 days)  
+**Data Sources:** Orchestrator decisions, orders, system_state, risk_decisions, moderation_logs  
+**Stage:** Delivered (Phase 1 outbound)  
+
+**Detailed plan:** `docs/CHAT_INTERFACE_PROJECT.md`  
+
+**Status (2026-03-05):** Delivered (Phase 1 outbound alerts)  
 
 **Acceptance Criteria:**
-- [ ] Rolling 30-day hit rate computed per sub-strategy (momentum, mean_reversion, factor)
-- [ ] Weights adjusted proportionally: `new_weight = base_weight * rolling_hit_rate / avg_hit_rate`
-- [ ] Minimum weight floor (15%) — no strategy drops below this
-- [ ] Maximum weight cap (50%) — no strategy dominates
-- [ ] Weight changes logged and visible in dashboard
-- [ ] Configurable via settings.yaml: `dynamic_weighting: true/false`
+- [x] Notification service under `src/agents/notifications/`
+- [x] Alerts: trade_instruction_approved, trade_execution_result, cycle_run_summary, state_transition, critical_cycle_failure
+- [x] Slack webhook + SMTP email; config in settings.yaml; secrets in .env.example
+- [x] Retry + timeout + non-blocking; notification_logs table
+- [x] VPS validation for Slack + SMTP
 
-**Technical Approach:** Exponentially weighted moving average of success rate. Simple, transparent, no ML.
+**Phase 2 (inbound):** Command gateway `/status`, `/pause`, `/resume`, `/force-sell`; auth; audit logging.
 
 ---
 
-### US-2.3: Moderator Effectiveness Analysis
-**Priority:** P2 (Medium)
-**Value:** Understand which moderator adds value — informs cost optimisation
-**Effort:** Small (2-3 days)
-**Data Sources:** moderation_logs, trade_outcomes
-**Developer:** Codex
+#### US-3.1: Risk-Parity Position Sizing
+**Value:** High — reduces volatility without reducing returns; strong academic evidence  
+**Effort:** Medium (4–5 days)  
+**Data Sources:** Historical returns from market_data_cache  
+**Stage:** Planned  
 
 **Acceptance Criteria:**
-- [ ] Track: "trades GPT-4o blocked that would have lost money" (correct blocks)
-- [ ] Track: "trades GPT-4o blocked that would have made money" (opportunity cost)
-- [ ] Same for Gemini
-- [ ] Monthly report comparing moderator value-add vs API cost
-- [ ] If a moderator's blocks are wrong >60% of the time, flag for review
+- [ ] Position sized inversely to trailing 60-day volatility
+- [ ] Target: equal risk contribution per position
+- [ ] Replaces Claude ad-hoc allocation for BUY sizing; Claude still decides what; risk-parity how much
+- [ ] Existing risk limits (15% per stock, etc.) remain hard caps
+- [ ] A/B log: risk-parity size vs Claude proposed size
 
----
-
-## Phase 3: Portfolio Intelligence (Weeks 8-14)
-
-_Move from individual stock picks to portfolio-level thinking._
-
-### US-3.1: Risk-Parity Position Sizing
-**Priority:** P1 (High)
-**Value:** High — reduces portfolio volatility without reducing returns. Academic evidence is strong.
-**Effort:** Medium (4-5 days)
-**Data Sources:** Historical returns from market_data_cache
-**Developer:** Claude Code
-
-**Acceptance Criteria:**
-- [ ] Each position sized inversely proportional to its trailing 60-day volatility
-- [ ] Target: equal risk contribution from each position
-- [ ] Replaces Claude's ad-hoc allocation percentages for BUY sizing
-- [ ] Claude still decides what to buy/sell; risk-parity decides how much
-- [ ] Existing risk limits (max 15% per stock, etc.) still enforced as hard caps
-- [ ] A/B comparison logged: risk-parity size vs Claude's proposed size
-
-**Technical Approach:** `weight_i = (1/vol_i) / sum(1/vol_j)`. No optimiser library needed.
-
+**Technical Approach:** `weight_i = (1/vol_i) / sum(1/vol_j)`.  
 **Literature:** Maillard, Roncalli & Teiletche (2010) "The Properties of Equally Weighted Risk Contribution Portfolios"
 
 ---
 
-### US-3.2: Enhanced Regime Detection
-**Priority:** P2 (Medium)
-**Value:** Moderate — current binary VIX rules miss nuance. Regime-aware strategy selection improves hit rate.
-**Effort:** Medium (3-4 days)
-**Data Sources:** Existing macro data (VIX, S&P, yields)
-**Developer:** Claude Code or Codex
+#### US-5.1: Backtesting Engine
+**Value:** Critical for long-term confidence; release gate before strategy changes  
+**Effort:** Large (5–8 days)  
+**Data Sources:** yfinance historical (fetch + CSV cache when data/backtest/ empty)  
+**Stage:** Delivered  
+
+**Detailed plan:** `docs/BACKTESTING_PROJECT_PLAN.md`. See `docs/BACKTESTING.md`, `docs/WALK_FORWARD_VALIDATION.md`.  
+
+**Status (2026-03):** Delivered  
 
 **Acceptance Criteria:**
-- [ ] Replace binary BULL/BEAR/SIDEWAYS with continuous regime score
-- [ ] Inputs: VIX level, VIX 20-day trend, S&P vs 50/200 MA, yield curve slope
-- [ ] Regime score feeds into dynamic strategy weighting (US-2.2)
-- [ ] Bull regime: favour momentum. Bear: favour mean-reversion. Transition: favour factor/quality
-- [ ] Logged to database for post-hoc analysis
+- [x] Replay historical data; deterministic policy (LLM-free proxy)
+- [x] Paper broker; risk rules, position sizing, constraints
+- [x] Output: equity curve, Sharpe, max drawdown, win rate, trades.csv, results.json
+- [x] Walk-forward validation; promotion report (safe to deploy vs hold)
+- [x] Compare vs buy-and-hold SPY; yfinance fetch + CSV cache
 
-**Technical Approach:** Weighted composite score, not Hidden Markov Model (premature for data available). Keep it transparent and interpretable.
+**Integration:** CLI `--config`, `--synthetic`, `--walk-forward`, `--scenario bull|bear|sideways`.
 
 ---
 
-### US-3.3: Correlation-Aware Trade Screening
-**Priority:** P2 (Medium)
-**Value:** Moderate — prevents adding positions that duplicate existing risk exposure
-**Effort:** Small (2-3 days)
-**Data Sources:** Historical returns from market_data_cache
-**Developer:** Codex
+#### US-2.1: Conviction Calibration
+**Value:** Position sizing by calibrated conviction can add 2–5% annually  
+**Effort:** Medium (3–4 days)  
+**Data Sources:** trade_outcomes, strategy_decisions  
+**Stage:** Planned  
 
 **Acceptance Criteria:**
-- [ ] Before approving a BUY, compute correlation of candidate with each existing position
-- [ ] If avg correlation with portfolio > 0.6, flag as "high correlation" to Claude and moderators
-- [ ] Include in risk manager evaluation (soft signal, not hard veto — existing 0.7 portfolio veto remains)
-- [ ] Reduces unintentional sector concentration that passes individual-stock checks
+- [ ] Calibration curve: conviction vs win rate (bins 50–60, 60–70, 70–80, 80+)
+- [ ] Min 30 trades per bin before activating
+- [ ] Position sizing: `size = base_size * calibration_factor`
+- [ ] Logged for audit; fallback to current behaviour if insufficient data
+
+**Technical Approach:** Empirical calibration curve or simple logistic regression; no ML.
 
 ---
 
-### US-3.4: Universal Opportunity Value (UOV) Ranking and Queueing
-**Priority:** P1 (High)
-**Value:** High — solves capital saturation by ranking approved BUYs across cycles and preserving deferred opportunities in a deterministic queue
-**Effort:** Medium (implemented)
-**Data Sources:** strategy_decisions, moderation_logs, risk_decisions, sub-strategy outputs, per-ticker sentiment, instruments
-**Developer:** Codex
+#### US-2.2: Dynamic Strategy Weighting
+**Value:** Stops allocating to strategies that aren't working in current regime  
+**Effort:** Medium (3–4 days)  
+**Data Sources:** trade_outcomes, strategy_decisions  
+**Stage:** Planned  
 
-**Status (2026-03-03):** Delivered
+**Acceptance Criteria:**
+- [ ] Rolling 30-day hit rate per sub-strategy (momentum, mean_reversion, factor)
+- [ ] Weights: `new_weight = base_weight * rolling_hit_rate / avg_hit_rate`; floor 15%, cap 50%
+- [ ] Weight changes logged; configurable `dynamic_weighting: true/false`
 
-**Delivered Scope:**
-- [x] UOV hybrid score (`uov_raw`) from strategy/moderation/risk/sentiment/fundamental proxies
-- [x] Cross-sectional z-score (`uov_z`) + stage penalties (`uov_final`)
-- [x] EWMA smoothing (`uov_ewma`) with configurable half-life (default 6 cycles)
-- [x] Shadow/active rollout switch in `settings.yaml`
-- [x] Active mode ranked BUY execution under cash/slot constraints
-- [x] Queue lifecycle with persistence, reranking, and TTL expiry
-- [x] Conservative swap suggestions (`delta_z >= 1.0`) without autonomous SELL authority
-- [x] Audit tables: `opportunity_score_snapshots`, `opportunity_queue`
-- [x] Cycle output extensions: `opportunity_ranking`, `queued_candidates`, `swap_candidates`
+**Technical Approach:** EWMA of success rate; transparent, no ML.
 
 ---
 
-## Phase 4: Signal Enhancement (Weeks 12-20)
+#### US-1.6: Slack Natural Language Trade Commands
+**Value:** Manual override with full audit trail; single-ticker pipeline; user intent overwrites decision; Risk can veto  
+**Effort:** Medium–Large (5–8 days)  
+**Data Sources:** Full pipeline; new `slack_command_log`  
+**Stage:** Planned  
 
-_Better inputs to the pipeline, grounded in data we've now collected._
-
-### US-4.1: Volume-Weighted Signals
-**Priority:** P2 (Medium)
-**Value:** Moderate — volume confirms price moves, reduces false signals. Data already fetched but unused.
-**Effort:** Small (2-3 days)
-**Data Sources:** Existing yfinance OHLCV (volume column already fetched)
-**Developer:** Codex
+**Detailed plan:** `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.  
 
 **Acceptance Criteria:**
-- [ ] Add OBV (On-Balance Volume) indicator
-- [ ] Add volume SMA ratio (current volume / 20-day avg volume)
-- [ ] Feed into sub-strategy scoring: high-volume breakouts get +10 score
-- [ ] Low-volume signals penalised (volume < 50% of avg = -10 score)
+- [ ] Inbound Slack listener (Socket Mode)
+- [ ] NL parser: BUY/SELL/REVIEW + ticker + quantity or amount (£)
+- [ ] Single-ticker pipeline (cycle_id = `slack-{ts}`); final action = user intent; risk can veto
+- [ ] REVIEW: run pipeline, post summary, no order
+- [ ] Execute via OrderManager; Order.strategy = `slack_command`; confirm in Slack
+- [ ] Safety: ticker validation, cash/position checks, large-order confirmation, risk veto messaging
+- [ ] `slack_command_log`; CLI `slack_trade_listener`
+
+**Integration:** Long-running process; reuses Strategy/Moderation/Risk/Execution stack.
+
+---
+
+#### US-1.7: Dashboard & Visualisation System (Phase 1 MVP)
+**Value:** Full operational visibility — activity feed, universe, run history, portfolio  
+**Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)  
+**Data Sources:** Existing DB; new `events_log` (optionally `runs`)  
+**Stage:** Planned  
+
+**Detailed plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.  
+
+**Phase 1 Acceptance Criteria:**
+- [ ] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
+- [ ] Read from existing tables; add only events_log (optionally runs)
+- [ ] Event logger: non-blocking, fail-open; instrument scheduler, screener, committee, execution, notifications
+- [ ] React + Vite + Tailwind: Home (activity feed, portfolio summary), Universe (table, committee reasoning), Run History (timeline), Portfolio (positions, P&L chart)
+- [ ] Dark terminal aesthetic; Recharts/TanStack Table; config `dashboard_enabled`, `dashboard_events_enabled`
+- [ ] Deployment: nginx, SSE buffering off, basic auth or API key; deploy script
+
+**Phases 2–4 (future):** Analytics & Insights; ML & Advanced (backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run, strategy tuning UI, Slack mirror).
+
+---
+
+### P2 — Medium (Calibration, Portfolio, Signals, Validation)
+
+#### US-2.3: Moderator Effectiveness Analysis
+**Value:** Understand which moderator adds value; informs cost optimisation  
+**Effort:** Small (2–3 days)  
+**Data Sources:** moderation_logs, trade_outcomes  
+**Stage:** Planned  
+
+**Acceptance Criteria:**
+- [ ] Track: trades GPT-4o blocked that would have lost (correct) vs made money (opportunity cost); same for Gemini
+- [ ] Monthly report: moderator value-add vs API cost
+- [ ] Flag if moderator blocks wrong >60% of the time
+
+---
+
+#### US-3.2: Enhanced Regime Detection
+**Value:** Regime-aware strategy selection improves hit rate  
+**Effort:** Medium (3–4 days)  
+**Data Sources:** Existing macro (VIX, S&P, yields)  
+**Stage:** Planned  
+
+**Acceptance Criteria:**
+- [ ] Continuous regime score (not binary BULL/BEAR/SIDEWAYS)
+- [ ] Inputs: VIX level/trend, S&P vs 50/200 MA, yield curve slope
+- [ ] Regime feeds dynamic strategy weighting (US-2.2); bull→momentum, bear→mean-reversion, transition→factor
+- [ ] Logged for post-hoc analysis
+
+**Technical Approach:** Weighted composite score; transparent, interpretable.
+
+---
+
+#### US-3.3: Correlation-Aware Trade Screening
+**Value:** Prevents positions that duplicate existing risk exposure  
+**Effort:** Small (2–3 days)  
+**Data Sources:** Historical returns from market_data_cache  
+**Stage:** Planned  
+
+**Acceptance Criteria:**
+- [ ] Before BUY: correlation of candidate with each existing position
+- [ ] If avg correlation with portfolio > 0.6, flag "high correlation" to Claude and moderators
+- [ ] Soft signal in risk manager (existing 0.7 portfolio veto remains)
+
+---
+
+#### US-4.1: Volume-Weighted Signals
+**Value:** Volume confirms price moves; zero-cost enhancement  
+**Effort:** Small (2–3 days)  
+**Data Sources:** Existing yfinance OHLCV (volume already fetched)  
+**Stage:** Planned  
+
+**Acceptance Criteria:**
+- [ ] OBV; volume SMA ratio (current / 20-day avg)
+- [ ] Sub-strategy: high-volume breakouts +10; volume < 50% avg = -10
 - [ ] Logged in indicators output
 
-**Rationale:** Volume is already downloaded by yfinance but not used (noted in DATA_RATIONALE.md). This is low-effort, zero-cost signal enhancement.
-
 ---
 
-### US-4.2: Earnings Calendar Integration
-**Priority:** P2 (Medium)
-**Value:** Moderate — avoid buying before earnings (high vol event), or position for post-earnings drift
-**Effort:** Medium (3-4 days)
-**Data Sources:** yfinance earnings calendar (free)
-**Developer:** Claude Code
+#### US-4.2: Earnings Calendar Integration
+**Value:** Avoid buying before earnings; position for post-earnings drift  
+**Effort:** Medium (3–4 days)  
+**Data Sources:** yfinance earnings calendar (free)  
+**Stage:** Planned  
 
 **Acceptance Criteria:**
-- [ ] Fetch next earnings date for each candidate
-- [ ] If earnings within 5 trading days: flag to Claude and moderators as "earnings imminent"
-- [ ] Post-earnings drift signal: if stock beat estimates and is within 10 days post-earnings, mild BUY signal
-- [ ] Configurable: `avoid_pre_earnings: true/false`
+- [ ] Fetch next earnings date per candidate
+- [ ] Flag "earnings imminent" if within 5 trading days
+- [ ] Post-earnings drift signal (beat estimates, within 10 days)
+- [ ] Config: `avoid_pre_earnings: true/false`
 
 ---
 
-### US-4.3: Sector Rotation Signal
-**Priority:** P3 (Low)
-**Value:** Moderate over long term — institutional research shows sector momentum is real
-**Effort:** Medium (3-5 days)
-**Data Sources:** Sector ETF data via yfinance (XLK, XLF, XLV, etc.) — free
-**Developer:** Codex
+#### US-5.2: Parameter Sensitivity Analysis
+**Value:** Focus tuning on parameters that matter  
+**Effort:** Medium (3–4 days)  
+**Data Sources:** Backtesting engine output  
+**Stage:** Planned  
 
 **Acceptance Criteria:**
-- [ ] Track relative performance of 11 GICS sectors via ETF proxies
-- [ ] Compute 3-month sector momentum ranking
-- [ ] Overweight top 3 sectors, underweight bottom 3 in universe screening
-- [ ] Feed sector momentum score to Claude as additional context
+- [ ] Vary RSI, MA periods, strategy weights, allocation limits
+- [ ] Heat maps: return/Sharpe sensitivity
+- [ ] Document robust vs fragile parameter ranges
 
 ---
 
-## Phase 5: Backtesting & Validation (Weeks 16-24)
+#### US-6.1: Gradient-Boosted Trade Scoring
+**Value:** Potentially +3–7% annual; requires 500+ trade outcomes  
+**Effort:** Large (investigation + implementation); investigate before committing  
+**Data Sources:** trade_outcomes, strategy_decisions, indicators, fundamentals  
+**Stage:** Planned  
 
-_Build confidence in the system with historical evidence._
+**Investigation (before building):**
+- [ ] Literature review; feature importance on trade data
+- [ ] Cross-validation >5% improvement over current scoring
+- [ ] If negative, skip and document
 
-### US-5.1: Backtesting Engine
-**Priority:** P1 (High)
-**Value:** Critical for long-term confidence; release gate before strategy changes
-**Effort:** Large (5-8 days)
-**Data Sources:** yfinance historical data (fetch + CSV cache when `data/backtest/` empty)
-**Developer:** Claude Code (architecture) + Codex (implementation)
+**Implementation (if passes):**
+- [ ] XGBoost: indicators + fundamentals + sentiment → 10-day forward return
+- [ ] Walk-forward retraining (monthly, trailing 6 months)
+- [ ] Output as additional signal to Claude (not replacement); feature importance; fallback if degrades
 
-**Status (2026-03):** Delivered. See `docs/BACKTESTING.md` and `docs/WALK_FORWARD_VALIDATION.md`.
+---
 
-**Detailed implementation plan:** `docs/BACKTESTING_PROJECT_PLAN.md`.
+### P3 — Lower priority
+
+#### US-4.3: Sector Rotation Signal
+**Value:** Sector momentum over long term  
+**Effort:** Medium (3–5 days)  
+**Data Sources:** Sector ETFs via yfinance (XLK, XLF, etc.)  
+**Stage:** Planned  
 
 **Acceptance Criteria:**
-- [x] Replay historical data through deterministic policy (LLM-free proxy: close vs SMA)
-- [x] Simulate risk rules, position sizing, portfolio constraints (paper broker)
-- [x] LLM calls mocked with simplified heuristic (deterministic policy; no LLM in backtest)
-- [x] Output: equity curve, Sharpe ratio, max drawdown, win rate, trades.csv, results.json
-- [x] Walk-forward validation: fixed splits, promotion report (safe to deploy vs hold)
-- [x] Compare: strategy vs buy-and-hold SPY (excess_return_vs_benchmark)
-- [x] yfinance fetch when CSV missing; cache to `data/backtest/<TICKER>.csv`
-
-**Technical Approach:** Custom lightweight engine using pandas. CLI: `--config`, `--synthetic`, `--walk-forward`, `--scenario bull|bear|sideways`.
+- [ ] Relative performance of 11 GICS sectors via ETF proxies
+- [ ] 3-month sector momentum ranking; overweight top 3, underweight bottom 3 in screening
+- [ ] Sector momentum score to Claude as context
 
 ---
 
-### US-5.2: Parameter Sensitivity Analysis
-**Priority:** P2 (Medium)
-**Value:** Understand which parameters matter most — focus tuning effort
-**Effort:** Medium (3-4 days, depends on US-5.1)
-**Data Sources:** Backtesting engine output
-**Developer:** Claude Code
+#### US-6.2: Trade Journal Embeddings & Similarity Search
+**Value:** "Have we seen this pattern before?" context  
+**Effort:** Medium (3–5 days)  
+**Data Sources:** Existing markdown trade journals  
+**Stage:** Planned  
 
 **Acceptance Criteria:**
-- [ ] Vary key parameters: RSI thresholds, MA periods, strategy weights, allocation limits
-- [ ] Heat maps showing return/Sharpe sensitivity to each parameter
-- [ ] Identify robust parameter ranges vs fragile ones
-- [ ] Document which parameters are safe to tune vs which should be left alone
+- [ ] Embeddings per journal entry; similarity search for new proposals
+- [ ] Show outcomes of similar trades to Claude and moderators
+- [ ] Store embeddings (vector column or file)
 
 ---
 
-## Phase 6: Advanced Intelligence (Weeks 20-36)
-
-_ML-assisted improvements, only if justified by accumulated data._
-
-### US-6.1: Gradient-Boosted Trade Scoring
-**Priority:** P2 (Medium) — investigate before committing
-**Value:** Potentially high (+3-7% annual) but uncertain. Requires 500+ trade outcomes for meaningful training.
-**Effort:** Large (5-8 days for investigation + implementation)
-**Data Sources:** trade_outcomes, strategy_decisions, indicators, fundamentals
-**Developer:** Claude Code (investigation) + Project Lead (mathematical validation)
-
-**Investigation Criteria (before building):**
-- [ ] Literature review: does XGBoost/LightGBM add value over simple heuristics for equity selection?
-- [ ] Feature importance analysis on accumulated trade data
-- [ ] Cross-validation showing >5% improvement over current scoring
-- [ ] If investigation is negative, skip this and note findings
-
-**Implementation Criteria (if investigation passes):**
-- [ ] XGBoost model trained on: all indicators + fundamentals + sentiment → 10-day forward return
-- [ ] Walk-forward retraining: monthly retrain on trailing 6 months
-- [ ] Model output feeds as additional signal to Claude (not replacement)
-- [ ] Feature importance dashboard for transparency
-- [ ] Fallback to current scoring if model degrades
-
----
-
-### US-6.2: Trade Journal Embeddings & Similarity Search
-**Priority:** P3 (Low)
-**Value:** Uncertain but intellectually interesting — "have we seen this pattern before?"
-**Effort:** Medium (3-5 days)
-**Data Sources:** Existing markdown trade journals
-**Developer:** Claude Code
-
-**Acceptance Criteria:**
-- [ ] Generate embeddings for each trade journal entry
-- [ ] On new trade proposal, find 3-5 most similar historical trades
-- [ ] Show outcomes of similar trades to Claude and moderators as context
-- [ ] Store embeddings in vector column or separate file
-
----
-
-### US-6.3: Reinforcement Learning Investigation
-**Priority:** P3 (Low) — investigate only, do not implement without strong evidence
-**Value:** Uncertain. Academic results are mixed. RL agents are opaque and fragile.
-**Effort:** Investigation only (3-5 days)
-**Data Sources:** Academic literature, our backtesting results
-**Developer:** Project Lead + Claude Code
+#### US-6.3: Reinforcement Learning Investigation
+**Value:** Uncertain; investigate only  
+**Effort:** Investigation (3–5 days)  
+**Data Sources:** Academic literature, backtesting results  
+**Stage:** Planned  
 
 **Investigation Criteria:**
-- [ ] Review: FinRL-DeepSeek, CVaR-PPO approaches from 2025 literature
-- [ ] Assess: do we have enough data? (typically need 10,000+ episodes)
-- [ ] Assess: can we maintain transparency and interpretability?
-- [ ] Decision gate: proceed only if expected Sharpe improvement > 0.3 with interpretable policy
-- [ ] Document findings regardless of decision
+- [ ] Review FinRL-DeepSeek, CVaR-PPO; assess data and interpretability
+- [ ] Proceed only if expected Sharpe improvement > 0.3 with interpretable policy
+- [ ] Document findings regardless
 
 ---
 
-## Next Week Focus (Current Sprint)
+#### US-3.4: Universal Opportunity Value (UOV) Ranking and Queueing
+**Value:** Solves capital saturation; deterministic opportunity ranking and queue  
+**Effort:** Medium  
+**Data Sources:** strategy_decisions, moderation_logs, risk_decisions, sub-strategy, sentiment, instruments  
+**Stage:** Delivered  
 
-**Primary user stories for the upcoming week:**
+**Status (2026-03-03):** Delivered  
 
-1. **US-5.1 — Backtesting Foundations** [delivered]
-   - Replay engine + paper broker core
-   - Deterministic LLM-free policy proxy
-   - Benchmarked baseline report (results.json, trades.csv, equity_curve.csv)
-   - Walk-forward split runner + promotion report
-   - yfinance fetch + CSV cache for real data
-
-2. **US-5.2 prep — Parameter Sensitivity Harness Setup**
-   - Define parameter registry for sweeps (no optimisation yet)
-   - Add baseline config profiles for bull/bear/sideways windows
-   - Establish result artifact schema for later sensitivity analysis
-
-**Delivery references:**
-- Chat implementation details: `docs/CHAT_INTERFACE_PROJECT.md`
-- Slack natural language trade commands (planned): `docs/SLACK_TRADE_COMMANDS_PROJECT.md`
-- Order management (stop-loss, ATR reassessment, trailing, limit dip-buy): `docs/ORDER_MANAGEMENT_PROJECT.md`
-- Backtesting implementation details: `docs/BACKTESTING_PROJECT_PLAN.md`
-- Dashboard & Visualisation (phases 1–4): `docs/DASHBOARD_VISUALISATION_PROJECT.md`
+**Delivered Scope:**
+- [x] UOV hybrid score (uov_raw), z-score (uov_z), stage penalties (uov_final), EWMA (uov_ewma)
+- [x] Shadow/active in settings.yaml; active mode ranked BUY execution; queue + TTL
+- [x] Conservative swap suggestions (delta_z ≥ 1.0); no autonomous SELL
+- [x] Tables: opportunity_score_snapshots, opportunity_queue; cycle output: opportunity_ranking, queued_candidates, swap_candidates
 
 ---
 
-## Resource Allocation & Delivery Timeline
+## Resource allocation
 
-### Team & Constraints
+### Team & constraints
 
 | Resource | Availability | Strengths | Constraints |
 |----------|-------------|-----------|-------------|
-| **Project Lead** | Part-time (evenings/weekends) | PhD Mathematics, data science in finance, strategic direction | Time-limited, final approver |
-| **Claude Code Opus 4.6** | Cloud, primary developer | Architecture, complex logic, strategy code, investigation | Pro tier limits (frequent resets) |
-| **Codex 5.3+** | Local VS Code, secondary | Longer runs, implementation tasks, tests | May be less accurate, needs review |
+| **Project Lead** | Part-time (evenings/weekends) | PhD Mathematics, data science in finance, strategy | Time-limited, final approver |
+| **Claude Code Opus 4.6** | Cloud, primary | Architecture, complex logic, strategy, investigation | Pro tier limits |
+| **Codex 5.3+** | Local VS Code, secondary | Implementation, tests | May need review |
 
-### Delivery Timeline
+### Task assignment
 
-```
-Week  1-2:  POC deployment to VPS (US-1.4) + Performance tracking (US-1.1)
-Week  3-4:  Trade outcome tracker (US-1.2) + Performance dashboard (US-1.3)
-Week  5-6:  Chat interface + real-time alerts (US-1.5) [delivered]
-Week  7-8:  Backtesting foundations kickoff (US-5.1 phase 1) + buffer for live-ops fixes
-            Dashboard & Visualisation Phase 1 (US-1.7) can run in parallel or next sprint
-Week  9-10: Conviction calibration (US-2.1) — needs ~50 trades first
-Week 11-12: Dynamic strategy weighting (US-2.2) + Moderator analysis (US-2.3)
-Week 13-14: Risk-parity sizing (US-3.1) + Volume signals (US-4.1)
-Week 15-16: Enhanced regime detection (US-3.2) + Correlation screening (US-3.3)
-Week 17-18: Earnings calendar (US-4.2) + Sector rotation (US-4.3)
-Week 19-22: Backtesting engine (US-5.1) + Parameter sensitivity (US-5.2)
-Week 23-26: ML investigation (US-6.1) — decision gate
-Week 27-32: ML implementation (if justified) or alternative enhancements
-Week 33-36: RL investigation (US-6.3), journal embeddings (US-6.2)
-```
-
-### Task Assignment Strategy
-
-| Task Type | Primary Developer | Reviewer |
-|-----------|------------------|----------|
+| Task Type | Primary | Reviewer |
+|-----------|---------|----------|
 | Architecture & complex logic | Claude Code | Project Lead |
-| New database models & migrations | Claude Code | Codex (tests) |
-| Signal/indicator additions | Codex | Claude Code (review) |
+| New DB models & migrations | Claude Code | Codex (tests) |
+| Signal/indicator additions | Codex | Claude Code |
 | Dashboard & reporting | Codex | Project Lead |
-| ML investigation & maths | Claude Code + Project Lead | Project Lead (final) |
-| Tests for new features | Developer who builds it | Other developer |
-| VPS deployment & ops | Project Lead | N/A |
+| ML investigation & maths | Claude Code + Project Lead | Project Lead |
+| Tests for new features | Developer who builds | Other developer |
+| VPS deployment & ops | Project Lead | — |
 
 ---
 
-## Priority Matrix
+## Next sprint focus
 
-| # | User Story | Value | Feasibility | Effort | Data Needed | Priority |
-|---|-----------|-------|-------------|--------|-------------|----------|
-| 1.4 | Deploy POC to VPS | Critical | Easy | S | None | **P0** |
-| 1.1 | Performance tracking | Critical | Easy | M | Existing DB | **P0** |
-| 1.2 | Trade outcome tracker | Critical | Easy | M | Existing DB | **P0** |
-| 1.3 | Performance dashboard | High | Easy | S | US-1.1, 1.2 | **P1** |
-| 1.5 | Chat interface + trade alerts | High | Easy-Med | M | Existing DB + orchestrator events | **P1** |
-| 1.6 | Slack natural language trade commands | High | Medium | M-L | Full pipeline + slack_command_log | **P1** |
-| 1.7 | Dashboard & Visualisation (Phase 1 MVP) | High | Medium | L | Existing DB + events_log | **P1** |
-| 2.1 | Conviction calibration | High | Medium | M | ~50 trades | **P1** |
-| 2.2 | Dynamic strategy weighting | High | Medium | M | ~50 trades | **P1** |
-| 3.1 | Risk-parity sizing | High | Easy | M | Historical prices | **P1** |
-| 5.1 | Backtesting engine | High | Medium | L | yfinance history | **P1** |
-| 2.3 | Moderator effectiveness | Medium | Easy | S | ~100 trades | **P2** |
-| 3.2 | Enhanced regime detection | Medium | Medium | M | Existing macro | **P2** |
-| 3.3 | Correlation-aware screening | Medium | Easy | S | Historical prices | **P2** |
-| 4.1 | Volume-weighted signals | Medium | Easy | S | Already fetched | **P2** |
-| 4.2 | Earnings calendar | Medium | Easy | M | yfinance (free) | **P2** |
-| 5.2 | Parameter sensitivity | Medium | Medium | M | Backtest engine | **P2** |
-| 6.1 | ML trade scoring | Medium | Hard | L | 500+ trades | **P2** |
-| 4.3 | Sector rotation signal | Low-Med | Easy | M | ETF data (free) | **P3** |
-| 6.2 | Journal embeddings | Low | Medium | M | Trade journals | **P3** |
-| 6.3 | RL investigation | Low | Hard | M | Academic lit | **P3** |
+**Primary focus:**
+- **US-1.4** — Deploy POC to VPS (when ready)
+- **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (once ~50 trades available)
+- **US-5.2 prep** — Parameter sensitivity harness (registry, baseline configs, result schema)
+- **US-1.7** — Dashboard & Visualisation Phase 1 (can run in parallel)
+
+**Delivery references:**
+- `docs/CHAT_INTERFACE_PROJECT.md`
+- `docs/SLACK_TRADE_COMMANDS_PROJECT.md`
+- `docs/ORDER_MANAGEMENT_PROJECT.md`
+- `docs/BACKTESTING_PROJECT_PLAN.md`
+- `docs/DASHBOARD_VISUALISATION_PROJECT.md`
 
 ---
 
-## Integration Guarantees
+## Integration guarantees
 
-All roadmap items are designed to integrate with the existing POC architecture:
+All roadmap items integrate with the existing POC:
 
-1. **Database**: New tables via Alembic migrations. No changes to existing schema.
-2. **Pipeline**: New steps added as post-cycle or pre-strategy hooks. Orchestrator pipeline unchanged.
-3. **Config**: New settings added to settings.yaml with sensible defaults. Existing config unchanged.
-4. **Tests**: Every new feature includes tests using existing in-memory SQLite fixture pattern.
-5. **Fallback**: Every new feature has a disable switch and falls back to current behaviour.
-6. **Logging**: All new computations logged to database for audit trail.
+1. **Database:** New tables via Alembic migrations; no breaking changes to existing schema.  
+2. **Pipeline:** New steps as post-cycle or pre-strategy hooks; orchestrator flow unchanged.  
+3. **Config:** New keys in settings.yaml with defaults; existing config unchanged.  
+4. **Tests:** New features use in-memory SQLite fixture pattern.  
+5. **Fallback:** Every feature has a disable switch and falls back to current behaviour.  
+6. **Logging:** New computations logged to database for audit.
 
-The POC deployed today will run continuously and accumulate data while we build Phase 1-6 features in parallel.
+The POC runs continuously and accumulates data while we add features in priority order.
