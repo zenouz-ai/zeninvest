@@ -13,6 +13,7 @@ from typing import Any
 import click
 
 from src.agents.execution.order_manager import OrderManager
+from src.agents.execution.stop_loss_manager import StopLossManager
 from src.agents.execution.t212_client import T212Client
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.data_fetcher import DataFetcher
@@ -52,6 +53,7 @@ class Orchestrator:
 
         self._t212_client: T212Client | None = None
         self._order_manager: OrderManager | None = None
+        self._stop_loss_manager: StopLossManager | None = None
 
     @property
     def t212_client(self) -> T212Client:
@@ -64,6 +66,16 @@ class Orchestrator:
         if self._order_manager is None:
             self._order_manager = OrderManager(client=self.t212_client, dry_run=self.dry_run)
         return self._order_manager
+
+    @property
+    def stop_loss_manager(self) -> StopLossManager:
+        if self._stop_loss_manager is None:
+            self._stop_loss_manager = StopLossManager(
+                order_manager=self.order_manager,
+                client=self.t212_client,
+                dry_run=self.dry_run,
+            )
+        return self._stop_loss_manager
 
     def run_cycle(self) -> dict[str, Any]:
         """Run a full investment cycle.
@@ -564,9 +576,55 @@ class Orchestrator:
                 pending = pending_by_ticker.get(ticker)
                 if pending is None:
                     continue
+
+                decision = pending["decision"]
+                entry_type = str(decision.get("entry_type", "market")).lower()
+
+                # Limit dip-buy: place limit order below current price
+                if (
+                    entry_type == "limit_dip"
+                    and self.settings.order_management_enabled
+                    and self.settings.limit_orders_enabled
+                ):
+                    final_alloc = float(pending.get("final_allocation_pct", 0.0))
+                    trade_value = current_value * final_alloc / 100
+                    price = self._get_current_price(ticker, stocks_data)
+                    if price > 0:
+                        limit_result = self.stop_loss_manager.place_limit_buy(
+                            ticker=ticker,
+                            target_amount_gbp=trade_value,
+                            current_price=price,
+                            offset_pct=decision.get("limit_offset_pct"),
+                            strategy=decision.get("primary_strategy"),
+                            conviction=decision.get("conviction"),
+                            cycle_id=cycle_id,
+                        )
+                        result["trades"].append({
+                            "ticker": ticker,
+                            "action": "BUY",
+                            "order_type": "limit",
+                            "allocation_pct": final_alloc,
+                            "execution": limit_result,
+                            "moderation": pending["moderation"].consensus,
+                            "risk": pending["risk_verdict"].verdict,
+                        })
+                        self.notification_service.emit_order_adjustment(
+                            cycle_id=cycle_id,
+                            payload={
+                                "cycle_id": cycle_id,
+                                "dry_run": self.dry_run,
+                                "ticker": ticker,
+                                "adjustment_type": "limit_order",
+                                "new_stop_price": limit_result.get("limit_price"),
+                                "current_price": price,
+                                "status": limit_result.get("status"),
+                            },
+                        )
+                    continue
+
                 trade_entry = self._execute_trade(
                     cycle_id=cycle_id,
-                    decision=pending["decision"],
+                    decision=decision,
                     action="BUY",
                     ticker=ticker,
                     final_alloc=float(pending.get("final_allocation_pct", 0.0)),
@@ -586,6 +644,48 @@ class Orchestrator:
                 )
                 if trade_entry:
                     result["trades"].append(trade_entry)
+
+            # --- STEP 7: Intelligent order management (stop-loss reassessment) ---
+            if self.settings.order_management_enabled:
+                try:
+                    current_positions = portfolio_data.get("positions", [])
+                    all_adjustments: list[dict[str, Any]] = []
+
+                    # Reassess stops using ATR-based volatility
+                    if self.settings.reassess_stops_enabled:
+                        reassess_results = self.stop_loss_manager.reassess_stops(
+                            positions=current_positions,
+                            stocks_data=stocks_data,
+                            cycle_id=cycle_id,
+                        )
+                        all_adjustments.extend(reassess_results)
+
+                    # Apply trailing stops
+                    if self.settings.trailing_stops_enabled:
+                        trailing_results = self.stop_loss_manager.apply_trailing_stops(
+                            positions=current_positions,
+                            cycle_id=cycle_id,
+                        )
+                        all_adjustments.extend(trailing_results)
+
+                    result["order_adjustments"] = all_adjustments
+
+                    if all_adjustments:
+                        logger.info(
+                            f"Order management: {len(all_adjustments)} stop-loss adjustments"
+                        )
+                        self.notification_service.emit_order_adjustment(
+                            cycle_id=cycle_id,
+                            payload={
+                                "cycle_id": cycle_id,
+                                "dry_run": self.dry_run,
+                                "adjustment_type": "batch",
+                                "adjustments": all_adjustments,
+                            },
+                        )
+                except Exception as om_err:
+                    logger.warning(f"Order management phase skipped: {om_err}")
+                    result["errors"].append(f"order_management: {om_err}")
 
             # Record cycle completion
             self.state_machine.record_cycle()

@@ -93,10 +93,17 @@ Gemini ----------> GEMINI MODERATOR ---+    (consensus logic)   (moderation_logs
                     correlation, REDUCE check]
                             |
                             v
-Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue)
-  (Practice API)   [Market orders (BUY/SELL/REDUCE),
+Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
+  (Practice API)   [Market orders (BUY/SELL/REDUCE),                stop_loss_adjustments)
                     stop-loss orders (GTC),
+                    limit orders (dip-buy),
                     dedup + rate limit]
+                            |
+                            v
+                   STOP-LOSS MANAGER ----------> SQLite (stop_loss_adjustments)
+                   [ATR-based stop reassessment,
+                    trailing stops (cancel+replace),
+                    limit dip-buy orders]
                             ^
                             |
                    UOV SCORER + OPTIMIZER --> SQLite (opportunity_score_snapshots)
@@ -611,6 +618,7 @@ These are approved near-term projects that are intentionally documented before i
   - `cycle_run_summary` -> Slack only
   - `state_transition` -> Slack + Email
   - `critical_cycle_failure` -> Slack + Email
+  - `order_adjustment` -> Slack only
   - `include_dry_run_alerts: false`
 - **Hookup path used in production rollout:**
   - Slack: Incoming Webhook URL in `.env` via `SLACK_WEBHOOK_URL`
