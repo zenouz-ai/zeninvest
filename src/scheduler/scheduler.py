@@ -58,8 +58,9 @@ def _run_analysis_cycle() -> None:
                 session.add(run)
                 session.commit()
                 session.close()
-            except Exception:
-                pass  # Fail-open
+                logger.debug(f"Created Run record for scheduled cycle {cycle_id}")
+            except Exception as e:
+                logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
         except Exception:
             pass  # Fail-open: dashboard logging must not block
     
@@ -103,9 +104,12 @@ def _run_analysis_cycle() -> None:
                             "duration_seconds": duration_seconds,
                         }
                         session.commit()
+                        logger.debug(f"Updated Run record for scheduled cycle {cycle_id}")
+                    else:
+                        logger.debug(f"Run record not found for cycle {cycle_id}")
                     session.close()
-                except Exception:
-                    pass  # Fail-open
+                except Exception as e:
+                    logger.debug(f"Failed to update Run record (fail-open): {e}", exc_info=True)
             except Exception:
                 pass  # Fail-open
         
@@ -143,9 +147,12 @@ def _run_analysis_cycle() -> None:
                             "duration_seconds": duration_seconds,
                         }
                         session.commit()
+                        logger.debug(f"Updated Run record to failed for cycle {cycle_id}")
+                    else:
+                        logger.debug(f"Run record not found for failed cycle {cycle_id}")
                     session.close()
-                except Exception:
-                    pass  # Fail-open
+                except Exception as e:
+                    logger.debug(f"Failed to update Run record (fail-open): {e}", exc_info=True)
             except Exception:
                 pass  # Fail-open
         

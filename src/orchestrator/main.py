@@ -121,8 +121,9 @@ class Orchestrator:
                     session.add(run)
                     session.commit()
                     session.close()
-                except Exception:
-                    pass  # Fail-open
+                    logger.debug(f"Created Run record for cycle {cycle_id}")
+                except Exception as e:
+                    logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
             except Exception:
                 pass  # Fail-open
 
@@ -195,9 +196,27 @@ class Orchestrator:
                                 "duration_seconds": duration_seconds,
                             }
                             session.commit()
+                            logger.debug(f"Updated Run record for cycle {cycle_id}")
+                        else:
+                            logger.debug(f"Run record not found for cycle {cycle_id}, creating new one")
+                            # Create if missing (might have been created in scheduler)
+                            run = Run(
+                                cycle_id=cycle_id,
+                                run_type="manual" if not self.dry_run else "dry_run",
+                                started_at=cycle_start_time,
+                                completed_at=cycle_end_time,
+                                status=status,
+                                summary_json={
+                                    "num_trades": result["num_trades"],
+                                    "num_rejected": result["num_rejected"],
+                                    "duration_seconds": duration_seconds,
+                                },
+                            )
+                            session.add(run)
+                            session.commit()
                         session.close()
-                    except Exception:
-                        pass  # Fail-open
+                    except Exception as e:
+                        logger.debug(f"Failed to update Run record (fail-open): {e}", exc_info=True)
                 except Exception:
                     pass  # Fail-open
             
