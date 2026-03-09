@@ -19,6 +19,14 @@ from src.utils.logger import get_logger
 
 logger = get_logger("notifications")
 
+# Dashboard event logger (fail-open import)
+try:
+    from dashboard.backend.app.services.event_logger import log_event
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
+    log_event = None
+
 
 class NotificationService:
     """Main notification service for outbound alerts."""
