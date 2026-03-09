@@ -1,0 +1,7 @@
+# Dashboard backend dependencies
+# Note: Most dependencies are already in the main project's pyproject.toml
+# This file is for reference and can be used if dashboard is deployed separately
+
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0

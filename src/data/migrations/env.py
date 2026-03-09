@@ -7,8 +7,22 @@ from sqlalchemy import engine_from_config
 
 from alembic import context
 
-from src.data.models import Base
+from src.data.models import Base as AgentBase
 from src.data.database import DATABASE_URL
+
+# Import dashboard models for migration support
+try:
+    from dashboard.backend.app.database import Base as DashboardBase
+    # Combine metadata from both bases using merge
+    target_metadata = AgentBase.metadata
+    DashboardBase.metadata.create_all = lambda *args, **kwargs: None  # Prevent auto-create
+    # Merge dashboard metadata into agent metadata
+    for table in DashboardBase.metadata.tables.values():
+        if table.name not in target_metadata.tables:
+            table.tometadata(target_metadata)
+except ImportError:
+    # Dashboard not installed yet, use only agent base
+    target_metadata = AgentBase.metadata
 
 # this is the Alembic Config object
 config = context.config
@@ -19,9 +33,6 @@ config.set_main_option("sqlalchemy.url", DATABASE_URL)
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
-# Model metadata for autogenerate support
-target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:

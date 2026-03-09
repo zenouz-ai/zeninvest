@@ -101,6 +101,26 @@ See [Backtesting](docs/BACKTESTING.md) and [Walk-Forward Validation](docs/WALK_F
 poetry run python -m src.scheduler.scheduler
 ```
 
+### Dashboard Backend (Phase 1)
+
+```bash
+# Start the dashboard API server
+poetry run python dashboard/backend/run_server.py
+
+# API will be available at http://localhost:8000
+# OpenAPI docs at http://localhost:8000/docs
+```
+
+**Endpoints:**
+- `GET /api/runs/` — Run history
+- `GET /api/universe/` — Stock universe explorer
+- `GET /api/portfolio/` — Current portfolio snapshot
+- `GET /api/orders/` — Order history
+- `GET /api/events/` — Event log history
+- `GET /api/events/stream` — SSE stream for real-time events
+
+**Configuration:** Set `dashboard.enabled: true` and `dashboard.events_enabled: true` in `config/settings.yaml`.
+
 **Schedule (configurable):**
 
 | Job | When | Notes |
@@ -251,7 +271,7 @@ notebooks/
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
 - [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — prioritised user stories for systematic improvement
-- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — planned web dashboard (activity feed, universe, run history, portfolio; phases 1–4)
+- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — web dashboard (Phase 1 backend complete: REST API + SSE; Phase 2 frontend planned)
 - [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
 - [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
 - [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — repeatable VPS-to-local export procedure with integrity checks for investigations

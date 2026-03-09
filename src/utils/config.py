@@ -517,6 +517,19 @@ class Settings:
         raw = (self.get_env_optional("SMTP_USE_TLS", "true") or "true").strip().lower()
         return raw in {"1", "true", "yes", "y", "on"}
 
+    # --- Dashboard ---
+    @property
+    def dashboard(self) -> dict[str, Any]:
+        return self._config.get("dashboard", {})
+
+    @property
+    def dashboard_enabled(self) -> bool:
+        return bool(self.dashboard.get("enabled", True))
+
+    @property
+    def dashboard_events_enabled(self) -> bool:
+        return bool(self.dashboard.get("events_enabled", True))
+
 
 # Singleton
 _settings: Settings | None = None

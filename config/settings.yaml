@@ -129,3 +129,7 @@ notifications:
   include_dry_run_alerts: false
   command_gateway:
     enabled: false
+
+dashboard:
+  enabled: true
+  events_enabled: true

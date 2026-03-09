@@ -73,6 +73,15 @@ src/
     ├── config.py          # Settings singleton via get_settings()
     ├── cost_tracker.py    # Per-provider budget enforcement + graceful degradation
     └── logger.py          # Rich logging
+dashboard/
+└── backend/               # Dashboard API backend (Phase 1)
+    └── app/
+        ├── main.py        # FastAPI app with CORS, lifespan events
+        ├── database.py    # Dashboard models (EventsLog, Run) + init
+        ├── schemas.py     # Pydantic response models
+        ├── routers/       # REST endpoints (runs, universe, portfolio, orders, events/SSE)
+        └── services/
+            └── event_logger.py  # Non-blocking event logger (agent can import)
 config/
 ├── settings.yaml          # All tuneable parameters (trading, risk, strategy, universe, costs, notifications)
 └── .env.example           # Environment variables template (required core API keys + optional notification keys)
@@ -166,6 +175,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
     - **Software trailing stops**: Tracks high-water mark per position. Ratchets stop up as price rises. Implemented by cancel + replace since T212 has no native trailing stop.
     - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
     - All adjustments logged to `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
+13. **Dashboard backend (Phase 1)** — FastAPI REST API + SSE stream for real-time activity feed. Endpoints: `/api/runs`, `/api/universe`, `/api/portfolio`, `/api/orders`, `/api/events/stream`. Event logger service (`dashboard.backend.app.services.event_logger`) provides non-blocking, fail-open event emission. Agent modules can import `log_event()` to emit events. Tables: `events_log` (mandatory), `runs` (optional, simplifies run history). Config: `dashboard.enabled`, `dashboard.events_enabled`.
 
 ## Scheduling Architecture
 
@@ -270,6 +280,8 @@ Gathers macro-level market intelligence to inform trading decisions:
 | `PerformanceMetric` | `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy, alpha |
 | `TradeOutcome` | `trade_outcomes` | Per-trade P&L linking BUY to SELL/REDUCE with conviction and moderator linkage |
 | `StopLossAdjustment` | `stop_loss_adjustments` | Audit trail for stop-loss reassessments, trailing ratchets, and limit orders |
+| `EventsLog` | `events_log` | Real-time activity stream for dashboard SSE (event_type, source, message, metadata_json) |
+| `Run` | `runs` | Run metadata (cycle_id, run_type, started_at, completed_at, status, summary_json) |
 
 ## Configuration (config/settings.yaml)
 
@@ -285,6 +297,7 @@ Key tuneable values:
 - **Opportunity**: `enabled`, `mode: shadow|active`, immediate/queue z-thresholds, queue TTL, swap delta, EWMA half-life, weighted feature map, stage penalties
 - **Order management**: `enabled`, `reassess_stops`, `trailing_stops` (enabled, trail_pct), `limit_orders` (enabled, offset_pct, validity), ATR multiplier, min/max stop distance, only_tighten_stops
 - **Notifications**: `enabled`, channels/routes, retry/timeout/dedup config, dry-run alert policy, command gateway flag (disabled in v1)
+- **Dashboard**: `enabled`, `events_enabled` (Phase 1 backend: REST API + SSE stream)
 
 ## When Adding New Features
 
