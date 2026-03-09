@@ -9,7 +9,7 @@
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **6** · Pipeline **16** (order by priority and feasibility below)
+**At a glance:** Delivered **7** · Pipeline **16** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -22,6 +22,7 @@ timeline
         US-1.3 : CLI Dashboard
         US-1.5 : Chat Interface & Alerts
         US-3.4 : UOV Ranking & Queue
+        US-3.5 : Intelligent Order Management
         US-5.1 : Backtesting Engine
     section Pipeline (priority order)
         US-1.4 : Deploy POC to VPS
@@ -51,7 +52,8 @@ timeline
 | | 3 | US-1.3 | CLI Dashboard |
 | | 4 | US-1.5 | Chat Interface & Alerts |
 | | 5 | US-3.4 | UOV Ranking & Queue |
-| | 6 | US-5.1 | Backtesting Engine |
+| | 6 | US-3.5 | Intelligent Order Management |
+| | 7 | US-5.1 | Backtesting Engine |
 | **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
 | | 2 | US-1.7 | Dashboard & Visualisation |
 | | 3 | US-1.6 | Slack NL Trade Commands |
@@ -89,6 +91,7 @@ timeline
 | **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Regime-aware strategy selection improves hit rate | **Planned** |
 | **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; soft signal to committee | **Planned** |
 | **US-3.4** | UOV Ranking & Queueing | Hybrid score, z-score, EWMA; ranked BUY execution; queue + swap suggestions | Solves capital saturation; deterministic opportunity ranking | **Delivered** |
+| **US-3.5** | Intelligent Order Management | Stop-loss (GTC) after BUY, ATR-based stop reassessment, software trailing stops, and limit dip-buy orders | More robust downside protection and smarter entries without manual intervention | **Delivered** |
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
@@ -143,6 +146,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 | 1.5 | Chat interface + trade alerts | High | Easy–Med | M | Existing DB + events | **P1** |
 | 3.1 | Risk-parity sizing | High | Easy | M | Historical prices | **P1** |
 | 5.1 | Backtesting engine | High | Medium | L | yfinance history | **P1** |
+| 3.5 | Intelligent order management | High | Easy–Med | M | Existing DB + T212 stops/limits | **P1** |
 | 2.1 | Conviction calibration | High | Medium | M | ~50 trades | **P1** |
 | 2.2 | Dynamic strategy weighting | High | Medium | M | ~50 trades | **P1** |
 | 1.6 | Slack NL trade commands | High | Medium | M–L | Full pipeline | **P1** |
@@ -297,6 +301,29 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 - [x] Compare vs buy-and-hold SPY; yfinance fetch + CSV cache
 
 **Integration:** CLI `--config`, `--synthetic`, `--walk-forward`, `--scenario bull|bear|sideways`.
+
+---
+
+#### US-3.5: Intelligent Order Management (Stop-Loss, Trailing, Limit Dip-Buy)
+
+**Value:** Automatic downside protection and smarter entries without manual intervention  
+**Effort:** Medium (implemented)  
+**Data Sources:** Existing orders, positions, indicators (ATR), T212 stop/limit APIs  
+**Stage:** Delivered  
+
+**Summary:**  
+Implements an order-management layer that automatically:  
+- Places a **GTC stop-loss after every BUY** using Claude's `stop_loss_pct`.  
+- **Reassesses stops each cycle** using 14-day ATR × configurable multiplier, clamped to `[min_stop_distance_pct, max_stop_distance_pct]`, and (by default) only tightens stops (never widens).  
+- Provides **software trailing stops** using a high-water mark per position and cancel+replace semantics, since T212 has no native trailing stop.  
+- Supports **limit dip-buy entries** when strategy outputs `entry_type: "limit_dip"`, placing a limit BUY below current price with configurable offset and validity.  
+
+All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_adjustment` Slack notifications. Behaviour and config are documented in `docs/ORDER_MANAGEMENT_PROJECT.md` and referenced from `GOVERNANCE.md` (§3.3 Intelligent Order Management).
+
+**Integration:**  
+- `OrderManager.place_stop_loss()` called after successful BUY executions.  
+- `StopLossManager.reassess_stops()` and `StopLossManager.apply_trailing_stops()` run after execution each cycle.  
+- BUY path branches on `decision.entry_type` (`market` vs `limit_dip`) to choose market vs limit orders.  
 
 ---
 
