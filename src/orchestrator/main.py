@@ -93,6 +93,38 @@ class Orchestrator:
         """
         cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
         logger.info(f"Starting cycle {cycle_id} (dry_run={self.dry_run})")
+        
+        # Log run_started event (when called directly, not via scheduler)
+        cycle_start_time = datetime.now(timezone.utc)
+        if DASHBOARD_AVAILABLE and log_event:
+            try:
+                log_event(
+                    event_type="run_started",
+                    source="orchestrator",
+                    message=f"Cycle {cycle_id} starting (dry_run={self.dry_run})",
+                    metadata={
+                        "cycle_id": cycle_id,
+                        "run_type": "manual" if not self.dry_run else "dry_run",
+                        "started_at": cycle_start_time.isoformat(),
+                    },
+                )
+                # Create run record
+                try:
+                    from dashboard.backend.app.database import Run
+                    session = get_session()
+                    run = Run(
+                        cycle_id=cycle_id,
+                        run_type="manual" if not self.dry_run else "dry_run",
+                        started_at=cycle_start_time,
+                        status="running",
+                    )
+                    session.add(run)
+                    session.commit()
+                    session.close()
+                except Exception:
+                    pass  # Fail-open
+            except Exception:
+                pass  # Fail-open
 
         result: dict[str, Any] = {
             "cycle_id": cycle_id,
@@ -130,6 +162,45 @@ class Orchestrator:
             result["num_rejected"] = len(result["rejected_stocks"])
             result["cost_summary"] = get_cost_summary(days=1)
             _emit_cycle_summary()
+            
+            # Log run_completed event (when called directly, not via scheduler)
+            cycle_end_time = datetime.now(timezone.utc)
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
+                    log_event(
+                        event_type="run_completed",
+                        source="orchestrator",
+                        message=f"Cycle {cycle_id} completed: {status} — {result['num_trades']} trades, {result['num_rejected']} rejected",
+                        metadata={
+                            "cycle_id": cycle_id,
+                            "run_type": "manual" if not self.dry_run else "dry_run",
+                            "status": status,
+                            "duration_seconds": duration_seconds,
+                            "num_trades": result["num_trades"],
+                            "num_rejected": result["num_rejected"],
+                        },
+                    )
+                    # Update run record
+                    try:
+                        from dashboard.backend.app.database import Run
+                        session = get_session()
+                        run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                        if run:
+                            run.completed_at = cycle_end_time
+                            run.status = status
+                            run.summary_json = {
+                                "num_trades": result["num_trades"],
+                                "num_rejected": result["num_rejected"],
+                                "duration_seconds": duration_seconds,
+                            }
+                            session.commit()
+                        session.close()
+                    except Exception:
+                        pass  # Fail-open
+                except Exception:
+                    pass  # Fail-open
+            
             return result
 
         try:
