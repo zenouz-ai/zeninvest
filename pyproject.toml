@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Autonomous investment agent using multi-LLM strategy with Trading 212 API"
 authors = ["Investment Agent Team"]
 readme = "README.md"
-packages = [{include = "src"}]
+packages = [{include = "src"}, {include = "dashboard"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
