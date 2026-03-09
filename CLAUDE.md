@@ -228,7 +228,7 @@ SMTP_USE_TLS
 ### Notification module structure (`src/agents/notifications/`)
 
 - **types.py** — `NotificationEvent`, `NotificationMessage`, `TradeInstructionPayload`, `TradeExecutionPayload`, `NotificationError`
-- **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y), reasoning excerpt, and stage reason for queued/filtered decisions (e.g. "Queued by UOV optimizer (capacity/threshold gating)").
+- **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y, or "—" when committee not invoked e.g. HOLD), reasoning excerpt, and stage reason for queued/filtered decisions (e.g. "Queued by UOV optimizer (capacity/threshold gating)").
 - **service.py** — `NotificationService` with `emit_*` methods. Fail-open: all exceptions caught, logged with `exc_info`, and never propagated. Retries with backoff; failed attempts recorded in `notification_logs`.
 - **providers/** — Slack webhook, SMTP email. Providers implement `send(subject, body)` and raise on failure.
 - **Event types**: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`
