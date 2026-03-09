@@ -455,10 +455,16 @@ def _severity_prefix(severity: str) -> str:
 
 
 def _committee_summary(moderation: Any, risk: Any) -> str:
-    """Format moderation + risk verdict as committee vote summary."""
-    mod = str(moderation).strip() if moderation else "N/A"
-    rsk = str(risk).strip() if risk else "N/A"
-    return f"Moderation={mod} | Risk={rsk}"
+    """Format moderation + risk verdict as committee vote summary.
+
+    For HOLD decisions, moderation and risk are never invoked, so both are None.
+    Show "—" instead of "N/A" to indicate "committee not invoked" (refined per US-1.5).
+    """
+    mod = str(moderation).strip() if moderation else ""
+    rsk = str(risk).strip() if risk else ""
+    if not mod and not rsk:
+        return "—"  # Committee not invoked (e.g. HOLD)
+    return f"Moderation={mod or 'N/A'} | Risk={rsk or 'N/A'}"
 
 
 def _display_exec_status(value: Any) -> str:

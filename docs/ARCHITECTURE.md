@@ -607,7 +607,7 @@ graph TB
 These are approved near-term projects that are intentionally documented before implementation.
 
 ### 1) Chat Interface & Real-Time Alerts (US-1.5)
-- **Implemented in v1:** outbound notifications for trade instruction approvals, trade execution results, cycle run summaries, state transitions, and critical failures. Slack/email cycle summaries include per-decision ticker, action, quantity (or "queued"), committee summary, reasoning excerpt, and stage reason for queued/filtered decisions.
+- **Implemented in v1:** outbound notifications for trade instruction approvals, trade execution results, cycle run summaries, state transitions, and critical failures. Slack/email cycle summaries include per-decision ticker, action, quantity (or "queued"), committee summary (Moderation/Risk or "—" when not invoked, e.g. HOLD), reasoning excerpt, and stage reason for queued/filtered decisions.
 - **Implemented channels:** Slack webhook + email (SMTP), with retries/timeouts/dedup and fail-open behavior.
 - **Implemented persistence:** `notification_logs` table for send-attempt audit trail.
 - **Operational profile (current default):**
