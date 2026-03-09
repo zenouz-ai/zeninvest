@@ -36,6 +36,14 @@ from src.utils.logger import get_logger
 
 logger = get_logger("orchestrator")
 
+# Dashboard event logger (fail-open import)
+try:
+    from dashboard.backend.app.services.event_logger import log_event
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
+    log_event = None
+
 
 class Orchestrator:
     """Main orchestrator that wires all agents together."""
@@ -344,6 +352,26 @@ class Orchestrator:
             decisions = strategy_result.get("decisions", [])
             strategy_decisions = decisions
             logger.info(f"Strategy produced {len(decisions)} decisions")
+            
+            # Log strategy decisions
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    for decision in decisions:
+                        log_event(
+                            event_type="decision_made",
+                            source="strategy",
+                            message=f"{decision.get('action', 'HOLD')} {decision.get('ticker', 'UNKNOWN')} - {decision.get('reasoning', '')[:100]}",
+                            metadata={
+                                "cycle_id": cycle_id,
+                                "ticker": decision.get("ticker"),
+                                "action": decision.get("action"),
+                                "conviction": decision.get("conviction"),
+                                "target_allocation_pct": decision.get("target_allocation_pct"),
+                                "reasoning": decision.get("reasoning", "")[:500],  # Truncate for storage
+                            },
+                        )
+                except Exception:
+                    pass  # Fail-open
 
             # --- STEP 5: Moderation -> Risk -> (Deferred BUY Execution) ---
             pending_buys: list[dict[str, Any]] = []
@@ -408,6 +436,27 @@ class Orchestrator:
                     cycle_id=cycle_id,
                 )
                 mod_dict = mod_result.to_dict()
+                
+                # Log moderation decision
+                if DASHBOARD_AVAILABLE and log_event:
+                    try:
+                        log_event(
+                            event_type="decision_made",
+                            source="moderation",
+                            message=f"Moderation {mod_result.consensus} for {action} {ticker}",
+                            metadata={
+                                "cycle_id": cycle_id,
+                                "ticker": ticker,
+                                "action": action,
+                                "consensus": mod_result.consensus,
+                                "gpt_score": mod_result.gpt_score,
+                                "gemini_score": mod_result.gemini_score,
+                                "gpt_reasoning": mod_result.gpt_reasoning[:500] if mod_result.gpt_reasoning else None,
+                                "gemini_reasoning": mod_result.gemini_reasoning[:500] if mod_result.gemini_reasoning else None,
+                            },
+                        )
+                    except Exception:
+                        pass  # Fail-open
 
                 if mod_result.consensus == "BLOCKED":
                     logger.info(f"{ticker} BLOCKED by moderation panel")
@@ -459,6 +508,26 @@ class Orchestrator:
                     is_existing_winner=ticker in existing_tickers,
                     cycle_id=cycle_id,
                 )
+                
+                # Log risk decision
+                if DASHBOARD_AVAILABLE and log_event:
+                    try:
+                        log_event(
+                            event_type="decision_made",
+                            source="risk",
+                            message=f"Risk {risk_verdict.verdict} for {action} {ticker}: {risk_verdict.reasoning[:100]}",
+                            metadata={
+                                "cycle_id": cycle_id,
+                                "ticker": ticker,
+                                "action": action,
+                                "verdict": risk_verdict.verdict,
+                                "triggered_rules": risk_verdict.triggered_rules,
+                                "reasoning": risk_verdict.reasoning[:500] if risk_verdict.reasoning else None,
+                                "adjusted_allocation_pct": risk_verdict.adjusted_allocation_pct,
+                            },
+                        )
+                    except Exception:
+                        pass  # Fail-open
 
                 if risk_verdict.verdict == "REJECT":
                     logger.info(f"{ticker} REJECTED by risk: {risk_verdict.reasoning}")

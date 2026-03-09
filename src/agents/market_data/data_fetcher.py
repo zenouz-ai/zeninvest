@@ -23,6 +23,14 @@ from src.utils.logger import get_logger
 
 logger = get_logger("data_fetcher")
 
+# Dashboard event logger (fail-open import)
+try:
+    from dashboard.backend.app.services.event_logger import log_event
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
+    log_event = None
+
 
 class DataFetcher:
     """Unified data fetcher for all market data sources."""
@@ -529,7 +537,7 @@ class DataFetcher:
                 f"cooldown={cooldown_hours}h)"
             )
 
-            return [
+            candidates = [
                 {
                     "ticker": i.ticker,
                     "name": i.name,
@@ -540,6 +548,33 @@ class DataFetcher:
                 }
                 for i in selected
             ]
+            
+            # Log universe_updated event
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    tickers_list = [c["ticker"] for c in candidates]
+                    sector_counts = defaultdict(int)
+                    for c in candidates:
+                        sector_counts[c.get("sector", "Unknown")] += 1
+                    
+                    log_event(
+                        event_type="universe_updated",
+                        source="screener",
+                        message=f"Screened {len(candidates)} candidates (large={min(n_large, len(large))}, mid={min(n_mid, len(mid))}, small={min(n_small, len(small))})",
+                        metadata={
+                            "num_candidates": len(candidates),
+                            "tickers": tickers_list[:50],  # Limit to first 50 for storage
+                            "sector_distribution": dict(sector_counts),
+                            "large_cap_count": min(n_large, len(large)),
+                            "mid_cap_count": min(n_mid, len(mid)),
+                            "small_cap_count": min(n_small, len(small)),
+                            "cooldown_hours": cooldown_hours,
+                        },
+                    )
+                except Exception:
+                    pass  # Fail-open
+            
+            return candidates
 
         finally:
             session.close()

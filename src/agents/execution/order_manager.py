@@ -11,6 +11,14 @@ from src.utils.logger import get_logger
 
 logger = get_logger("order_manager")
 
+# Dashboard event logger (fail-open import)
+try:
+    from dashboard.backend.app.services.event_logger import log_event
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
+    log_event = None
+
 DEDUP_WINDOW_MINUTES = 5
 
 
@@ -150,6 +158,29 @@ class OrderManager:
                 risk_result=risk_result,
                 dedup_key=dedup_key,
             )
+            
+            # Log order_placed event
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    log_event(
+                        event_type="order_placed",
+                        source="execution",
+                        message=f"[DRY RUN] {action} {abs(quantity)} x {ticker} @ {current_price}",
+                        metadata={
+                            "order_id": order.id,
+                            "ticker": ticker,
+                            "action": action,
+                            "quantity": abs(quantity),
+                            "price": current_price,
+                            "value_gbp": value_gbp,
+                            "status": "dry_run",
+                            "strategy": strategy,
+                            "conviction": conviction,
+                        },
+                    )
+                except Exception:
+                    pass  # Fail-open
+            
             return {
                 "status": "dry_run",
                 "order_id": order.id,
@@ -161,6 +192,26 @@ class OrderManager:
             }
 
         try:
+            # Log order_placed event before execution
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    log_event(
+                        event_type="order_placed",
+                        source="execution",
+                        message=f"Placing {action} order: {abs(quantity)} x {ticker} @ {current_price}",
+                        metadata={
+                            "ticker": ticker,
+                            "action": action,
+                            "quantity": abs(quantity),
+                            "price": current_price,
+                            "value_gbp": value_gbp,
+                            "strategy": strategy,
+                            "conviction": conviction,
+                        },
+                    )
+                except Exception:
+                    pass  # Fail-open
+            
             result = self.client.place_market_order(ticker, quantity)
             t212_order_id = result.get("id") or result.get("orderId")
 
@@ -181,6 +232,30 @@ class OrderManager:
             )
 
             logger.info(f"Order executed: {action} {abs(quantity)} x {ticker} = £{value_gbp:.2f}")
+            
+            # Log order_executed event
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    log_event(
+                        event_type="order_executed",
+                        source="execution",
+                        message=f"Order executed: {action} {abs(quantity)} x {ticker} @ {current_price} = £{value_gbp:.2f}",
+                        metadata={
+                            "order_id": order.id,
+                            "t212_order_id": str(t212_order_id) if t212_order_id else None,
+                            "ticker": ticker,
+                            "action": action,
+                            "quantity": abs(quantity),
+                            "price": current_price,
+                            "value_gbp": value_gbp,
+                            "status": "filled",
+                            "strategy": strategy,
+                            "conviction": conviction,
+                        },
+                    )
+                except Exception:
+                    pass  # Fail-open
+            
             return {
                 "status": "filled",
                 "order_id": order.id,

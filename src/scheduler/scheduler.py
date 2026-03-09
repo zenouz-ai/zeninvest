@@ -13,23 +13,146 @@ from src.utils.logger import get_logger
 
 logger = get_logger("scheduler")
 
+# Dashboard event logger (fail-open import)
+try:
+    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.database import Run
+    from src.data.database import get_session as get_db_session
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
+    log_event = None
+
 
 def _run_analysis_cycle() -> None:
     """Run a full analysis/trading cycle."""
     from src.agents.notifications import NotificationService
     from src.orchestrator.main import Orchestrator
+    
+    cycle_start_time = datetime.now(timezone.utc)
+    cycle_id = None
+    
+    # Log run_started event
+    if DASHBOARD_AVAILABLE and log_event:
+        try:
+            cycle_id = f"scheduled_{cycle_start_time.strftime('%Y%m%d_%H%M%S')}"
+            log_event(
+                event_type="run_started",
+                source="scheduler",
+                message=f"Scheduled analysis cycle starting",
+                metadata={
+                    "cycle_id": cycle_id,
+                    "run_type": "scheduled",
+                    "started_at": cycle_start_time.isoformat(),
+                },
+            )
+            # Create run record
+            try:
+                session = get_db_session()
+                run = Run(
+                    cycle_id=cycle_id,
+                    run_type="scheduled",
+                    started_at=cycle_start_time,
+                    status="running",
+                )
+                session.add(run)
+                session.commit()
+                session.close()
+            except Exception:
+                pass  # Fail-open
+        except Exception:
+            pass  # Fail-open: dashboard logging must not block
+    
     logger.info("Scheduled analysis cycle starting...")
     orchestrator = Orchestrator(dry_run=False)
     notifications = NotificationService()
+    
     try:
         result = orchestrator.run_cycle()
+        cycle_id = result.get("cycle_id", cycle_id)
         logger.info(f"Cycle completed: {result.get('status')} — {result.get('num_trades', 0)} trades")
+        
+        # Log run_completed event
+        if DASHBOARD_AVAILABLE and log_event:
+            try:
+                cycle_end_time = datetime.now(timezone.utc)
+                duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
+                log_event(
+                    event_type="run_completed",
+                    source="scheduler",
+                    message=f"Scheduled cycle completed: {result.get('status')} — {result.get('num_trades', 0)} trades",
+                    metadata={
+                        "cycle_id": cycle_id,
+                        "run_type": "scheduled",
+                        "status": result.get("status", "completed"),
+                        "duration_seconds": duration_seconds,
+                        "num_trades": result.get("num_trades", 0),
+                        "num_rejected": len(result.get("rejected_stocks", [])),
+                    },
+                )
+                # Update run record
+                try:
+                    session = get_db_session()
+                    run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                    if run:
+                        run.completed_at = cycle_end_time
+                        run.status = result.get("status", "completed")
+                        run.summary_json = {
+                            "num_trades": result.get("num_trades", 0),
+                            "num_rejected": len(result.get("rejected_stocks", [])),
+                            "duration_seconds": duration_seconds,
+                        }
+                        session.commit()
+                    session.close()
+                except Exception:
+                    pass  # Fail-open
+            except Exception:
+                pass  # Fail-open
+        
     except Exception as e:
         logger.error(f"Scheduled cycle failed: {e}")
+        
+        # Log run_completed with error
+        if DASHBOARD_AVAILABLE and log_event:
+            try:
+                cycle_end_time = datetime.now(timezone.utc)
+                duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
+                log_event(
+                    event_type="run_completed",
+                    source="scheduler",
+                    message=f"Scheduled cycle failed: {str(e)}",
+                    metadata={
+                        "cycle_id": cycle_id,
+                        "run_type": "scheduled",
+                        "status": "failed",
+                        "duration_seconds": duration_seconds,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                    },
+                )
+                # Update run record
+                try:
+                    session = get_db_session()
+                    run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                    if run:
+                        run.completed_at = cycle_end_time
+                        run.status = "failed"
+                        run.summary_json = {
+                            "error_type": type(e).__name__,
+                            "error_message": str(e),
+                            "duration_seconds": duration_seconds,
+                        }
+                        session.commit()
+                    session.close()
+                except Exception:
+                    pass  # Fail-open
+            except Exception:
+                pass  # Fail-open
+        
         notifications.emit_critical_cycle_failure(
-            cycle_id=None,
+            cycle_id=cycle_id,
             payload={
-                "cycle_id": None,
+                "cycle_id": cycle_id,
                 "dry_run": False,
                 "stage": "scheduler_analysis_cycle",
                 "error_type": type(e).__name__,

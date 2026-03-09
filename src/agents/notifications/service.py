@@ -192,6 +192,25 @@ class NotificationService:
             channels = self.routes.get(event.event_type, self.default_channels)
             for channel in channels:
                 self._send_to_channel(event, channel)
+                
+            # Log notification_sent event to dashboard
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    log_event(
+                        event_type="notification_sent",
+                        source="notifications",
+                        message=f"Sent {event.event_type} notification to {', '.join(channels)}",
+                        metadata={
+                            "event_type": event.event_type,
+                            "channels": channels,
+                            "cycle_id": cycle_id,
+                            "severity": severity,
+                            "ticker": payload.get("ticker"),
+                            "action": payload.get("action"),
+                        },
+                    )
+                except Exception:
+                    pass  # Fail-open
         except Exception as exc:
             logger.error(
                 "Notification emit failed (fail-open: pipeline continues): event=%s cycle_id=%s error=%s",
@@ -248,6 +267,27 @@ class NotificationService:
                         latency_ms=latency_ms,
                         recipient=provider.recipient,
                     )
+                    
+                    # Log notification_sent event to dashboard (only on successful send)
+                    if DASHBOARD_AVAILABLE and log_event:
+                        try:
+                            log_event(
+                                event_type="notification_sent",
+                                source="notifications",
+                                message=f"Sent {event.event_type} to {channel}",
+                                metadata={
+                                    "event_type": event.event_type,
+                                    "channel": channel,
+                                    "cycle_id": event.cycle_id,
+                                    "severity": event.severity,
+                                    "ticker": event.payload.get("ticker"),
+                                    "action": event.payload.get("action"),
+                                    "latency_ms": latency_ms,
+                                },
+                            )
+                        except Exception:
+                            pass  # Fail-open
+                    
                     break
                 except Exception as exc:  # pragma: no cover - exercised via tests with mocks
                     latency_ms = (time.perf_counter() - start) * 1000
