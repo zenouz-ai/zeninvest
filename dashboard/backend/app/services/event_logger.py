@@ -92,15 +92,26 @@ def flush_events(timeout_seconds: float = 5.0) -> None:
     Args:
         timeout_seconds: Maximum time to wait for queue to empty.
     """
+    # Ensure thread is running
+    if _logger_thread is None or not _logger_thread.is_alive():
+        start_event_logger()
+    
     if _event_queue.empty():
         return
     
+    # Wait for queue to empty, checking periodically
     start = time.time()
     while not _event_queue.empty() and (time.time() - start) < timeout_seconds:
+        # Ensure thread is still alive
+        if _logger_thread is None or not _logger_thread.is_alive():
+            start_event_logger()
         time.sleep(0.1)
     
     if not _event_queue.empty():
         logger.warning(f"Event queue not empty after {timeout_seconds}s timeout ({_event_queue.qsize()} events remaining)")
+    
+    # Give a bit more time for final commits
+    time.sleep(0.5)
 
 
 def log_event(
