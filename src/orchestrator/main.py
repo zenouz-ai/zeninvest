@@ -201,6 +201,14 @@ class Orchestrator:
                 except Exception:
                     pass  # Fail-open
             
+            # Flush events before returning (ensure they're processed)
+            if DASHBOARD_AVAILABLE:
+                try:
+                    from dashboard.backend.app.services.event_logger import flush_events
+                    flush_events(timeout_seconds=2.0)
+                except Exception:
+                    pass  # Fail-open
+            
             return result
 
         try:
