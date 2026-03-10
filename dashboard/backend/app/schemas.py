@@ -39,7 +39,7 @@ class RunCreateSchema(BaseModel):
     """Schema for creating a new run."""
 
     cycle_id: str
-    run_type: str = Field(default="scheduled", pattern="^(scheduled|manual|slack_command)$")
+    run_type: str = Field(default="scheduled", pattern="^(scheduled|manual|dry_run|slack_command)$")
     summary_json: dict[str, Any] | None = None
 
 

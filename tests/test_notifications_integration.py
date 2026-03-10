@@ -10,6 +10,11 @@ from sqlalchemy.pool import StaticPool
 
 from src.data.models import Base
 from src.orchestrator.main import Orchestrator
+
+try:
+    from dashboard.backend.app.database import Base as DashboardBase
+except ImportError:
+    DashboardBase = None
 from src.orchestrator.state_machine import StateMachine
 from src.utils.cost_tracker import DegradationLevel
 
@@ -36,6 +41,57 @@ class CaptureNotifications:
 
     def emit_critical_cycle_failure(self, *, cycle_id, payload, source="orchestrator") -> None:
         self.critical_payloads.append(payload)
+
+
+@pytest.fixture
+def db_session():
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    if DashboardBase is not None:
+        DashboardBase.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    yield session
+    session.close()
+
+
+@pytest.fixture(autouse=True)
+def patch_all_get_session(db_session):
+    """Patch get_session everywhere it's imported from."""
+    targets = [
+        "src.data.database.get_session",
+        "src.orchestrator.state_machine.get_session",
+        "src.orchestrator.main.get_session",
+        "src.utils.cost_tracker.get_session",
+        "src.agents.notifications.service.get_session",
+        "src.agents.execution.order_manager.get_session",
+        "src.agents.execution.stop_loss_manager.get_session",
+        "src.agents.execution.t212_client.get_session",
+        "src.agents.moderation.panel.get_session",
+        "src.agents.risk.risk_manager.get_session",
+        "src.agents.strategy.engine.get_session",
+        "src.agents.market_data.data_fetcher.get_session",
+        "src.agents.reporting.performance_tracker.get_session",
+        "src.agents.reporting.trade_outcome_tracker.get_session",
+        "src.agents.opportunity.scorer.get_session",
+        "src.agents.opportunity.optimizer.get_session",
+        "dashboard.backend.app.services.event_logger.get_session",
+    ]
+    patches = []
+    for target in targets:
+        try:
+            p = patch(target, return_value=db_session)
+            p.start()
+            patches.append(p)
+        except (AttributeError, ModuleNotFoundError):
+            pass
+    yield
+    for p in patches:
+        p.stop()
 
 
 def test_orchestrator_paused_emits_cycle_summary(monkeypatch) -> None:
@@ -254,6 +310,8 @@ def test_state_machine_transition_emits_notification(monkeypatch) -> None:
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
+    if DashboardBase is not None:
+        DashboardBase.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
 
     def _session_factory():

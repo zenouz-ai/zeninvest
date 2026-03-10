@@ -35,32 +35,38 @@ export interface Instrument {
   data_available: boolean
 }
 
+export interface Position {
+  ticker: string
+  quantity: number
+  value_gbp: number
+  pnl_gbp: number
+  pnl_pct: number
+  sector: string | null
+}
+
 export interface PortfolioSnapshot {
-  id: number
-  snapshot_date: string
-  total_value: number
-  cash_balance: number
-  positions_json: Record<string, {
-    ticker: string
-    quantity: number
-    avg_price: number
-    current_price: number
-    value: number
-    pnl: number
-    pnl_pct: number
-  }>
+  timestamp: string
+  total_value_gbp: number
+  cash_gbp: number
+  invested_gbp: number
+  pnl_gbp: number
+  pnl_pct: number
+  num_positions: number
+  positions: Position[]
 }
 
 export interface Order {
   id: number
+  timestamp: string
   ticker: string
   action: 'BUY' | 'SELL' | 'REDUCE'
+  order_type: string
   quantity: number
   price: number | null
-  status: 'filled' | 'pending' | 'failed' | 'dry_run'
-  filled_at: string | null
-  cycle_id: string
-  dry_run: boolean
+  value_gbp: number | null
+  status: string
+  strategy: string | null
+  conviction: number | null
 }
 
 // Utility function to clean ticker format for display

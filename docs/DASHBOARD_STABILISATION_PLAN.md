@@ -1,8 +1,8 @@
 # Dashboard Stabilisation Plan
 
-**Status:** Planned (next session)
+**Status:** Done (2026-03-10)
 **Created:** 2026-03-10
-**Branch:** `claude/fix-dry-run-stocks-NCAPw`
+**Branch:** `claude/dashboard-stabilisation`
 **Prerequisite:** Dry-run state mutation fix (committed)
 
 ---
@@ -19,7 +19,7 @@ Dashboard Phase 1 backend + frontend are ~95% complete. This plan addresses the 
 
 ---
 
-## Step 1: Fix 5 pre-existing test failures
+## Step 1: Fix 5 pre-existing test failures — DONE
 
 **Root cause:** Dashboard tables (`events_log`, `runs`) live in `dashboard.backend.app.database.Base` (separate from `src.data.models.Base`). The orchestrator/scheduler now insert into these tables via `log_event()`, but test fixtures only create agent tables → `OperationalError: no such table: events_log`.
 
@@ -55,7 +55,7 @@ For `test_notifications_integration.py`, also need an autouse `patch_all_get_ses
 
 ---
 
-## Step 2: Fix frontend-backend type mismatches
+## Step 2: Fix frontend-backend type mismatches — DONE
 
 The frontend TypeScript types were written speculatively and don't match the actual backend Pydantic schemas. The **backend schemas are correct** (they match the DB models). Fix: update frontend to match backend.
 
@@ -101,9 +101,9 @@ The frontend TypeScript types were written speculatively and don't match the act
 
 ---
 
-## Step 3: Implement `POST /api/runs/trigger`
+## Step 3: Implement `POST /api/runs/trigger` — DONE
 
-Currently a placeholder at `dashboard/backend/app/routers/runs.py:109-116`. Implement with background thread that runs `Orchestrator(dry_run=True).run_cycle()`.
+Implemented with background daemon thread that runs `Orchestrator(dry_run=True).run_cycle()`. Returns `{"message": "Dry-run cycle triggered in background", "status": "started"}`.
 
 ---
 

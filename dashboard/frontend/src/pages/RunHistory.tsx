@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { runsApi } from '../api/client'
 import type { Run } from '../types'
-import { format, formatDistanceToNow } from 'date-fns'
+import { format } from 'date-fns'
 
 export default function RunHistory() {
   const [runs, setRuns] = useState<Run[]>([])
@@ -71,7 +71,7 @@ export default function RunHistory() {
                 No runs found
               </div>
             ) : (
-              runs.map((run, index) => (
+              runs.map((run) => (
                 <div
                   key={run.id}
                   className={`border-l-2 pl-4 ${

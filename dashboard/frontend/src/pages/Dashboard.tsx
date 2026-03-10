@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSSE } from '../hooks/useSSE'
 import { runsApi, portfolioApi } from '../api/client'
-import type { Run, PortfolioSnapshot, Event } from '../types'
+import type { Run, PortfolioSnapshot } from '../types'
 import { format } from 'date-fns'
 
 export default function Dashboard() {
@@ -105,7 +105,7 @@ export default function Dashboard() {
           <div className="text-sm text-terminal-text-dim">Portfolio Value</div>
           <div className="text-lg font-mono">
             {portfolio
-              ? `$${portfolio.total_value.toLocaleString(undefined, {
+              ? `£${portfolio.total_value_gbp.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}`
@@ -113,7 +113,7 @@ export default function Dashboard() {
           </div>
           {portfolio && (
             <div className="text-xs text-terminal-text-dim mt-1">
-              Cash: ${portfolio.cash_balance.toLocaleString()}
+              Cash: £{portfolio.cash_gbp.toLocaleString()}
             </div>
           )}
         </div>

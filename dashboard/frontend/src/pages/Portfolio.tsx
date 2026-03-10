@@ -14,7 +14,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from 'recharts'
 
 export default function Portfolio() {
@@ -42,14 +41,11 @@ export default function Portfolio() {
     return () => clearInterval(interval)
   }, [])
 
-  const positions = currentPortfolio
-    ? Object.values(currentPortfolio.positions_json || {})
-    : []
+  const positions = currentPortfolio?.positions ?? []
 
   const sectorAllocation = positions.reduce((acc, pos) => {
-    // Simplified - in real app, you'd fetch sector from instrument data
-    const sector = 'Unknown' // Would need to join with instruments table
-    acc[sector] = (acc[sector] || 0) + pos.value
+    const sector = pos.sector ?? 'Unknown'
+    acc[sector] = (acc[sector] || 0) + pos.value_gbp
     return acc
   }, {} as Record<string, number>)
 
@@ -59,8 +55,8 @@ export default function Portfolio() {
   }))
 
   const chartData = history.map((snapshot) => ({
-    date: format(new Date(snapshot.snapshot_date), 'MMM dd'),
-    value: snapshot.total_value,
+    date: format(new Date(snapshot.timestamp), 'MMM dd'),
+    value: snapshot.total_value_gbp,
   }))
 
   const COLORS = ['#4a9eff', '#00ff88', '#ffd700', '#ff4444', '#ffaa00']
@@ -81,7 +77,7 @@ export default function Portfolio() {
           <div className="text-right">
             <div className="text-sm text-terminal-text-dim">Total Value</div>
             <div className="text-2xl font-mono font-bold">
-              ${currentPortfolio.total_value.toLocaleString(undefined, {
+              £{currentPortfolio.total_value_gbp.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -96,7 +92,7 @@ export default function Portfolio() {
           <div className="text-sm text-terminal-text-dim">Cash Balance</div>
           <div className="text-xl font-mono mt-1">
             {currentPortfolio
-              ? `$${currentPortfolio.cash_balance.toLocaleString(undefined, {
+              ? `£${currentPortfolio.cash_gbp.toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 })}`
@@ -111,7 +107,7 @@ export default function Portfolio() {
           <div className="text-sm text-terminal-text-dim">Last Updated</div>
           <div className="text-sm font-mono mt-1">
             {currentPortfolio
-              ? format(new Date(currentPortfolio.snapshot_date), 'MMM dd, yyyy HH:mm')
+              ? format(new Date(currentPortfolio.timestamp), 'MMM dd, yyyy HH:mm')
               : 'N/A'}
           </div>
         </div>
@@ -169,7 +165,7 @@ export default function Portfolio() {
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {pieData.map((entry, index) => (
+                  {pieData.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
@@ -206,13 +202,10 @@ export default function Portfolio() {
                     Ticker
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
+                    Sector
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
                     Quantity
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Avg Price
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Current Price
                   </th>
                   <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
                     Value
@@ -234,26 +227,21 @@ export default function Portfolio() {
                     <td className="px-4 py-3 font-mono font-semibold">
                       {cleanTicker(pos.ticker)}
                     </td>
+                    <td className="px-4 py-3 text-sm">{pos.sector ?? '—'}</td>
                     <td className="px-4 py-3 font-mono">{pos.quantity}</td>
                     <td className="px-4 py-3 font-mono">
-                      ${pos.avg_price.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 font-mono">
-                      ${pos.current_price.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3 font-mono">
-                      ${pos.value.toLocaleString(undefined, {
+                      £{pos.value_gbp.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
                     </td>
                     <td
                       className={`px-4 py-3 font-mono ${
-                        pos.pnl >= 0 ? 'text-gain' : 'text-loss'
+                        pos.pnl_gbp >= 0 ? 'text-gain' : 'text-loss'
                       }`}
                     >
-                      {pos.pnl >= 0 ? '+' : ''}
-                      ${pos.pnl.toLocaleString(undefined, {
+                      {pos.pnl_gbp >= 0 ? '+' : ''}
+                      £{pos.pnl_gbp.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}

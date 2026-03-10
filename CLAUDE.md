@@ -358,7 +358,7 @@ Files to check on every feature:
 - **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
 
 **Immediate (next session):**
-- **US-1.7 Dashboard Stabilisation** — Fix 5 test failures (dashboard table init in test fixtures), align frontend TypeScript types with backend Pydantic schemas, fix API client URLs. See `docs/DASHBOARD_STABILISATION_PLAN.md` for full plan.
+- **US-1.7 Dashboard Deployment** — Stabilisation done (branch `claude/dashboard-stabilisation`). Next: nginx, SSE buffering off, basic auth or API key; deploy script.
 
 **Then:**
 - Calibration (US-2.1, US-2.2) and portfolio optimisation (US-3.1)
@@ -366,10 +366,7 @@ Files to check on every feature:
 
 ## Known issues (2026-03-10)
 
-1. **5 test failures** — `test_notifications_integration.py` (4) + `test_execution.py` (1): dashboard tables (`events_log`, `runs`) not created in test fixtures. Tests that trigger `log_event()` fail with `OperationalError: no such table: events_log`. Fix: add `DashboardBase.metadata.create_all(engine)` to affected test fixtures.
-2. **Frontend-backend type mismatches** — Frontend TypeScript types (`dashboard/frontend/src/types/index.ts`) don't match backend Pydantic schemas (`dashboard/backend/app/schemas.py`). Portfolio page would crash at runtime. Key: `total_value` vs `total_value_gbp`, `positions_json` (Record) vs `positions` (array), `snapshot_date` vs `timestamp`.
-3. **API client URL mismatches** — `portfolioApi.current()` calls `/api/portfolio/current` but backend route is `GET /api/portfolio/`. `runsApi.getByCycleId()` passes query param instead of using `/api/runs/cycle/{cycleId}`.
-4. **`POST /api/runs/trigger`** — placeholder, not yet wired to orchestrator.
-5. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
+1. **Dashboard deployment** — Stabilisation complete. Remaining: nginx config, SSE buffering off, basic auth or API key, deploy script.
+2. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
 
 When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD_VISUALISATION_PROJECT.md`, and `docs/DASHBOARD_STABILISATION_PLAN.md` synchronized.
