@@ -218,10 +218,14 @@ async def get_universe_bubble(
             except Exception:
                 pass
 
-        # Total sold quantity per ticker
+        # Total sold quantity per ticker (positive = shares sold). SELL orders store negative quantity.
         sold_rows = (
-            session.query(Order.ticker, func.sum(Order.quantity))
-            .filter(Order.ticker.in_(tickers), Order.action == "SELL")
+            session.query(Order.ticker, func.sum(func.abs(Order.quantity)))
+            .filter(
+                Order.ticker.in_(tickers),
+                Order.action == "SELL",
+                Order.status.in_(("filled", "dry_run")),
+            )
             .group_by(Order.ticker)
             .all()
         )
