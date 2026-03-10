@@ -42,13 +42,32 @@ def _next_scheduled_run_utc() -> datetime | None:
 
 @router.get("/")
 async def get_status():
-    """Get dashboard status including next scheduled run."""
+    """Get dashboard status: next run, cycle config, and system state (ACTIVE/CAUTIOUS/HALTED)."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
     next_run = _next_scheduled_run_utc()
-    return {
+    result = {
         "next_run_utc": next_run.isoformat() if next_run else None,
         "cycle_times_utc": settings.cycle_times_utc,
         "cycle_frequency": settings.cycle_frequency,
     }
+    try:
+        from src.data.database import get_session
+        from src.data.models import SystemState
+
+        session = get_session()
+        try:
+            state_row = session.query(SystemState).first()
+            if state_row:
+                result["state"] = state_row.state
+                result["paused"] = state_row.paused
+            else:
+                result["state"] = "ACTIVE"
+                result["paused"] = False
+        finally:
+            session.close()
+    except Exception:
+        result["state"] = "ACTIVE"
+        result["paused"] = False
+    return result

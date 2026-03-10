@@ -12,7 +12,24 @@ from fastapi.staticfiles import StaticFiles
 from src.utils.config import get_settings
 
 from .database import init_dashboard_tables
-from .routers import events, orders, portfolio, runs, status, universe
+from .routers import (
+    api_usage,
+    costs,
+    decisions,
+    events,
+    moderation,
+    opportunity,
+    orders,
+    outcomes,
+    performance,
+    portfolio,
+    risk,
+    runs,
+    status,
+    stop_loss,
+    system,
+    universe,
+)
 
 settings = get_settings()
 
@@ -53,6 +70,16 @@ app.include_router(universe.router, prefix="/api/universe", tags=["universe"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio"])
 app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
+app.include_router(decisions.router, prefix="/api/decisions", tags=["decisions"])
+app.include_router(moderation.router, prefix="/api/moderation", tags=["moderation"])
+app.include_router(risk.router, prefix="/api/risk", tags=["risk"])
+app.include_router(opportunity.router, prefix="/api/opportunity", tags=["opportunity"])
+app.include_router(outcomes.router, prefix="/api/outcomes", tags=["outcomes"])
+app.include_router(stop_loss.router, prefix="/api/stop-loss", tags=["stop-loss"])
+app.include_router(performance.router, prefix="/api/performance", tags=["performance"])
+app.include_router(costs.router, prefix="/api/costs", tags=["costs"])
+app.include_router(api_usage.router, prefix="/api/api-usage", tags=["api-usage"])
+app.include_router(system.router, prefix="/api/system", tags=["system"])
 
 
 @app.get("/health")

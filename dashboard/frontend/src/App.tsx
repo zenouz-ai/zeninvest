@@ -3,6 +3,9 @@ import Dashboard from './pages/Dashboard'
 import Universe from './pages/Universe'
 import RunHistory from './pages/RunHistory'
 import Portfolio from './pages/Portfolio'
+import Opportunity from './pages/Opportunity'
+import OrderManagement from './pages/OrderManagement'
+import Costs from './pages/Costs'
 
 function App() {
   return (
@@ -40,6 +43,24 @@ function App() {
                   >
                     Portfolio
                   </Link>
+                  <Link
+                    to="/opportunity"
+                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
+                  >
+                    Opportunity
+                  </Link>
+                  <Link
+                    to="/orders"
+                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
+                  >
+                    Order Mgmt
+                  </Link>
+                  <Link
+                    to="/costs"
+                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
+                  >
+                    Costs
+                  </Link>
                 </div>
               </div>
             </div>
@@ -52,6 +73,9 @@ function App() {
             <Route path="/universe" element={<Universe />} />
             <Route path="/runs" element={<RunHistory />} />
             <Route path="/portfolio" element={<Portfolio />} />
+            <Route path="/opportunity" element={<Opportunity />} />
+            <Route path="/orders" element={<OrderManagement />} />
+            <Route path="/costs" element={<Costs />} />
           </Routes>
         </main>
       </div>

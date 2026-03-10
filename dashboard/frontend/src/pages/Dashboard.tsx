@@ -20,6 +20,8 @@ export default function Dashboard() {
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null)
   const [historicalEvents, setHistoricalEvents] = useState<Event[]>([])
   const [nextRunUtc, setNextRunUtc] = useState<string | null>(null)
+  const [systemState, setSystemState] = useState<string>('ACTIVE')
+  const [paused, setPaused] = useState<boolean>(false)
   const [loading, setLoading] = useState(true)
   const { events: sseEvents, isConnected } = useSSE({ enabled: true })
 
@@ -36,6 +38,8 @@ export default function Dashboard() {
         setPortfolio(portfolioData)
         setHistoricalEvents(eventsData)
         setNextRunUtc(statusData.next_run_utc)
+        setSystemState(statusData.state ?? 'ACTIVE')
+        setPaused(statusData.paused ?? false)
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
       } finally {
@@ -106,8 +110,24 @@ export default function Dashboard() {
     )
   }
 
+  const stateBadgeColor =
+    systemState === 'HALTED' ? 'bg-loss' : systemState === 'CAUTIOUS' ? 'bg-warning' : 'bg-gain'
+  const stateBadgeText = paused ? 'PAUSED' : systemState
+
   return (
     <div className="space-y-6">
+      {/* System state badge */}
+      <div className="flex items-center gap-2">
+        <span
+          className={`inline-flex items-center px-3 py-1 rounded font-mono text-sm font-semibold text-terminal-bg ${stateBadgeColor}`}
+        >
+          {stateBadgeText}
+        </span>
+        {paused && (
+          <span className="text-terminal-text-dim text-sm">Trading paused</span>
+        )}
+      </div>
+
       {/* Top Bar */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="card">

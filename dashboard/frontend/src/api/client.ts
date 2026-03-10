@@ -31,9 +31,15 @@ export const eventsApi = {
   },
 }
 
-// Status API
+// Status API (includes system state for badge)
 export const statusApi = {
-  get: async (): Promise<{ next_run_utc: string | null; cycle_times_utc: string[]; cycle_frequency: string }> => {
+  get: async (): Promise<{
+    next_run_utc: string | null
+    cycle_times_utc: string[]
+    cycle_frequency: string
+    state?: string
+    paused?: boolean
+  }> => {
     const response = await api.get('/api/status/')
     return response.data
   },
@@ -119,6 +125,78 @@ export const portfolioApi = {
     end_date?: string
   }): Promise<PortfolioSnapshot[]> => {
     const response = await api.get('/api/portfolio/history', { params })
+    return response.data
+  },
+}
+
+// Opportunity API
+export const opportunityApi = {
+  listScores: async (params?: { limit?: number; offset?: number; cycle_id?: string; ticker?: string }): Promise<any[]> => {
+    const response = await api.get('/api/opportunity/scores/', { params })
+    return response.data
+  },
+  getScoresByCycle: async (cycleId: string): Promise<any[]> => {
+    const response = await api.get(`/api/opportunity/scores/${cycleId}`)
+    return response.data
+  },
+  getQueue: async (): Promise<any[]> => {
+    const response = await api.get('/api/opportunity/queue/')
+    return response.data
+  },
+  getHistoryByTicker: async (ticker: string, params?: { limit?: number; offset?: number }): Promise<any[]> => {
+    const response = await api.get(`/api/opportunity/history/${ticker}`, { params })
+    return response.data
+  },
+}
+
+// Outcomes API
+export const outcomesApi = {
+  list: async (params?: { limit?: number; offset?: number; ticker?: string }): Promise<any[]> => {
+    const response = await api.get('/api/outcomes/', { params })
+    return response.data
+  },
+  getStats: async (): Promise<{ total_trades: number; win_rate_pct: number; avg_pnl_pct: number; avg_holding_days: number; best_trade_pct: number | null; worst_trade_pct: number | null }> => {
+    const response = await api.get('/api/outcomes/stats')
+    return response.data
+  },
+}
+
+// Stop-loss API
+export const stopLossApi = {
+  getCurrent: async (): Promise<{ ticker: string; stop_price: number | null; source: string }[]> => {
+    const response = await api.get('/api/stop-loss/current')
+    return response.data
+  },
+  getAdjustments: async (params?: { limit?: number; offset?: number; ticker?: string }): Promise<any[]> => {
+    const response = await api.get('/api/stop-loss/adjustments', { params })
+    return response.data
+  },
+}
+
+// Performance API
+export const performanceApi = {
+  getMetrics: async (): Promise<any | null> => {
+    const response = await api.get('/api/performance/metrics')
+    return response.data
+  },
+  getHistory: async (params?: { limit?: number; offset?: number }): Promise<any[]> => {
+    const response = await api.get('/api/performance/history', { params })
+    return response.data
+  },
+}
+
+// Costs API
+export const costsApi = {
+  getDaily: async (params?: { days?: number }): Promise<any[]> => {
+    const response = await api.get('/api/costs/daily', { params })
+    return response.data
+  },
+  getMonthly: async (params?: { months?: number }): Promise<any[]> => {
+    const response = await api.get('/api/costs/monthly', { params })
+    return response.data
+  },
+  getDegradation: async (): Promise<{ level: string; message?: string }> => {
+    const response = await api.get('/api/costs/degradation')
     return response.data
   },
 }
