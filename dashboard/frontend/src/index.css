@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-terminal-border;
+  }
+  body {
+    @apply bg-terminal-bg text-terminal-text font-sans antialiased;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-terminal-surface border border-terminal-border rounded-lg p-4;
+  }
+  
+  .btn-primary {
+    @apply bg-neutral hover:bg-neutral/80 text-white px-4 py-2 rounded font-medium transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply bg-terminal-surface border border-terminal-border hover:bg-terminal-border text-terminal-text px-4 py-2 rounded font-medium transition-colors;
+  }
+  
+  .mono {
+    @apply font-mono;
+  }
+}

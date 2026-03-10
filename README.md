@@ -122,6 +122,30 @@ poetry run python dashboard/backend/run_server.py
 
 **Configuration:** Set `dashboard.enabled: true` and `dashboard.events_enabled: true` in `config/settings.yaml`.
 
+### Dashboard Frontend (Phase 3)
+
+```bash
+# Navigate to frontend directory
+cd dashboard/frontend
+
+# Install dependencies
+npm install
+
+# Start development server (runs on http://localhost:3000)
+npm run dev
+
+# Build for production
+npm run build
+```
+
+**Features:**
+- **Dashboard Home**: Real-time activity feed via SSE, portfolio summary, latest run status
+- **Stock Universe**: Searchable, filterable table of all stocks in the universe
+- **Run History**: Timeline view of all analysis cycles with details
+- **Portfolio**: Current positions, portfolio value history chart, sector allocation
+
+The frontend connects to the FastAPI backend running on `http://localhost:8000`. In development, Vite proxies API requests automatically. For production, build the frontend and serve the `dist/` folder via FastAPI or nginx.
+
 **Schedule (configurable):**
 
 | Job | When | Notes |
@@ -272,7 +296,7 @@ notebooks/
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
 - [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — prioritised user stories for systematic improvement
-- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — web dashboard (Phase 1 backend complete: REST API + SSE; Phase 2 frontend planned)
+- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — web dashboard (Phase 1-2 backend complete: REST API + SSE + instrumentation; Phase 3 frontend complete: React dashboard)
 - [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
 - [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
 - [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — repeatable VPS-to-local export procedure with integrity checks for investigations
