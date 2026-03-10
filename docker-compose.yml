@@ -20,3 +20,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+  dashboard:
+    build: .
+    container_name: investment-dashboard
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "dashboard.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      - investment-agent

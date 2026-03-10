@@ -1,6 +1,6 @@
 # Dashboard VPS Deployment Plan
 
-**Status:** Planned (next session)
+**Status:** Implemented (2026-03-10)
 **Created:** 2026-03-10
 **Roadmap:** US-1.8 Dashboard VPS Deployment
 **Prerequisite:** US-1.7 Dashboard stabilisation (branch `claude/dashboard-stabilisation` merged)

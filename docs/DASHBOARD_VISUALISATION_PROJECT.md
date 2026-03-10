@@ -1,6 +1,6 @@
 # Investment Agent — Dashboard & Visualisation System
 
-**Status:** In Progress (Phase 1 stabilisation done; deployment pending)
+**Status:** In Progress (Phase 1 + Phase 1.5 Analytics Lite done; US-1.8 implemented)
 **Roadmap reference:** `docs/SOPHISTICATION_ROADMAP.md` (US-1.7, US-1.8)
 **Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md` (done)
 **Deployment plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
@@ -31,9 +31,15 @@ A real-time operational dashboard for the investment agent that provides full vi
 
 See `docs/DASHBOARD_STABILISATION_PLAN.md` — all items complete: test fixtures, type alignment, API URLs, trigger endpoint.
 
-### Deployment (next)
+### Phase 1.5 Analytics Lite (done)
 
-See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` — Docker service, VPS IP access (no domain required).
+- Decision Explorer v1: expandable Universe rows with committee reasoning (strategy, moderation, risk)
+- Run-to-run diff: compare positions between two runs (new, closed, size changes)
+- Top-bar: next run countdown, P&L summary
+
+### Deployment (implemented)
+
+See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` — Docker service, multi-stage frontend build, SPA fallback, port 8000. Deploy to VPS.
 
 ---
 

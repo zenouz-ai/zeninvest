@@ -1,27 +1,41 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useSSE } from '../hooks/useSSE'
-import { runsApi, portfolioApi, eventsApi } from '../api/client'
+import { runsApi, portfolioApi, eventsApi, statusApi } from '../api/client'
 import type { Run, PortfolioSnapshot, Event } from '../types'
 import { safeFormat } from '../utils/date'
+
+function formatCountdown(isoString: string): string {
+  const target = new Date(isoString)
+  const now = new Date()
+  const diffMs = target.getTime() - now.getTime()
+  if (diffMs <= 0) return '—'
+  const h = Math.floor(diffMs / 3600000)
+  const m = Math.floor((diffMs % 3600000) / 60000)
+  if (h > 0) return `${h}h ${m}m`
+  return `${m}m`
+}
 
 export default function Dashboard() {
   const [latestRun, setLatestRun] = useState<Run | null>(null)
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null)
   const [historicalEvents, setHistoricalEvents] = useState<Event[]>([])
+  const [nextRunUtc, setNextRunUtc] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const { events: sseEvents, isConnected } = useSSE({ enabled: true })
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [runs, portfolioData, eventsData] = await Promise.all([
+        const [runs, portfolioData, eventsData, statusData] = await Promise.all([
           runsApi.list({ limit: 1 }),
           portfolioApi.current(),
           eventsApi.list({ limit: 50 }),
+          statusApi.get(),
         ])
         setLatestRun(runs[0] || null)
         setPortfolio(portfolioData)
         setHistoricalEvents(eventsData)
+        setNextRunUtc(statusData.next_run_utc)
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
       } finally {
@@ -33,6 +47,11 @@ export default function Dashboard() {
     const interval = setInterval(fetchData, 30000) // Refresh every 30s
     return () => clearInterval(interval)
   }, [])
+
+  const nextRunCountdown = useMemo(
+    () => (nextRunUtc ? formatCountdown(nextRunUtc) : '—'),
+    [nextRunUtc]
+  )
 
   // Merge SSE (new) + historical; dedupe by id, newest first
   const events = useMemo(() => {
@@ -90,7 +109,17 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Top Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="card">
+          <div className="text-sm text-terminal-text-dim">Next Run</div>
+          <div className="text-lg font-mono">{nextRunCountdown}</div>
+          {nextRunUtc && (
+            <div className="text-xs text-terminal-text-dim mt-1">
+              {safeFormat(nextRunUtc, 'MMM dd, HH:mm', '')} UTC
+            </div>
+          )}
+        </div>
+
         <div className="card">
           <div className="text-sm text-terminal-text-dim">Last Run</div>
           <div className="text-lg font-mono">
@@ -120,8 +149,11 @@ export default function Dashboard() {
               : 'N/A'}
           </div>
           {portfolio && (
-            <div className="text-xs text-terminal-text-dim mt-1">
-              Cash: £{portfolio.cash_gbp.toLocaleString()}
+            <div className="text-xs mt-1">
+              <span className={portfolio.pnl_gbp >= 0 ? 'text-gain' : 'text-loss'}>
+                P&L: £{portfolio.pnl_gbp.toFixed(2)} ({portfolio.pnl_pct >= 0 ? '+' : ''}
+                {portfolio.pnl_pct.toFixed(2)}%)
+              </span>
             </div>
           )}
         </div>

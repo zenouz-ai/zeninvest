@@ -1,12 +1,25 @@
 import { useEffect, useState } from 'react'
 import { runsApi } from '../api/client'
 import type { Run } from '../types'
+import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
+
+type RunDiff = {
+  from_cycle_id: string
+  to_cycle_id: string
+  new_positions: string[]
+  closed_positions: string[]
+  size_changes: { ticker: string; from_qty: number; to_qty: number }[]
+}
 
 export default function RunHistory() {
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedRun, setSelectedRun] = useState<Run | null>(null)
+  const [diffFrom, setDiffFrom] = useState<Run | null>(null)
+  const [diffTo, setDiffTo] = useState<Run | null>(null)
+  const [diff, setDiff] = useState<RunDiff | null>(null)
+  const [diffLoading, setDiffLoading] = useState(false)
 
   useEffect(() => {
     const fetchRuns = async () => {
@@ -23,6 +36,19 @@ export default function RunHistory() {
     const interval = setInterval(fetchRuns, 30000) // Refresh every 30s
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    if (!diffFrom || !diffTo || diffFrom.cycle_id === diffTo.cycle_id) {
+      setDiff(null)
+      return
+    }
+    setDiffLoading(true)
+    runsApi
+      .getDiff(diffFrom.cycle_id, diffTo.cycle_id)
+      .then(setDiff)
+      .catch(() => setDiff(null))
+      .finally(() => setDiffLoading(false))
+  }, [diffFrom, diffTo])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -61,6 +87,85 @@ export default function RunHistory() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Run History</h1>
+
+      {/* Run diff */}
+      <div className="card">
+        <h3 className="text-lg font-semibold mb-4">Compare Runs</h3>
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="block text-xs text-terminal-text-dim mb-1">From (earlier)</label>
+            <select
+              value={diffFrom?.cycle_id ?? ''}
+              onChange={(e) =>
+                setDiffFrom(runs.find((r) => r.cycle_id === e.target.value) ?? null)
+              }
+              className="bg-terminal-bg border border-terminal-border rounded px-3 py-2 text-terminal-text focus:outline-none focus:ring-2 focus:ring-neutral min-w-[200px]"
+            >
+              <option value="">Select run</option>
+              {runs.map((r) => (
+                <option key={r.id} value={r.cycle_id}>
+                  {safeFormat(r.started_at, 'MMM dd HH:mm')} — {r.cycle_id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-terminal-text-dim mb-1">To (later)</label>
+            <select
+              value={diffTo?.cycle_id ?? ''}
+              onChange={(e) =>
+                setDiffTo(runs.find((r) => r.cycle_id === e.target.value) ?? null)
+              }
+              className="bg-terminal-bg border border-terminal-border rounded px-3 py-2 text-terminal-text focus:outline-none focus:ring-2 focus:ring-neutral min-w-[200px]"
+            >
+              <option value="">Select run</option>
+              {runs.map((r) => (
+                <option key={r.id} value={r.cycle_id}>
+                  {safeFormat(r.started_at, 'MMM dd HH:mm')} — {r.cycle_id}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {diffLoading && (
+          <div className="mt-4 text-terminal-text-dim text-sm">Loading diff...</div>
+        )}
+        {diff && !diffLoading && (
+          <div className="mt-4 space-y-3 text-sm">
+            {diff.new_positions.length > 0 && (
+              <div>
+                <span className="text-terminal-text-dim">New positions: </span>
+                <span className="text-gain">
+                  {diff.new_positions.map(cleanTicker).join(', ') || '—'}
+                </span>
+              </div>
+            )}
+            {diff.closed_positions.length > 0 && (
+              <div>
+                <span className="text-terminal-text-dim">Closed: </span>
+                <span className="text-loss">
+                  {diff.closed_positions.map(cleanTicker).join(', ') || '—'}
+                </span>
+              </div>
+            )}
+            {diff.size_changes.length > 0 && (
+              <div>
+                <span className="text-terminal-text-dim">Size changes: </span>
+                {diff.size_changes.map((c) => (
+                  <span key={c.ticker} className="mr-2">
+                    {cleanTicker(c.ticker)} {c.from_qty.toFixed(2)} → {c.to_qty.toFixed(2)}
+                  </span>
+                ))}
+              </div>
+            )}
+            {diff.new_positions.length === 0 &&
+              diff.closed_positions.length === 0 &&
+              diff.size_changes.length === 0 && (
+                <div className="text-terminal-text-dim">No position changes</div>
+              )}
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Timeline */}

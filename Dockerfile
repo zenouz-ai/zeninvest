@@ -1,3 +1,15 @@
+# Stage 1: Build frontend
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app
+
+COPY dashboard/frontend/package.json dashboard/frontend/package-lock.json ./
+RUN npm ci
+
+COPY dashboard/frontend/ ./
+RUN npm run build
+
+# Stage 2: Python application
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -21,6 +33,10 @@ RUN poetry config virtualenvs.create false \
 COPY src/ src/
 COPY config/ config/
 COPY alembic.ini ./
+COPY dashboard/ dashboard/
+
+# Copy built frontend from stage 1
+COPY --from=frontend-builder /app/dist dashboard/frontend/dist
 
 # Create directories for volumes
 RUN mkdir -p data journals/daily journals/weekly logs

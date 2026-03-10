@@ -162,6 +162,34 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
        +--------+                   +---------------+
 ```
 
+## Dashboard (Phase 1 + Phase 1.5 Analytics Lite)
+
+```
+Agent pipeline (scheduler, screener, strategy, moderation, risk, execution, notifications)
+    |
+    v
+log_event() --> events_log (non-blocking, fail-open)
+    |
+    v
+FastAPI dashboard backend
+    |
+    +-- GET /api/runs, /api/runs/diff, /api/status
+    +-- GET /api/universe, /api/universe/{ticker}  (reads instruments, strategy_decisions, moderation_logs, risk_decisions)
+    +-- GET /api/portfolio, /api/orders
+    +-- GET /api/events, /api/events/stream (SSE)
+    +-- POST /api/runs/trigger (dry-run)
+    |
+    v
+React frontend (SPA, served by FastAPI when dist/ exists)
+    |
+    +-- Dashboard Home: next run countdown, P&L, activity feed
+    +-- Universe: expandable rows with committee reasoning
+    +-- Run History: timeline, run diff (new/closed/position changes)
+    +-- Portfolio: positions, P&L chart, sector allocation
+```
+
+**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions). Shared SQLite DB via `./data` volume in Docker.
+
 ## Moderation Consensus Logic
 
 ```

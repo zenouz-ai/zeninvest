@@ -178,7 +178,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
     - **Software trailing stops**: Tracks high-water mark per position. Ratchets stop up as price rises. Implemented by cancel + replace since T212 has no native trailing stop.
     - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
     - All adjustments logged to `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
-13. **Dashboard backend (Phase 1)** — FastAPI REST API + SSE stream for real-time activity feed. Endpoints: `/api/runs`, `/api/universe`, `/api/portfolio`, `/api/orders`, `/api/events/stream`. Event logger service (`dashboard.backend.app.services.event_logger`) provides non-blocking, fail-open event emission. Agent modules can import `log_event()` to emit events. Tables: `events_log` (mandatory), `runs` (optional, simplifies run history). Config: `dashboard.enabled`, `dashboard.events_enabled`.
+13. **Dashboard backend (Phase 1 + Phase 1.5 Analytics Lite)** — FastAPI REST API + SSE stream for real-time activity feed. Endpoints: `/api/runs`, `/api/runs/diff`, `/api/status`, `/api/universe`, `/api/universe/{ticker}`, `/api/portfolio`, `/api/orders`, `/api/events/stream`, `POST /api/runs/trigger`. Event logger service (`dashboard.backend.app.services.event_logger`) provides non-blocking, fail-open event emission. Agent modules can import `log_event()` to emit events. Tables: `events_log` (mandatory), `runs` (optional). Phase 1.5: Decision Explorer (expandable universe rows with committee reasoning), run-to-run diff, next-run countdown, P&L in top bar. Config: `dashboard.enabled`, `dashboard.events_enabled`.
 
 ## Scheduling Architecture
 
@@ -361,7 +361,7 @@ Files to check on every feature:
 - **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
 
 **Immediate (next session):**
-- **US-1.8 Dashboard VPS Deployment** — Add dashboard to Docker; access via VPS IP (no domain). See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
+- **US-1.8 Dashboard VPS Deployment** — Implemented (Docker service, multi-stage frontend build, SPA fallback). Deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
 
 **Then:**
 - Calibration (US-2.1, US-2.2) and portfolio optimisation (US-3.1)
@@ -369,7 +369,7 @@ Files to check on every feature:
 
 ## Known issues (2026-03-10)
 
-1. **Dashboard VPS deployment** — Stabilisation complete. Next: US-1.8 (Docker service, VPS IP access). See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
+1. **Dashboard VPS deployment** — US-1.8 implemented (Docker, port 8000). Deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`. Phase 1.5 Analytics Lite delivered (Decision Explorer, run diff, next-run countdown, P&L).
 2. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
 
 When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD_VISUALISATION_PROJECT.md`, `docs/DASHBOARD_STABILISATION_PLAN.md`, and `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` synchronized.

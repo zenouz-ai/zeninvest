@@ -57,9 +57,9 @@ timeline
 | | 5 | US-3.4 | UOV Ranking & Queue |
 | | 6 | US-3.5 | Intelligent Order Management |
 | | 7 | US-5.1 | Backtesting Engine |
-| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (stabilisation done; deployment pending) |
+| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (Phase 1 + Phase 1.5 Analytics Lite done; US-1.8 implemented) |
 | **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
-| | 2 | US-1.8 | Dashboard VPS Deployment |
+| | 2 | US-1.8 | Dashboard VPS Deployment (implemented; deploy to VPS) |
 | | 3 | US-1.6 | Slack NL Trade Commands |
 | | 4 | US-2.1 | Conviction Calibration |
 | | 5 | US-2.2 | Dynamic Strategy Weighting |
@@ -88,8 +88,8 @@ timeline
 | **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Planned** |
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
-| **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer, run history, portfolio; FastAPI + React (Phase 1 MVP) | Full operational visibility; personal quant experience | **In Progress** (stabilisation done; deployment pending) |
-| **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Operational visibility on live VPS | **Planned** |
+| **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer with Decision Explorer, run history with diff, portfolio; FastAPI + React (Phase 1 + Phase 1.5 Analytics Lite) | Full operational visibility; personal quant experience | **In Progress** (Phase 1.5 delivered) |
+| **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Operational visibility on live VPS | **Implemented** (Docker service, multi-stage build; deploy to VPS) |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
@@ -396,7 +396,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Detailed plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.
 **Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md`.
 
-**Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind, 4 pages) are built. Agent instrumentation complete. Stabilisation complete: 5 test failures fixed, frontend-backend types aligned, API URLs corrected, `POST /api/runs/trigger` implemented.
+**Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind, 4 pages) are built. Agent instrumentation complete. Stabilisation complete. US-1.8 implemented: Docker service, multi-stage frontend build, SPA fallback. Phase 1.5 Analytics Lite: Decision Explorer (expandable universe rows), run diff, next-run countdown, P&L in top bar.
 
 **Phase 1 Acceptance Criteria:**
 - [x] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
@@ -409,7 +409,8 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Fix frontend-backend type mismatches (PortfolioSnapshot, Position, Order fields)
 - [x] Fix API client URL mismatches (portfolio endpoint, getByCycleId)
 - [x] Implement `POST /api/runs/trigger` (background daemon thread)
-- [ ] Deployment: see US-1.8 and `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
+- [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
+- [x] Phase 1.5 Analytics Lite: Decision Explorer, run diff, next-run countdown, P&L
 
 **Phases 2–4 (future):** Analytics & Insights; ML & Advanced (backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run, strategy tuning UI, Slack mirror).
 
@@ -620,7 +621,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 ## Next sprint focus
 
 **Immediate (next session):**
-- **US-1.8** — Dashboard VPS Deployment: add dashboard service to Docker, access via VPS IP (see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`)
+- **US-1.8** — Dashboard VPS Deployment: implemented; deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
 
 **Then:**
 - **US-1.4** — Deploy POC to VPS (when ready)

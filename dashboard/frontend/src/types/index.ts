@@ -35,6 +35,15 @@ export interface Instrument {
   data_available: boolean
 }
 
+export interface InstrumentDetail extends Instrument {
+  label: string | null
+  last_decision: {
+    strategy?: { action: string; conviction: number; reasoning: string; timestamp: string }
+    moderation?: { verdict: string; gpt_score?: number; gemini_score?: number; reasoning?: string }
+    risk?: { verdict: string; triggered_rules?: string[] }
+  } | null
+}
+
 export interface Position {
   ticker: string
   quantity: number

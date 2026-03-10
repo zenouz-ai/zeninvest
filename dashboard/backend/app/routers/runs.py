@@ -1,5 +1,6 @@
 """Runs router - run history and metadata."""
 
+import json
 import logging
 import threading
 from datetime import datetime
@@ -10,6 +11,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from src.data.database import get_session
+from src.data.models import PortfolioSnapshot
 from src.utils.config import get_settings
 
 from ..database import Run
@@ -18,6 +20,34 @@ from ..schemas import RunCreateSchema, RunSchema
 logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
+
+
+def _get_snapshot_for_run(session: Session, run: Run) -> PortfolioSnapshot | None:
+    """Get portfolio snapshot closest to run completion."""
+    if not run.completed_at:
+        return None
+    snap = (
+        session.query(PortfolioSnapshot)
+        .filter(PortfolioSnapshot.timestamp >= run.completed_at)
+        .order_by(PortfolioSnapshot.timestamp.asc())
+        .first()
+    )
+    if snap:
+        return snap
+    return (
+        session.query(PortfolioSnapshot)
+        .filter(PortfolioSnapshot.timestamp <= run.completed_at)
+        .order_by(PortfolioSnapshot.timestamp.desc())
+        .first()
+    )
+
+
+def _positions_from_snapshot(snapshot: PortfolioSnapshot) -> dict[str, float]:
+    """Extract ticker -> quantity from snapshot positions_json."""
+    if not snapshot.positions_json:
+        return {}
+    data = json.loads(snapshot.positions_json)
+    return {p.get("ticker", ""): float(p.get("quantity", 0)) for p in data if p.get("ticker")}
 
 
 def _run_dry_cycle() -> None:
@@ -59,6 +89,47 @@ async def get_runs(
 
         runs = query.order_by(desc(Run.started_at)).offset(offset).limit(limit).all()
         return runs
+    finally:
+        session.close()
+
+
+@router.get("/diff")
+async def get_run_diff(
+    from_cycle_id: str = Query(..., description="Earlier cycle ID"),
+    to_cycle_id: str = Query(..., description="Later cycle ID"),
+):
+    """Get position diff between two runs (new, closed, size changes)."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    session = get_session()
+    try:
+        run_from = session.query(Run).filter(Run.cycle_id == from_cycle_id).first()
+        run_to = session.query(Run).filter(Run.cycle_id == to_cycle_id).first()
+        if not run_from or not run_to:
+            raise HTTPException(status_code=404, detail="Run not found")
+
+        snap_from = _get_snapshot_for_run(session, run_from)
+        snap_to = _get_snapshot_for_run(session, run_to)
+
+        pos_from = _positions_from_snapshot(snap_from) if snap_from else {}
+        pos_to = _positions_from_snapshot(snap_to) if snap_to else {}
+
+        new_positions = [t for t in pos_to if t not in pos_from or pos_from[t] == 0]
+        closed_positions = [t for t in pos_from if t not in pos_to or pos_to.get(t, 0) == 0]
+        size_changes = []
+        for t in set(pos_from) & set(pos_to):
+            q_from, q_to = pos_from[t], pos_to[t]
+            if abs(q_from - q_to) > 0.0001:
+                size_changes.append({"ticker": t, "from_qty": q_from, "to_qty": q_to})
+
+        return {
+            "from_cycle_id": from_cycle_id,
+            "to_cycle_id": to_cycle_id,
+            "new_positions": new_positions,
+            "closed_positions": closed_positions,
+            "size_changes": size_changes,
+        }
     finally:
         session.close()
 

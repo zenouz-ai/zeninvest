@@ -1,18 +1,23 @@
 """FastAPI application for dashboard backend."""
 
-import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from src.utils.config import get_settings
 
 from .database import init_dashboard_tables
-from .routers import events, orders, portfolio, runs, universe
+from .routers import events, orders, portfolio, runs, status, universe
 
 settings = get_settings()
+
+# Path to built frontend (set at runtime; default for Docker)
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 
 @asynccontextmanager
@@ -41,21 +46,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
+# Register routers (must be before static mount so /api/* takes precedence)
 app.include_router(runs.router, prefix="/api/runs", tags=["runs"])
+app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(universe.router, prefix="/api/universe", tags=["universe"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio"])
 app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
 app.include_router(events.router, prefix="/api/events", tags=["events"])
 
 
-@app.get("/")
-async def root():
-    """Root endpoint."""
-    return {"message": "Investment Agent Dashboard API", "version": "1.0.0"}
-
-
 @app.get("/health")
 async def health():
     """Health check endpoint."""
     return {"status": "ok"}
+
+
+# Serve built frontend (SPA fallback for client-side routing)
+if _FRONTEND_DIST.exists():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
+
+    @app.middleware("http")
+    async def spa_fallback_middleware(request: Request, call_next):
+        """Serve index.html for non-API 404s so client-side routing works."""
+        response = await call_next(request)
+        if (
+            response.status_code == 404
+            and not request.url.path.startswith("/api")
+            and request.url.path != "/health"
+        ):
+            index_path = _FRONTEND_DIST / "index.html"
+            if index_path.exists():
+                return FileResponse(index_path)
+        return response
+else:
+    # Fallback when dist not present (e.g. dev without build)
+    @app.get("/")
+    async def root():
+        return {"message": "Investment Agent Dashboard API", "version": "1.0.0"}

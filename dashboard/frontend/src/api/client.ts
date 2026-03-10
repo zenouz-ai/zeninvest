@@ -1,10 +1,8 @@
 import axios from 'axios'
-import type { Event, Run, Instrument, PortfolioSnapshot, Order } from '../types'
+import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order } from '../types'
 
-// In dev, use empty baseURL so Vite proxy forwards /api to backend (avoids CORS)
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? '' : 'http://localhost:8000')
+// Use relative paths when VITE_API_URL unset: same-origin in prod (FastAPI serves frontend)
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -29,6 +27,14 @@ export const eventsApi = {
   
   getById: async (id: number): Promise<Event> => {
     const response = await api.get(`/api/events/${id}`)
+    return response.data
+  },
+}
+
+// Status API
+export const statusApi = {
+  get: async (): Promise<{ next_run_utc: string | null; cycle_times_utc: string[]; cycle_frequency: string }> => {
+    const response = await api.get('/api/status/')
     return response.data
   },
 }
@@ -59,6 +65,21 @@ export const runsApi = {
       throw err
     }
   },
+  getDiff: async (
+    fromCycleId: string,
+    toCycleId: string
+  ): Promise<{
+    from_cycle_id: string
+    to_cycle_id: string
+    new_positions: string[]
+    closed_positions: string[]
+    size_changes: { ticker: string; from_qty: number; to_qty: number }[]
+  }> => {
+    const response = await api.get('/api/runs/diff', {
+      params: { from_cycle_id: fromCycleId, to_cycle_id: toCycleId },
+    })
+    return response.data
+  },
 }
 
 // Universe API
@@ -73,7 +94,7 @@ export const universeApi = {
     return response.data
   },
   
-  getByTicker: async (ticker: string): Promise<Instrument> => {
+  getByTicker: async (ticker: string): Promise<InstrumentDetail> => {
     const response = await api.get(`/api/universe/${ticker}`)
     return response.data
   },

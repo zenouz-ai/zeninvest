@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 207 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 stabilisation complete. Next: US-1.8 Dashboard VPS Deployment (see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`).
+**Status:** POC — 207 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
 
 ## Architecture
 
@@ -102,23 +102,26 @@ See [Backtesting](docs/BACKTESTING.md) and [Walk-Forward Validation](docs/WALK_F
 poetry run python -m src.scheduler.scheduler
 ```
 
-### Dashboard (Phase 1 — In Progress)
+### Dashboard (Phase 1 + Phase 1.5 Analytics Lite)
 
 ```bash
-# Start the dashboard API server
-poetry run python dashboard/backend/run_server.py
+# Start the dashboard API server (local dev)
+poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
 
-# API will be available at http://localhost:8000
-# OpenAPI docs at http://localhost:8000/docs
+# API at http://localhost:8000, OpenAPI docs at http://localhost:8000/docs
 ```
 
 **Endpoints:**
 - `GET /api/runs/` — Run history
+- `GET /api/runs/diff` — Position diff between two runs (query: `from_cycle_id`, `to_cycle_id`)
+- `GET /api/status/` — Next scheduled run, cycle_frequency
 - `GET /api/universe/` — Stock universe explorer
+- `GET /api/universe/{ticker}` — Instrument detail with committee reasoning
 - `GET /api/portfolio/` — Current portfolio snapshot
 - `GET /api/orders/` — Order history
 - `GET /api/events/` — Event log history
 - `GET /api/events/stream` — SSE stream for real-time events
+- `POST /api/runs/trigger` — Trigger dry-run cycle in background
 
 **Configuration:** Set `dashboard.enabled: true` and `dashboard.events_enabled: true` in `config/settings.yaml`.
 
@@ -127,13 +130,13 @@ poetry run python dashboard/backend/run_server.py
 ```bash
 cd dashboard/frontend
 npm install
-npm run dev    # Dev server on http://localhost:3000
-npm run build  # Production build
+npm run dev    # Dev server on http://localhost:3000 (proxies API)
+npm run build  # Production build (outputs to dist/)
 ```
 
-**Pages:** Dashboard Home (SSE activity feed, portfolio summary), Stock Universe (searchable table), Run History (timeline), Portfolio (positions, P&L chart, sector allocation).
+**Pages:** Dashboard Home (next run countdown, P&L, SSE activity feed), Stock Universe (searchable table, expandable rows with committee reasoning), Run History (timeline, run diff view), Portfolio (positions, P&L chart, sector allocation).
 
-**Note:** Frontend TypeScript types need alignment with backend schemas before the dashboard is fully functional. See `docs/DASHBOARD_STABILISATION_PLAN.md`.
+**Docker:** `docker compose up -d` runs both agent and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000).
 
 **Schedule (configurable):**
 
@@ -149,11 +152,14 @@ Set `cycle_frequency: intraday` in `config/settings.yaml` for 3 cycles during ma
 ### Docker
 
 ```bash
-# Build and run
+# Build and run (agent + dashboard)
 docker compose up -d
 
 # View logs
 docker compose logs -f investment-agent
+docker compose logs -f dashboard
+
+# Dashboard at http://localhost:8000 (or http://YOUR_VPS_IP:8000 on VPS)
 ```
 
 ## Chat Notifications (US-1.5 Delivered)
