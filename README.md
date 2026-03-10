@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 190 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler), deployment-ready for VPS.
+**Status:** POC — 207 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 in progress (stabilisation pending — see `docs/DASHBOARD_STABILISATION_PLAN.md`).
 
 ## Architecture
 
@@ -102,7 +102,7 @@ See [Backtesting](docs/BACKTESTING.md) and [Walk-Forward Validation](docs/WALK_F
 poetry run python -m src.scheduler.scheduler
 ```
 
-### Dashboard Backend (Phase 1)
+### Dashboard (Phase 1 — In Progress)
 
 ```bash
 # Start the dashboard API server
@@ -122,29 +122,18 @@ poetry run python dashboard/backend/run_server.py
 
 **Configuration:** Set `dashboard.enabled: true` and `dashboard.events_enabled: true` in `config/settings.yaml`.
 
-### Dashboard Frontend (Phase 3)
+### Dashboard Frontend
 
 ```bash
-# Navigate to frontend directory
 cd dashboard/frontend
-
-# Install dependencies
 npm install
-
-# Start development server (runs on http://localhost:3000)
-npm run dev
-
-# Build for production
-npm run build
+npm run dev    # Dev server on http://localhost:3000
+npm run build  # Production build
 ```
 
-**Features:**
-- **Dashboard Home**: Real-time activity feed via SSE, portfolio summary, latest run status
-- **Stock Universe**: Searchable, filterable table of all stocks in the universe
-- **Run History**: Timeline view of all analysis cycles with details
-- **Portfolio**: Current positions, portfolio value history chart, sector allocation
+**Pages:** Dashboard Home (SSE activity feed, portfolio summary), Stock Universe (searchable table), Run History (timeline), Portfolio (positions, P&L chart, sector allocation).
 
-The frontend connects to the FastAPI backend running on `http://localhost:8000`. In development, Vite proxies API requests automatically. For production, build the frontend and serve the `dist/` folder via FastAPI or nginx.
+**Note:** Frontend TypeScript types need alignment with backend schemas before the dashboard is fully functional. See `docs/DASHBOARD_STABILISATION_PLAN.md`.
 
 **Schedule (configurable):**
 
@@ -296,7 +285,8 @@ notebooks/
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
 - [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — prioritised user stories for systematic improvement
-- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — web dashboard (Phase 1-2 backend complete: REST API + SSE + instrumentation; Phase 3 frontend complete: React dashboard)
+- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — web dashboard (Phase 1 backend + frontend built; stabilisation pending)
+- [Dashboard Stabilisation Plan](docs/DASHBOARD_STABILISATION_PLAN.md) — test fixes, frontend-backend type alignment, API URL fixes
 - [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
 - [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
 - [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — repeatable VPS-to-local export procedure with integrity checks for investigations

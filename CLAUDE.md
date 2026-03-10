@@ -337,6 +337,7 @@ Files to check on every feature:
 | `docs/WALK_FORWARD_VALIDATION.md` | Walk-forward validation and promotion report |
 | `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
 | `docs/DASHBOARD_VISUALISATION_PROJECT.md` | Dashboard & Visualisation System: architecture, phases, data alignment, Claude prompts |
+| `docs/DASHBOARD_STABILISATION_PLAN.md` | Dashboard stabilisation: test fixes, frontend-backend type alignment, API URL fixes |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 
@@ -350,12 +351,25 @@ Files to check on every feature:
 - **Key docs:** `docs/SOPHISTICATION_ROADMAP.md` (backlog), `docs/COMPETITIVE_ANALYSIS.md` (positioning)
 
 
-## Near-term delivery focus (updated)
+## Near-term delivery focus (updated 2026-03-10)
 
-Current primary user stories for next-week implementation:
+**Delivered:**
 - **US-1.5 Chat Interface & Real-Time Trade Alerts** (`docs/CHAT_INTERFACE_PROJECT.md`) [delivered; outbound phase complete]
 - **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
 
-Primary build focus in the next coding session is calibration (US-2.1, US-2.2) and portfolio optimisation (US-3.1).
+**Immediate (next session):**
+- **US-1.7 Dashboard Stabilisation** — Fix 5 test failures (dashboard table init in test fixtures), align frontend TypeScript types with backend Pydantic schemas, fix API client URLs. See `docs/DASHBOARD_STABILISATION_PLAN.md` for full plan.
 
-When touching this track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, and `docs/BACKTESTING_PROJECT_PLAN.md` synchronized in the same PR.
+**Then:**
+- Calibration (US-2.1, US-2.2) and portfolio optimisation (US-3.1)
+- Additional plans incoming: LLM tool access review, dashboard review feedback
+
+## Known issues (2026-03-10)
+
+1. **5 test failures** — `test_notifications_integration.py` (4) + `test_execution.py` (1): dashboard tables (`events_log`, `runs`) not created in test fixtures. Tests that trigger `log_event()` fail with `OperationalError: no such table: events_log`. Fix: add `DashboardBase.metadata.create_all(engine)` to affected test fixtures.
+2. **Frontend-backend type mismatches** — Frontend TypeScript types (`dashboard/frontend/src/types/index.ts`) don't match backend Pydantic schemas (`dashboard/backend/app/schemas.py`). Portfolio page would crash at runtime. Key: `total_value` vs `total_value_gbp`, `positions_json` (Record) vs `positions` (array), `snapshot_date` vs `timestamp`.
+3. **API client URL mismatches** — `portfolioApi.current()` calls `/api/portfolio/current` but backend route is `GET /api/portfolio/`. `runsApi.getByCycleId()` passes query param instead of using `/api/runs/cycle/{cycleId}`.
+4. **`POST /api/runs/trigger`** — placeholder, not yet wired to orchestrator.
+5. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
+
+When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD_VISUALISATION_PROJECT.md`, and `docs/DASHBOARD_STABILISATION_PLAN.md` synchronized.

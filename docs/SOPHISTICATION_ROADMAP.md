@@ -1,6 +1,6 @@
 # Sophistication Roadmap
 
-**Last Updated:** 2026-03-07  
+**Last Updated:** 2026-03-10
 **Owner:** Project Lead (PhD Mathematics, Data Science Manager in Finance)  
 **Developers:** Claude Code Opus 4.6 (cloud, primary), Codex 5.3+ (local VS Code, secondary)  
 **Principle:** Innovation, simplicity, elegance, transparency. No feature for technology's sake — every addition must materially improve quality.
@@ -9,7 +9,7 @@
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **7** · Pipeline **16** (order by priority and feasibility below)
+**At a glance:** Delivered **7** · In Progress **1** (US-1.7 Dashboard) · Pipeline **15** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -24,9 +24,10 @@ timeline
         US-3.4 : UOV Ranking & Queue
         US-3.5 : Intelligent Order Management
         US-5.1 : Backtesting Engine
+    section In Progress
+        US-1.7 : Dashboard & Visualisation (stabilisation)
     section Pipeline (priority order)
         US-1.4 : Deploy POC to VPS
-        US-1.7 : Dashboard & Visualisation
         US-1.6 : Slack NL Trade Commands
         US-2.1 : Conviction Calibration
         US-2.2 : Dynamic Strategy Weighting
@@ -54,8 +55,8 @@ timeline
 | | 5 | US-3.4 | UOV Ranking & Queue |
 | | 6 | US-3.5 | Intelligent Order Management |
 | | 7 | US-5.1 | Backtesting Engine |
+| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (stabilisation pending) |
 | **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
-| | 2 | US-1.7 | Dashboard & Visualisation |
 | | 3 | US-1.6 | Slack NL Trade Commands |
 | | 4 | US-2.1 | Conviction Calibration |
 | | 5 | US-2.2 | Dynamic Strategy Weighting |
@@ -83,7 +84,7 @@ timeline
 | **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Planned** |
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
-| **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer, run history, portfolio; FastAPI + React (Phase 1 MVP) | Full operational visibility; personal quant experience | **Planned** |
+| **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer, run history, portfolio; FastAPI + React (Phase 1 MVP) | Full operational visibility; personal quant experience | **In Progress** (backend + frontend built; stabilisation pending — see `docs/DASHBOARD_STABILISATION_PLAN.md`) |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
@@ -380,19 +381,27 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 ---
 
 #### US-1.7: Dashboard & Visualisation System (Phase 1 MVP)
-**Value:** Full operational visibility — activity feed, universe, run history, portfolio  
-**Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)  
-**Data Sources:** Existing DB; new `events_log` (optionally `runs`)  
-**Stage:** Planned  
+**Value:** Full operational visibility — activity feed, universe, run history, portfolio
+**Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)
+**Data Sources:** Existing DB; new `events_log` (optionally `runs`)
+**Stage:** In Progress (stabilisation pending)
 
-**Detailed plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.  
+**Detailed plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.
+**Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md`.
+
+**Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind, 4 pages) are built. Agent instrumentation complete (scheduler, orchestrator emit events). However, 5 test failures caused by dashboard table initialisation gap in test fixtures, and frontend TypeScript types don't match backend Pydantic schemas (would crash at runtime). Stabilisation plan created for next session.
 
 **Phase 1 Acceptance Criteria:**
-- [ ] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
-- [ ] Read from existing tables; add only events_log (optionally runs)
-- [ ] Event logger: non-blocking, fail-open; instrument scheduler, screener, committee, execution, notifications
-- [ ] React + Vite + Tailwind: Home (activity feed, portfolio summary), Universe (table, committee reasoning), Run History (timeline), Portfolio (positions, P&L chart)
-- [ ] Dark terminal aesthetic; Recharts/TanStack Table; config `dashboard_enabled`, `dashboard_events_enabled`
+- [x] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
+- [x] Read from existing tables; add only events_log + runs
+- [x] Event logger: non-blocking, fail-open; instrument scheduler, screener, committee, execution, notifications
+- [x] React + Vite + Tailwind: Home (activity feed, portfolio summary), Universe (table, committee reasoning), Run History (timeline), Portfolio (positions, P&L chart)
+- [x] Dark terminal aesthetic; Recharts; config `dashboard_enabled`, `dashboard_events_enabled`
+- [x] Alembic migration for `events_log` and `runs` tables
+- [ ] Fix 5 test failures (dashboard table init in test fixtures)
+- [ ] Fix frontend-backend type mismatches (PortfolioSnapshot, Position, Order fields)
+- [ ] Fix API client URL mismatches (portfolio endpoint, getByCycleId)
+- [ ] Implement `POST /api/runs/trigger` (currently placeholder)
 - [ ] Deployment: nginx, SSE buffering off, basic auth or API key; deploy script
 
 **Phases 2–4 (future):** Analytics & Insights; ML & Advanced (backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run, strategy tuning UI, Slack mirror).
@@ -584,11 +593,13 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ## Next sprint focus
 
-**Primary focus:**
+**Immediate (next session):**
+- **US-1.7** — Dashboard stabilisation: fix 5 test failures, frontend-backend type alignment, API URL fixes (see `docs/DASHBOARD_STABILISATION_PLAN.md`)
+
+**Then:**
 - **US-1.4** — Deploy POC to VPS (when ready)
 - **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (once ~50 trades available)
 - **US-5.2 prep** — Parameter sensitivity harness (registry, baseline configs, result schema)
-- **US-1.7** — Dashboard & Visualisation Phase 1 (can run in parallel)
 
 **Delivery references:**
 - `docs/CHAT_INTERFACE_PROJECT.md`
