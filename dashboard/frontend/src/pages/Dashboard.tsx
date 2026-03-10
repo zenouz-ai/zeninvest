@@ -1,24 +1,27 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useSSE } from '../hooks/useSSE'
-import { runsApi, portfolioApi } from '../api/client'
-import type { Run, PortfolioSnapshot } from '../types'
-import { format } from 'date-fns'
+import { runsApi, portfolioApi, eventsApi } from '../api/client'
+import type { Run, PortfolioSnapshot, Event } from '../types'
+import { safeFormat } from '../utils/date'
 
 export default function Dashboard() {
   const [latestRun, setLatestRun] = useState<Run | null>(null)
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null)
+  const [historicalEvents, setHistoricalEvents] = useState<Event[]>([])
   const [loading, setLoading] = useState(true)
-  const { events, isConnected } = useSSE({ enabled: true })
+  const { events: sseEvents, isConnected } = useSSE({ enabled: true })
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [runs, portfolioData] = await Promise.all([
+        const [runs, portfolioData, eventsData] = await Promise.all([
           runsApi.list({ limit: 1 }),
           portfolioApi.current(),
+          eventsApi.list({ limit: 50 }),
         ])
         setLatestRun(runs[0] || null)
         setPortfolio(portfolioData)
+        setHistoricalEvents(eventsData)
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
       } finally {
@@ -30,6 +33,13 @@ export default function Dashboard() {
     const interval = setInterval(fetchData, 30000) // Refresh every 30s
     return () => clearInterval(interval)
   }, [])
+
+  // Merge SSE (new) + historical; dedupe by id, newest first
+  const events = useMemo(() => {
+    const seen = new Set(sseEvents.map((e) => e.id))
+    const fromHistory = historicalEvents.filter((e) => !seen.has(e.id))
+    return [...sseEvents, ...fromHistory].slice(0, 100)
+  }, [sseEvents, historicalEvents])
 
   const getEventIcon = (eventType: string) => {
     switch (eventType) {
@@ -84,9 +94,7 @@ export default function Dashboard() {
         <div className="card">
           <div className="text-sm text-terminal-text-dim">Last Run</div>
           <div className="text-lg font-mono">
-            {latestRun
-              ? format(new Date(latestRun.started_at), 'MMM dd, HH:mm')
-              : 'Never'}
+            {latestRun ? safeFormat(latestRun.started_at, 'MMM dd, HH:mm', '—') : 'Never'}
           </div>
           {latestRun && (
             <div className="text-xs text-terminal-text-dim mt-1">
@@ -166,7 +174,7 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium">{event.event_type}</span>
                     <span className="text-xs text-terminal-text-dim">
-                      {format(new Date(event.timestamp), 'HH:mm:ss')}
+                      {safeFormat(event.timestamp, 'HH:mm:ss')}
                     </span>
                     <span className="text-xs text-terminal-text-dim">
                       [{event.source}]

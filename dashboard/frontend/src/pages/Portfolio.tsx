@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { portfolioApi } from '../api/client'
 import type { PortfolioSnapshot } from '../types'
 import { cleanTicker } from '../types'
-import { format } from 'date-fns'
+import { safeFormat } from '../utils/date'
 import {
   LineChart,
   Line,
@@ -55,9 +55,9 @@ export default function Portfolio() {
   }))
 
   const chartData = history.map((snapshot) => ({
-    date: format(new Date(snapshot.timestamp), 'MMM dd'),
+    date: safeFormat(snapshot.timestamp, 'MMM dd', ''),
     value: snapshot.total_value_gbp,
-  }))
+  })).filter((d) => d.date)
 
   const COLORS = ['#4a9eff', '#00ff88', '#ffd700', '#ff4444', '#ffaa00']
 
@@ -107,7 +107,7 @@ export default function Portfolio() {
           <div className="text-sm text-terminal-text-dim">Last Updated</div>
           <div className="text-sm font-mono mt-1">
             {currentPortfolio
-              ? format(new Date(currentPortfolio.timestamp), 'MMM dd, yyyy HH:mm')
+              ? safeFormat(currentPortfolio.timestamp, 'MMM dd, yyyy HH:mm', 'N/A')
               : 'N/A'}
           </div>
         </div>

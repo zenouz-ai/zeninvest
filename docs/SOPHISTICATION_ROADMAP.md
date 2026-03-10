@@ -9,7 +9,7 @@
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **7** · In Progress **1** (US-1.7 Dashboard) · Pipeline **15** (order by priority and feasibility below)
+**At a glance:** Delivered **7** · In Progress **1** (US-1.7 Dashboard) · Pipeline **16** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -28,6 +28,7 @@ timeline
         US-1.7 : Dashboard & Visualisation (stabilisation)
     section Pipeline (priority order)
         US-1.4 : Deploy POC to VPS
+        US-1.8 : Dashboard VPS Deployment
         US-1.6 : Slack NL Trade Commands
         US-2.1 : Conviction Calibration
         US-2.2 : Dynamic Strategy Weighting
@@ -57,6 +58,7 @@ timeline
 | | 7 | US-5.1 | Backtesting Engine |
 | **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (stabilisation done; deployment pending) |
 | **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
+| | 2 | US-1.8 | Dashboard VPS Deployment |
 | | 3 | US-1.6 | Slack NL Trade Commands |
 | | 4 | US-2.1 | Conviction Calibration |
 | | 5 | US-2.2 | Dynamic Strategy Weighting |
@@ -84,7 +86,8 @@ timeline
 | **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Planned** |
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
-| **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer, run history, portfolio; FastAPI + React (Phase 1 MVP) | Full operational visibility; personal quant experience | **In Progress** (backend + frontend built; stabilisation pending — see `docs/DASHBOARD_STABILISATION_PLAN.md`) |
+| **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer, run history, portfolio; FastAPI + React (Phase 1 MVP) | Full operational visibility; personal quant experience | **In Progress** (stabilisation done; deployment pending) |
+| **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Operational visibility on live VPS | **Planned** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
@@ -152,6 +155,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 | 2.2 | Dynamic strategy weighting | High | Medium | M | ~50 trades | **P1** |
 | 1.6 | Slack NL trade commands | High | Medium | M–L | Full pipeline | **P1** |
 | 1.7 | Dashboard & Visualisation (Phase 1) | High | Medium | L | Existing DB + events_log | **P1** |
+| 1.8 | Dashboard VPS Deployment | High | Easy | S | US-1.7 complete | **P1** |
 | 2.3 | Moderator effectiveness | Medium | Easy | S | ~100 trades | **P2** |
 | 3.3 | Correlation-aware screening | Medium | Easy | S | Historical prices | **P2** |
 | 4.1 | Volume-weighted signals | Medium | Easy | S | Already fetched | **P2** |
@@ -402,9 +406,28 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Fix frontend-backend type mismatches (PortfolioSnapshot, Position, Order fields)
 - [x] Fix API client URL mismatches (portfolio endpoint, getByCycleId)
 - [x] Implement `POST /api/runs/trigger` (background daemon thread)
-- [ ] Deployment: nginx, SSE buffering off, basic auth or API key; deploy script
+- [ ] Deployment: see US-1.8 and `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
 
 **Phases 2–4 (future):** Analytics & Insights; ML & Advanced (backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run, strategy tuning UI, Slack mirror).
+
+---
+
+#### US-1.8: Dashboard VPS Deployment
+**Value:** Operational visibility on live VPS; no domain required
+**Effort:** Small (1–2 days)
+**Data Sources:** Same DB as agent (shared volume)
+**Stage:** Planned
+
+**Detailed plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
+
+**Acceptance Criteria:**
+- [ ] Dashboard service added to docker-compose; shares `./data` volume with agent
+- [ ] Frontend built in Dockerfile (multi-stage); FastAPI serves static files
+- [ ] Access via `http://YOUR_VPS_IP:8000` (VPS IP — recommended; no domain)
+- [ ] Firewall allows port 8000
+- [ ] Activity feed, portfolio, runs, universe pages load correctly
+
+**Domain options:** VPS IP (recommended), purchase domain for HTTPS, or nginx reverse proxy. See deployment plan.
 
 ---
 
@@ -594,7 +617,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 ## Next sprint focus
 
 **Immediate (next session):**
-- **US-1.7** — Dashboard stabilisation: fix 5 test failures, frontend-backend type alignment, API URL fixes (see `docs/DASHBOARD_STABILISATION_PLAN.md`)
+- **US-1.8** — Dashboard VPS Deployment: add dashboard service to Docker, access via VPS IP (see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`)
 
 **Then:**
 - **US-1.4** — Deploy POC to VPS (when ready)

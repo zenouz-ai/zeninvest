@@ -20,6 +20,7 @@ This guide covers deploying the Investment Agent on a VPS, monitoring its operat
 10. [Retrieving Activity Data](#10-retrieving-activity-data)
 11. [Backtesting on VPS](#11-backtesting-on-vps)
 12. [Transferring Project to VPS](#12-transferring-project-to-vps)
+13. [Dashboard VPS Deployment](#13-dashboard-vps-deployment)
 
 ---
 
@@ -40,7 +41,7 @@ This guide covers deploying the Investment Agent on a VPS, monitoring its operat
 - **RAM**: The docker-compose file enforces a 2 GB memory limit. Each analysis cycle loads pandas DataFrames, runs three LLM calls (Anthropic, OpenAI, Google), and processes market data. 2 GB provides comfortable headroom.
 - **CPU**: Analysis cycles are I/O-bound (API calls), so 1 vCPU works. 2 vCPU helps when yfinance downloads overlap with LLM calls.
 - **Storage**: The SQLite database grows slowly (market data cache is pruned). Logs and journals accumulate over months. 20 GB gives a year of runway with logrotate in place.
-- **Network**: The agent makes outbound HTTPS calls only (Trading 212, Anthropic, OpenAI, Google AI, Finnhub, Alpha Vantage, Yahoo Finance). No inbound ports are needed beyond SSH.
+- **Network**: The agent makes outbound HTTPS calls only. For the dashboard, inbound port 8000 (or 80 via nginx) is needed. See [§13 Dashboard VPS Deployment](#13-dashboard-vps-deployment).
 
 ### Recommended Providers
 
@@ -1605,6 +1606,36 @@ rsync -avz --exclude='.env' --exclude='.venv' --exclude='__pycache__' \
 ```
 
 Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart investment-agent`.
+
+---
+
+## 13. Dashboard VPS Deployment
+
+The web dashboard (activity feed, portfolio, run history, universe) can be deployed alongside the agent on the VPS. **Full plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
+
+### Access Options (no domain required)
+
+| Option | Access | Notes |
+|--------|--------|-------|
+| **VPS IP** (recommended) | `http://YOUR_VPS_IP:8000` | No cost, no setup. HTTP is acceptable for a personal dashboard. |
+| **Domain** | `https://dashboard.yourdomain.com` | HTTPS via Let's Encrypt; ~£10–15/year. |
+| **GitHub Pages** | Not suitable | Frontend must call VPS API; mixed content (HTTPS→HTTP) blocked. |
+
+### Prerequisites
+
+- US-1.7 Dashboard stabilisation complete (merged to main)
+- `config/settings.yaml`: `dashboard.enabled: true`, `dashboard.events_enabled: true`
+- Agent already running in Docker on VPS
+
+### Implementation Steps
+
+1. Add `dashboard` service to `docker-compose.yml` (shares `./data` volume)
+2. Update `Dockerfile` to include dashboard frontend build (multi-stage)
+3. Update FastAPI to serve static files from built frontend
+4. Allow firewall: `sudo ufw allow 8000/tcp`
+5. `docker compose up -d --build`
+
+Access from your machine: `http://YOUR_VPS_IP:8000`
 
 ---
 

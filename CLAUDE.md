@@ -338,6 +338,7 @@ Files to check on every feature:
 | `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
 | `docs/DASHBOARD_VISUALISATION_PROJECT.md` | Dashboard & Visualisation System: architecture, phases, data alignment, Claude prompts |
 | `docs/DASHBOARD_STABILISATION_PLAN.md` | Dashboard stabilisation: test fixes, frontend-backend type alignment, API URL fixes |
+| `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Dashboard VPS deployment: Docker service, VPS IP access (no domain), firewall |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 
@@ -358,7 +359,7 @@ Files to check on every feature:
 - **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
 
 **Immediate (next session):**
-- **US-1.7 Dashboard Deployment** — Stabilisation done (branch `claude/dashboard-stabilisation`). Next: nginx, SSE buffering off, basic auth or API key; deploy script.
+- **US-1.8 Dashboard VPS Deployment** — Add dashboard to Docker; access via VPS IP (no domain). See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
 
 **Then:**
 - Calibration (US-2.1, US-2.2) and portfolio optimisation (US-3.1)
@@ -366,7 +367,7 @@ Files to check on every feature:
 
 ## Known issues (2026-03-10)
 
-1. **Dashboard deployment** — Stabilisation complete. Remaining: nginx config, SSE buffering off, basic auth or API key, deploy script.
+1. **Dashboard VPS deployment** — Stabilisation complete. Next: US-1.8 (Docker service, VPS IP access). See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
 2. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
 
-When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD_VISUALISATION_PROJECT.md`, and `docs/DASHBOARD_STABILISATION_PLAN.md` synchronized.
+When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD_VISUALISATION_PROJECT.md`, `docs/DASHBOARD_STABILISATION_PLAN.md`, and `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` synchronized.

@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 207 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 stabilisation complete (branch `claude/dashboard-stabilisation`).
+**Status:** POC — 207 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 stabilisation complete. Next: US-1.8 Dashboard VPS Deployment (see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`).
 
 ## Architecture
 
