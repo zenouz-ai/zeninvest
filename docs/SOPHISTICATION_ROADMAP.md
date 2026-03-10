@@ -9,7 +9,7 @@
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **7** · In Progress **1** (US-1.7 Dashboard) · Pipeline **16** (order by priority and feasibility below)
+**At a glance:** Delivered **7** · In Progress **1** (US-1.7 Dashboard) · Pipeline **17** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -40,6 +40,7 @@ timeline
         US-3.3 : Correlation Screening
         US-4.2 : Earnings Calendar
         US-4.3 : Sector Rotation
+        US-4.4 : Agentic Research
         US-6.1 : ML Trade Scoring (investigation)
         US-6.2 : Journal Embeddings
         US-6.3 : RL Investigation
@@ -70,9 +71,10 @@ timeline
 | | 11 | US-3.3 | Correlation Screening |
 | | 12 | US-4.2 | Earnings Calendar |
 | | 13 | US-4.3 | Sector Rotation |
-| | 14 | US-6.1 | ML Trade Scoring (investigation) |
-| | 15 | US-6.2 | Journal Embeddings |
-| | 16 | US-6.3 | RL Investigation |
+| | 14 | US-4.4 | Agentic Research (independent tool access for committee) |
+| | 15 | US-6.1 | ML Trade Scoring (investigation) |
+| | 16 | US-6.2 | Journal Embeddings |
+| | 17 | US-6.3 | RL Investigation |
 
 ---
 
@@ -99,6 +101,7 @@ timeline
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
+| **US-4.4** | Agentic Research | Independent tool access (web search, news, SEC) for Strategy + Moderation; differentiated research mandates | Stale context mitigation, follow-up ability, broader coverage | **Planned** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
@@ -622,6 +625,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Then:**
 - **US-1.4** — Deploy POC to VPS (when ready)
 - **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (once ~50 trades available)
+- **US-4.4** — Agentic Research (after US-1.8; see `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md`)
 - **US-5.2 prep** — Parameter sensitivity harness (registry, baseline configs, result schema)
 
 **Delivery references:**
@@ -630,6 +634,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - `docs/ORDER_MANAGEMENT_PROJECT.md`
 - `docs/BACKTESTING_PROJECT_PLAN.md`
 - `docs/DASHBOARD_VISUALISATION_PROJECT.md`
+- `docs/AGENTIC_RESEARCH_PROJECT.md`, `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md`
 
 ---
 

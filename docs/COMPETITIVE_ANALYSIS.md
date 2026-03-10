@@ -1,6 +1,6 @@
 # Competitive Analysis: Investment Agent vs Professional Quant Systems
 
-**Last Updated:** 2026-03-05
+**Last Updated:** 2026-03-10
 **Purpose:** Honest assessment of where this system stands relative to institutional quant funds and leading AI trading research, to inform our sophistication roadmap.
 
 ---
@@ -14,7 +14,7 @@
 | **State machine (ACTIVE/CAUTIOUS/HALTED)** | Auto-reduction at 5% drawdown, auto-liquidation at 15% | Similar to institutional drawdown-triggered deleveraging. Simple but sound. |
 | **Cost-aware degradation** | FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED | Unique for retail. Professional firms have unlimited compute budgets; we've built graceful degradation for budget constraints. |
 | **Clean modular architecture** | Agent pipeline with clear separation of concerns | Professional-grade software design. Easy to extend, test, and reason about. |
-| **Comprehensive test suite** | 166 tests covering all critical components (including backtesting, performance/trade-outcome trackers) | Above average for retail algo projects. |
+| **Comprehensive test suite** | 207 tests covering all critical components (including backtesting, performance/trade-outcome trackers, order management, notifications, dashboard) | Above average for retail algo projects. |
 | **Sector-balanced universe screening** | Cap-tier sampling (70/20/10 large/mid/small), cooldown rotation, sector minimums | Prevents concentration bias in opportunity discovery. |
 | **Defense-in-depth pipeline** | Strategy → Moderation → Risk → Execution, any layer can block | True institutional pattern — multiple independent checks. |
 

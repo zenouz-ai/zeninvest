@@ -1,5 +1,9 @@
 # Investment Agent — Project Presentation
 
+**Last Updated:** 2026-03-10
+
+---
+
 ## Slide 1: Title
 
 **Autonomous Investment Agent**
@@ -24,7 +28,7 @@ to autonomously analyze markets and execute trades.*
 
 ```
                          ORCHESTRATOR
-                    (Every 12h, Mon-Fri)
+              (2–3 cycles/day, Mon-Fri: configurable)
                              |
     +--------+--------+----------+----------+---------+---------+
     |        |        |          |          |         |         |
@@ -145,7 +149,8 @@ FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED
 **Trading 212 Integration:**
 - Practice/Demo API (safe for testing)
 - **Market orders:** BUY, SELL, REDUCE (partial sell) with calculated quantities
-- **Stop-loss orders:** Automatically placed after BUY using Claude's `stop_loss_pct` (GTC)
+- **Stop-loss orders:** Automatically placed after BUY using Claude's `stop_loss_pct` (GTC); ATR-based reassessment each cycle; optional software trailing stops
+- **Limit orders:** Dip-buy entries when strategy outputs `entry_type: limit_dip` (configurable offset below current price)
 - 5-minute deduplication window
 - Rate limit monitoring
 
@@ -180,13 +185,13 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | Logging | Rich |
 | CLI | Click |
 | Containerization | Docker + Docker Compose |
-| Testing | pytest (166 tests) |
+| Testing | pytest (207 tests) |
 
 ---
 
 ## Slide 11: Testing & Quality
 
-**166 unit tests covering:**
+**207 unit tests covering:**
 - Risk manager: 43 tests (all rules + state transitions + REDUCE check)
 - Strategy engine: 17 tests (momentum, mean reversion, factor, prompts, synthesis)
 - Moderation: 21 tests (consensus logic, panel integration, context formatting)
@@ -224,6 +229,9 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy |
 | `trade_outcomes` | Per-trade P&L (BUY→SELL), conviction and moderator linkage |
 | `notification_logs` | Outbound alert attempts (Slack/email): sent, failed, skipped, deduped |
+| `stop_loss_adjustments` | Stop-loss reassessments, trailing ratchets, limit order placements |
+| `events_log` | Real-time activity stream for dashboard SSE |
+| `runs` | Run metadata (cycle_id, run_type, status) for dashboard |
 
 **Cycle output includes executed trades, rejected stocks, opportunity ranking, queued candidates, and swap suggestions** for post-cycle analysis and controlled BUY prioritisation.
 
@@ -261,6 +269,7 @@ docker compose logs -f investment-agent
 9. **Universe screening over position-only analysis** — Discovers new opportunities via sector-balanced, cap-tiered sampling (70% large, 20% mid, 10% small) with 72-hour screening cooldown to ensure broad coverage
 10. **Automatic stop-loss over manual protection** — GTC stop orders placed after every BUY using Claude's downside estimate
 11. **Per-ticker news over combined dump** — Claude sees which articles belong to which stock, eliminating generic "no specific news" outputs
+12. **UOV opportunity layer** — Deterministic ranking and queueing; strategy controls SELL/REDUCE; UOV only reorders/queues BUYs
 
 ---
 
@@ -296,12 +305,15 @@ docker compose logs -f investment-agent
 - ~~Chat/notifications~~ → Slack + email alerts (trade approved, execution result, cycle summary, state transition, critical failure); notification_logs audit trail
 - ~~Performance & trade outcomes~~ → performance_metrics (Sharpe, Sortino, drawdown, win rates), trade_outcomes (per-trade P&L, conviction linkage), --performance / --dashboard CLI
 - ~~Backtesting~~ → Engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); see docs/BACKTESTING.md and WALK_FORWARD_VALIDATION.md
+- ~~UOV ranking & queue~~ → Universal Opportunity Value scoring, ranked BUY execution, queue + swap suggestions (shadow/active mode)
+- ~~Intelligent order management~~ → ATR-based stop reassessment, software trailing stops, limit dip-buy orders; stop_loss_adjustments audit trail
+- ~~Dashboard Phase 1~~ → FastAPI backend (runs, universe, portfolio, orders, SSE events), React frontend (4 pages); stabilisation complete; deployment (US-1.8) next
 
 **Phase 2 — Enhanced Intelligence:**
 - Portfolio optimization (Markowitz / risk parity)
-- Alternative data: earnings call transcripts, SEC filings
+- Alternative data: earnings call transcripts, SEC filings; Agentic Research (US-4.4) — independent tool access for committee members
 - Regime-dependent strategy weighting (adjust 35/30/35 split based on market regime)
-- Limit orders / take-profit orders using T212's existing API
+- Take-profit orders (limit dip-buy already implemented)
 
 **Phase 3 — Production Hardening:**
 - Real-time alerting (Slack, email, PagerDuty)
@@ -322,12 +334,12 @@ docker compose logs -f investment-agent
 | Metric | Value |
 |--------|-------|
 | Components | 24+ Python modules |
-| Tests | 123 (all passing) |
+| Tests | 207 (all passing) |
 | LLM Providers | 3 (Anthropic, OpenAI, Google) |
 | Data Sources | 3 (yfinance, Finnhub, Alpha Vantage) |
 | Risk Rules | 9 (hard, never overridden by LLMs) |
 | Strategies | 3 (Momentum, Mean Reversion, Factor) |
-| Order Types | Market, stop-loss, REDUCE (partial sell) |
+| Order Types | Market, stop-loss, limit (dip-buy), REDUCE (partial sell) |
 | Universe Screening | Sector-balanced, cap-tiered, 72h cooldown rotation |
 | Cost per cycle | ~£0.03-0.05 |
 | Monthly cost | ~£2-3 estimated |

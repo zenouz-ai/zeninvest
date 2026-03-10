@@ -339,6 +339,8 @@ Files to check on every feature:
 | `docs/DASHBOARD_VISUALISATION_PROJECT.md` | Dashboard & Visualisation System: architecture, phases, data alignment, Claude prompts |
 | `docs/DASHBOARD_STABILISATION_PLAN.md` | Dashboard stabilisation: test fixes, frontend-backend type alignment, API URL fixes |
 | `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Dashboard VPS deployment: Docker service, VPS IP access (no domain), firewall |
+| `docs/AGENTIC_RESEARCH_PROJECT.md` | Agentic research: independent tool access for committee members (US-4.4) |
+| `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md` | Implementation plan, viability assessment, phase breakdown for Agentic Research |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 

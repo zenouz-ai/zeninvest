@@ -101,6 +101,9 @@ See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` — Docker service, VPS IP access (n
 - **Strategy Tuning**: Adjust committee weights, risk thresholds, and sector preferences via UI
 - **Slack Integration Mirror**: See Slack conversation history with the agent, send commands from dashboard
 
+### Phase D — Research Activity (Agentic Research, US-4.4)
+When [Agentic Research](AGENTIC_RESEARCH_PROJECT.md) is implemented: **Research Activity** panel showing per-cycle research summary (searches, cache hit rate, cost), per-ticker research trail, and research influence tracking. See `docs/AGENTIC_RESEARCH_PROJECT.md` Phase D and `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md`.
+
 ---
 
 ## Data Model (Core Tables)

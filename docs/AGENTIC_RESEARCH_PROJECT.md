@@ -611,7 +611,7 @@ This feature maps to **Phase 4: Signal Enhancement** in the sophistication roadm
 - The tool-use infrastructure benefits all future enhancements (earnings calendar integration, sector rotation models, etc.)
 - It directly addresses the power.ai insight about independent research curation
 
-**Suggested roadmap placement:** After dashboard MVP (Phase 1 frontend) and before ML features (Phase 3). Label as **US-4.1: Agentic Research — Independent Tool Access for Committee Members**.
+**Suggested roadmap placement:** After dashboard MVP (Phase 1 frontend) and before ML features (Phase 3). Label as **US-4.4: Agentic Research — Independent Tool Access for Committee Members**. (US-4.1 is reserved for Volume Signals.)
 
 ---
 
