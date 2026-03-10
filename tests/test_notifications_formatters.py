@@ -141,7 +141,7 @@ def test_render_cycle_summary_slack_includes_queued_reason() -> None:
     event = _cycle_event()
     event.payload["decisions"][0]["stage"] = "opportunity_queue"
     event.payload["decisions"][0]["quantity"] = None
-    event.payload["decisions"][0]["stage_reason"] = "Queued by UOV optimizer (capacity/threshold gating)"
+    event.payload["decisions"][0]["stage_reason"] = "Awaiting 2nd cycle for promotion"
 
     messages = render_event(event, "slack", slack_max_chars=10_000)
     text = messages[0].body
@@ -149,4 +149,4 @@ def test_render_cycle_summary_slack_includes_queued_reason() -> None:
     assert "AAPL_US_EQ BUY" in text
     assert "queued" in text
     assert "opportunity_queue" in text
-    assert "Queued by UOV optimizer (capacity/threshold gating)" in text
+    assert "Awaiting 2nd cycle for promotion" in text

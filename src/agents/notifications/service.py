@@ -19,6 +19,14 @@ from src.utils.logger import get_logger
 
 logger = get_logger("notifications")
 
+# Dashboard event logger (fail-open import)
+try:
+    from dashboard.backend.app.services.event_logger import log_event
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
+    log_event = None
+
 
 class NotificationService:
     """Main notification service for outbound alerts."""
@@ -248,6 +256,27 @@ class NotificationService:
                         latency_ms=latency_ms,
                         recipient=provider.recipient,
                     )
+                    
+                    # Log notification_sent event to dashboard (only on successful send)
+                    if DASHBOARD_AVAILABLE and log_event:
+                        try:
+                            log_event(
+                                event_type="notification_sent",
+                                source="notifications",
+                                message=f"Sent {event.event_type} to {channel}",
+                                metadata={
+                                    "event_type": event.event_type,
+                                    "channel": channel,
+                                    "cycle_id": event.cycle_id,
+                                    "severity": event.severity,
+                                    "ticker": event.payload.get("ticker"),
+                                    "action": event.payload.get("action"),
+                                    "latency_ms": latency_ms,
+                                },
+                            )
+                        except Exception:
+                            pass  # Fail-open
+                    
                     break
                 except Exception as exc:  # pragma: no cover - exercised via tests with mocks
                     latency_ms = (time.perf_counter() - start) * 1000

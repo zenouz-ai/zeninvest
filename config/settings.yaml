@@ -73,9 +73,9 @@ cost_limits:
 opportunity:
   enabled: true
   mode: active  # shadow|active
-  immediate_threshold_z: 0.75
-  queue_threshold_z: 0.1
-  queue_ttl_cycles: 3
+  immediate_threshold_z: 0.5   # lowered from 0.75 to allow top candidates to execute
+  queue_threshold_z: 0.0     # relaxed from 0.1 to allow more candidates into queue
+  queue_ttl_cycles: 4        # extended from 3 to give queued tickers more cycles
   swap_delta_z: 1.0
   ewma_half_life_cycles: 6
   weights:

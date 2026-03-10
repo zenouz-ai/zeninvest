@@ -6,8 +6,9 @@ All logging is non-blocking and fail-open (never blocks the pipeline).
 
 import logging
 import threading
+import time
 from datetime import datetime, timezone
-from queue import Queue
+from queue import Empty, Queue
 from typing import Any
 
 from src.data.database import get_session
@@ -35,6 +36,7 @@ def _logger_worker():
             event_data = _event_queue.get(timeout=1.0)
 
             if not settings.dashboard_enabled or not settings.dashboard_events_enabled:
+                _event_queue.task_done()
                 continue
 
             session = get_session()
@@ -56,8 +58,12 @@ def _logger_worker():
 
             _event_queue.task_done()
 
-        except Exception:
-            # Timeout or other error - continue loop
+        except Empty:
+            # Timeout - continue loop (this is expected)
+            continue
+        except Exception as e:
+            # Other error - log and continue
+            logger.debug(f"Event logger worker error (continuing): {e}")
             continue
 
 
@@ -78,6 +84,34 @@ def stop_event_logger():
         _logger_thread.join(timeout=2.0)
         _logger_thread = None
         logger.info("Dashboard event logger stopped")
+
+
+def flush_events(timeout_seconds: float = 5.0) -> None:
+    """Wait for all queued events to be processed.
+    
+    Args:
+        timeout_seconds: Maximum time to wait for queue to empty.
+    """
+    # Ensure thread is running
+    if _logger_thread is None or not _logger_thread.is_alive():
+        start_event_logger()
+    
+    if _event_queue.empty():
+        return
+    
+    # Wait for queue to empty, checking periodically
+    start = time.time()
+    while not _event_queue.empty() and (time.time() - start) < timeout_seconds:
+        # Ensure thread is still alive
+        if _logger_thread is None or not _logger_thread.is_alive():
+            start_event_logger()
+        time.sleep(0.1)
+    
+    if not _event_queue.empty():
+        logger.warning(f"Event queue not empty after {timeout_seconds}s timeout ({_event_queue.qsize()} events remaining)")
+    
+    # Give a bit more time for final commits
+    time.sleep(0.5)
 
 
 def log_event(

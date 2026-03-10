@@ -36,13 +36,22 @@ from src.utils.logger import get_logger
 
 logger = get_logger("orchestrator")
 
+# Dashboard event logger (fail-open import)
+try:
+    from dashboard.backend.app.services.event_logger import log_event
+    DASHBOARD_AVAILABLE = True
+except ImportError:
+    DASHBOARD_AVAILABLE = False
+    log_event = None
+
 
 class Orchestrator:
     """Main orchestrator that wires all agents together."""
 
-    def __init__(self, dry_run: bool = False) -> None:
+    def __init__(self, dry_run: bool = False, uov_diagnostic: bool = False) -> None:
         self.settings = get_settings()
         self.dry_run = dry_run
+        self.uov_diagnostic = uov_diagnostic
         self.state_machine = StateMachine()
         self.data_fetcher = DataFetcher()
         self.strategy_engine = StrategyEngine()
@@ -85,6 +94,39 @@ class Orchestrator:
         """
         cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
         logger.info(f"Starting cycle {cycle_id} (dry_run={self.dry_run})")
+        
+        # Log run_started event (when called directly, not via scheduler)
+        cycle_start_time = datetime.now(timezone.utc)
+        if DASHBOARD_AVAILABLE and log_event:
+            try:
+                log_event(
+                    event_type="run_started",
+                    source="orchestrator",
+                    message=f"Cycle {cycle_id} starting (dry_run={self.dry_run})",
+                    metadata={
+                        "cycle_id": cycle_id,
+                        "run_type": "manual" if not self.dry_run else "dry_run",
+                        "started_at": cycle_start_time.isoformat(),
+                    },
+                )
+                # Create run record
+                try:
+                    from dashboard.backend.app.database import Run
+                    session = get_session()
+                    run = Run(
+                        cycle_id=cycle_id,
+                        run_type="manual" if not self.dry_run else "dry_run",
+                        started_at=cycle_start_time,
+                        status="running",
+                    )
+                    session.add(run)
+                    session.commit()
+                    session.close()
+                    logger.debug(f"Created Run record for cycle {cycle_id}")
+                except Exception as e:
+                    logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
+            except Exception:
+                pass  # Fail-open
 
         result: dict[str, Any] = {
             "cycle_id": cycle_id,
@@ -122,6 +164,71 @@ class Orchestrator:
             result["num_rejected"] = len(result["rejected_stocks"])
             result["cost_summary"] = get_cost_summary(days=1)
             _emit_cycle_summary()
+            
+            # Log run_completed event (when called directly, not via scheduler)
+            cycle_end_time = datetime.now(timezone.utc)
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
+                    log_event(
+                        event_type="run_completed",
+                        source="orchestrator",
+                        message=f"Cycle {cycle_id} completed: {status} — {result['num_trades']} trades, {result['num_rejected']} rejected",
+                        metadata={
+                            "cycle_id": cycle_id,
+                            "run_type": "manual" if not self.dry_run else "dry_run",
+                            "status": status,
+                            "duration_seconds": duration_seconds,
+                            "num_trades": result["num_trades"],
+                            "num_rejected": result["num_rejected"],
+                        },
+                    )
+                    # Update run record
+                    try:
+                        from dashboard.backend.app.database import Run
+                        session = get_session()
+                        run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                        if run:
+                            run.completed_at = cycle_end_time
+                            run.status = status
+                            run.summary_json = {
+                                "num_trades": result["num_trades"],
+                                "num_rejected": result["num_rejected"],
+                                "duration_seconds": duration_seconds,
+                            }
+                            session.commit()
+                            logger.debug(f"Updated Run record for cycle {cycle_id}")
+                        else:
+                            logger.debug(f"Run record not found for cycle {cycle_id}, creating new one")
+                            # Create if missing (might have been created in scheduler)
+                            run = Run(
+                                cycle_id=cycle_id,
+                                run_type="manual" if not self.dry_run else "dry_run",
+                                started_at=cycle_start_time,
+                                completed_at=cycle_end_time,
+                                status=status,
+                                summary_json={
+                                    "num_trades": result["num_trades"],
+                                    "num_rejected": result["num_rejected"],
+                                    "duration_seconds": duration_seconds,
+                                },
+                            )
+                            session.add(run)
+                            session.commit()
+                        session.close()
+                    except Exception as e:
+                        logger.debug(f"Failed to update Run record (fail-open): {e}", exc_info=True)
+                except Exception:
+                    pass  # Fail-open
+            
+            # Flush events before returning (ensure they're processed)
+            if DASHBOARD_AVAILABLE:
+                try:
+                    from dashboard.backend.app.services.event_logger import flush_events
+                    flush_events(timeout_seconds=2.0)
+                except Exception:
+                    pass  # Fail-open
+            
             return result
 
         try:
@@ -344,6 +451,26 @@ class Orchestrator:
             decisions = strategy_result.get("decisions", [])
             strategy_decisions = decisions
             logger.info(f"Strategy produced {len(decisions)} decisions")
+            
+            # Log strategy decisions
+            if DASHBOARD_AVAILABLE and log_event:
+                try:
+                    for decision in decisions:
+                        log_event(
+                            event_type="decision_made",
+                            source="strategy",
+                            message=f"{decision.get('action', 'HOLD')} {decision.get('ticker', 'UNKNOWN')} - {decision.get('reasoning', '')[:100]}",
+                            metadata={
+                                "cycle_id": cycle_id,
+                                "ticker": decision.get("ticker"),
+                                "action": decision.get("action"),
+                                "conviction": decision.get("conviction"),
+                                "target_allocation_pct": decision.get("target_allocation_pct"),
+                                "reasoning": decision.get("reasoning", "")[:500],  # Truncate for storage
+                            },
+                        )
+                except Exception:
+                    pass  # Fail-open
 
             # --- STEP 5: Moderation -> Risk -> (Deferred BUY Execution) ---
             pending_buys: list[dict[str, Any]] = []
@@ -408,6 +535,27 @@ class Orchestrator:
                     cycle_id=cycle_id,
                 )
                 mod_dict = mod_result.to_dict()
+                
+                # Log moderation decision
+                if DASHBOARD_AVAILABLE and log_event:
+                    try:
+                        log_event(
+                            event_type="decision_made",
+                            source="moderation",
+                            message=f"Moderation {mod_result.consensus} for {action} {ticker}",
+                            metadata={
+                                "cycle_id": cycle_id,
+                                "ticker": ticker,
+                                "action": action,
+                                "consensus": mod_result.consensus,
+                                "gpt_score": mod_result.gpt_score,
+                                "gemini_score": mod_result.gemini_score,
+                                "gpt_reasoning": mod_result.gpt_reasoning[:500] if mod_result.gpt_reasoning else None,
+                                "gemini_reasoning": mod_result.gemini_reasoning[:500] if mod_result.gemini_reasoning else None,
+                            },
+                        )
+                    except Exception:
+                        pass  # Fail-open
 
                 if mod_result.consensus == "BLOCKED":
                     logger.info(f"{ticker} BLOCKED by moderation panel")
@@ -459,6 +607,26 @@ class Orchestrator:
                     is_existing_winner=ticker in existing_tickers,
                     cycle_id=cycle_id,
                 )
+                
+                # Log risk decision
+                if DASHBOARD_AVAILABLE and log_event:
+                    try:
+                        log_event(
+                            event_type="decision_made",
+                            source="risk",
+                            message=f"Risk {risk_verdict.verdict} for {action} {ticker}: {risk_verdict.reasoning[:100]}",
+                            metadata={
+                                "cycle_id": cycle_id,
+                                "ticker": ticker,
+                                "action": action,
+                                "verdict": risk_verdict.verdict,
+                                "triggered_rules": risk_verdict.triggered_rules,
+                                "reasoning": risk_verdict.reasoning[:500] if risk_verdict.reasoning else None,
+                                "adjusted_allocation_pct": risk_verdict.adjusted_allocation_pct,
+                            },
+                        )
+                    except Exception:
+                        pass  # Fail-open
 
                 if risk_verdict.verdict == "REJECT":
                     logger.info(f"{ticker} REJECTED by risk: {risk_verdict.reasoning}")
@@ -578,28 +746,34 @@ class Orchestrator:
                     result["queued_candidates"] = plan.get("queued_candidates", [])
                     result["swap_candidates"] = plan.get("swap_candidates", [])
 
-                    if self.settings.opportunity_mode == "active":
+                    if self.settings.opportunity_mode == "active" and not self.uov_diagnostic:
                         selected_buy_order = plan.get("execution_order", selected_buy_order)
                         selected_set = set(selected_buy_order)
-                        queued_set = {item.get("ticker", "") for item in result["queued_candidates"]}
+                        rejection_details = plan.get("rejection_details", {})
                         for pending in pending_buys:
                             ticker = pending.get("ticker", "")
                             if ticker in selected_set:
                                 continue
-                            if ticker in queued_set:
-                                stage = "opportunity_queue"
-                                reason = "Queued by UOV optimizer (capacity/threshold gating)"
-                            else:
-                                stage = "opportunity_filtered"
-                                reason = "Filtered by UOV optimizer (below queue threshold or queue expiry)"
-                            result["rejected_stocks"].append({
+                            details = rejection_details.get(ticker, {})
+                            stage = details.get("stage", "opportunity_filtered")
+                            reason = details.get("reason_message", "Filtered by UOV optimizer")
+                            score_info = scores_by_ticker.get(ticker, {})
+                            uov_ewma = score_info.get("uov_ewma")
+                            uov_z = score_info.get("uov_z")
+                            rejected_entry: dict[str, Any] = {
                                 "ticker": ticker,
                                 "action": "BUY",
                                 "stage": stage,
                                 "reason": reason,
+                                "stage_reason_code": details.get("reason_code"),
                                 "conviction": pending.get("decision", {}).get("conviction", 0),
                                 **self._get_stock_metadata(ticker, stocks_data),
-                            })
+                            }
+                            if uov_ewma is not None:
+                                rejected_entry["uov_ewma"] = round(float(uov_ewma), 4)
+                            if uov_z is not None:
+                                rejected_entry["uov_z"] = round(float(uov_z), 4)
+                            result["rejected_stocks"].append(rejected_entry)
 
             pending_by_ticker = {b["ticker"]: b for b in pending_buys}
             for ticker in selected_buy_order:
@@ -1373,6 +1547,10 @@ class Orchestrator:
                 "stop_loss_status": stop_loss.get("status"),
                 "stage_reason": stage_reason,
             })
+            if rejected.get("uov_ewma") is not None:
+                records[-1]["uov_ewma"] = rejected["uov_ewma"]
+            if rejected.get("uov_z") is not None:
+                records[-1]["uov_z"] = rejected["uov_z"]
 
         return records
 
@@ -1583,6 +1761,7 @@ def _get_dashboard_summary() -> dict[str, Any]:
 
 @click.command()
 @click.option("--dry-run", is_flag=True, help="Run without executing trades")
+@click.option("--uov-diagnostic", is_flag=True, help="Run with UOV in shadow mode and emit UOV scores for calibration")
 @click.option("--force-sell", "force_sell_ticker", default=None, help="Force sell a position")
 @click.option("--pause", is_flag=True, help="Pause the system")
 @click.option("--resume", "do_resume", is_flag=True, help="Resume the system")
@@ -1592,6 +1771,7 @@ def _get_dashboard_summary() -> dict[str, Any]:
 @click.option("--dashboard", is_flag=True, help="Show dashboard: portfolio, metrics, costs, positions")
 def main(
     dry_run: bool,
+    uov_diagnostic: bool,
     force_sell_ticker: str | None,
     pause: bool,
     do_resume: bool,
@@ -1601,7 +1781,7 @@ def main(
     dashboard: bool,
 ) -> None:
     """Investment Agent Orchestrator."""
-    orchestrator = Orchestrator(dry_run=dry_run)
+    orchestrator = Orchestrator(dry_run=dry_run, uov_diagnostic=uov_diagnostic)
 
     try:
         if status:
@@ -1641,6 +1821,20 @@ def main(
 
         # Run a full cycle
         result = orchestrator.run_cycle()
+        if uov_diagnostic and result.get("opportunity_ranking"):
+            click.echo("\n--- UOV Diagnostic (opportunity_ranking) ---", err=True)
+            for s in sorted(result["opportunity_ranking"], key=lambda x: float(x.get("uov_ewma", 0)), reverse=True):
+                click.echo(
+                    f"  {s.get('ticker', 'N/A')} {s.get('action', 'N/A')} | "
+                    f"uov_ewma={s.get('uov_ewma', 'N/A')} uov_z={s.get('uov_z', 'N/A')} | "
+                    f"stage={s.get('stage', 'N/A')} tradable={s.get('is_tradable', False)}",
+                    err=True,
+                )
+            if result.get("queued_candidates"):
+                click.echo("\nQueued candidates:", err=True)
+                for q in result["queued_candidates"]:
+                    click.echo(f"  {q.get('ticker')} queued_cycles={q.get('queued_cycles')} uov_ewma={q.get('uov_ewma')}", err=True)
+            click.echo("---\n", err=True)
         click.echo(json.dumps(result, indent=2, default=str))
 
     finally:

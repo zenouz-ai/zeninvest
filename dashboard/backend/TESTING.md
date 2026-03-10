@@ -1,0 +1,217 @@
+# Testing the Dashboard Backend
+
+## Quick Test Guide
+
+### 1. Verify Installation
+
+First, make sure dependencies are installed:
+
+```bash
+poetry install
+```
+
+### 2. Run Database Migration
+
+Ensure the dashboard tables are created:
+
+```bash
+poetry run alembic upgrade head
+```
+
+### 3. Start the Server
+
+**Option A: Using the run script**
+```bash
+poetry run python dashboard/backend/run_server.py
+```
+
+**Option B: Using uvicorn directly**
+```bash
+poetry run uvicorn dashboard.backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Option C: Using Python module syntax**
+```bash
+cd dashboard/backend
+poetry run python -m app.main
+```
+
+The server will start on `http://localhost:8000`
+
+### 4. Test Endpoints
+
+**Option A: Use the test script**
+```bash
+# In a new terminal (keep server running)
+poetry run python dashboard/backend/test_endpoints.py
+```
+
+**Option B: Use curl**
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Get runs
+curl http://localhost:8000/api/runs/
+
+# Get universe
+curl http://localhost:8000/api/universe/
+
+# Get portfolio
+curl http://localhost:8000/api/portfolio/
+
+# Get orders
+curl http://localhost:8000/api/orders/
+
+# Get events
+curl http://localhost:8000/api/events/
+```
+
+**Option C: Use the interactive API docs**
+Open your browser and visit:
+```
+http://localhost:8000/docs
+```
+
+This provides a Swagger UI where you can test all endpoints interactively.
+
+### 5. Test SSE Stream
+
+In a terminal, connect to the SSE stream:
+
+```bash
+curl -N http://localhost:8000/api/events/stream
+```
+
+You should see keepalive messages every 30 seconds. When events are logged, they'll appear here.
+
+### 6. Test Event Logger
+
+In a Python shell or script:
+
+```python
+from dashboard.backend.app.services.event_logger import log_event
+
+# Log a test event
+log_event(
+    event_type="test_event",
+    source="manual_test",
+    message="This is a test event",
+    metadata={"test": True}
+)
+```
+
+Then check the events endpoint:
+```bash
+curl http://localhost:8000/api/events/
+```
+
+## Troubleshooting
+
+### "No such file or directory" error
+
+If you get this error, check:
+
+1. **Are you in the project root?**
+   ```bash
+   pwd
+   # Should show: /path/to/Investment-agent
+   ```
+
+2. **Does the file exist?**
+   ```bash
+   ls -la dashboard/backend/run_server.py
+   ```
+
+3. **Try using absolute path from project root:**
+   ```bash
+   poetry run python -m dashboard.backend.run_server
+   ```
+   (Note: This requires `__main__.py` - see below)
+
+### Alternative: Create a module entry point
+
+If the direct script doesn't work, you can create a `__main__.py`:
+
+```bash
+# Create the file
+cat > dashboard/backend/__main__.py << 'EOF'
+from dashboard.backend.run_server import *
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "dashboard.backend.app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+    )
+EOF
+
+# Then run as module
+poetry run python -m dashboard.backend
+```
+
+### Port already in use
+
+If port 8000 is busy:
+
+```bash
+# Find what's using it
+lsof -i :8000
+
+# Or use a different port
+poetry run python dashboard/backend/run_server.py --port 8001
+```
+
+### Database connection errors
+
+Make sure the database exists:
+
+```bash
+ls -la data/investment_agent.db
+```
+
+If it doesn't exist, run migrations:
+
+```bash
+poetry run alembic upgrade head
+```
+
+## Expected Behavior
+
+### Successful Server Start
+
+You should see:
+```
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [XXXX] using WatchFiles
+INFO:     Started server process [XXXX]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+```
+
+### Successful API Call
+
+A successful GET request should return:
+- Status code: 200
+- JSON response (may be empty array `[]` if no data exists yet)
+
+### Successful SSE Connection
+
+You should see:
+```
+data: {"type": "connected", "message": "SSE stream connected"}
+
+: keepalive
+
+: keepalive
+...
+```
+
+## Next Steps
+
+Once the backend is tested and working:
+
+1. **Instrument the agent** - Add event logging calls throughout the orchestrator
+2. **Build the frontend** - Create the React UI (Phase 3)
+3. **Deploy** - Set up nginx and deployment scripts (Phase 4)

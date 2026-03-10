@@ -181,6 +181,13 @@ def _slack_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
         lines.append(f"  Conv={d.get('conviction', 'N/A')} exec={exec_status} stop={stop_status}")
         if stage_reason and stage in ("opportunity_queue", "opportunity_filtered"):
             lines.append(f"  Reason: {stage_reason}")
+            if d.get("uov_ewma") is not None or d.get("uov_z") is not None:
+                uov_parts = []
+                if d.get("uov_ewma") is not None:
+                    uov_parts.append(f"uov_ewma={d['uov_ewma']}")
+                if d.get("uov_z") is not None:
+                    uov_parts.append(f"uov_z={d['uov_z']}")
+                lines.append(f"  UOV: {', '.join(uov_parts)}")
         if reasoning:
             lines.append(f"  Reasoning: {reasoning}")
 
@@ -280,6 +287,15 @@ def _email_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
         lines.append(f"   Stage: {decision.get('stage', 'N/A')}")
         if decision.get("stage_reason"):
             lines.append(f"   Reason: {decision.get('stage_reason')}")
+        if decision.get("stage") in ("opportunity_queue", "opportunity_filtered") and (
+            decision.get("uov_ewma") is not None or decision.get("uov_z") is not None
+        ):
+            uov_parts = []
+            if decision.get("uov_ewma") is not None:
+                uov_parts.append(f"uov_ewma={decision['uov_ewma']}")
+            if decision.get("uov_z") is not None:
+                uov_parts.append(f"uov_z={decision['uov_z']}")
+            lines.append(f"   UOV: {', '.join(uov_parts)}")
         lines.append(f"   Conviction: {decision.get('conviction', 'N/A')}")
         lines.append(
             f"   Allocations: target={decision.get('target_allocation_pct', 'N/A')}% "
