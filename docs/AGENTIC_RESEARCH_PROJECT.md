@@ -127,6 +127,15 @@ RESEARCH_TOOLS = {
             "sector": "Sector name (e.g. 'Technology', 'Healthcare')",
             "include_etf_flows": "Include ETF flow data (default: true)"
         }
+    },
+    "browse_financial_site": {
+        "description": "Navigate to a financial website and extract specific information using an AI-driven browser agent. Use for sites that require navigation (clicking, scrolling, searching) or have dynamic content that simple web search cannot access. Examples: earnings call transcripts, analyst commentary pages, company investor relations, broker dashboards.",
+        "parameters": {
+            "url": "Starting URL to navigate to",
+            "task": "Natural language description of what to find and extract",
+            "extract_schema": "Optional: structured fields to extract (e.g. {'analyst': 'string', 'rating': 'string', 'target_price': 'number'})",
+            "max_steps": "Maximum browser navigation steps (default: 10, max: 20)"
+        }
     }
 }
 ```
@@ -137,8 +146,8 @@ Not every member gets every tool. This enforces the differentiated mandate:
 
 ```python
 MEMBER_TOOL_ACCESS = {
-    "strategy": ["search_recent_news", "search_web", "search_sec_filings"],
-    "skeptic": ["search_recent_news", "search_web"],
+    "strategy": ["search_recent_news", "search_web", "search_sec_filings", "browse_financial_site"],
+    "skeptic": ["search_recent_news", "search_web", "browse_financial_site"],
     "risk_assessor": ["search_web", "get_sector_analysis"],
 }
 ```
@@ -531,9 +540,348 @@ Add research observability to the dashboard and Slack notifications.
 Update Claude.md and README.md.
 ```
 
----
+### Phase E — Browser Automation for Deep Web Research (1-2 sessions)
 
-## Configuration (settings.yaml additions)
+Browser Use + Playwright integration for navigating and extracting from dynamic financial websites that cannot be accessed via simple search APIs.
+
+#### Why This Matters
+
+Many high-value financial data sources don't have APIs or block simple scraping:
+- **Seeking Alpha**: Analyst commentary, earnings call transcripts, quant ratings — behind dynamic JS rendering and login walls
+- **Finviz**: Screener results, insider trading tables, analyst consensus — heavily JS-rendered
+- **Company IR pages**: Every company's investor relations page has a different layout. Press releases, earnings slides, guidance updates live here
+- **Morningstar**: Moat ratings, fair value estimates, stewardship grades
+- **SEC EDGAR full filings**: While the search API returns metadata, reading actual filing content requires page navigation
+- **Broker dashboards**: If T212 adds web features not in their API, the agent could access them programmatically
+
+Simple web search returns headlines and snippets. Browser automation lets the agent actually *read the page* like a human analyst would — navigating to the right section, extracting structured data from tables, and following links to primary sources.
+
+#### Architecture
+
+```
+src/agents/research/
+├── ... (existing files)
+├── browser_tool.py        # Browser Use integration + Playwright fallback
+├── browser_config.py      # Browser session management, resource limits
+└── site_recipes/          # Deterministic Playwright scripts for known sites
+    ├── __init__.py
+    ├── sec_edgar.py       # SEC filing page navigation
+    ├── finviz.py          # Finviz screener/quote extraction
+    └── seeking_alpha.py   # Seeking Alpha article extraction (if accessible)
+```
+
+#### Hybrid Strategy: Recipes First, AI Fallback
+
+The key insight from the industry: use deterministic Playwright scripts for sites you visit frequently (predictable, fast, free), and fall back to Browser Use's AI navigation for unfamiliar or changing sites.
+
+```python
+# src/agents/research/browser_tool.py
+
+from playwright.async_api import async_playwright
+from browser_use import Agent as BrowserAgent
+
+class BrowserResearchTool:
+    """Hybrid browser tool: deterministic recipes for known sites, 
+    AI-driven Browser Use for unknown sites."""
+    
+    # Known site recipes — fast, free, no LLM cost
+    SITE_RECIPES = {
+        "efts.sec.gov": "sec_edgar",
+        "finviz.com": "finviz",
+        "seekingalpha.com": "seeking_alpha",
+    }
+    
+    def __init__(self, settings, research_cache, budget_tracker):
+        self.settings = settings
+        self.cache = research_cache
+        self.budget = budget_tracker
+        self._browser = None
+        self._context = None
+    
+    async def execute(self, url: str, task: str, extract_schema: dict = None, 
+                      max_steps: int = 10) -> dict:
+        """Route to recipe or AI agent based on URL."""
+        domain = extract_domain(url)
+        
+        # Check cache first
+        cache_key = f"browse:{domain}:{hash(task)}"
+        cached = await self.cache.get(cache_key)
+        if cached:
+            return cached
+        
+        # Try deterministic recipe first
+        recipe = self.SITE_RECIPES.get(domain)
+        if recipe:
+            result = await self._run_recipe(recipe, url, task, extract_schema)
+        else:
+            # Fall back to AI-driven Browser Use
+            result = await self._run_ai_browser(url, task, extract_schema, max_steps)
+        
+        await self.cache.set(cache_key, result)
+        return result
+    
+    async def _run_recipe(self, recipe_name: str, url: str, task: str, 
+                          schema: dict) -> dict:
+        """Execute a deterministic Playwright script for a known site."""
+        browser = await self._get_browser()
+        page = await self._context.new_page()
+        try:
+            recipe_module = importlib.import_module(
+                f"src.agents.research.site_recipes.{recipe_name}"
+            )
+            return await recipe_module.extract(page, url, task, schema)
+        finally:
+            await page.close()
+    
+    async def _run_ai_browser(self, url: str, task: str, schema: dict,
+                               max_steps: int) -> dict:
+        """Use Browser Use for AI-driven navigation of unknown sites."""
+        self.budget.consume("browser_use", cost=0.0)  # LLM cost tracked separately
+        
+        agent = BrowserAgent(
+            task=f"Navigate to {url}. {task}. Extract the information and return it as structured text.",
+            llm=self._get_browser_llm(),  # Use cheapest capable model
+            browser=await self._get_browser_use_browser(),
+            max_actions=max_steps,
+        )
+        result = await asyncio.wait_for(agent.run(), timeout=60)
+        
+        return {
+            "source": url,
+            "method": "ai_browser",
+            "content": result.extracted_content,
+            "steps_taken": result.steps,
+        }
+    
+    async def _get_browser(self):
+        """Lazy-init shared Playwright browser (reused across tool calls in a cycle)."""
+        if not self._browser:
+            pw = await async_playwright().start()
+            self._browser = await pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"]
+            )
+            self._context = await self._browser.new_context(
+                viewport={"width": 1280, "height": 720},
+                user_agent="Mozilla/5.0 (compatible; InvestmentAgent/1.0)"
+            )
+        return self._browser
+    
+    def _get_browser_llm(self):
+        """Use the cheapest capable model for browser navigation.
+        Browser Use tasks are simple navigation — don't waste Sonnet on this."""
+        # Gemini Flash or GPT-4o-mini are good choices for browser driving
+        return ChatGoogleGenerativeAI(model="gemini-2.0-flash-exp")
+    
+    async def cleanup(self):
+        """Close browser at end of cycle. MUST be called to free memory."""
+        if self._browser:
+            await self._browser.close()
+            self._browser = None
+            self._context = None
+```
+
+#### Example Site Recipe (Finviz)
+
+```python
+# src/agents/research/site_recipes/finviz.py
+
+async def extract(page, url: str, task: str, schema: dict = None) -> dict:
+    """Extract stock data from Finviz quote page.
+    Deterministic — no LLM cost, ~2 seconds."""
+    
+    await page.goto(url, wait_until="domcontentloaded", timeout=15000)
+    
+    # Extract the fundamentals snapshot table
+    data = {}
+    rows = await page.query_selector_all("table.snapshot-table2 tr")
+    for row in rows:
+        cells = await row.query_selector_all("td")
+        cell_texts = [await c.inner_text() for c in cells]
+        # Finviz pairs: label, value, label, value, ...
+        for i in range(0, len(cell_texts) - 1, 2):
+            data[cell_texts[i].strip()] = cell_texts[i + 1].strip()
+    
+    # Extract analyst recommendations if present
+    analyst_section = await page.query_selector("table.js-table-ratings")
+    analyst_data = []
+    if analyst_section:
+        rows = await analyst_section.query_selector_all("tr")
+        for row in rows[1:]:  # Skip header
+            cells = await row.query_selector_all("td")
+            if len(cells) >= 4:
+                analyst_data.append({
+                    "date": await cells[0].inner_text(),
+                    "action": await cells[1].inner_text(),
+                    "analyst": await cells[2].inner_text(),
+                    "rating": await cells[3].inner_text(),
+                })
+    
+    return {
+        "source": url,
+        "method": "recipe:finviz",
+        "fundamentals": data,
+        "analyst_actions": analyst_data[:5],  # Last 5 analyst actions
+    }
+```
+
+#### VPS Resource Management
+
+Your Hetzner VPS has 4GB RAM. Chromium is hungry. Resource management is critical:
+
+```python
+# src/agents/research/browser_config.py
+
+BROWSER_RESOURCE_LIMITS = {
+    # Memory management
+    "max_concurrent_pages": 1,          # One page at a time on 4GB VPS
+    "max_page_load_timeout_ms": 15000,  # Kill slow pages
+    "max_session_duration_s": 120,      # Force cleanup after 2 min
+    
+    # Per-cycle limits
+    "max_browser_calls_per_cycle": 5,   # Limit total browser tool uses
+    "max_ai_browser_calls_per_cycle": 2, # AI Browser Use is expensive + slow
+    
+    # Chromium launch args (low memory mode)
+    "chromium_args": [
+        "--no-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",     # Use /tmp instead of /dev/shm
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--disable-sync",
+        "--disable-translate",
+        "--single-process",             # Reduce process count
+        "--js-flags=--max-old-space-size=256",  # Limit V8 heap
+    ],
+    
+    # Cleanup
+    "force_cleanup_after_cycle": True,  # Always close browser after cycle ends
+}
+```
+
+#### Integration with Research Tool Layer
+
+The browser tool plugs into the existing executor from Phase A:
+
+```python
+# Addition to src/agents/research/executor.py
+
+async def execute_tool_call(self, tool_name: str, params: dict, 
+                            member: str, cycle_id: str) -> dict:
+    # ... existing routing for search_web, search_recent_news, etc.
+    
+    if tool_name == "browse_financial_site":
+        if not self.settings.research_browser_enabled:
+            return {"error": "Browser research is disabled in settings"}
+        
+        result = await self.browser_tool.execute(
+            url=params["url"],
+            task=params["task"],
+            extract_schema=params.get("extract_schema"),
+            max_steps=params.get("max_steps", 10),
+        )
+        
+        # Log to ResearchLog with method info
+        await self._log_research(
+            cycle_id=cycle_id,
+            member=member,
+            tool_name="browse_financial_site",
+            query=f"{params['url']} — {params['task']}",
+            results_summary=self._truncate(str(result), 1000),
+            method=result.get("method", "unknown"),
+        )
+        
+        return result
+```
+
+#### Lifecycle: Browser Cleanup in Orchestrator
+
+```python
+# Addition to src/orchestrator/main.py — run_cycle()
+
+async def run_cycle(...):
+    research_cache = ResearchCache(cycle_id)
+    browser_tool = BrowserResearchTool(settings, research_cache, budget)
+    
+    try:
+        # ... existing pipeline (strategy → moderation → risk → execution) ...
+        # browser_tool is available to committee members via executor
+        pass
+    finally:
+        # CRITICAL: Always clean up browser to free memory
+        await browser_tool.cleanup()
+        logger.info("Browser research tool cleaned up")
+```
+
+#### Claude Code Prompt — Phase E
+
+```
+Read Claude.md and README.md.
+
+Add browser automation capability to the research tool layer for navigating
+and extracting data from dynamic financial websites.
+
+Prerequisites: Phases A-C must be complete (research tool layer, strategy
+and moderation integration).
+
+Install dependencies:
+  poetry add browser-use playwright
+  poetry run playwright install chromium
+
+Create the following:
+
+1. src/agents/research/browser_tool.py — BrowserResearchTool class with:
+   - Hybrid routing: deterministic Playwright recipes for known sites,
+     AI-driven Browser Use agent for unknown sites
+   - Shared Playwright browser instance (lazy-init, reused within a cycle)
+   - Browser Use agent using Gemini Flash as the driving model (cheapest)
+   - Mandatory cleanup() method called at end of every cycle
+   - Cache integration (same ResearchCache as other tools)
+
+2. src/agents/research/browser_config.py — Resource limits configuration:
+   - Max 1 concurrent page (4GB VPS constraint)
+   - Max 5 browser calls per cycle, max 2 AI browser calls per cycle
+   - 15s page load timeout, 120s max session duration
+   - Low-memory Chromium launch args (--single-process, limited V8 heap)
+   - Force cleanup after every cycle
+
+3. src/agents/research/site_recipes/ — Deterministic Playwright scripts:
+   - finviz.py: Extract fundamentals snapshot table + analyst actions
+     from finviz.com/quote.ashx?t=TICKER
+   - sec_edgar.py: Navigate SEC EDGAR filing pages, extract filing
+     content and metadata
+   - Add a base pattern so new recipes are easy to add later
+
+4. Wire into executor.py — Route browse_financial_site tool calls through
+   BrowserResearchTool. Enforce per-cycle browser budget separately from
+   search budget.
+
+5. Wire into orchestrator — Initialize BrowserResearchTool at cycle start,
+   pass to executor, ensure cleanup() is called in finally block.
+
+6. Update tool assignment — Give browse_financial_site to strategy and
+   skeptic members only. Risk assessor stays macro-focused (no browser).
+
+7. Feature flags: research.browser_enabled (default: false),
+   research.ai_browser_enabled (default: false — start with recipes only).
+
+8. Tests:
+   - Recipe tests with mocked Playwright page objects
+   - Browser tool routing (recipe vs AI) with mocked dependencies
+   - Resource limit enforcement (max calls, timeout)
+   - Cleanup verification (browser closed after cycle)
+   - Integration test: full tool execution cycle with browser tool
+
+9. Add ResearchLog entries for browser tool usage with method field
+   (recipe:finviz, recipe:sec_edgar, ai_browser) for dashboard tracking.
+
+Do NOT install Chromium in CI — tests should mock all browser interactions.
+Add a pre-flight check in browser_config.py that verifies Chromium is
+installed and logs a warning (not error) if missing.
+
+Update Claude.md and README.md.
+```
 
 ```yaml
 research:
@@ -546,6 +894,16 @@ research:
   brave_search_enabled: true
   sec_search_enabled: true
   reuse_finnhub_news: true          # Use existing Finnhub client for news
+
+  # Browser automation (Phase E)
+  browser_enabled: false             # Master switch for all browser tools
+  ai_browser_enabled: false          # AI-driven Browser Use (start with recipes only)
+  browser_llm_model: "gemini-2.0-flash-exp"  # Cheapest model for browser driving
+  max_browser_calls_per_cycle: 5     # Total browser tool calls per cycle
+  max_ai_browser_calls_per_cycle: 2  # AI browser calls (more expensive/slow)
+  browser_page_timeout_ms: 15000     # Kill slow page loads
+  browser_session_timeout_s: 120     # Force cleanup after 2 min
+  browser_cleanup_after_cycle: true  # Always close browser to free VPS memory
 
   # Budgets (per cycle)
   budgets:
@@ -567,6 +925,7 @@ research:
 
   # Cost tracking
   brave_search_cost_per_query: 0.005  # $5/1000 queries on paid tier
+  browser_use_llm_cost_per_call: 0.01 # Estimated LLM cost per AI browser navigation
   monthly_research_budget: 10.00      # GBP
 ```
 
@@ -588,6 +947,11 @@ BRAVE_SEARCH_API_KEY=BSA_xxx        # Brave Search API (or alternative)
 | Research leading to overconfidence | Medium | Medium | Skeptic's mandate is explicitly contrarian. Risk assessor focuses on macro, not confirmation |
 | Brave Search rate limits | Low | Low | Free tier is 2K/month. 3 cycles × 22 working days × ~10 searches = ~660/month. Well within limits |
 | Tool-use loops not terminating | Low | High | Max iterations per member (e.g. 5), plus timeout on entire member evaluation |
+| Browser Chromium memory pressure on VPS | High | Medium | Single page at a time, low-memory Chromium args, forced cleanup after every cycle, max 5 browser calls/cycle |
+| AI Browser Use unpredictable navigation | Medium | Low | Capped at 2 AI browser calls/cycle, 10-step max, 60s timeout. Recipes handle known sites deterministically |
+| Website layout changes breaking recipes | Medium | Low | Recipes are fallback-safe — if extraction fails, log warning and return empty. AI browser fallback available |
+| Sites blocking headless Chromium | Medium | Low | Use realistic user-agent, consider Browser Use Cloud for stealth if needed. Recipes can add request headers |
+| Browser tool enables scraping legal risk | Low | Medium | Only access publicly available pages. No login credential storage. Respect robots.txt in recipes. Document data source compliance |
 
 ---
 
@@ -611,7 +975,7 @@ This feature maps to **Phase 4: Signal Enhancement** in the sophistication roadm
 - The tool-use infrastructure benefits all future enhancements (earnings calendar integration, sector rotation models, etc.)
 - It directly addresses the power.ai insight about independent research curation
 
-**Suggested roadmap placement:** After dashboard MVP (Phase 1 frontend) and before ML features (Phase 3). Label as **US-4.4: Agentic Research — Independent Tool Access for Committee Members**. (US-4.1 is reserved for Volume Signals.)
+**Suggested roadmap placement:** After dashboard MVP (Phase 1 frontend) and before ML features (Phase 3). Label as **US-4.1: Agentic Research — Independent Tool Access for Committee Members**.
 
 ---
 
@@ -623,3 +987,4 @@ This feature maps to **Phase 4: Signal Enhancement** in the sophistication roadm
 | **B** | Wire tools into Strategy Engine (Claude) | 1 session |
 | **C** | Wire tools into Moderation Panel (GPT-4o + Gemini) | 1 session |
 | **D** | Dashboard + Slack observability for research activity | 1 session |
+| **E** | Browser automation: Playwright recipes + Browser Use AI fallback | 1-2 sessions |

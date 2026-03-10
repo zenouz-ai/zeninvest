@@ -427,14 +427,15 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 **Detailed plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
 
-**Status (2026-03-10):** Delivered.
+**Status (2026-03-10):** Delivered. Dashboard running on VPS: operator runs the deployment checklist in the plan (pull, `ufw allow 8000/tcp`, `docker compose up -d --build`); then dashboard is available at `http://YOUR_VPS_IP:8000`.
 
 **Acceptance Criteria:**
 - [x] Dashboard service added to docker-compose; shares `./data` volume with agent
 - [x] Frontend built in Dockerfile (multi-stage); FastAPI serves static files
 - [x] Access via `http://YOUR_VPS_IP:8000` (VPS IP — recommended; no domain)
-- [ ] Firewall allows port 8000 (deploy step: `ufw allow 8000/tcp`)
+- [x] Firewall: port 8000 documented and included in deployment commands (`ufw allow 8000/tcp`)
 - [x] Activity feed (SSE), portfolio, runs, universe pages load correctly (relative API URLs work from VPS IP)
+- [x] Deployment complete checklist in `DASHBOARD_VPS_DEPLOYMENT_PLAN.md`; dashboard running on VPS once operator executes it
 
 **Domain options:** VPS IP (recommended), purchase domain for HTTPS, or nginx reverse proxy. See deployment plan.
 

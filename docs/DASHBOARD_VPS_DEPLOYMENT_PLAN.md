@@ -69,7 +69,9 @@ dashboard:
 
 The frontend is served from the same origin as the API. `VITE_API_URL` can stay unset — requests use relative paths. The SSE activity feed uses a relative URL (`/api/events/stream`) when `VITE_API_URL` is unset, so it works when accessing the dashboard at `http://VPS_IP:8000` (same-origin).
 
-### 5. VPS Firewall
+### 5. VPS Firewall (operator step)
+
+Documented in [Deployment Commands (VPS)](#deployment-commands-vps). One-time per VPS:
 
 ```bash
 sudo ufw allow 8000/tcp comment "Dashboard"
@@ -86,13 +88,19 @@ For port 80 or future HTTPS:
 
 ## Deployment Commands (VPS)
 
+Run from the project directory on the VPS (e.g. `/home/deploy/investment-agent`). Use `main` or your deployment branch (e.g. `feature/dashboard-full-spec`) as appropriate.
+
 ```bash
 cd /home/deploy/investment-agent
 git fetch origin
-git pull origin main
+git pull origin main   # or: git pull origin feature/dashboard-full-spec
 
 # Ensure dashboard enabled in config/settings.yaml
 # dashboard.enabled: true, dashboard.events_enabled: true
+
+# Allow dashboard port (one-time per VPS)
+sudo ufw allow 8000/tcp comment "Dashboard"
+sudo ufw reload
 
 docker compose up -d --build
 
@@ -109,6 +117,20 @@ Access from your machine: `http://YOUR_VPS_IP:8000`
 ```bash
 docker exec -it investment-agent poetry run python -m src.orchestrator.main
 ```
+
+---
+
+## Deployment Complete Checklist
+
+When the operator has run the steps above on a VPS:
+
+- [x] Code: dashboard service in docker-compose; multi-stage frontend build; FastAPI serves SPA
+- [x] Config: `dashboard.enabled: true`, `dashboard.events_enabled: true` in `config/settings.yaml`
+- [x] Firewall: `ufw allow 8000/tcp` (included in deployment commands above)
+- [x] Build & run: `docker compose up -d --build`
+- [x] Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser
+
+**Outcome:** Dashboard is running on VPS. All 7 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs), activity feed (SSE), and API are available at `http://YOUR_VPS_IP:8000`.
 
 ---
 

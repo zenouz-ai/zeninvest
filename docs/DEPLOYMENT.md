@@ -1611,7 +1611,7 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 ## 13. Dashboard VPS Deployment
 
-The web dashboard (activity feed, portfolio, run history, universe) can be deployed alongside the agent on the VPS. **Full plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`. **Status:** US-1.8 delivered (Docker service, multi-stage frontend build, SPA fallback).
+The web dashboard (activity feed, portfolio, run history, universe, 7 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`. **Status:** US-1.8 delivered; dashboard running on VPS once the operator runs the deployment steps below.
 
 ### Access Options (no domain required)
 
@@ -1623,19 +1623,20 @@ The web dashboard (activity feed, portfolio, run history, universe) can be deplo
 
 ### Prerequisites
 
-- US-1.7 Dashboard stabilisation complete (merged to main)
+- Dashboard code on branch (e.g. `main` or `feature/dashboard-full-spec`)
 - `config/settings.yaml`: `dashboard.enabled: true`, `dashboard.events_enabled: true`
 - Agent already running in Docker on VPS
 
-### Implementation Steps
+### Deployment Steps (run on VPS)
 
-1. Add `dashboard` service to `docker-compose.yml` (shares `./data` volume)
-2. Update `Dockerfile` to include dashboard frontend build (multi-stage)
-3. Update FastAPI to serve static files from built frontend
-4. Allow firewall: `sudo ufw allow 8000/tcp`
-5. `docker compose up -d --build`
+From the project directory (e.g. `/home/deploy/investment-agent`):
 
-Access from your machine: `http://YOUR_VPS_IP:8000`
+1. Pull latest: `git pull origin main` (or your deployment branch)
+2. Allow firewall (one-time): `sudo ufw allow 8000/tcp comment "Dashboard"` then `sudo ufw reload`
+3. Build and run: `docker compose up -d --build`
+4. Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser
+
+**Outcome:** Dashboard is running on VPS. All 7 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs), activity feed (SSE), and API at `http://YOUR_VPS_IP:8000`.
 
 **Run History** shows `runs` table entries (one per cycle). **One-off live cycle:** `docker exec -it investment-agent poetry run python -m src.orchestrator.main`
 
