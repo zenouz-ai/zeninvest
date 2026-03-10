@@ -61,7 +61,7 @@ universe:
   large_cap_min: 10000000000  # $10B
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
-  screening_cooldown_hours: 72  # Hours before a screened stock can be re-screened
+  screening_cooldown_hours: 1  # Hours before a screened stock can be re-screened
 
 cost_limits:
   anthropic_daily_gbp: 1.00
