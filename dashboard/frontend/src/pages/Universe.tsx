@@ -10,7 +10,7 @@ import {
 import { universeApi } from '../api/client'
 import type { Instrument } from '../types'
 import { cleanTicker } from '../types'
-import { format } from 'date-fns'
+import { safeFormat } from '../utils/date'
 
 const columnHelper = createColumnHelper<Instrument>()
 
@@ -85,7 +85,7 @@ export default function Universe() {
           if (!date) return <span className="text-terminal-text-dim">Never</span>
           return (
             <span className="text-terminal-text-dim text-sm">
-              {format(new Date(date), 'MMM dd, yyyy')}
+              {safeFormat(date, 'MMM dd, yyyy', 'Never')}
             </span>
           )
         },

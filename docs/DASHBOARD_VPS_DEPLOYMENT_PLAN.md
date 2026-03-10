@@ -1,0 +1,113 @@
+# Dashboard VPS Deployment Plan
+
+**Status:** Planned (next session)
+**Created:** 2026-03-10
+**Roadmap:** US-1.8 Dashboard VPS Deployment
+**Prerequisite:** US-1.7 Dashboard stabilisation (branch `claude/dashboard-stabilisation` merged)
+
+---
+
+## Domain / Access Options
+
+| Option | Pros | Cons |
+|--------|------|------|
+| **VPS IP only** (recommended) | No cost, no setup. Access via `http://YOUR_VPS_IP:8000` | No HTTPS (Let's Encrypt needs a domain). HTTP is acceptable for a personal dashboard. |
+| **Purchase domain** | HTTPS via Let's Encrypt, cleaner URL | ~£10–15/year |
+| **GitHub Pages** | Free static hosting | Not suitable: frontend must call VPS API. HTTPS page → HTTP API = mixed content blocked. Backend still needs VPS. |
+
+**Recommended:** Use VPS IP for initial deployment. Add a domain later if HTTPS is desired.
+
+---
+
+## Docker Architecture
+
+Current setup: one container (`investment-agent`) runs the scheduler. The dashboard needs:
+- Same SQLite DB (shared `./data` volume)
+- Dashboard backend (FastAPI) on port 8000
+- Built frontend (static files) served by FastAPI
+
+**Approach:** Add a second service `dashboard` in docker-compose. Same image, different command. Shares `./data` volume.
+
+---
+
+## Implementation Steps
+
+### 1. Update Dockerfile
+
+- Add `COPY dashboard/ dashboard/` so the dashboard package is in the image.
+- Add multi-stage frontend build:
+  - Stage 1: Node image → `cd dashboard/frontend && npm ci && npm run build`
+  - Stage 2: Python image → copy `dashboard/frontend/dist` from stage 1
+
+### 2. Update FastAPI to Serve Frontend
+
+In `dashboard/backend/app/main.py`:
+- Add `StaticFiles` for the built frontend.
+- Mount `/` to serve `dashboard/frontend/dist` with `html=True` (SPA fallback).
+- Keep `/api/*` and `/health` routes; they take precedence.
+
+### 3. Update docker-compose.yml
+
+Add `dashboard` service:
+
+```yaml
+dashboard:
+  build: .
+  container_name: investment-dashboard
+  restart: always
+  env_file: [.env]
+  volumes:
+    - ./data:/app/data
+  ports:
+    - "8000:8000"
+  command: ["uvicorn", "dashboard.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+  depends_on:
+    - investment-agent
+```
+
+### 4. Frontend API URL
+
+The frontend is served from the same origin as the API. `VITE_API_URL` can stay unset — requests use relative paths.
+
+### 5. VPS Firewall
+
+```bash
+sudo ufw allow 8000/tcp comment "Dashboard"
+sudo ufw reload
+```
+
+### 6. Optional: nginx Reverse Proxy
+
+For port 80 or future HTTPS:
+- nginx listens on 80, proxies to `http://127.0.0.1:8000`
+- Disable buffering for SSE: `proxy_buffering off` on `/api/events/stream`
+
+---
+
+## Deployment Commands (VPS)
+
+```bash
+cd /home/deploy/investment-agent
+git fetch origin
+git pull origin main
+
+# Ensure dashboard enabled in config/settings.yaml
+# dashboard.enabled: true, dashboard.events_enabled: true
+
+docker compose up -d --build
+
+docker compose ps
+curl http://localhost:8000/health
+curl http://localhost:8000/api/events/?limit=3
+```
+
+Access from your machine: `http://YOUR_VPS_IP:8000`
+
+---
+
+## Security Note
+
+With VPS IP and HTTP:
+- Use firewall to restrict access (e.g. only your IP) if desired.
+- Consider basic auth or API key for the dashboard later.
+- Dashboard is read-only except `POST /api/runs/trigger` (dry-run only).

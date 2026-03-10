@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { runsApi } from '../api/client'
 import type { Run } from '../types'
-import { format } from 'date-fns'
+import { safeFormat } from '../utils/date'
 
 export default function RunHistory() {
   const [runs, setRuns] = useState<Run[]>([])
@@ -96,11 +96,11 @@ export default function RunHistory() {
                         </span>
                       </div>
                       <div className="text-sm text-terminal-text-dim">
-                        Started: {format(new Date(run.started_at), 'MMM dd, yyyy HH:mm:ss')}
+                        Started: {safeFormat(run.started_at, 'MMM dd, yyyy HH:mm:ss')}
                       </div>
                       {run.completed_at && (
                         <div className="text-sm text-terminal-text-dim">
-                          Completed: {format(new Date(run.completed_at), 'MMM dd, yyyy HH:mm:ss')}
+                          Completed: {safeFormat(run.completed_at, 'MMM dd, yyyy HH:mm:ss')}
                         </div>
                       )}
                       {run.summary_json && (
@@ -162,12 +162,12 @@ export default function RunHistory() {
                 </div>
                 <div>
                   <div className="text-terminal-text-dim">Started</div>
-                  <div>{format(new Date(selectedRun.started_at), 'PPpp')}</div>
+                  <div>{safeFormat(selectedRun.started_at, 'PPpp')}</div>
                 </div>
                 {selectedRun.completed_at && (
                   <div>
                     <div className="text-terminal-text-dim">Completed</div>
-                    <div>{format(new Date(selectedRun.completed_at), 'PPpp')}</div>
+                    <div>{safeFormat(selectedRun.completed_at, 'PPpp')}</div>
                   </div>
                 )}
                 {selectedRun.summary_json && (

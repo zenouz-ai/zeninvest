@@ -1,8 +1,9 @@
 # Investment Agent — Dashboard & Visualisation System
 
-**Status:** In Progress (Phase 1 backend + frontend built; stabilisation pending)
-**Roadmap reference:** `docs/SOPHISTICATION_ROADMAP.md` (Dashboard & Visualisation track)
-**Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md`
+**Status:** In Progress (Phase 1 stabilisation done; deployment pending)
+**Roadmap reference:** `docs/SOPHISTICATION_ROADMAP.md` (US-1.7, US-1.8)
+**Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md` (done)
+**Deployment plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
 **Last updated:** 2026-03-10
 
 ---
@@ -26,14 +27,13 @@ A real-time operational dashboard for the investment agent that provides full vi
 | **React Frontend** | Complete | 4 pages: Dashboard Home, Universe, Run History, Portfolio |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
-### What needs fixing (stabilisation)
+### Stabilisation (done)
 
-See `docs/DASHBOARD_STABILISATION_PLAN.md` for full details:
+See `docs/DASHBOARD_STABILISATION_PLAN.md` — all items complete: test fixtures, type alignment, API URLs, trigger endpoint.
 
-1. **5 test failures** — dashboard tables not created in test fixtures; tests that trigger `log_event()` fail
-2. **Frontend-backend type mismatches** — TypeScript interfaces don't match Pydantic schemas (would crash at runtime)
-3. **API client URL mismatches** — portfolio and runs endpoints use wrong paths
-4. **`POST /api/runs/trigger`** — placeholder, not wired to orchestrator
+### Deployment (next)
+
+See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` — Docker service, VPS IP access (no domain required).
 
 ---
 

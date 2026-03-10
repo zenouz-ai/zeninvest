@@ -18,8 +18,12 @@ export function useSSE(options: UseSSEOptions = {}) {
       return
     }
 
-    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-    const eventSource = new EventSource(`${API_BASE_URL}/api/events/stream`)
+    // In dev, use same origin so Vite proxy forwards to backend (avoids CORS)
+    const API_BASE =
+      import.meta.env.VITE_API_URL ||
+      (import.meta.env.DEV ? '' : 'http://localhost:8000')
+    const streamUrl = API_BASE ? `${API_BASE}/api/events/stream` : '/api/events/stream'
+    const eventSource = new EventSource(streamUrl)
 
     eventSource.onopen = () => {
       setIsConnected(true)
@@ -28,9 +32,13 @@ export function useSSE(options: UseSSEOptions = {}) {
 
     eventSource.onmessage = (e) => {
       try {
-        const event: Event = JSON.parse(e.data)
-        setEvents((prev) => [event, ...prev].slice(0, 100)) // Keep last 100 events
-        onEvent?.(event)
+        const data = JSON.parse(e.data)
+        // Only add real events (have timestamp + event_type); skip "connected" etc.
+        if (data.timestamp && data.event_type) {
+          const event: Event = data
+          setEvents((prev) => [event, ...prev].slice(0, 100)) // Keep last 100 events
+          onEvent?.(event)
+        }
       } catch (err) {
         console.error('Failed to parse SSE event:', err)
       }
