@@ -1,8 +1,15 @@
 # Starting the Dashboard Server
 
+**Always run from the project root** (so `src` and `dashboard` are importable). Running from `dashboard/backend` causes `ModuleNotFoundError: No module named 'src'`.
+
+```bash
+cd "/Users/Kayvan/Library/Mobile Documents/com~apple~CloudDocs/AI_Projects/Investment-agent"
+poetry run uvicorn dashboard.backend.app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
 ## The Problem
 
-Uvicorn's reload mode spawns subprocesses that don't inherit Python path modifications. This causes `ModuleNotFoundError: No module named 'dashboard'`.
+Uvicorn's reload mode spawns subprocesses that don't inherit Python path modifications. This causes `ModuleNotFoundError: No module named 'dashboard'` (or `src` if you run from `dashboard/backend`).
 
 ## Solutions (in order of preference)
 
