@@ -370,7 +370,7 @@ Each cycle discovers new candidates beyond existing positions:
 - **Curated seed universe** — ~160 well-known US equities across all 11 GICS sectors, used as fallback when instruments table hasn't been enriched yet. Eliminates delisted/unfetchable ticker noise from raw T212 data
 - **Sector-balanced sampling** — minimum 3 candidates per sector to avoid concentration
 - **Market-cap tiers** — 70% large cap ($10B+), 20% mid cap ($2B-$10B), 10% small cap ($300M-$2B)
-- **Screening cooldown** — stocks are stamped with `last_screened_at` after each screen and excluded for 72 hours (configurable via `screening_cooldown_hours`), ensuring broader universe coverage across cycles
+- **Screening cooldown & mix** — stocks are stamped with `last_screened_at` after each screen and excluded for a cooldown window (configurable via `screening_cooldown_hours`), ensuring broader universe coverage across cycles. Within the eligible pool, `get_screened_universe()` targets a configurable share of fresh (never-investigated) tickers via `uninvestigated_target_pct` (default ~50%).
 - **Data availability filtering** — tickers that fail yfinance OHLCV fetch are permanently flagged `data_available=False` and excluded from all future screens
 - **Metadata enrichment** — sector, market_cap, industry, and business summary back-filled from yfinance into instruments table over time
 - **Company profiles** — `longBusinessSummary` from yfinance is included in the Claude strategy prompt so it can reason about competitive moats, regulatory exposure, and news impact

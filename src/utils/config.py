@@ -245,6 +245,11 @@ class Settings:
     def screening_cooldown_hours(self) -> int:
         return int(self.universe.get("screening_cooldown_hours", 72))
 
+    @property
+    def uninvestigated_target_pct(self) -> float:
+        """Approximate share of per-cycle candidates that should have no prior strategy_decisions."""
+        return float(self.universe.get("uninvestigated_target_pct", 0.5))
+
     # --- Opportunity Scoring / Optimizer ---
     @property
     def opportunity(self) -> dict[str, Any]:

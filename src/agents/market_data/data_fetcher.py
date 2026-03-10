@@ -17,7 +17,7 @@ from src.agents.market_data.macro_intelligence import get_macro_intelligence
 from src.agents.market_data.indicators import calculate_indicators, calculate_relative_strength
 from src.agents.market_data.seed_universe import get_seed_instruments
 from src.data.database import get_session
-from src.data.models import Instrument, MarketDataCache, NewsSentimentCache
+from src.data.models import Instrument, MarketDataCache, NewsSentimentCache, StrategyDecision
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -502,39 +502,84 @@ class DataFetcher:
                 logger.warning("No instruments with sector/market_cap. Using raw universe.")
                 return self._get_fallback_universe(exclude, total, session)
 
-            # Bucket by market-cap tier
-            large: list[Instrument] = []
-            mid: list[Instrument] = []
-            small: list[Instrument] = []
+            # Determine which tickers have been investigated before (strategy_decisions present)
+            tickers = [inst.ticker for inst in instruments]
+            investigated_set = {
+                t
+                for (t,) in session.query(StrategyDecision.ticker)
+                .filter(StrategyDecision.ticker.in_(tickers))
+                .distinct()
+                .all()
+            }
+
+            # Bucket by market-cap tier and investigation status
+            large_fresh: list[Instrument] = []
+            large_investigated: list[Instrument] = []
+            mid_fresh: list[Instrument] = []
+            mid_investigated: list[Instrument] = []
+            small_fresh: list[Instrument] = []
+            small_investigated: list[Instrument] = []
 
             for inst in instruments:
                 if inst.ticker in exclude:
                     continue
                 cap = inst.market_cap or 0
+                is_investigated = inst.ticker in investigated_set
+                target_list = None
                 if cap >= settings.large_cap_min:
-                    large.append(inst)
+                    target_list = large_investigated if is_investigated else large_fresh
                 elif cap >= settings.mid_cap_min:
-                    mid.append(inst)
+                    target_list = mid_investigated if is_investigated else mid_fresh
                 else:
-                    small.append(inst)
+                    target_list = small_investigated if is_investigated else small_fresh
+                target_list.append(inst)
 
             # Target counts per tier
             n_large = max(1, int(total * settings.large_cap_pct))
             n_mid = max(1, int(total * settings.mid_cap_pct))
             n_small = max(1, total - n_large - n_mid)
 
-            # Sample within each tier using sector-balanced selection
+            # Within each tier, target share of never-investigated tickers.
+            # In tests, settings may be a MagicMock, so be defensive.
+            try:
+                share_val = float(getattr(settings, "uninvestigated_target_pct", 0.5))
+            except Exception:
+                share_val = 0.5
+            fresh_share = max(0.0, min(1.0, share_val))
+
+            def _sample_tier(fresh_bucket: list[Instrument], investigated_bucket: list[Instrument], n: int) -> list[Instrument]:
+                if n <= 0:
+                    return []
+                target_fresh = int(round(n * fresh_share))
+                # cap by available
+                target_fresh = min(target_fresh, len(fresh_bucket))
+                selected: list[Instrument] = []
+                if target_fresh > 0:
+                    selected.extend(self._sector_balanced_sample(fresh_bucket, target_fresh, settings.candidates_per_sector))
+                remaining = n - len(selected)
+                if remaining > 0:
+                    selected.extend(self._sector_balanced_sample(investigated_bucket, remaining, settings.candidates_per_sector))
+                # If still short (e.g. not enough investigated either), top up from remaining fresh
+                if len(selected) < n:
+                    remaining_needed = n - len(selected)
+                    leftover_fresh = [i for i in fresh_bucket if i not in selected]
+                    selected.extend(self._sector_balanced_sample(leftover_fresh, remaining_needed, settings.candidates_per_sector))
+                return selected[:n]
+
+            # Sample within each tier using sector-balanced selection and fresh/investigated mix
             selected: list[Instrument] = []
-            selected.extend(self._sector_balanced_sample(large, n_large, settings.candidates_per_sector))
-            selected.extend(self._sector_balanced_sample(mid, n_mid, settings.candidates_per_sector))
-            selected.extend(self._sector_balanced_sample(small, n_small, settings.candidates_per_sector))
+            selected.extend(_sample_tier(large_fresh, large_investigated, n_large))
+            selected.extend(_sample_tier(mid_fresh, mid_investigated, n_mid))
+            selected.extend(_sample_tier(small_fresh, small_investigated, n_small))
 
             logger.info(
-                f"Screened universe: {len(selected)} candidates "
-                f"(large={min(n_large, len(large))}, "
-                f"mid={min(n_mid, len(mid))}, "
-                f"small={min(n_small, len(small))}, "
-                f"cooldown={cooldown_hours}h)"
+                "Screened universe: %s candidates (large=%s, mid=%s, small=%s, cooldown=%sh, fresh_share=%.2f)",
+                len(selected),
+                n_large,
+                n_mid,
+                n_small,
+                cooldown_hours,
+                fresh_share,
             )
 
             candidates = [
