@@ -94,7 +94,15 @@ class Orchestrator:
         """
         cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
         logger.info(f"Starting cycle {cycle_id} (dry_run={self.dry_run})")
-        
+
+        # Ensure dashboard tables exist (fail-open; idempotent)
+        if DASHBOARD_AVAILABLE and self.settings.dashboard_enabled and self.settings.dashboard_events_enabled:
+            try:
+                from dashboard.backend.app.database import init_dashboard_tables
+                init_dashboard_tables()
+            except Exception as e:
+                logger.debug(f"Dashboard table init skipped: {e}")
+
         # Log run_started event (when called directly, not via scheduler)
         cycle_start_time = datetime.now(timezone.utc)
         if DASHBOARD_AVAILABLE and log_event:
@@ -972,15 +980,21 @@ class Orchestrator:
 
         # cash_data may be a dict from T212 API or a plain float (mock)
         if isinstance(cash_data, dict):
-            cash = float(cash_data.get("free", 0))
+            # T212: free / availableToTrade = available; reservedForOrders = pending
+            cash = float(cash_data.get("free", cash_data.get("availableToTrade", 0)))
+            reserved = float(
+                cash_data.get("reservedForOrders", cash_data.get("blocked", cash_data.get("reserved", 0)))
+            )
         else:
             cash = float(cash_data)
+            reserved = 0.0
 
         invested = sum(
             float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
             for p in positions
         )
-        total_value = cash + invested
+        # Include reserved (pending orders) in total for drawdown — it's committed capital, not a loss
+        total_value = cash + invested + reserved
 
         return {
             "cash": cash,
