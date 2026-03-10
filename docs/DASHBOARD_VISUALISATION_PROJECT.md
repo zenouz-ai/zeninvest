@@ -1,14 +1,39 @@
 # Investment Agent — Dashboard & Visualisation System
 
-**Status:** Planned  
-**Roadmap reference:** `docs/SOPHISTICATION_ROADMAP.md` (Dashboard & Visualisation track)  
-**Last updated:** 2026-03-07
+**Status:** In Progress (Phase 1 backend + frontend built; stabilisation pending)
+**Roadmap reference:** `docs/SOPHISTICATION_ROADMAP.md` (Dashboard & Visualisation track)
+**Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md`
+**Last updated:** 2026-03-10
 
 ---
 
 ## Project Vision
 
 A real-time operational dashboard for the investment agent that provides full visibility into scheduled and manual runs, stock universe management, committee decisions, portfolio performance, and trading activity. Designed to be extensible for ML features (prediction models, backtesting, anomaly detection) in future phases.
+
+---
+
+## Current Implementation Status (2026-03-10)
+
+### What's built
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **FastAPI Backend** | Complete | REST endpoints for runs, universe, portfolio, orders, events; SSE stream |
+| **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration |
+| **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
+| **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
+| **React Frontend** | Complete | 4 pages: Dashboard Home, Universe, Run History, Portfolio |
+| **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
+
+### What needs fixing (stabilisation)
+
+See `docs/DASHBOARD_STABILISATION_PLAN.md` for full details:
+
+1. **5 test failures** — dashboard tables not created in test fixtures; tests that trigger `log_event()` fail
+2. **Frontend-backend type mismatches** — TypeScript interfaces don't match Pydantic schemas (would crash at runtime)
+3. **API client URL mismatches** — portfolio and runs endpoints use wrong paths
+4. **`POST /api/runs/trigger`** — placeholder, not wired to orchestrator
 
 ---
 

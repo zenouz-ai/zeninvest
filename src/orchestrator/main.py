@@ -269,23 +269,36 @@ class Orchestrator:
             cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
 
             # Update peak and check drawdown
-            self.state_machine.update_peak(current_value)
-            state_info = self.state_machine.get_state()
-            peak_value = state_info.get("peak_portfolio_value", current_value)
+            if not self.dry_run:
+                # Live: mutate DB state as normal
+                self.state_machine.update_peak(current_value)
+                state_info = self.state_machine.get_state()
+                peak_value = state_info.get("peak_portfolio_value", current_value)
 
-            drawdown_state = self.risk_manager.get_drawdown_state(current_value, peak_value)
-            if drawdown_state != current_state:
-                self.state_machine.transition(drawdown_state, f"Drawdown check at {current_value:.2f}")
-                current_state = drawdown_state
+                drawdown_state = self.risk_manager.get_drawdown_state(current_value, peak_value)
+                if drawdown_state != current_state:
+                    self.state_machine.transition(drawdown_state, f"Drawdown check at {current_value:.2f}")
+                    current_state = drawdown_state
 
-            if current_state == "HALTED":
-                logger.error("Drawdown triggered HALT. Liquidating.")
-                if not self.dry_run:
+                if current_state == "HALTED":
+                    logger.error("Drawdown triggered HALT. Liquidating.")
                     self.order_manager.liquidate_all()
-                return _finalize("halted_drawdown")
+                    return _finalize("halted_drawdown")
 
-            drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
-            self.state_machine.update_drawdown(drawdown_pct)
+                drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
+                self.state_machine.update_drawdown(drawdown_pct)
+            else:
+                # Dry-run: log what would happen but don't persist or block screening
+                state_info = self.state_machine.get_state()
+                peak_value = state_info.get("peak_portfolio_value", current_value)
+                drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
+                drawdown_state = self.risk_manager.get_drawdown_state(current_value, peak_value)
+                if drawdown_state != "ACTIVE":
+                    logger.info(
+                        f"Dry-run: drawdown {drawdown_pct:.1f}% would trigger {drawdown_state}, "
+                        f"ignoring (state not mutated in dry-run mode)"
+                    )
+                current_state = "ACTIVE"
 
             # --- STEP 3: Fetch market data ---
             logger.info("Fetching market data...")
@@ -445,7 +458,8 @@ class Orchestrator:
             if "error" in strategy_result and not strategy_result.get("decisions"):
                 logger.error(f"Strategy synthesis failed: {strategy_result['error']}")
                 result["errors"].append(f"strategy: {strategy_result['error']}")
-                self.state_machine.record_cycle()
+                if not self.dry_run:
+                    self.state_machine.record_cycle()
                 return _finalize("strategy_error")
 
             decisions = strategy_result.get("decisions", [])
@@ -892,7 +906,8 @@ class Orchestrator:
                     result["errors"].append(f"order_management: {om_err}")
 
             # Record cycle completion
-            self.state_machine.record_cycle()
+            if not self.dry_run:
+                self.state_machine.record_cycle()
             self._save_snapshot(portfolio_data, current_state)
             try:
                 update_trade_outcomes()
