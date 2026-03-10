@@ -1,7 +1,7 @@
 # Agentic Research Implementation Plan
 
 **Created:** 2026-03-10
-**Status:** Planned — to implement after US-1.8 Dashboard VPS Deployment
+**Status:** Planned — to implement after US-1.8 Dashboard VPS Deployment (code implemented; VPS deploy via Docker when ready)
 **Reference:** [AGENTIC_RESEARCH_PROJECT.md](AGENTIC_RESEARCH_PROJECT.md)
 
 ---
@@ -21,7 +21,7 @@
 
 ### Relevant Context
 
-- **Dashboard:** Phase 1 stabilisation done; deployment (US-1.8) next
+- **Dashboard:** Phase 1 + Phase 1.5 Analytics Lite done; US-1.8 implemented (Docker service, port 8000; SPA served by FastAPI)
 - **Roadmap:** 7 delivered, 1 in progress (US-1.7), 16 in pipeline
 - **ID:** This project is **US-4.4** (US-4.1 is reserved for Volume Signals)
 
