@@ -62,6 +62,7 @@ universe:
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
   screening_cooldown_hours: 48  # Hours before a screened stock can be re-screened
+  uninvestigated_target_pct: 0.5  # Target share of per-cycle candidates that have never been investigated (approx)
 
 cost_limits:
   anthropic_daily_gbp: 1.00

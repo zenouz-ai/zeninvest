@@ -1,5 +1,75 @@
 # Testing the Dashboard Backend
 
+## Full dashboard check (7 pages + full API)
+
+Use this to confirm the full API and frontend are in place.
+
+### 1. Config and DB
+
+```bash
+# From repo root
+poetry install
+poetry run alembic upgrade head
+
+# Dashboard must be enabled (otherwise all /api/* return 503)
+poetry run python -c "from src.utils.config import get_settings; s=get_settings(); print('dashboard.enabled:', s.dashboard_enabled)"
+```
+
+If `dashboard.enabled` is False, set `dashboard.enabled: true` (and optionally `dashboard.events_enabled: true`) in `config/settings.yaml`.
+
+### 2. Start the backend
+
+```bash
+poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
+```
+
+Leave it running. In another terminal:
+
+### 3. Hit all API endpoints
+
+```bash
+poetry run python dashboard/backend/test_endpoints.py
+```
+
+This checks: health, status (with state/paused), runs, universe, portfolio, orders, events, **decisions** (list + waterfall), **moderation**, **risk**, **opportunity** (scores, queue), **outcomes** (list, stats), **stop-loss** (current, adjustments), **performance** (metrics, history), **costs** (daily, monthly, degradation), **api-usage/daily**, **system/state**. Expect 200 or 404/503; connection errors mean the server is not running.
+
+### 4. Open API docs (optional)
+
+Open **http://localhost:8000/docs** and try any endpoint by hand.
+
+### 5. Frontend: build and serve
+
+```bash
+cd dashboard/frontend
+npm install
+npm run build
+```
+
+Then either:
+
+- **Option A — SPA via FastAPI:** From repo root, ensure backend is serving; open **http://localhost:8000**. FastAPI serves the built frontend from `dashboard/frontend/dist` when that folder exists.
+- **Option B — Dev server (proxies to backend):** From `dashboard/frontend`, run `npm run dev` and open **http://localhost:3000**.
+
+### 6. Verify all 7 pages
+
+In the browser, confirm each route loads without errors:
+
+| Page            | URL           | What to check                                      |
+|-----------------|---------------|----------------------------------------------------|
+| Dashboard Home  | `/`           | State badge (ACTIVE/CAUTIOUS/HALTED), metrics, SSE feed |
+| Universe        | `/universe`   | Table, expand row for committee reasoning          |
+| Run History     | `/runs`       | Timeline, run diff (from/to)                        |
+| Portfolio       | `/portfolio`  | Positions, P&L, charts                             |
+| Opportunity     | `/opportunity`| UOV queue and scores table                          |
+| Order Management| `/orders`     | Current stops, adjustment history                   |
+| Costs           | `/costs`      | Degradation badge, daily chart, monthly table      |
+
+### 7. SSE activity feed
+
+On Dashboard Home, the activity feed should show “Connected” and may show events. To test events, run a dry-run in another terminal: `poetry run python -m src.orchestrator.main --dry-run`.
+
+---
+
 ## Quick Test Guide
 
 ### 1. Verify Installation

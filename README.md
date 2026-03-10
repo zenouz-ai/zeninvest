@@ -112,16 +112,22 @@ poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
 **Endpoints:**
-- `GET /api/runs/` — Run history
-- `GET /api/runs/diff` — Position diff between two runs (query: `from_cycle_id`, `to_cycle_id`)
-- `GET /api/status/` — Next scheduled run, cycle_frequency
-- `GET /api/universe/` — Stock universe explorer
-- `GET /api/universe/{ticker}` — Instrument detail with committee reasoning
-- `GET /api/portfolio/` — Current portfolio snapshot
+- `GET /api/runs/`, `GET /api/runs/diff`, `GET /api/runs/cycle/{cycle_id}`, `POST /api/runs/trigger` — Run history and trigger
+- `GET /api/status/` — Next run, cycle_frequency, system state (ACTIVE/CAUTIOUS/HALTED), paused
+- `GET /api/universe/`, `GET /api/universe/{ticker}` — Universe and instrument detail
+- `GET /api/portfolio/`, `GET /api/portfolio/history` — Portfolio snapshot and history
 - `GET /api/orders/` — Order history
-- `GET /api/events/` — Event log history
-- `GET /api/events/stream` — SSE stream for real-time events
-- `POST /api/runs/trigger` — Trigger dry-run cycle in background
+- `GET /api/events/`, `GET /api/events/stream` — Event log and SSE stream
+- `GET /api/decisions/`, `GET /api/decisions/waterfall`, `GET /api/decisions/{cycle_id}`, `GET /api/decisions/ticker/{ticker}` — Strategy decisions and pipeline waterfall
+- `GET /api/moderation/{cycle_id}`, `GET /api/moderation/ticker/{ticker}` — Moderation logs
+- `GET /api/risk/{cycle_id}` — Risk decisions
+- `GET /api/opportunity/scores/`, `GET /api/opportunity/scores/{cycle_id}`, `GET /api/opportunity/queue/`, `GET /api/opportunity/history/{ticker}` — UOV scores and queue
+- `GET /api/outcomes/`, `GET /api/outcomes/stats` — Trade outcomes and aggregate stats
+- `GET /api/stop-loss/current`, `GET /api/stop-loss/adjustments` — Stop-loss levels and adjustment history
+- `GET /api/performance/metrics`, `GET /api/performance/history` — Performance metrics
+- `GET /api/costs/daily`, `GET /api/costs/monthly`, `GET /api/costs/degradation` — Cost breakdown and degradation
+- `GET /api/api-usage/daily` — API call counts and error rates
+- `GET /api/system/state`, `POST /api/system/trigger-cycle`, `POST /api/system/pause`, `POST /api/system/resume` — System state and controls
 
 **Configuration:** Set `dashboard.enabled: true` and `dashboard.events_enabled: true` in `config/settings.yaml`.
 
@@ -134,7 +140,9 @@ npm run dev    # Dev server on http://localhost:3000 (proxies API)
 npm run build  # Production build (outputs to dist/)
 ```
 
-**Pages:** Dashboard Home (next run countdown, P&L, SSE activity feed), Stock Universe (searchable table, expandable rows with committee reasoning), Run History (timeline, run diff view), Portfolio (positions, P&L chart, sector allocation).
+**Pages:** Dashboard Home (system state badge, next run countdown, P&L, SSE activity feed), Stock Universe (searchable table with `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, `UOV (ewma)` columns plus expandable rows with committee reasoning and **full LLM outputs** — strategy reasoning, exit conditions, news/market/portfolio text, raw JSON; all moderators’ verdicts and reasoning; risk reasoning and triggered rules), Run History (timeline, run diff view), Portfolio (positions, P&L chart, sector allocation), Opportunity Pipeline (UOV scores and queue), Order Management (stop-loss levels and adjustment history), Costs (daily/monthly cost charts, degradation). The Dashboard Home “Latest trades & LLM reasons” table shows the most recent orders (including `status='failed'` attempts) alongside the latest committee reasoning per ticker for full auditability.
+
+**Testing the dashboard:** Ensure `dashboard.enabled: true` in `config/settings.yaml`. Start the backend: `poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000`. Run the endpoint check: `poetry run python dashboard/backend/test_endpoints.py`. Then run the frontend (`npm run dev` in `dashboard/frontend` or open `http://localhost:8000` after `npm run build`). See `dashboard/backend/TESTING.md` for the full 7-page and API check.
 
 **Docker:** `docker compose up -d` runs both agent and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000). Activity feed (SSE) and Run History work when accessing via VPS IP — frontend uses relative API URLs. One-off live cycle: `docker exec -it investment-agent poetry run python -m src.orchestrator.main`; dry-run: add `--dry-run`.
 
@@ -362,7 +370,7 @@ Each cycle discovers new candidates beyond existing positions:
 - **Curated seed universe** — ~160 well-known US equities across all 11 GICS sectors, used as fallback when instruments table hasn't been enriched yet. Eliminates delisted/unfetchable ticker noise from raw T212 data
 - **Sector-balanced sampling** — minimum 3 candidates per sector to avoid concentration
 - **Market-cap tiers** — 70% large cap ($10B+), 20% mid cap ($2B-$10B), 10% small cap ($300M-$2B)
-- **Screening cooldown** — stocks are stamped with `last_screened_at` after each screen and excluded for 72 hours (configurable via `screening_cooldown_hours`), ensuring broader universe coverage across cycles
+- **Screening cooldown & mix** — stocks are stamped with `last_screened_at` after each screen and excluded for a cooldown window (configurable via `screening_cooldown_hours`), ensuring broader universe coverage across cycles. Within the eligible pool, `get_screened_universe()` targets a configurable share of fresh (never-investigated) tickers via `uninvestigated_target_pct` (default ~50%).
 - **Data availability filtering** — tickers that fail yfinance OHLCV fetch are permanently flagged `data_available=False` and excluded from all future screens
 - **Metadata enrichment** — sector, market_cap, industry, and business summary back-filled from yfinance into instruments table over time
 - **Company profiles** — `longBusinessSummary` from yfinance is included in the Claude strategy prompt so it can reason about competitive moats, regulatory exposure, and news impact

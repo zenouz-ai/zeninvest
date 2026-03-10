@@ -20,11 +20,11 @@ A real-time operational dashboard for the investment agent that provides full vi
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **FastAPI Backend** | Complete | REST endpoints for runs, universe, portfolio, orders, events; SSE stream |
-| **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration |
+| **FastAPI Backend** | Complete | REST for runs, status (incl. system state), universe, portfolio, orders, events; **decisions** (incl. pipeline waterfall), **moderation**, **risk**, **opportunity**, **outcomes**, **stop-loss**, **performance**, **costs**, **api-usage**, **system** (state, trigger, pause, resume); SSE stream. All read from agent SQLite; no duplicate tables. |
+| **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | 4 pages: Dashboard Home, Universe, Run History, Portfolio |
+| **React Frontend** | Complete | **7 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, **Opportunity Pipeline**, **Order Management**, **Costs**. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Stabilisation (done)
@@ -33,7 +33,7 @@ See `docs/DASHBOARD_STABILISATION_PLAN.md` — all items complete: test fixtures
 
 ### Phase 1.5 Analytics Lite (done)
 
-- Decision Explorer v1: expandable Universe rows with committee reasoning (strategy, moderation, risk)
+- Decision Explorer v1: expandable Universe rows with committee reasoning (strategy, moderation, risk) and full LLM outputs (strategy full text + raw JSON, all moderators’ reasoning, risk reasoning and rules)
 - Run-to-run diff: compare positions between two runs (new, closed, size changes)
 - Top-bar: next run countdown, P&L summary
 
@@ -46,14 +46,14 @@ See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` — Docker service, multi-stage fron
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────┐
-│              React Frontend (Vite)               │
-│  ┌───────────┬───────────┬───────────┬────────┐  │
-│  │ Activity  │ Universe  │ Portfolio │ Alerts │  │
-│  │   Feed    │  Explorer │  Tracker  │  & Log │  │
-│  └───────────┴───────────┴───────────┴────────┘  │
-│         Recharts / D3 / TanStack Table           │
-└──────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              React Frontend (Vite) — 7 pages                                  │
+│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┐ │
+│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Costs  │ │
+│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │        │ │
+│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┘ │
+│         Recharts / TanStack Table / dark terminal design (#0d1117, etc.)     │
+└──────────────────┬──────────────────────────────────────────────────────────┘
                     │ REST + WebSocket (SSE)
 ┌──────────────────┴──────────────────────────────┐
 │            FastAPI Backend (Python)             │

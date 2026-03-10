@@ -8,6 +8,11 @@
   }
   body {
     @apply bg-terminal-bg text-terminal-text font-sans antialiased;
+    /* Subtle grid texture for depth (Bloomberg terminal aesthetic) */
+    background-image:
+      linear-gradient(rgba(48, 54, 61, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(48, 54, 61, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
   }
 }
 

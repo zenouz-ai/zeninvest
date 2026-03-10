@@ -54,7 +54,8 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |        +-- UNIVERSE SCREENER (get_screened_universe)
                    |              [Sector-balanced, cap-tiered sampling:
                    |               70% large, 20% mid, 10% small cap]
-                   |              [72h screening cooldown prevents re-screening]
+                   |              [Cooldown prevents re-screening within window]
+                   |              [Fresh vs investigated mix via uninvestigated_target_pct (approx 50% fresh)]
                    |              [Back-fills sector/market_cap to instruments]
                    |
                    v
@@ -171,24 +172,33 @@ Agent pipeline (scheduler, screener, strategy, moderation, risk, execution, noti
 log_event() --> events_log (non-blocking, fail-open)
     |
     v
-FastAPI dashboard backend
+FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     |
-    +-- GET /api/runs, /api/runs/diff, /api/status
-    +-- GET /api/universe, /api/universe/{ticker}  (reads instruments, strategy_decisions, moderation_logs, risk_decisions)
+    +-- GET /api/runs, /api/runs/diff, /api/status (state, paused)
+    +-- GET /api/universe, /api/universe/{ticker}
     +-- GET /api/portfolio, /api/orders
     +-- GET /api/events, /api/events/stream (SSE)
     +-- POST /api/runs/trigger (dry-run)
+    +-- GET /api/decisions, /api/decisions/waterfall, /api/decisions/{cycle_id}, /api/decisions/ticker/{ticker}
+    +-- GET /api/moderation/{cycle_id}, /api/moderation/ticker/{ticker}; GET /api/risk/{cycle_id}
+    +-- GET /api/opportunity/scores, /api/opportunity/queue, /api/opportunity/history/{ticker}
+    +-- GET /api/outcomes, /api/outcomes/stats
+    +-- GET /api/stop-loss/current, /api/stop-loss/adjustments
+    +-- GET /api/performance/metrics, /api/performance/history
+    +-- GET /api/costs/daily, /api/costs/monthly, /api/costs/degradation
+    +-- GET /api/api-usage/daily
+    +-- GET /api/system/state, POST /api/system/trigger-cycle, pause, resume
     |
     v
 React frontend (SPA, served by FastAPI when dist/ exists)
     |
-    +-- Dashboard Home: next run countdown, P&L, activity feed
+    +-- 7 pages: Dashboard Home (system state badge, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
     +-- Universe: expandable rows with committee reasoning
     +-- Run History: timeline, run diff (new/closed/position changes)
     +-- Portfolio: positions, P&L chart, sector allocation
 ```
 
-**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions). Shared SQLite DB via `./data` volume in Docker. **Run History** displays `runs` table (one row per cycle; created by scheduler and orchestrator when dashboard enabled). **Activity feed (SSE)** uses relative URL — works when accessing at `http://VPS_IP:8000`.
+**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. **Run History** displays `runs` table (one row per cycle; created by scheduler and orchestrator when dashboard enabled). **Activity feed (SSE)** uses relative URL — works when accessing at `http://VPS_IP:8000`.
 
 ## Moderation Consensus Logic
 

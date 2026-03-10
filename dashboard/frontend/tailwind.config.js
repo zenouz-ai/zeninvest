@@ -7,16 +7,16 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Financial terminal color palette
-        'terminal-bg': '#0a0a0a',
-        'terminal-surface': '#141414',
-        'terminal-border': '#2a2a2a',
-        'terminal-text': '#e0e0e0',
-        'terminal-text-dim': '#888888',
+        // Financial terminal: dark charcoal, electric green, warm red, cool blue, muted gold
+        'terminal-bg': '#0d1117',
+        'terminal-surface': '#161b22',
+        'terminal-border': '#30363d',
+        'terminal-text': '#e6edf3',
+        'terminal-text-dim': '#8b949e',
         'gain': '#00ff88',
         'loss': '#ff4444',
-        'neutral': '#4a9eff',
-        'accent': '#ffd700',
+        'neutral': '#58a6ff',
+        'accent': '#d4a017',
         'warning': '#ffaa00',
       },
       fontFamily: {

@@ -8,14 +8,22 @@ import {
   createColumnHelper,
 } from '@tanstack/react-table'
 import { universeApi } from '../api/client'
-import type { Instrument, InstrumentDetail } from '../types'
+import type { Instrument, InstrumentDetail, UniverseBubbleItem } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
+import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 
 const columnHelper = createColumnHelper<Instrument>()
 
 export default function Universe() {
   const [instruments, setInstruments] = useState<Instrument[]>([])
+  const [investigatedMap, setInvestigatedMap] = useState<Record<string, boolean>>({})
+  const [decisionStatsMap, setDecisionStatsMap] = useState<
+    Record<string, { count: number; buy: number; sell: number; reduce: number; hold: number }>
+  >({})
+  const [holdingsMap, setHoldingsMap] = useState<Record<string, number>>({})
+  const [soldMap, setSoldMap] = useState<Record<string, number>>({})
+  const [uovMap, setUovMap] = useState<Record<string, number | null>>({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [sectorFilter, setSectorFilter] = useState<string>('')
@@ -26,8 +34,37 @@ export default function Universe() {
   useEffect(() => {
     const fetchUniverse = async () => {
       try {
-        const data = await universeApi.list()
-        setInstruments(data)
+        // Fetch base universe plus bubble metadata (for investigated flag)
+        const [listData, bubble]: [Instrument[], UniverseBubbleItem[]] = await Promise.all([
+          universeApi.list({ limit: 1000 }),
+          universeApi.getBubble({ limit: 1000 }),
+        ])
+        setInstruments(listData)
+        const investigated: Record<string, boolean> = {}
+        const stats: Record<string, { count: number; buy: number; sell: number; reduce: number; hold: number }> = {}
+        const holds: Record<string, number> = {}
+        const sold: Record<string, number> = {}
+        const uov: Record<string, number | null> = {}
+        bubble.forEach((b) => {
+          if (b.investigated) {
+            investigated[b.ticker] = true
+          }
+          stats[b.ticker] = {
+            count: b.decision_count ?? 0,
+            buy: b.buy_count ?? 0,
+            sell: b.sell_count ?? 0,
+            reduce: b.reduce_count ?? 0,
+            hold: b.hold_count ?? 0,
+          }
+          holds[b.ticker] = b.hold_qty ?? 0
+          sold[b.ticker] = b.sold_qty ?? 0
+          uov[b.ticker] = b.uov_ewma ?? null
+        })
+        setInvestigatedMap(investigated)
+        setDecisionStatsMap(stats)
+        setHoldingsMap(holds)
+        setSoldMap(sold)
+        setUovMap(uov)
       } catch (error) {
         console.error('Failed to fetch universe:', error)
       } finally {
@@ -67,7 +104,11 @@ export default function Universe() {
       }),
       columnHelper.accessor('name', {
         header: 'Name',
-        cell: (info) => <span className="truncate max-w-xs">{info.getValue()}</span>,
+        cell: (info) => (
+          <span className="truncate max-w-[160px] inline-block align-middle">
+            {info.getValue()}
+          </span>
+        ),
       }),
       columnHelper.accessor('sector', {
         header: 'Sector',
@@ -120,12 +161,97 @@ export default function Universe() {
           </span>
         ),
       }),
+      columnHelper.display({
+        id: 'investigated',
+        header: 'Investigated',
+        cell: (info) => {
+          const ticker = info.row.original.ticker
+          const investigated = investigatedMap[ticker] ?? false
+          return (
+            <span
+              className={
+                investigated
+                  ? 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono bg-accent text-terminal-bg'
+                  : 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono bg-terminal-surface text-terminal-text-dim'
+              }
+            >
+              {investigated ? 'Yes' : 'No'}
+            </span>
+          )
+        },
+      }),
+      columnHelper.display({
+        id: 'reviews',
+        header: 'Reviews',
+        cell: (info) => {
+          const ticker = info.row.original.ticker
+          const s = decisionStatsMap[ticker]
+          return <span className="font-mono text-xs">{s?.count ?? 0}</span>
+        },
+      }),
+      columnHelper.display({
+        id: 'decision_summary',
+        header: 'Decisions',
+        cell: (info) => {
+          const ticker = info.row.original.ticker
+          const s = decisionStatsMap[ticker]
+          if (!s || s.count === 0) {
+            return <span className="text-terminal-text-dim text-xs">—</span>
+          }
+          const parts: string[] = []
+          if (s.buy) parts.push(`B${s.buy}`)
+          if (s.sell) parts.push(`S${s.sell}`)
+          if (s.reduce) parts.push(`R${s.reduce}`)
+          if (s.hold) parts.push(`H${s.hold}`)
+          return <span className="text-terminal-text-dim text-xs font-mono">{parts.join(' / ')}</span>
+        },
+      }),
+      columnHelper.display({
+        id: 'holding',
+        header: 'Holding',
+        cell: (info) => {
+          const ticker = info.row.original.ticker
+          const qty = holdingsMap[ticker] ?? 0
+          return <span className="font-mono text-xs">{qty ? qty.toFixed(2) : '0'}</span>
+        },
+      }),
+      columnHelper.display({
+        id: 'sold',
+        header: 'Sold',
+        cell: (info) => {
+          const ticker = info.row.original.ticker
+          const qty = soldMap[ticker] ?? 0
+          return <span className="font-mono text-xs">{qty ? qty.toFixed(2) : '0'}</span>
+        },
+      }),
+      columnHelper.display({
+        id: 'uov_ewma',
+        header: 'UOV (ewma)',
+        cell: (info) => {
+          const ticker = info.row.original.ticker
+          const v = uovMap[ticker]
+          return (
+            <span className="font-mono text-xs">
+              {v != null ? v.toFixed(3) : '—'}
+            </span>
+          )
+        },
+      }),
     ],
-    []
+    [investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap]
   )
 
   const filteredData = useMemo(() => {
-    return instruments.filter((inst) => {
+    const scored = instruments.map((inst) => {
+      const ticker = inst.ticker
+      const investigated = investigatedMap[ticker] ?? false
+      const uov = uovMap[ticker]
+      const stats = decisionStatsMap[ticker]
+      const reviews = stats?.count ?? 0
+      return { inst, investigated, uov: uov ?? null, reviews }
+    })
+
+    const filtered = scored.filter(({ inst }) => {
       const matchesSearch =
         !search ||
         cleanTicker(inst.ticker).toLowerCase().includes(search.toLowerCase()) ||
@@ -133,6 +259,29 @@ export default function Universe() {
       const matchesSector = !sectorFilter || inst.sector === sectorFilter
       return matchesSearch && matchesSector
     })
+
+    filtered.sort((a, b) => {
+      // Investigated first
+      if (a.investigated !== b.investigated) {
+        return a.investigated ? -1 : 1
+      }
+      // Higher UOV ewma first when available
+      if (a.uov != null || b.uov != null) {
+        if (a.uov == null) return 1
+        if (b.uov == null) return -1
+        if (b.uov !== a.uov) return b.uov - a.uov
+      }
+      // More reviews first
+      if (b.reviews !== a.reviews) return b.reviews - a.reviews
+      // Fallback: by last_screened_at desc
+      const ad = a.inst.last_screened_at ?? ''
+      const bd = b.inst.last_screened_at ?? ''
+      if (ad < bd) return 1
+      if (ad > bd) return -1
+      return 0
+    })
+
+    return filtered.map(({ inst }) => inst)
   }, [instruments, search, sectorFilter])
 
   const table = useReactTable({
@@ -153,7 +302,7 @@ export default function Universe() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-2xl font-bold">Stock Universe</h1>
         <div className="text-sm text-terminal-text-dim">
           {filteredData.length} of {instruments.length} stocks
@@ -187,7 +336,6 @@ export default function Universe() {
         </div>
       </div>
 
-      {/* Table */}
       <div className="card overflow-x-auto">
         <table className="w-full">
           <thead>
@@ -238,55 +386,12 @@ export default function Universe() {
                           {detailLoading ? (
                             <div className="text-terminal-text-dim text-sm">Loading...</div>
                           ) : detail ? (
-                            <div className="space-y-3 text-sm">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="font-semibold text-accent">
-                                  Committee reasoning — {cleanTicker(detail.ticker)}
-                                </span>
-                                {detail.label && (
-                                  <span className="text-xs px-2 py-0.5 rounded bg-terminal-surface">
-                                    {detail.label}
-                                  </span>
-                                )}
-                              </div>
-                              {detail.last_decision?.strategy && (
-                                <div>
-                                  <div className="text-terminal-text-dim text-xs mb-1">Strategy</div>
-                                  <div className="text-terminal-text">
-                                    {detail.last_decision.strategy.action} @ conviction{' '}
-                                    {detail.last_decision.strategy.conviction}
-                                  </div>
-                                  <div className="text-terminal-text-dim text-xs mt-1">
-                                    {detail.last_decision.strategy.reasoning}
-                                  </div>
-                                </div>
-                              )}
-                              {detail.last_decision?.moderation && (
-                                <div>
-                                  <div className="text-terminal-text-dim text-xs mb-1">
-                                    Moderation — {detail.last_decision.moderation.verdict}
-                                  </div>
-                                  {detail.last_decision.moderation.reasoning && (
-                                    <div className="text-terminal-text-dim text-xs">
-                                      {detail.last_decision.moderation.reasoning}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                              {detail.last_decision?.risk && (
-                                <div>
-                                  <div className="text-terminal-text-dim text-xs mb-1">
-                                    Risk — {detail.last_decision.risk.verdict}
-                                    {detail.last_decision.risk.triggered_rules?.length
-                                      ? ` (${detail.last_decision.risk.triggered_rules.join(', ')})`
-                                      : ''}
-                                  </div>
-                                </div>
-                              )}
-                              {!detail.last_decision && (
-                                <div className="text-terminal-text-dim">No decision data</div>
-                              )}
-                            </div>
+                            <LLMOutputPanel
+                              key={detail.ticker}
+                              ticker={detail.ticker}
+                              lastDecision={detail.last_decision}
+                              label={detail.label}
+                            />
                           ) : null}
                         </td>
                       </tr>
