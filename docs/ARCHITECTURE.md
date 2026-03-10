@@ -510,7 +510,8 @@ Rejected stocks are tagged by the pipeline stage that blocked them:
 | `strategy` | Claude returned HOLD | reasoning, conviction |
 | `moderation` | GPT-4o + Gemini consensus BLOCKED | moderation verdict |
 | `risk` | Hard rules REJECTED | triggered_rules list |
-| `opportunity_queue` | Approved BUY deferred by UOV queueing/capacity | queued reason + metadata |
+| `opportunity_queue` | Approved BUY deferred by UOV queueing/capacity | structured reason (awaiting_promotion, capacity_gated, below_immediate) + uov_ewma, uov_z |
+| `opportunity_filtered` | Below queue threshold or dropped from queue | structured reason (below_queue, queue_expired, no_longer_eligible) + uov_ewma, uov_z |
 
 All rejection details are also persisted in the `strategy_decisions`, `moderation_logs`, `risk_decisions`, and `opportunity_score_snapshots` tables for long-term analysis.
 

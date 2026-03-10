@@ -48,9 +48,10 @@ except ImportError:
 class Orchestrator:
     """Main orchestrator that wires all agents together."""
 
-    def __init__(self, dry_run: bool = False) -> None:
+    def __init__(self, dry_run: bool = False, uov_diagnostic: bool = False) -> None:
         self.settings = get_settings()
         self.dry_run = dry_run
+        self.uov_diagnostic = uov_diagnostic
         self.state_machine = StateMachine()
         self.data_fetcher = DataFetcher()
         self.strategy_engine = StrategyEngine()
@@ -745,28 +746,34 @@ class Orchestrator:
                     result["queued_candidates"] = plan.get("queued_candidates", [])
                     result["swap_candidates"] = plan.get("swap_candidates", [])
 
-                    if self.settings.opportunity_mode == "active":
+                    if self.settings.opportunity_mode == "active" and not self.uov_diagnostic:
                         selected_buy_order = plan.get("execution_order", selected_buy_order)
                         selected_set = set(selected_buy_order)
-                        queued_set = {item.get("ticker", "") for item in result["queued_candidates"]}
+                        rejection_details = plan.get("rejection_details", {})
                         for pending in pending_buys:
                             ticker = pending.get("ticker", "")
                             if ticker in selected_set:
                                 continue
-                            if ticker in queued_set:
-                                stage = "opportunity_queue"
-                                reason = "Queued by UOV optimizer (capacity/threshold gating)"
-                            else:
-                                stage = "opportunity_filtered"
-                                reason = "Filtered by UOV optimizer (below queue threshold or queue expiry)"
-                            result["rejected_stocks"].append({
+                            details = rejection_details.get(ticker, {})
+                            stage = details.get("stage", "opportunity_filtered")
+                            reason = details.get("reason_message", "Filtered by UOV optimizer")
+                            score_info = scores_by_ticker.get(ticker, {})
+                            uov_ewma = score_info.get("uov_ewma")
+                            uov_z = score_info.get("uov_z")
+                            rejected_entry: dict[str, Any] = {
                                 "ticker": ticker,
                                 "action": "BUY",
                                 "stage": stage,
                                 "reason": reason,
+                                "stage_reason_code": details.get("reason_code"),
                                 "conviction": pending.get("decision", {}).get("conviction", 0),
                                 **self._get_stock_metadata(ticker, stocks_data),
-                            })
+                            }
+                            if uov_ewma is not None:
+                                rejected_entry["uov_ewma"] = round(float(uov_ewma), 4)
+                            if uov_z is not None:
+                                rejected_entry["uov_z"] = round(float(uov_z), 4)
+                            result["rejected_stocks"].append(rejected_entry)
 
             pending_by_ticker = {b["ticker"]: b for b in pending_buys}
             for ticker in selected_buy_order:
@@ -1540,6 +1547,10 @@ class Orchestrator:
                 "stop_loss_status": stop_loss.get("status"),
                 "stage_reason": stage_reason,
             })
+            if rejected.get("uov_ewma") is not None:
+                records[-1]["uov_ewma"] = rejected["uov_ewma"]
+            if rejected.get("uov_z") is not None:
+                records[-1]["uov_z"] = rejected["uov_z"]
 
         return records
 
@@ -1750,6 +1761,7 @@ def _get_dashboard_summary() -> dict[str, Any]:
 
 @click.command()
 @click.option("--dry-run", is_flag=True, help="Run without executing trades")
+@click.option("--uov-diagnostic", is_flag=True, help="Run with UOV in shadow mode and emit UOV scores for calibration")
 @click.option("--force-sell", "force_sell_ticker", default=None, help="Force sell a position")
 @click.option("--pause", is_flag=True, help="Pause the system")
 @click.option("--resume", "do_resume", is_flag=True, help="Resume the system")
@@ -1759,6 +1771,7 @@ def _get_dashboard_summary() -> dict[str, Any]:
 @click.option("--dashboard", is_flag=True, help="Show dashboard: portfolio, metrics, costs, positions")
 def main(
     dry_run: bool,
+    uov_diagnostic: bool,
     force_sell_ticker: str | None,
     pause: bool,
     do_resume: bool,
@@ -1768,7 +1781,7 @@ def main(
     dashboard: bool,
 ) -> None:
     """Investment Agent Orchestrator."""
-    orchestrator = Orchestrator(dry_run=dry_run)
+    orchestrator = Orchestrator(dry_run=dry_run, uov_diagnostic=uov_diagnostic)
 
     try:
         if status:
@@ -1808,6 +1821,20 @@ def main(
 
         # Run a full cycle
         result = orchestrator.run_cycle()
+        if uov_diagnostic and result.get("opportunity_ranking"):
+            click.echo("\n--- UOV Diagnostic (opportunity_ranking) ---", err=True)
+            for s in sorted(result["opportunity_ranking"], key=lambda x: float(x.get("uov_ewma", 0)), reverse=True):
+                click.echo(
+                    f"  {s.get('ticker', 'N/A')} {s.get('action', 'N/A')} | "
+                    f"uov_ewma={s.get('uov_ewma', 'N/A')} uov_z={s.get('uov_z', 'N/A')} | "
+                    f"stage={s.get('stage', 'N/A')} tradable={s.get('is_tradable', False)}",
+                    err=True,
+                )
+            if result.get("queued_candidates"):
+                click.echo("\nQueued candidates:", err=True)
+                for q in result["queued_candidates"]:
+                    click.echo(f"  {q.get('ticker')} queued_cycles={q.get('queued_cycles')} uov_ewma={q.get('uov_ewma')}", err=True)
+            click.echo("---\n", err=True)
         click.echo(json.dumps(result, indent=2, default=str))
 
     finally:

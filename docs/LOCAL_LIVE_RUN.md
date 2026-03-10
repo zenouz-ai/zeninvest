@@ -161,6 +161,8 @@ poetry run python -m src.orchestrator.main --dry-run
 - Check that "Skipped N candidates with no OHLCV data" is low (should decrease over cycles as bad tickers are flagged)
 - If notifications are configured, confirm Slack receives concise alerts and email receives full cycle summaries
 
+**UOV calibration:** To inspect UOV scores without changing execution order, run with `--uov-diagnostic`. This forces UOV into shadow mode and prints `uov_ewma`/`uov_z` for all BUY candidates to stderr, useful for tuning `immediate_threshold_z` and `queue_threshold_z` in `config/settings.yaml`.
+
 ## Running a Live Cycle
 
 ```bash

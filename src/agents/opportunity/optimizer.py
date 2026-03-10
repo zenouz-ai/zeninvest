@@ -112,11 +112,65 @@ class OpportunityOptimizer:
             existing_tickers=existing_tickers,
         )
 
+        dropped_by_ticker = {d["ticker"]: d for d in queue_state["dropped"]}
+        queued_by_ticker = {q["ticker"]: q for q in remaining_queue}
+
+        rejection_details: dict[str, dict[str, Any]] = {}
+        for candidate in ranked:
+            ticker = candidate.get("ticker", "")
+            if not ticker or ticker in set(executed):
+                continue
+            score = float(scores_by_ticker.get(ticker, {}).get("uov_ewma", 0.0))
+            alloc = float(candidate.get("final_allocation_pct", 0.0))
+            is_new_position = ticker not in existing_tickers
+            has_slot = (not is_new_position) or remaining_slots > 0
+            has_cash = alloc <= remaining_cash + 1e-9
+            can_execute = has_slot and has_cash
+
+            if ticker in dropped_by_ticker:
+                drop_reason = dropped_by_ticker[ticker].get("reason", "no_longer_eligible")
+                reason_code = "queue_expired" if drop_reason == "queue_ttl_expired" else "no_longer_eligible"
+                reason_message = (
+                    "Dropped from queue (TTL expired)"
+                    if reason_code == "queue_expired"
+                    else "Dropped from queue (no longer eligible)"
+                )
+                rejection_details[ticker] = {
+                    "stage": "opportunity_filtered",
+                    "reason_code": reason_code,
+                    "reason_message": reason_message,
+                }
+            elif ticker in queued_by_ticker:
+                queued = queued_by_ticker[ticker]
+                if queued.get("queued_cycles", 1) < 2:
+                    reason_code = "awaiting_promotion"
+                    reason_message = "Awaiting 2nd cycle for promotion"
+                elif not can_execute or queued.get("blocked_by_capacity", False):
+                    reason_code = "capacity_gated"
+                    reason_message = "Capacity gated (no slot or cash)"
+                else:
+                    reason_code = "below_immediate"
+                    reason_message = f"Below immediate threshold (uov_ewma {score:.2f} < {immediate_threshold})"
+                rejection_details[ticker] = {
+                    "stage": "opportunity_queue",
+                    "reason_code": reason_code,
+                    "reason_message": reason_message,
+                }
+            else:
+                reason_code = "below_queue"
+                reason_message = f"Below UOV queue threshold (uov_ewma {score:.2f} < {queue_threshold})"
+                rejection_details[ticker] = {
+                    "stage": "opportunity_filtered",
+                    "reason_code": reason_code,
+                    "reason_message": reason_message,
+                }
+
         return {
             "execution_order": executed,
             "queued_candidates": remaining_queue,
             "dropped_queue": queue_state["dropped"],
             "swap_candidates": swap_candidates,
+            "rejection_details": rejection_details,
         }
 
     def _update_queue(

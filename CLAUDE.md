@@ -32,6 +32,9 @@ poetry run python -m src.orchestrator.main --dry-run
 # Single cycle (live on Practice account)
 poetry run python -m src.orchestrator.main
 
+# UOV diagnostic run (shadow mode + emit scores for calibration)
+poetry run python -m src.orchestrator.main --uov-diagnostic
+
 # Continuous scheduler
 poetry run python -m src.scheduler.scheduler
 
@@ -238,7 +241,7 @@ SMTP_USE_TLS
 ### Notification module structure (`src/agents/notifications/`)
 
 - **types.py** — `NotificationEvent`, `NotificationMessage`, `TradeInstructionPayload`, `TradeExecutionPayload`, `NotificationError`
-- **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y, or "—" when committee not invoked e.g. HOLD), reasoning excerpt, and stage reason for queued/filtered decisions (e.g. "Queued by UOV optimizer (capacity/threshold gating)").
+- **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y, or "—" when committee not invoked e.g. HOLD), reasoning excerpt, and structured stage reason for queued/filtered decisions (e.g. "Awaiting 2nd cycle for promotion", "Capacity gated (no slot or cash)", "Below UOV queue threshold").
 - **service.py** — `NotificationService` with `emit_*` methods. Fail-open: all exceptions caught, logged with `exc_info`, and never propagated. Retries with backoff; failed attempts recorded in `notification_logs`.
 - **providers/** — Slack webhook, SMTP email. Providers implement `send(subject, body)` and raise on failure.
 - **Event types**: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`
@@ -294,7 +297,7 @@ Key tuneable values:
 - **Universe**: `max_candidates: 30`, cap tiers 70/20/10% (large/mid/small), `screening_cooldown_hours: 72`
 - **Data cache TTLs** (configurable): `ohlcv_indicators: 4h`, `fundamentals: 12h`, `finnhub_analyst: 6h`, `alpha_vantage_broad: 4h`, `macro_intelligence: 4h`
 - **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50
-- **Opportunity**: `enabled`, `mode: shadow|active`, immediate/queue z-thresholds, queue TTL, swap delta, EWMA half-life, weighted feature map, stage penalties
+- **Opportunity**: `enabled`, `mode: shadow|active`, `immediate_threshold_z` (default 0.5), `queue_threshold_z` (default 0.0), `queue_ttl_cycles` (default 4), swap delta, EWMA half-life, weighted feature map, stage penalties. Rejection reasons are structured (`awaiting_promotion`, `capacity_gated`, `below_immediate`, `below_queue`, `queue_expired`, `no_longer_eligible`).
 - **Order management**: `enabled`, `reassess_stops`, `trailing_stops` (enabled, trail_pct), `limit_orders` (enabled, offset_pct, validity), ATR multiplier, min/max stop distance, only_tighten_stops
 - **Notifications**: `enabled`, channels/routes, retry/timeout/dedup config, dry-run alert policy, command gateway flag (disabled in v1)
 - **Dashboard**: `enabled`, `events_enabled` (Phase 1 backend: REST API + SSE stream)

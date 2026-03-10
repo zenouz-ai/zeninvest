@@ -553,7 +553,8 @@ Stocks considered but **not traded** are also fully traceable. The cycle output 
 
 - **Stage** that blocked the trade: `strategy` (HOLD), `moderation` (BLOCKED), or `risk` (REJECT)
 - **Opportunity gate stage**: `opportunity_queue` when approved BUYs are deferred by UOV queueing/capacity rules; `opportunity_filtered` when below queue threshold or queue expiry
-- **Stage reason**: human-readable explanation (e.g. "Queued by UOV optimizer (capacity/threshold gating)") included in cycle summaries and notifications
+- **Stage reason**: structured human-readable explanation (e.g. "Awaiting 2nd cycle for promotion", "Capacity gated (no slot or cash)", "Below UOV queue threshold (uov_ewma X < Y)") included in cycle summaries and notifications
+- **UOV diagnostics**: `uov_ewma` and `uov_z` included for opportunity-stage rejections to support threshold calibration
 - **Company metadata**: industry, market cap, business description
 - **Conviction** score from Claude's strategy assessment
 - **Rejection reason**: Claude's HOLD reasoning, moderation consensus, or triggered risk rules

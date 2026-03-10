@@ -52,7 +52,7 @@ Key settings:
 - **Trading:** `cycle_frequency` (intraday | standard), cycle times, position limits, cash floor
 - **Risk:** drawdown thresholds, VIX limits, sector caps, correlation limits
 - **Universe:** candidate count, sector balance, market-cap tiers, screening cooldown
-- **Opportunity:** UOV mode (`shadow|active`), thresholds, EWMA half-life, queue TTL, swap delta
+- **Opportunity:** UOV mode (`shadow|active`), thresholds (`immediate_threshold_z`, `queue_threshold_z`), EWMA half-life, queue TTL, swap delta
 - **Notifications:** channel routes, retries/timeouts, dedup window, dry-run alert policy
 - **Cost:** daily per-provider budgets, monthly total cap
 - **Models:** Claude Sonnet (strategy), GPT-4o + Gemini Flash (moderation)
@@ -79,6 +79,7 @@ poetry run python -m src.orchestrator.main --pause        # Pause trading
 poetry run python -m src.orchestrator.main --resume       # Resume trading
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ  # Force sell
 poetry run python -m src.orchestrator.main --report       # Generate daily report
+poetry run python -m src.orchestrator.main --uov-diagnostic  # Run with UOV in shadow mode, emit scores for calibration
 ```
 
 ### Backtesting
@@ -301,7 +302,7 @@ notebooks/
 
 Each cycle returns a JSON result with:
 - **trades** — executed trades with industry, market cap, business description, reasoning, allocation, moderation/risk verdicts, stop-loss
-- **rejected_stocks** — stocks considered but not traded, tagged by the stage that blocked them (`strategy_hold`, `moderation_blocked`, `risk_reject`, `opportunity_queue`, `opportunity_filtered`) with company metadata and rejection reason
+- **rejected_stocks** — stocks considered but not traded, tagged by the stage that blocked them (`strategy_hold`, `moderation_blocked`, `risk_reject`, `opportunity_queue`, `opportunity_filtered`) with company metadata, rejection reason, and UOV diagnostics (`uov_ewma`, `uov_z`) for opportunity stages
 - **opportunity_ranking** — per-ticker UOV scores (`uov_raw`, `uov_z`, `uov_final`, `uov_ewma`) persisted each cycle
 - **queued_candidates** — BUY opportunities held in the UOV queue when not executed immediately
 - **swap_candidates** — non-executing suggestions where a candidate's UOV materially exceeds weakest held position
