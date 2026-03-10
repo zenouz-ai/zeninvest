@@ -16,6 +16,7 @@ This is an autonomous investment agent (Python 3.11+, Poetry, SQLite). All comma
 | DB migrate | `poetry run alembic upgrade head` |
 | System status | `poetry run python -m src.orchestrator.main --status` |
 | Dry-run cycle | `poetry run python -m src.orchestrator.main --dry-run` |
+| Start dashboard backend | `poetry run uvicorn dashboard.backend.app.main:app --host 0.0.0.0 --port 8000` (from project root) |
 
 ### Non-obvious caveats
 
@@ -26,3 +27,4 @@ This is an autonomous investment agent (Python 3.11+, Poetry, SQLite). All comma
 - **SQLite database location**: `data/investment_agent.db` is auto-created by Alembic migrations. No external DB server needed.
 - **Finnhub timeouts in cloud VMs**: Finnhub API calls may time out in cloud/sandbox environments due to network latency. The pipeline handles this gracefully — analyst recommendations and insider sentiment will be missing but the cycle completes successfully. This does not block the pipeline.
 - **Screening cooldown**: After a dry-run, the 30 screened instruments get a 72h cooldown stamp. Subsequent dry-runs within 72h will screen different stocks from the seed universe. Delete the DB file (`rm data/investment_agent.db && poetry run alembic upgrade head`) to reset.
+- **Dashboard backend**: Run uvicorn from the **project root** (not from `dashboard/backend`). Otherwise you get `ModuleNotFoundError: No module named 'src'` because the project root is not on Python's path.
