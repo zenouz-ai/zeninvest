@@ -286,18 +286,28 @@ class OrderManager:
             return {"status": "failed", "error": error_msg}
 
     def get_portfolio_state(self) -> dict[str, Any]:
-        """Get current portfolio positions and cash."""
+        """Get current portfolio positions and cash.
+
+        Fetches account summary when available; totalValue from summary is the
+        authoritative total (cash + investments + reserved) for drawdown logic.
+        """
         try:
             cash_data = self.client.get_cash()
             portfolio = self.client.get_portfolio()
+            summary: dict[str, Any] = {}
+            try:
+                summary = self.client.get_account_summary()
+            except Exception as e:
+                logger.debug(f"Account summary unavailable, using cash+portfolio: {e}")
             return {
                 "cash": cash_data,
                 "positions": portfolio,
                 "num_positions": len(portfolio),
+                "account_summary": summary,
             }
         except Exception as e:
             logger.error(f"Failed to get portfolio state: {e}")
-            return {"cash": {}, "positions": [], "num_positions": 0, "error": str(e)}
+            return {"cash": {}, "positions": [], "num_positions": 0, "account_summary": {}, "error": str(e)}
 
     def place_stop_loss(
         self,

@@ -225,6 +225,7 @@ class TestOrderManager:
         mock_client.get_portfolio.return_value = [
             {"ticker": "AAPL_US_EQ", "quantity": 10, "currentPrice": 175.0},
         ]
+        mock_client.get_account_summary.return_value = {}  # Fallback to cash+portfolio
 
         manager = OrderManager(client=mock_client)
         state = manager.get_portfolio_state()

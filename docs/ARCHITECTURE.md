@@ -368,9 +368,10 @@ sequenceDiagram
     O->>O: Check cost degradation level
 
     O->>D: Fetch portfolio state
+    D->>T: GET /equity/account/summary
     D->>T: GET /equity/account/cash
     D->>T: GET /equity/portfolio
-    T-->>D: Cash + positions
+    T-->>D: totalValue (drawdown) + cash + positions
     D-->>O: Portfolio state
 
     O->>D: Fetch market data (positions + universe candidates)

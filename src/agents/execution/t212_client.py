@@ -141,6 +141,14 @@ class T212Client:
         """GET /equity/account/cash — account cash balance."""
         return self._request("GET", "/equity/account/cash")  # type: ignore[return-value]
 
+    def get_account_summary(self) -> dict[str, Any]:
+        """GET /equity/account/summary — full account value including reserved.
+
+        Returns totalValue (cash + investments + reserved) for accurate drawdown.
+        Prefer this over piecing together cash + portfolio for drawdown logic.
+        """
+        return self._request("GET", "/equity/account/summary")  # type: ignore[return-value]
+
     def get_account_info(self) -> dict[str, Any]:
         """GET /equity/account/info — account metadata."""
         return self._request("GET", "/equity/account/info")  # type: ignore[return-value]

@@ -312,6 +312,8 @@ if drawdown_state != current_state:
 
 The `HALTED` state triggers immediate liquidation of all positions. Recovery from `HALTED` requires manual intervention -- the system does not automatically resume trading.
 
+**Portfolio value for drawdown:** The system uses `totalValue` from T212's `/equity/account/summary` when available. This includes cash, investments, and reserved funds (pending orders). If the summary endpoint is unavailable, it falls back to `cash + invested + reservedForOrders` from the cash endpoint. This ensures pending orders are not misclassified as losses.
+
 ### 4.3 Additional CAUTIOUS Mode Restrictions
 
 When in CAUTIOUS state, the `check_cautious_state()` rule enforces:

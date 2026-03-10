@@ -977,24 +977,37 @@ class Orchestrator:
 
         cash_data = state.get("cash", {})
         positions = state.get("positions", [])
+        summary = state.get("account_summary") or {}
 
-        # cash_data may be a dict from T212 API or a plain float (mock)
-        if isinstance(cash_data, dict):
-            # T212: free / availableToTrade = available; reservedForOrders = pending
-            cash = float(cash_data.get("free", cash_data.get("availableToTrade", 0)))
-            reserved = float(
-                cash_data.get("reservedForOrders", cash_data.get("blocked", cash_data.get("reserved", 0)))
+        # Prefer totalValue from account summary — authoritative total including reserved
+        total_value_raw = summary.get("totalValue")
+        if total_value_raw is not None:
+            total_value = float(total_value_raw)
+        else:
+            # Fallback: piece together from cash + positions (cash endpoint may omit reserved)
+            if isinstance(cash_data, dict):
+                cash = float(cash_data.get("free", cash_data.get("availableToTrade", 0)))
+                reserved = float(
+                    cash_data.get("reservedForOrders", cash_data.get("blocked", cash_data.get("reserved", 0)))
+                )
+            else:
+                cash = float(cash_data)
+                reserved = 0.0
+            invested = sum(
+                float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
+                for p in positions
             )
+            total_value = cash + invested + reserved
+
+        # Cash for allocation logic: free/available only
+        if isinstance(cash_data, dict):
+            cash = float(cash_data.get("free", cash_data.get("availableToTrade", 0)))
         else:
             cash = float(cash_data)
-            reserved = 0.0
-
         invested = sum(
             float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
             for p in positions
         )
-        # Include reserved (pending orders) in total for drawdown — it's committed capital, not a loss
-        total_value = cash + invested + reserved
 
         return {
             "cash": cash,
