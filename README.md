@@ -136,7 +136,7 @@ npm run build  # Production build (outputs to dist/)
 
 **Pages:** Dashboard Home (next run countdown, P&L, SSE activity feed), Stock Universe (searchable table, expandable rows with committee reasoning), Run History (timeline, run diff view), Portfolio (positions, P&L chart, sector allocation).
 
-**Docker:** `docker compose up -d` runs both agent and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000).
+**Docker:** `docker compose up -d` runs both agent and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000). Activity feed (SSE) and Run History work when accessing via VPS IP — frontend uses relative API URLs. One-off live cycle: `docker exec -it investment-agent poetry run python -m src.orchestrator.main`; dry-run: add `--dry-run`.
 
 **Schedule (configurable):**
 
@@ -153,13 +153,20 @@ Set `cycle_frequency: intraday` in `config/settings.yaml` for 3 cycles during ma
 
 ```bash
 # Build and run (agent + dashboard)
-docker compose up -d
+docker compose up -d --build
 
 # View logs
 docker compose logs -f investment-agent
 docker compose logs -f dashboard
 
 # Dashboard at http://localhost:8000 (or http://YOUR_VPS_IP:8000 on VPS)
+# Activity feed: Dashboard Home page; Run History: runs table (one row per cycle)
+
+# One-off live cycle (in addition to scheduler)
+docker exec -it investment-agent poetry run python -m src.orchestrator.main
+
+# One-off dry-run cycle
+docker exec -it investment-agent poetry run python -m src.orchestrator.main --dry-run
 ```
 
 ## Chat Notifications (US-1.5 Delivered)
@@ -291,7 +298,7 @@ notebooks/
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
 - [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — prioritised user stories for systematic improvement
-- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — web dashboard (Phase 1 backend + frontend built; stabilisation pending)
+- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — web dashboard (Phase 1 + Phase 1.5 Analytics Lite complete; stabilisation done; US-1.8 implemented)
 - [Dashboard Stabilisation Plan](docs/DASHBOARD_STABILISATION_PLAN.md) — test fixes, frontend-backend type alignment, API URL fixes
 - [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
 - [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict

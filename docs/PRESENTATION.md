@@ -243,9 +243,13 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 
 **Docker:**
 ```bash
-docker compose up -d
+docker compose up -d --build
 docker compose logs -f investment-agent
+# One-off live cycle: docker exec -it investment-agent poetry run python -m src.orchestrator.main
+# One-off dry-run: docker exec -it investment-agent poetry run python -m src.orchestrator.main --dry-run
 ```
+
+**Dashboard:** `http://YOUR_VPS_IP:8000` — activity feed (SSE), Run History, Universe, Portfolio. Relative API URLs work from VPS IP.
 
 **VPS (Production):**
 - Ubuntu 22.04, 2GB RAM, 1 vCPU
@@ -307,7 +311,7 @@ docker compose logs -f investment-agent
 - ~~Backtesting~~ → Engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); see docs/BACKTESTING.md and WALK_FORWARD_VALIDATION.md
 - ~~UOV ranking & queue~~ → Universal Opportunity Value scoring, ranked BUY execution, queue + swap suggestions (shadow/active mode)
 - ~~Intelligent order management~~ → ATR-based stop reassessment, software trailing stops, limit dip-buy orders; stop_loss_adjustments audit trail
-- ~~Dashboard Phase 1~~ → FastAPI backend (runs, universe, portfolio, orders, SSE events), React frontend (4 pages); stabilisation complete; deployment (US-1.8) implemented (Docker service, port 8000; SPA served by FastAPI)
+- ~~Dashboard Phase 1~~ → FastAPI backend (runs, universe, portfolio, orders, SSE events), React frontend (4 pages); stabilisation complete; US-1.8 delivered (Docker service, port 8000; SPA served by FastAPI; activity feed works from VPS IP)
 
 **Phase 2 — Enhanced Intelligence:**
 - Portfolio optimization (Markowitz / risk parity)

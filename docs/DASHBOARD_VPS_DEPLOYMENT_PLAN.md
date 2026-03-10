@@ -67,7 +67,7 @@ dashboard:
 
 ### 4. Frontend API URL
 
-The frontend is served from the same origin as the API. `VITE_API_URL` can stay unset — requests use relative paths.
+The frontend is served from the same origin as the API. `VITE_API_URL` can stay unset — requests use relative paths. The SSE activity feed uses a relative URL (`/api/events/stream`) when `VITE_API_URL` is unset, so it works when accessing the dashboard at `http://VPS_IP:8000` (same-origin).
 
 ### 5. VPS Firewall
 
@@ -102,6 +102,13 @@ curl http://localhost:8000/api/events/?limit=3
 ```
 
 Access from your machine: `http://YOUR_VPS_IP:8000`
+
+**Run History:** Shows `runs` table entries (one per cycle). Runs are created when `dashboard.enabled` and `dashboard.events_enabled` are true; scheduler and orchestrator both create/update Run records.
+
+**One-off live cycle (in addition to scheduler):**
+```bash
+docker exec -it investment-agent poetry run python -m src.orchestrator.main
+```
 
 ---
 

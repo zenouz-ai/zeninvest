@@ -4,7 +4,7 @@
 **Created:** 2026-03-10
 **Branch:** `claude/dashboard-stabilisation` (merge to main)
 **Prerequisite:** Dry-run state mutation fix (committed)
-**Next:** US-1.8 Dashboard VPS Deployment — see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
+**Next:** US-1.8 Dashboard VPS Deployment — delivered; see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
 
 ---
 

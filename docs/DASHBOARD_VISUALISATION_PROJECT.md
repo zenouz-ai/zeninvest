@@ -1,6 +1,6 @@
 # Investment Agent — Dashboard & Visualisation System
 
-**Status:** In Progress (Phase 1 + Phase 1.5 Analytics Lite done; US-1.8 implemented)
+**Status:** In Progress (Phase 1 + Phase 1.5 Analytics Lite done; US-1.8 delivered)
 **Roadmap reference:** `docs/SOPHISTICATION_ROADMAP.md` (US-1.7, US-1.8)
 **Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md` (done)
 **Deployment plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
@@ -37,9 +37,9 @@ See `docs/DASHBOARD_STABILISATION_PLAN.md` — all items complete: test fixtures
 - Run-to-run diff: compare positions between two runs (new, closed, size changes)
 - Top-bar: next run countdown, P&L summary
 
-### Deployment (implemented)
+### Deployment (delivered)
 
-See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` — Docker service, multi-stage frontend build, SPA fallback, port 8000. Deploy to VPS.
+See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` — Docker service, multi-stage frontend build, SPA fallback, port 8000. Activity feed (SSE) uses relative URL — works when accessing at `http://VPS_IP:8000`. Deploy to VPS.
 
 ---
 

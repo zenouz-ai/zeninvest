@@ -9,7 +9,7 @@
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **7** · In Progress **1** (US-1.7 Dashboard) · Pipeline **17** (order by priority and feasibility below)
+**At a glance:** Delivered **8** · In Progress **1** (US-1.7 Dashboard) · Pipeline **16** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -24,11 +24,11 @@ timeline
         US-3.4 : UOV Ranking & Queue
         US-3.5 : Intelligent Order Management
         US-5.1 : Backtesting Engine
+        US-1.8 : Dashboard VPS Deployment
     section In Progress
         US-1.7 : Dashboard & Visualisation (stabilisation)
     section Pipeline (priority order)
         US-1.4 : Deploy POC to VPS
-        US-1.8 : Dashboard VPS Deployment
         US-1.6 : Slack NL Trade Commands
         US-2.1 : Conviction Calibration
         US-2.2 : Dynamic Strategy Weighting
@@ -57,24 +57,24 @@ timeline
 | | 5 | US-3.4 | UOV Ranking & Queue |
 | | 6 | US-3.5 | Intelligent Order Management |
 | | 7 | US-5.1 | Backtesting Engine |
-| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (Phase 1 + Phase 1.5 Analytics Lite done; US-1.8 implemented) |
+| | 8 | US-1.8 | Dashboard VPS Deployment |
+| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (Phase 1 + Phase 1.5 Analytics Lite done) |
 | **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
-| | 2 | US-1.8 | Dashboard VPS Deployment (implemented; deploy to VPS) |
-| | 3 | US-1.6 | Slack NL Trade Commands |
-| | 4 | US-2.1 | Conviction Calibration |
-| | 5 | US-2.2 | Dynamic Strategy Weighting |
-| | 6 | US-3.1 | Risk-Parity Sizing |
-| | 7 | US-2.3 | Moderator Effectiveness |
-| | 8 | US-4.1 | Volume Signals |
-| | 9 | US-5.2 | Parameter Sensitivity |
-| | 10 | US-3.2 | Regime Detection |
-| | 11 | US-3.3 | Correlation Screening |
-| | 12 | US-4.2 | Earnings Calendar |
-| | 13 | US-4.3 | Sector Rotation |
-| | 14 | US-4.4 | Agentic Research (independent tool access for committee) |
-| | 15 | US-6.1 | ML Trade Scoring (investigation) |
-| | 16 | US-6.2 | Journal Embeddings |
-| | 17 | US-6.3 | RL Investigation |
+| | 2 | US-1.6 | Slack NL Trade Commands |
+| | 3 | US-2.1 | Conviction Calibration |
+| | 4 | US-2.2 | Dynamic Strategy Weighting |
+| | 5 | US-3.1 | Risk-Parity Sizing |
+| | 6 | US-2.3 | Moderator Effectiveness |
+| | 7 | US-4.1 | Volume Signals |
+| | 8 | US-5.2 | Parameter Sensitivity |
+| | 9 | US-3.2 | Regime Detection |
+| | 10 | US-3.3 | Correlation Screening |
+| | 11 | US-4.2 | Earnings Calendar |
+| | 12 | US-4.3 | Sector Rotation |
+| | 13 | US-4.4 | Agentic Research (independent tool access for committee) |
+| | 14 | US-6.1 | ML Trade Scoring (investigation) |
+| | 15 | US-6.2 | Journal Embeddings |
+| | 16 | US-6.3 | RL Investigation |
 
 ---
 
@@ -89,7 +89,7 @@ timeline
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
 | **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer with Decision Explorer, run history with diff, portfolio; FastAPI + React (Phase 1 + Phase 1.5 Analytics Lite) | Full operational visibility; personal quant experience | **In Progress** (Phase 1.5 delivered) |
-| **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Operational visibility on live VPS | **Implemented** (Docker service, multi-stage build; deploy to VPS) |
+| **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Operational visibility on live VPS | **Delivered** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
@@ -420,16 +420,18 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Operational visibility on live VPS; no domain required
 **Effort:** Small (1–2 days)
 **Data Sources:** Same DB as agent (shared volume)
-**Stage:** Planned
+**Stage:** Delivered
 
 **Detailed plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
 
+**Status (2026-03-10):** Delivered.
+
 **Acceptance Criteria:**
-- [ ] Dashboard service added to docker-compose; shares `./data` volume with agent
-- [ ] Frontend built in Dockerfile (multi-stage); FastAPI serves static files
-- [ ] Access via `http://YOUR_VPS_IP:8000` (VPS IP — recommended; no domain)
-- [ ] Firewall allows port 8000
-- [ ] Activity feed, portfolio, runs, universe pages load correctly
+- [x] Dashboard service added to docker-compose; shares `./data` volume with agent
+- [x] Frontend built in Dockerfile (multi-stage); FastAPI serves static files
+- [x] Access via `http://YOUR_VPS_IP:8000` (VPS IP — recommended; no domain)
+- [ ] Firewall allows port 8000 (deploy step: `ufw allow 8000/tcp`)
+- [x] Activity feed (SSE), portfolio, runs, universe pages load correctly (relative API URLs work from VPS IP)
 
 **Domain options:** VPS IP (recommended), purchase domain for HTTPS, or nginx reverse proxy. See deployment plan.
 
@@ -621,7 +623,8 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 ## Next sprint focus
 
 **Immediate (next session):**
-- **US-1.8** — Dashboard VPS Deployment: implemented; deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
+- **US-1.4** — Deploy POC to VPS (when ready)
+- **US-1.8** — Delivered; deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` if not yet deployed
 
 **Then:**
 - **US-1.4** — Deploy POC to VPS (when ready)

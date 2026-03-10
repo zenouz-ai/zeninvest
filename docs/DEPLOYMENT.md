@@ -1611,13 +1611,13 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 ## 13. Dashboard VPS Deployment
 
-The web dashboard (activity feed, portfolio, run history, universe) can be deployed alongside the agent on the VPS. **Full plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
+The web dashboard (activity feed, portfolio, run history, universe) can be deployed alongside the agent on the VPS. **Full plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`. **Status:** US-1.8 delivered (Docker service, multi-stage frontend build, SPA fallback).
 
 ### Access Options (no domain required)
 
 | Option | Access | Notes |
 |--------|--------|-------|
-| **VPS IP** (recommended) | `http://YOUR_VPS_IP:8000` | No cost, no setup. HTTP is acceptable for a personal dashboard. |
+| **VPS IP** (recommended) | `http://YOUR_VPS_IP:8000` | No cost, no setup. Activity feed (SSE) and Run History work via relative API URLs. |
 | **Domain** | `https://dashboard.yourdomain.com` | HTTPS via Let's Encrypt; ~£10–15/year. |
 | **GitHub Pages** | Not suitable | Frontend must call VPS API; mixed content (HTTPS→HTTP) blocked. |
 
@@ -1636,6 +1636,8 @@ The web dashboard (activity feed, portfolio, run history, universe) can be deplo
 5. `docker compose up -d --build`
 
 Access from your machine: `http://YOUR_VPS_IP:8000`
+
+**Run History** shows `runs` table entries (one per cycle). **One-off live cycle:** `docker exec -it investment-agent poetry run python -m src.orchestrator.main`
 
 ---
 

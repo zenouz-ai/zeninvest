@@ -188,7 +188,7 @@ React frontend (SPA, served by FastAPI when dist/ exists)
     +-- Portfolio: positions, P&L chart, sector allocation
 ```
 
-**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions). Shared SQLite DB via `./data` volume in Docker.
+**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions). Shared SQLite DB via `./data` volume in Docker. **Run History** displays `runs` table (one row per cycle; created by scheduler and orchestrator when dashboard enabled). **Activity feed (SSE)** uses relative URL — works when accessing at `http://VPS_IP:8000`.
 
 ## Moderation Consensus Logic
 

@@ -18,10 +18,8 @@ export function useSSE(options: UseSSEOptions = {}) {
       return
     }
 
-    // In dev, use same origin so Vite proxy forwards to backend (avoids CORS)
-    const API_BASE =
-      import.meta.env.VITE_API_URL ||
-      (import.meta.env.DEV ? '' : 'http://localhost:8000')
+    // Relative URL when unset: same-origin (works when FastAPI serves frontend on VPS or localhost)
+    const API_BASE = import.meta.env.VITE_API_URL ?? ''
     const streamUrl = API_BASE ? `${API_BASE}/api/events/stream` : '/api/events/stream'
     const eventSource = new EventSource(streamUrl)
 
