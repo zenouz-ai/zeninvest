@@ -55,7 +55,7 @@ timeline
 | | 5 | US-3.4 | UOV Ranking & Queue |
 | | 6 | US-3.5 | Intelligent Order Management |
 | | 7 | US-5.1 | Backtesting Engine |
-| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (stabilisation pending) |
+| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (stabilisation done; deployment pending) |
 | **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
 | | 3 | US-1.6 | Slack NL Trade Commands |
 | | 4 | US-2.1 | Conviction Calibration |
@@ -389,7 +389,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Detailed plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.
 **Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md`.
 
-**Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind, 4 pages) are built. Agent instrumentation complete (scheduler, orchestrator emit events). However, 5 test failures caused by dashboard table initialisation gap in test fixtures, and frontend TypeScript types don't match backend Pydantic schemas (would crash at runtime). Stabilisation plan created for next session.
+**Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind, 4 pages) are built. Agent instrumentation complete. Stabilisation complete: 5 test failures fixed, frontend-backend types aligned, API URLs corrected, `POST /api/runs/trigger` implemented.
 
 **Phase 1 Acceptance Criteria:**
 - [x] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
@@ -398,10 +398,10 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] React + Vite + Tailwind: Home (activity feed, portfolio summary), Universe (table, committee reasoning), Run History (timeline), Portfolio (positions, P&L chart)
 - [x] Dark terminal aesthetic; Recharts; config `dashboard_enabled`, `dashboard_events_enabled`
 - [x] Alembic migration for `events_log` and `runs` tables
-- [ ] Fix 5 test failures (dashboard table init in test fixtures)
-- [ ] Fix frontend-backend type mismatches (PortfolioSnapshot, Position, Order fields)
-- [ ] Fix API client URL mismatches (portfolio endpoint, getByCycleId)
-- [ ] Implement `POST /api/runs/trigger` (currently placeholder)
+- [x] Fix 5 test failures (dashboard table init in test fixtures)
+- [x] Fix frontend-backend type mismatches (PortfolioSnapshot, Position, Order fields)
+- [x] Fix API client URL mismatches (portfolio endpoint, getByCycleId)
+- [x] Implement `POST /api/runs/trigger` (background daemon thread)
 - [ ] Deployment: nginx, SSE buffering off, basic auth or API key; deploy script
 
 **Phases 2–4 (future):** Analytics & Insights; ML & Advanced (backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run, strategy tuning UI, Slack mirror).

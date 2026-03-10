@@ -48,8 +48,13 @@ export const runsApi = {
   },
   
   getByCycleId: async (cycleId: string): Promise<Run | null> => {
-    const response = await api.get('/api/runs/', { params: { cycle_id: cycleId } })
-    return response.data[0] || null
+    try {
+      const response = await api.get(`/api/runs/cycle/${cycleId}`)
+      return response.data
+    } catch (err: any) {
+      if (err?.response?.status === 404) return null
+      throw err
+    }
   },
 }
 
@@ -74,8 +79,13 @@ export const universeApi = {
 // Portfolio API
 export const portfolioApi = {
   current: async (): Promise<PortfolioSnapshot | null> => {
-    const response = await api.get('/api/portfolio/current')
-    return response.data
+    try {
+      const response = await api.get('/api/portfolio/')
+      return response.data
+    } catch (err: any) {
+      if (err?.response?.status === 404) return null
+      throw err
+    }
   },
   
   history: async (params?: {

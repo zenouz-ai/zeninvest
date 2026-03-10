@@ -1,5 +1,7 @@
 """Runs router - run history and metadata."""
 
+import logging
+import threading
 from datetime import datetime
 from typing import Any
 
@@ -13,8 +15,21 @@ from src.utils.config import get_settings
 from ..database import Run
 from ..schemas import RunCreateSchema, RunSchema
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
+
+
+def _run_dry_cycle() -> None:
+    """Run a dry-run cycle in background (daemon thread)."""
+    try:
+        from src.orchestrator.main import Orchestrator
+
+        orch = Orchestrator(dry_run=True)
+        orch.run_cycle()
+        orch.close()
+    except Exception as e:
+        logger.error("Triggered dry-run failed: %s", e, exc_info=True)
 
 
 @router.get("/", response_model=list[RunSchema])
@@ -108,9 +123,10 @@ async def create_run(run_data: RunCreateSchema):
 
 @router.post("/trigger")
 async def trigger_manual_run():
-    """Trigger a manual run (placeholder for future integration)."""
+    """Trigger a dry-run cycle in the background."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
-    # TODO: Integrate with orchestrator to trigger a manual cycle
-    return {"message": "Manual run trigger not yet implemented"}
+    t = threading.Thread(target=_run_dry_cycle, daemon=True, name="TriggeredDryRun")
+    t.start()
+    return {"message": "Dry-run cycle triggered in background", "status": "started"}

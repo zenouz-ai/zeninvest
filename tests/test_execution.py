@@ -8,6 +8,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.data.models import Base, Order
+
+try:
+    from dashboard.backend.app.database import Base as DashboardBase
+except ImportError:
+    DashboardBase = None
 from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.agents.execution.order_manager import OrderManager
 
@@ -17,16 +22,40 @@ def db_session():
     """Create an in-memory SQLite database for testing."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
+    if DashboardBase is not None:
+        DashboardBase.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
     yield session
     session.close()
 
 
+def _event_logger_session_factory(db_session):
+    """Return a callable that creates fresh sessions for the event_logger worker.
+    The event_logger runs in a background thread and must not share the main test
+    session (SQLAlchemy sessions are not thread-safe). Each call gets a new
+    session from the same engine.
+    """
+    Session = sessionmaker(bind=db_session.get_bind())
+
+    def get_session():
+        return Session()
+
+    return get_session
+
+
 @pytest.fixture(autouse=True)
 def mock_get_session(db_session):
     """Patch get_session to use the test database."""
-    with patch("src.agents.execution.order_manager.get_session", return_value=db_session):
+    event_logger_get_session = (
+        _event_logger_session_factory(db_session)
+        if DashboardBase is not None
+        else lambda: db_session
+    )
+    with patch("src.agents.execution.order_manager.get_session", return_value=db_session), patch(
+        "dashboard.backend.app.services.event_logger.get_session",
+        side_effect=event_logger_get_session,
+    ):
         yield
 
 
