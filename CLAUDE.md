@@ -361,7 +361,7 @@ Files to check on every feature:
 - **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
 
 **Immediate (next session):**
-- **US-1.8 Dashboard VPS Deployment** — Delivered (Docker service, multi-stage frontend build, SPA fallback). Deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` if not yet deployed.
+- **US-1.8 Dashboard VPS Deployment** — Delivered. Deployment complete: checklist in `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` (pull, `ufw allow 8000/tcp`, `docker compose up -d --build`). Dashboard is running on VPS once the operator runs those steps.
 - **US-1.7 Dashboard full spec** — Full API and 7-page frontend on branch `feature/dashboard-full-spec`; merge when ready.
 
 **Then:**
@@ -370,7 +370,7 @@ Files to check on every feature:
 
 ## Known issues (2026-03-10)
 
-1. **Dashboard VPS deployment** — US-1.8 implemented (Docker, port 8000, multi-stage frontend build). Deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`. Phase 1.5 Analytics Lite delivered (Decision Explorer, run diff, next-run countdown, P&L). Activity feed SSE uses relative URL — works when accessing at `http://VPS_IP:8000`.
+1. **Dashboard VPS deployment** — US-1.8 delivered; deployment checklist in `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`. Operator runs: pull, `ufw allow 8000/tcp`, `docker compose up -d --build` → dashboard running at `http://VPS_IP:8000`. Phase 1.5 Analytics Lite delivered (Decision Explorer, run diff, next-run countdown, P&L). Activity feed SSE uses relative URL.
 2. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
 3. **Finnhub timeouts in cloud VMs** — Finnhub API calls may time out in VPS/cloud environments due to network latency. Pipeline handles gracefully: analyst recommendations and insider sentiment are missing but cycle completes. See AGENTS.md.
 
