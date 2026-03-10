@@ -104,6 +104,8 @@ poetry run python -m src.scheduler.scheduler
 
 ### Dashboard (Phase 1 + Phase 1.5 Analytics Lite)
 
+Run the backend from the project root (so `src` and `dashboard` are importable):
+
 ```bash
 # Start the dashboard API server (local dev)
 poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
