@@ -65,6 +65,29 @@ class InstrumentDetailSchema(InstrumentSchema):
     label: str | None = None  # buy/sell/hold/watch computed from last decision
 
 
+class UniverseBubbleSchema(BaseModel):
+    """Instrument with UOV and investigated flag for bubble viz."""
+
+    ticker: str
+    name: str | None
+    sector: str | None
+    industry: str | None
+    market_cap: float | None
+    last_screened_at: datetime | None
+    data_available: bool = True
+    investigated: bool = False  # has at least one strategy decision
+    uov_raw: float | None = None
+    uov_z: float | None = None
+    uov_ewma: float | None = None
+    decision_count: int = 0
+    buy_count: int = 0
+    sell_count: int = 0
+    reduce_count: int = 0
+    hold_count: int = 0
+    hold_qty: float = 0.0
+    sold_qty: float = 0.0
+
+
 class PositionSchema(BaseModel):
     """Portfolio position schema."""
 
@@ -331,6 +354,14 @@ class CostMonthlySchema(BaseModel):
     """Monthly cumulative cost."""
 
     year_month: str
+    total_gbp: float
+    by_provider: dict[str, float]
+
+
+class CostForCycleSchema(BaseModel):
+    """Cost for a single run (cycle)."""
+
+    cycle_id: str
     total_gbp: float
     by_provider: dict[str, float]
 

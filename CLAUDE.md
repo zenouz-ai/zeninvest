@@ -178,7 +178,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
     - **Software trailing stops**: Tracks high-water mark per position. Ratchets stop up as price rises. Implemented by cancel + replace since T212 has no native trailing stop.
     - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
     - All adjustments logged to `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
-13. **Dashboard backend (Phase 1 + Phase 1.5 + full API)** — FastAPI REST API + SSE stream. Endpoints: runs, status (includes system state and paused), universe, portfolio, orders, events/stream; decisions (with pipeline waterfall), moderation, risk; opportunity (scores, queue, history); outcomes (list, stats); stop-loss (current, adjustments); performance (metrics, history); costs (daily, monthly, degradation); api-usage (daily); system (state, trigger-cycle, pause, resume). All query agent SQLite read-only; no duplicate tables. Event logger: non-blocking, fail-open. Frontend: 7 pages — Dashboard Home (state badge), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs. Design: dark charcoal #0d1117, gain #00ff88, loss #ff4444, neutral #58a6ff, accent #d4a017, subtle grid background. Config: `dashboard.enabled`, `dashboard.events_enabled`.
+13. **Dashboard backend (Phase 1 + Phase 1.5 + full API)** — FastAPI REST API + SSE stream. Endpoints: runs, status (includes system state and paused), universe, portfolio, orders, events/stream; decisions (with pipeline waterfall), moderation, risk; opportunity (scores, queue, history); outcomes (list, stats); stop-loss (current, adjustments); performance (metrics, history); costs (daily, monthly, degradation); api-usage (daily); system (state, trigger-cycle, pause, resume). All query agent SQLite read-only; no duplicate tables. Event logger: non-blocking, fail-open. Frontend: 7 pages — Dashboard Home (state badge), Universe (expandable rows with full LLM outputs: strategy reasoning + extra fields + raw JSON, all moderators’ verdicts/reasoning, risk reasoning and rules), Run History, Portfolio, Opportunity Pipeline, Order Management, Costs. Design: dark charcoal #0d1117, gain #00ff88, loss #ff4444, neutral #58a6ff, accent #d4a017, subtle grid background. Config: `dashboard.enabled`, `dashboard.events_enabled`.
 
 ## Scheduling Architecture
 
@@ -362,6 +362,7 @@ Files to check on every feature:
 
 **Immediate (next session):**
 - **US-1.8 Dashboard VPS Deployment** — Delivered (Docker service, multi-stage frontend build, SPA fallback). Deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` if not yet deployed.
+- **US-1.7 Dashboard full spec** — Full API and 7-page frontend on branch `feature/dashboard-full-spec`; merge when ready.
 
 **Then:**
 - Calibration (US-2.1, US-2.2) and portfolio optimisation (US-3.1)

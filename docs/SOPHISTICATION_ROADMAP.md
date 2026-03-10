@@ -58,7 +58,7 @@ timeline
 | | 6 | US-3.5 | Intelligent Order Management |
 | | 7 | US-5.1 | Backtesting Engine |
 | | 8 | US-1.8 | Dashboard VPS Deployment |
-| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (Phase 1 + Phase 1.5 Analytics Lite done) |
+| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (full API + 7 pages on branch `feature/dashboard-full-spec`) |
 | **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
 | | 2 | US-1.6 | Slack NL Trade Commands |
 | | 3 | US-2.1 | Conviction Calibration |
@@ -88,7 +88,7 @@ timeline
 | **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Planned** |
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
-| **US-1.7** | Dashboard & Visualisation | Web dashboard: activity feed (SSE), universe explorer with Decision Explorer, run history with diff, portfolio; FastAPI + React (Phase 1 + Phase 1.5 Analytics Lite) | Full operational visibility; personal quant experience | **In Progress** (Phase 1.5 delivered) |
+| **US-1.7** | Dashboard & Visualisation | Web dashboard: 7 pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs); full API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system). Branch `feature/dashboard-full-spec`. | Full operational visibility; personal quant experience | **In Progress** (full API + 7 pages on branch) |
 | **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Operational visibility on live VPS | **Delivered** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
@@ -387,16 +387,16 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-1.7: Dashboard & Visualisation System (Phase 1 MVP)
-**Value:** Full operational visibility — activity feed, universe, run history, portfolio
+#### US-1.7: Dashboard & Visualisation System (Phase 1 MVP + full API)
+**Value:** Full operational visibility — activity feed, universe, run history, portfolio, opportunity, order management, costs
 **Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)
-**Data Sources:** Existing DB; new `events_log` (optionally `runs`)
-**Stage:** In Progress (stabilisation pending)
+**Data Sources:** Existing DB; new `events_log` (optionally `runs`); backend reads agent tables read-only (no duplicate tables)
+**Stage:** In Progress (full API and 7 pages on branch `feature/dashboard-full-spec`)
 
 **Detailed plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.
 **Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md`.
 
-**Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind, 4 pages) are built. Agent instrumentation complete. Stabilisation complete. US-1.8 implemented: Docker service, multi-stage frontend build, SPA fallback. Phase 1.5 Analytics Lite: Decision Explorer (expandable universe rows), run diff, next-run countdown, P&L in top bar.
+**Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built. Agent instrumentation complete. Stabilisation complete. US-1.8 implemented: Docker service, multi-stage frontend build, SPA fallback. Phase 1.5 Analytics Lite: Decision Explorer (expandable universe rows), run diff, next-run countdown, P&L in top bar. **Full API and 7-page spec** (branch `feature/dashboard-full-spec`): backend exposes decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system; status includes system state (ACTIVE/CAUTIOUS/HALTED) and paused; frontend has 7 pages (Dashboard Home with state badge, Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs); design tokens #0d1117, #58a6ff, #d4a017, grid texture.
 
 **Phase 1 Acceptance Criteria:**
 - [x] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
@@ -411,6 +411,9 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Implement `POST /api/runs/trigger` (background daemon thread)
 - [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
 - [x] Phase 1.5 Analytics Lite: Decision Explorer, run diff, next-run countdown, P&L
+- [x] Full API: decisions (incl. pipeline waterfall), moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); status returns state and paused
+- [x] 7 pages: Dashboard Home (system state badge), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
+- [x] Design: terminal palette #0d1117, #58a6ff, #d4a017, subtle grid background
 
 **Phases 2–4 (future):** Analytics & Insights; ML & Advanced (backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run, strategy tuning UI, Slack mirror).
 

@@ -15,6 +15,7 @@ from .database import init_dashboard_tables
 from .routers import (
     api_usage,
     costs,
+    dashboard,
     decisions,
     events,
     moderation,
@@ -64,6 +65,7 @@ app.add_middleware(
 )
 
 # Register routers (must be before static mount so /api/* takes precedence)
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(runs.router, prefix="/api/runs", tags=["runs"])
 app.include_router(status.router, prefix="/api/status", tags=["status"])
 app.include_router(universe.router, prefix="/api/universe", tags=["universe"])

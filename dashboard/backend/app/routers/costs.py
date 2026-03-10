@@ -10,10 +10,40 @@ from src.data.database import get_session
 from src.data.models import CostLog
 from src.utils.config import get_settings
 
-from ..schemas import CostDailySchema, CostMonthlySchema, DegradationSchema
+from ..schemas import CostDailySchema, CostForCycleSchema, CostMonthlySchema, DegradationSchema
 
 router = APIRouter()
 settings = get_settings()
+
+
+@router.get("/for-cycle", response_model=CostForCycleSchema)
+async def get_cost_for_cycle(
+    cycle_id: str = Query(..., description="Cycle ID to sum cost for"),
+):
+    """Total cost for a single run (cycle)."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    session = get_session()
+    try:
+        rows = (
+            session.query(CostLog.provider, func.sum(CostLog.cost_gbp).label("total"))
+            .filter(CostLog.cycle_id == cycle_id)
+            .group_by(CostLog.provider)
+            .all()
+        )
+        by_provider = {"anthropic": 0.0, "openai": 0.0, "google": 0.0}
+        for provider, total in rows:
+            if provider in by_provider:
+                by_provider[provider] = float(total or 0)
+        total_gbp = sum(by_provider.values())
+        return CostForCycleSchema(
+            cycle_id=cycle_id,
+            total_gbp=round(total_gbp, 4),
+            by_provider=by_provider,
+        )
+    finally:
+        session.close()
 
 
 @router.get("/daily", response_model=list[CostDailySchema])

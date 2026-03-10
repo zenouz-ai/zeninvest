@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order } from '../types'
+import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order, UniverseBubbleItem } from '../types'
 
 // Use relative paths when VITE_API_URL unset: same-origin in prod (FastAPI serves frontend)
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
@@ -104,6 +104,11 @@ export const universeApi = {
     const response = await api.get(`/api/universe/${ticker}`)
     return response.data
   },
+
+  getBubble: async (params?: { limit?: number }): Promise<UniverseBubbleItem[]> => {
+    const response = await api.get('/api/universe/bubble', { params: params ?? { limit: 1000 } })
+    return response.data
+  },
 }
 
 // Portfolio API
@@ -195,8 +200,46 @@ export const costsApi = {
     const response = await api.get('/api/costs/monthly', { params })
     return response.data
   },
+  getForCycle: async (cycleId: string): Promise<{ cycle_id: string; total_gbp: number; by_provider: Record<string, number> }> => {
+    const response = await api.get('/api/costs/for-cycle', { params: { cycle_id: cycleId } })
+    return response.data
+  },
   getDegradation: async (): Promise<{ level: string; message?: string }> => {
     const response = await api.get('/api/costs/degradation')
+    return response.data
+  },
+}
+
+// Dashboard API (monthly summary, run feed)
+export const dashboardApi = {
+  getMonthlySummary: async (year: number, month: number): Promise<{
+    year: number
+    month: number
+    year_month: string
+    runs_count: number
+    cost_gbp: number
+    portfolio_start_gbp: number | null
+    portfolio_end_gbp: number | null
+    pnl_gbp: number | null
+  }> => {
+    const response = await api.get('/api/dashboard/monthly-summary', { params: { year, month } })
+    return response.data
+  },
+  getRunFeed: async (params?: { limit?: number }): Promise<Array<{
+    run: Run
+    decisions: Array<{
+      id: number
+      cycle_id: string
+      ticker: string
+      action: string
+      conviction: number | null
+      reasoning: string | null
+      primary_strategy: string | null
+      [key: string]: unknown
+    }>
+    orders: Order[]
+  }>> => {
+    const response = await api.get('/api/dashboard/run-feed', { params: params ?? { limit: 20 } })
     return response.data
   },
 }

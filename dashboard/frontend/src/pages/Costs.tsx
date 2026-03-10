@@ -45,13 +45,15 @@ export default function Costs() {
     )
   }
 
-  const dailyChartData = daily.map((d) => ({
-    date: d.date,
-    anthropic: d.anthropic_gbp,
-    openai: d.openai_gbp,
-    google: d.google_gbp,
-    total: d.total_gbp,
-  }))
+  const dailyChartData = daily
+    .map((d) => ({
+      date: d.date,
+      anthropic: d.anthropic_gbp,
+      openai: d.openai_gbp,
+      google: d.google_gbp,
+      total: d.total_gbp,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date))
 
   return (
     <div className="space-y-6">

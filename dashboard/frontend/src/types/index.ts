@@ -35,12 +35,67 @@ export interface Instrument {
   data_available: boolean
 }
 
+export interface UniverseBubbleItem extends Instrument {
+  investigated: boolean
+  uov_raw: number | null
+  uov_z: number | null
+  uov_ewma: number | null
+  decision_count: number
+  buy_count: number
+  sell_count: number
+  reduce_count: number
+  hold_count: number
+  hold_qty: number
+  sold_qty: number
+}
+
+/** Single moderator output in committee */
+export interface ModerationEntry {
+  moderator: string
+  verdict: string
+  reasoning?: string
+  growth_score?: number
+  risk_score?: number
+  confidence_score?: number
+  consensus?: string
+}
+
+/** Full strategy LLM output */
+export interface StrategyFull {
+  action: string
+  conviction?: number
+  primary_strategy?: string
+  reasoning?: string
+  timestamp: string
+  growth_potential?: string
+  risk_level?: string
+  exit_conditions?: string
+  news_sentiment_summary?: string
+  market_assessment?: string
+  portfolio_commentary?: string
+  stop_loss_pct?: number
+  expected_holding_period?: string
+  upside_target_pct?: number
+  raw_response_json?: unknown
+}
+
+/** Full risk LLM output */
+export interface RiskFull {
+  verdict: string
+  reasoning?: string
+  adjusted_allocation_pct?: number
+  triggered_rules_json?: string
+  rules_checked_json?: string
+  triggered_rules?: unknown
+}
+
 export interface InstrumentDetail extends Instrument {
   label: string | null
   last_decision: {
-    strategy?: { action: string; conviction: number; reasoning: string; timestamp: string }
-    moderation?: { verdict: string; gpt_score?: number; gemini_score?: number; reasoning?: string }
-    risk?: { verdict: string; triggered_rules?: string[] }
+    cycle_id?: string
+    strategy?: StrategyFull
+    moderation?: ModerationEntry[] | null
+    risk?: RiskFull
   } | null
 }
 
