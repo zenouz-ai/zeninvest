@@ -24,18 +24,6 @@
     @apply bg-terminal-surface border border-terminal-border hover:bg-terminal-border text-terminal-text px-4 py-2 rounded font-medium transition-colors;
   }
   
-  .text-gain {
-    @apply text-gain;
-  }
-  
-  .text-loss {
-    @apply text-loss;
-  }
-  
-  .text-neutral {
-    @apply text-neutral;
-  }
-  
   .mono {
     @apply font-mono;
   }
