@@ -93,8 +93,8 @@ Each outbound event must include:
 - `action` (string)
 - `target_allocation_pct` (float)
 - `conviction` (float)
-- `moderation_consensus` (string)
-- `risk_verdict` (string)
+- `moderation_consensus` (string; "not invoked" for HOLD/QUEUED — moderation not run)
+- `risk_verdict` (string; "not invoked" for HOLD/QUEUED — risk not run)
 - `reasoning_summary` (string)
 
 **`trade_execution_result` payload:**

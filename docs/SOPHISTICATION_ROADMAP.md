@@ -414,11 +414,11 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Fix 5 test failures (dashboard table init in test fixtures)
 - [x] Fix frontend-backend type mismatches (PortfolioSnapshot, Position, Order fields)
 - [x] Fix API client URL mismatches (portfolio endpoint, getByCycleId)
-- [x] Implement `POST /api/runs/trigger` (background daemon thread)
+- [x] Implement `POST /api/runs/trigger` (dry-run) and `POST /api/runs/trigger-live` (live cycle); Dashboard Home has Dry Run and Live Run buttons
 - [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_DEPLOYMENT.md`
 - [x] Phase 1.5 Analytics Lite: Decision Explorer, run diff, next-run countdown, P&L
 - [x] Full API: decisions (incl. pipeline waterfall), moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); status returns state and paused
-- [x] 7 pages: Dashboard Home (system state badge), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
+- [x] 7 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
 - [x] Design: terminal palette #0d1117, #58a6ff, #d4a017, subtle grid background
 
 **Phases 2–4 (future):** Analytics & Insights; ML & Advanced (backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run, strategy tuning UI, Slack mirror).

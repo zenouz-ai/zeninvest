@@ -329,8 +329,13 @@ Scheduled jobs:
 
 ### 3.7 Manual Cycle Validation (Recommended)
 
-Before relying on scheduler-only execution, trigger one manual dry cycle and one manual live cycle:
+Before relying on scheduler-only execution, trigger one manual dry cycle and one manual live cycle. You can use either the dashboard buttons or CLI:
 
+**Option A: Dashboard** (when dashboard is running)
+- Open `http://VPS_IP:8000` → click **Dry Run** or **Live Run** (Live Run requires confirmation)
+- Calls `POST /api/runs/trigger` or `POST /api/runs/trigger-live`; cycle runs in the dashboard container
+
+**Option B: CLI**
 ```bash
 # Dry cycle (no real trades)
 docker compose run --rm investment-agent python -m src.orchestrator.main --dry-run
@@ -1660,7 +1665,7 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 
 **Outcome:** Dashboard is running on VPS. All 7 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs), activity feed (SSE), and API at `http://YOUR_VPS_IP:8000`.
 
-**Run History** shows `runs` table entries (one per cycle). **One-off live cycle:** `docker exec -it investment-agent poetry run python -m src.orchestrator.main`
+**Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use the **Dry Run** or **Live Run** buttons on Dashboard Home (Live Run requires confirmation), or `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live) / `... --dry-run` (dry).
 
 ---
 
