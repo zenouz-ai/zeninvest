@@ -1,7 +1,7 @@
 ---
 tags: [architecture, pipeline, database, diagrams]
 status: current
-last_updated: 2026-03-11
+last_updated: 2026-03-12
 ---
 
 # Solution Architecture
@@ -661,6 +661,7 @@ For the full prioritised backlog and detailed user story specifications, see [So
 - **Chat & Notifications (US-1.5)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. See [Chat & Commands](CHAT_AND_COMMANDS.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
 - **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (7 pages). See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
+- **Agentic Research (US-4.4)** — *Planned.* Independent tool access (web search, news, SEC) for Strategy + Moderation. Provider abstraction: Brave (primary) + Tavily (fallback, optionally additional for news). See [Agentic Research](AGENTIC_RESEARCH.md).
 
 ---
 
@@ -672,3 +673,4 @@ For the full prioritised backlog and detailed user story specifications, see [So
 - [Dashboard](DASHBOARD.md) — web dashboard design and implementation
 - [Chat & Commands](CHAT_AND_COMMANDS.md) — notifications and planned inbound commands
 - [Backtesting](BACKTESTING.md) — engine, walk-forward validation, promotion report
+- [Agentic Research](AGENTIC_RESEARCH.md) — planned tool access for committee (Brave + Tavily)

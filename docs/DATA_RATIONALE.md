@@ -1,7 +1,7 @@
 ---
 tags: [data, pipeline, indicators, fundamentals, rationale]
 status: current
-last_updated: 2026-03-11
+last_updated: 2026-03-12
 ---
 
 # Data Pipeline Rationale
@@ -422,7 +422,21 @@ and reliability tradeoff of local deployment.
 
 ---
 
-## 12. Changelog
+## 12. Agentic Research Data Sources (Planned)
+
+When Agentic Research (US-4.4) is implemented, committee members will have on-demand search tools backed by:
+
+| Source | Role | Decision Path | Rationale |
+|--------|------|---------------|-----------|
+| Brave Search API | Primary for web/news/sector/macro search | Path 2 | Real-time web, financial news filter, privacy-respecting. Free tier 2K/month. |
+| Tavily Search API | Fallback + optional additional for `news_search` | Path 2 | LLM-optimised snippets, native `topic: finance`. Used when Brave fails or as supplemental source for richer news coverage. |
+| SEC EDGAR | 10-K, 10-Q, 8-K filings | Path 2 | Official filings, fundamentals verification. |
+
+**Provider strategy:** Primary (Brave) with Tavily as fallback on timeout/rate-limit. Optional `additional_for_news` mode calls both and merges results. ResearchCache deduplicates by (ticker, tool, query). See [Agentic Research](AGENTIC_RESEARCH.md).
+
+---
+
+## 13. Changelog
 
 | Date | Change | Rationale |
 |------|--------|-----------|
@@ -447,6 +461,7 @@ and reliability tradeoff of local deployment.
 | 2026-02-27 | Added 72-hour screening cooldown | `last_screened_at` column on Instrument table. Screened stocks are excluded from future screens for 72 hours (configurable via `screening_cooldown_hours`), preventing the same candidates from appearing in consecutive cycles. |
 | 2026-03-06 | Added macro intelligence module | Sector performance (Alpha Vantage SECTOR) and economic headlines (Finnhub /news) feed strategy and moderation. Enables "fundamentally strong but sector headwind — defer buy" in committee decisions. Cached 4h. |
 | 2026-03-06 | yfinance sector fallback | When Alpha Vantage SECTOR fails (rate limit, error), fallback to SPDR sector ETFs via yfinance. Config: `sector_fallback_yfinance: true`. |
+| 2026-03-12 | Added Agentic Research data sources (Section 12) | Documented Brave + Tavily dual-provider strategy for planned US-4.4. Tavily as fallback and optional additional for news. |
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-11
+last_updated: 2026-03-12
 ---
 
 # Sophistication Roadmap
@@ -108,7 +108,7 @@ timeline
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
-| **US-4.4** | Agentic Research | Independent tool access (web search, news, SEC) for Strategy + Moderation; differentiated research mandates | Stale context mitigation, follow-up ability, broader coverage | **Planned** |
+| **US-4.4** | Agentic Research | Independent tool access (web search, news, SEC) for Strategy + Moderation; Brave + Tavily dual-provider (fallback/additional); differentiated research mandates | Stale context mitigation, follow-up ability, broader coverage | **Planned** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
@@ -672,6 +672,7 @@ The POC runs continuously and accumulates data while we add features in priority
 ## Related Notes
 
 - [Architecture](ARCHITECTURE.md) — pipeline flow, state machine, database schema
+- [Agentic Research](AGENTIC_RESEARCH.md) — US-4.4 tool access plan (Brave + Tavily)
 - [Governance](GOVERNANCE.md) — risk rules, cost controls, audit trail
 - [Competitive Analysis](COMPETITIVE_ANALYSIS.md) — positioning vs alternatives
 - [Presentation](PRESENTATION.md) — stakeholder deck overview

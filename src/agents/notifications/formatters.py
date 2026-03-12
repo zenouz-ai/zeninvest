@@ -109,6 +109,7 @@ def _slack_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
     )
     reasoning = _excerpt(payload.get("reasoning_summary", ""), 250)
     error_msg = _excerpt(payload.get("error_message", ""), 150)
+    stop_loss_error = _excerpt(payload.get("stop_loss_error", ""), 150)
     lines = [
         f"{prefix} [TRADE-EXECUTION]",
         f"Ticker: {ticker} | Action: {action} | Qty: {qty_display} | Status: {execution_status}",
@@ -119,6 +120,8 @@ def _slack_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
         lines.append(f"Reasoning: {reasoning}")
     if error_msg:
         lines.append(f"Error: {error_msg}")
+    if stop_loss_error:
+        lines.append(f"Stop-loss error: {stop_loss_error}")
     return "\n".join(lines)
 
 
@@ -217,6 +220,12 @@ def _email_trade_instruction(payload: dict[str, Any], *, prefix: str) -> str:
 def _email_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
     execution_status = _display_exec_status(payload.get("execution_status"))
     stop_status = _display_stop_status(payload.get("stop_loss_status"))
+    error_line = payload.get("error_message") or ""
+    stop_loss_error = payload.get("stop_loss_error") or ""
+    if stop_loss_error:
+        error_section = f"Error: {error_line}\nStop-loss error: {stop_loss_error}" if error_line else f"Stop-loss error: {stop_loss_error}"
+    else:
+        error_section = f"Error: {error_line}"
     return (
         f"{prefix} Trade Execution Result\n"
         f"Timestamp UTC: {payload.get('occurred_at', 'N/A')}\n"
@@ -230,7 +239,7 @@ def _email_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
         f"Value GBP: {payload.get('value_gbp', 'N/A')}\n"
         f"Stop-loss %: {payload.get('stop_loss_pct', 'N/A')}\n"
         f"Stop-loss status: {stop_status}\n"
-        f"Error: {payload.get('error_message', '')}\n"
+        f"{error_section}\n"
     )
 
 

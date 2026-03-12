@@ -1266,6 +1266,7 @@ class Orchestrator:
                 "value_gbp": exec_result.get("value_gbp", trade_value),
                 "stop_loss_pct": stop_loss_pct,
                 "stop_loss_status": (stop_loss_result or {}).get("status"),
+                "stop_loss_error": (stop_loss_result or {}).get("error"),
                 "error_message": exec_result.get("error"),
                 "reasoning_summary": decision.get("reasoning", ""),
                 "moderation_consensus": mod_result.consensus,

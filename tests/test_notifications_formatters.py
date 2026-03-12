@@ -150,3 +150,77 @@ def test_render_cycle_summary_slack_includes_queued_reason() -> None:
     assert "queued" in text
     assert "opportunity_queue" in text
     assert "Awaiting 2nd cycle for promotion" in text
+
+
+def _trade_execution_event(
+    *,
+    stop_loss_status: str = "placed",
+    stop_loss_error: str | None = None,
+    error_message: str | None = None,
+) -> NotificationEvent:
+    return NotificationEvent(
+        event_id="evt-exec-1",
+        event_type="trade_execution_result",
+        occurred_at=datetime.now(timezone.utc),
+        cycle_id="cycle_20260310_1815",
+        severity="info",
+        source="orchestrator",
+        dedup_key="exec-dedup-1",
+        payload={
+            "cycle_id": "cycle_20260310_1815",
+            "dry_run": False,
+            "ticker": "VRTX_US_EQ",
+            "action": "BUY",
+            "execution_status": "filled",
+            "quantity": 1.59,
+            "price": 501.47,
+            "value_gbp": 797.34,
+            "stop_loss_pct": -8.0,
+            "stop_loss_status": stop_loss_status,
+            "stop_loss_error": stop_loss_error,
+            "error_message": error_message,
+            "reasoning_summary": "Strong fundamentals",
+            "moderation_consensus": "APPROVED",
+            "risk_verdict": "APPROVE",
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+def test_trade_execution_email_includes_stop_loss_error_when_failed() -> None:
+    """When stop-loss fails, stop_loss_error is shown in the email."""
+    event = _trade_execution_event(
+        stop_loss_status="failed",
+        stop_loss_error="HTTP 400: Invalid timeValidity 'GTC'",
+    )
+
+    messages = render_event(event, "email")
+    body = messages[0].body
+
+    assert "Stop-loss status: failed" in body
+    assert "Stop-loss error: HTTP 400: Invalid timeValidity" in body
+
+
+def test_trade_execution_slack_includes_stop_loss_error_when_failed() -> None:
+    """When stop-loss fails, stop_loss_error is shown in the Slack message."""
+    event = _trade_execution_event(
+        stop_loss_status="failed",
+        stop_loss_error="HTTP 400: Invalid timeValidity 'GTC'",
+    )
+
+    messages = render_event(event, "slack")
+    text = messages[0].body
+
+    assert "Stop-loss error:" in text
+    assert "Invalid timeValidity" in text
+
+
+def test_trade_execution_no_error_when_stop_loss_placed() -> None:
+    """When stop-loss is placed, no error line for stop-loss."""
+    event = _trade_execution_event(stop_loss_status="placed")
+
+    messages = render_event(event, "email")
+    body = messages[0].body
+
+    assert "Stop-loss status: placed" in body
+    assert "Stop-loss error:" not in body

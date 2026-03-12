@@ -17,6 +17,14 @@ from src.utils.logger import get_logger
 
 logger = get_logger("t212_client")
 
+# T212 API expects "DAY" or "GOOD_TILL_CANCEL"; we accept "GTC" from config/callers.
+T212_TIME_VALIDITY: dict[str, str] = {"GTC": "GOOD_TILL_CANCEL", "DAY": "DAY"}
+
+
+def _t212_time_validity(value: str) -> str:
+    """Map config/caller time validity to T212 API enum."""
+    return T212_TIME_VALIDITY.get(value.upper(), value)
+
 
 class T212Client:
     """Client for Trading 212 Invest API (Practice/Demo mode)."""
@@ -207,7 +215,7 @@ class T212Client:
             "ticker": ticker,
             "quantity": quantity,
             "limitPrice": limit_price,
-            "timeValidity": time_validity,
+            "timeValidity": _t212_time_validity(time_validity),
         }
         logger.info(f"Placing limit order: {ticker} qty={quantity} @ {limit_price}")
         return self._request("POST", "/equity/orders/limit", json_body=body)  # type: ignore[return-value]
@@ -224,7 +232,7 @@ class T212Client:
             "ticker": ticker,
             "quantity": quantity,
             "stopPrice": stop_price,
-            "timeValidity": time_validity,
+            "timeValidity": _t212_time_validity(time_validity),
         }
         logger.info(f"Placing stop order: {ticker} qty={quantity} stop={stop_price}")
         return self._request("POST", "/equity/orders/stop", json_body=body)  # type: ignore[return-value]

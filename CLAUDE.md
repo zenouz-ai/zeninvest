@@ -223,6 +223,14 @@ SMTP_PASS
 SMTP_USE_TLS
 ```
 
+Optional research keys (for Agentic Research, US-4.4):
+
+```
+TAVILY_API_KEY=...   # Tavily Search; required if Tavily is primary, fallback, or additional provider
+```
+
+Research tools use a provider abstraction: Brave (primary) + Tavily (fallback, optionally additional). See `docs/AGENTIC_RESEARCH.md`.
+
 ### Chat notifications rollout notes (US-1.5)
 
 - Notification service is fail-open by design: provider errors must not block cycle execution.

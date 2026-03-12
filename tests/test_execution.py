@@ -13,7 +13,11 @@ try:
     from dashboard.backend.app.database import Base as DashboardBase
 except ImportError:
     DashboardBase = None
-from src.agents.execution.t212_client import T212Client, calculate_quantity
+from src.agents.execution.t212_client import (
+    T212Client,
+    _t212_time_validity,
+    calculate_quantity,
+)
 from src.agents.execution.order_manager import OrderManager
 
 
@@ -247,3 +251,99 @@ class TestOrderManager:
         assert len(results) == 2
         assert all(r["status"] == "sold" for r in results)
         assert mock_client.place_market_order.call_count == 2
+
+    def test_place_stop_loss_success(self, db_session):
+        mock_client = MagicMock()
+        mock_client.place_stop_order.return_value = {"id": 12345}
+        manager = OrderManager(client=mock_client, dry_run=False)
+
+        result = manager.place_stop_loss(
+            ticker="VRTX_US_EQ",
+            quantity=1.59,
+            current_price=501.47,
+            stop_loss_pct=-8.0,
+        )
+
+        assert result["status"] == "placed"
+        assert result["stop_price"] == 461.35  # 501.47 * 0.92
+        mock_client.place_stop_order.assert_called_once()
+        call_kwargs = mock_client.place_stop_order.call_args[1]
+        assert call_kwargs["time_validity"] == "GTC"
+
+    def test_place_stop_loss_sends_good_till_cancel_to_t212(self, db_session):
+        """T212 API expects GOOD_TILL_CANCEL, not GTC; t212_client maps GTC -> GOOD_TILL_CANCEL."""
+        mock_client = MagicMock()
+        mock_client.place_stop_order.return_value = {"id": 999}
+        manager = OrderManager(client=mock_client, dry_run=False)
+
+        manager.place_stop_loss(
+            ticker="AAPL_US_EQ",
+            quantity=5.0,
+            current_price=175.0,
+            stop_loss_pct=-8.0,
+        )
+
+        mock_client.place_stop_order.assert_called_once_with(
+            ticker="AAPL_US_EQ",
+            quantity=-5.0,
+            stop_price=161.0,
+            time_validity="GTC",
+        )
+        assert _t212_time_validity("GTC") == "GOOD_TILL_CANCEL"
+        assert _t212_time_validity("DAY") == "DAY"
+
+    def test_place_stop_loss_failure_returns_error(self, db_session):
+        mock_client = MagicMock()
+        mock_client.place_stop_order.side_effect = Exception("HTTP 400: Invalid timeValidity")
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+
+        result = manager.place_stop_loss(
+            ticker="VRTX_US_EQ",
+            quantity=1.59,
+            current_price=501.47,
+            stop_loss_pct=-8.0,
+        )
+
+        assert result["status"] == "failed"
+        assert "error" in result
+        assert "Invalid timeValidity" in result["error"]
+        orders = db_session.query(Order).filter(Order.order_type == "stop").all()
+        assert len(orders) == 1
+        assert orders[0].status == "failed"
+
+
+class TestT212TimeValidityMapping:
+    """T212 API requires GOOD_TILL_CANCEL, not GTC."""
+
+    def test_t212_client_sends_good_till_cancel_for_stop_order(self):
+        """When place_stop_order is called with time_validity='GTC', HTTP body uses GOOD_TILL_CANCEL."""
+        mock_settings = MagicMock()
+        mock_settings.t212_base_url = "https://demo.trading212.com/api/v0"
+        mock_settings.t212_api_key = "test-key"
+        mock_settings.t212_api_secret = "test-secret"
+        with patch("src.agents.execution.t212_client.get_session"), patch(
+            "src.agents.execution.t212_client.get_settings", return_value=mock_settings
+        ), patch("httpx.Client") as mock_client_class:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"id": 1, "status": "NEW"}
+            mock_response.text = '{"id":1,"status":"NEW"}'
+            mock_response.headers = {}
+            mock_response.raise_for_status = MagicMock()
+
+            mock_client_instance = MagicMock()
+            mock_client_class.return_value = mock_client_instance
+            mock_client_instance.request.return_value = mock_response
+
+            client = T212Client()
+            client.place_stop_order(
+                ticker="AAPL_US_EQ",
+                quantity=-5.0,
+                stop_price=161.0,
+                time_validity="GTC",
+            )
+
+            call_args = mock_client_instance.request.call_args
+            body = call_args[1].get("json") or {}
+            assert body.get("timeValidity") == "GOOD_TILL_CANCEL"

@@ -39,6 +39,7 @@ class TradeExecutionPayload(TypedDict, total=False):
     value_gbp: float | None
     stop_loss_pct: float | None
     stop_loss_status: str | None
+    stop_loss_error: str | None
     error_message: str | None
     reasoning_summary: str
     moderation_consensus: str | None

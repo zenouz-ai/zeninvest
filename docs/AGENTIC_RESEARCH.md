@@ -1,7 +1,7 @@
 ---
 tags: [agentic-research, tool-use, committee]
 status: planned
-last_updated: 2026-03-10
+last_updated: 2026-03-12
 ---
 
 # Agentic Research
@@ -114,11 +114,22 @@ Research tools are accessed via a standardised LLM tool-use interface. The `Rese
 
 | Tool | Description | Provider | Response Type | Cost | Rate Limit |
 |------|-------------|----------|----------------|------|------------|
-| `web_search(query: str, num_results: int = 5) → list[SearchResult]` | General-purpose web search for news, analysis, SEC filings | Brave Search API | Top N results with URL, title, snippet, domain | £0.003/call | 100/min |
-| `news_search(ticker: str, query: str, num_results: int = 5) → list[NewsResult]` | Financial news search (earnings, upgrades, insider, filings) | Brave Search (financial news filter) | News + sentiment + source credibility | £0.005/call | 100/min |
+| `web_search(query: str, num_results: int = 5) → list[SearchResult]` | General-purpose web search for news, analysis, SEC filings | Brave Search API + Tavily (fallback, optionally additional) | Top N results with URL, title, snippet/content, domain | £0.003–0.006/call | 100/min |
+| `news_search(ticker: str, query: str, num_results: int = 5) → list[NewsResult]` | Financial news search (earnings, upgrades, insider, filings) | Brave + Tavily (topic: finance; fallback/additional) | News + sentiment + source credibility | £0.005/call | 100/min |
 | `sec_search(ticker: str, doc_type: str, num_results: int = 3) → list[SECResult]` | Search SEC filings for a company (10-K, 10-Q, 8-K, proxy) | EDGAR via LangChain | Filing summary, key excerpts, filing date | £0.002/call | 10/min |
-| `sector_search(sector: str, query: str, num_results: int = 5) → list[SectorResult]` | Search sector rotation, peer analysis, industry trends | Brave Search (sector filter) | Results ranked by recency and authority | £0.003/call | 100/min |
-| `macro_search(query: str, num_results: int = 5) → list[MacroResult]` | Search macro events (Fed, inflation, geopolitics, correlations) | Brave Search (macro filter) | Current headlines + economic calendar | £0.003/call | 100/min |
+| `sector_search(sector: str, query: str, num_results: int = 5) → list[SectorResult]` | Search sector rotation, peer analysis, industry trends | Brave + Tavily (topic: finance; fallback) | Results ranked by recency and authority | £0.003/call | 100/min |
+| `macro_search(query: str, num_results: int = 5) → list[MacroResult]` | Search macro events (Fed, inflation, geopolitics, correlations) | Brave + Tavily (topic: news; fallback) | Current headlines + economic calendar | £0.003/call | 100/min |
+
+#### Search Provider Strategy
+
+Search tools use a **provider abstraction** so the executor can call Brave and/or Tavily with configurable primary/fallback/additional behaviour:
+
+- **Provider interface**: All search providers implement `SearchProviderProtocol` with `search(query, num_results, topic, time_range) → list[SearchResult]`. Results normalised to common `SearchResult(url, title, snippet/content)`.
+- **Primary + fallback**: Call primary provider first; on timeout, rate-limit, or 5xx → retry with fallback provider.
+- **Additional mode**: For `news_search` (optionally `macro_search`), when `additional_for_news: true`, call both providers and merge/dedupe results by URL for richer coverage (higher cost).
+- **ProviderRouter**: Orchestrates primary → fallback chain and optional additional merge. Logs `provider` (brave | tavily) to `ResearchLog` for audit.
+
+Config (see Configuration section): `search_providers.primary`, `search_providers.fallback`, `search_providers.additional_for_news`.
 
 #### Tool Assignment Per Member
 
@@ -199,6 +210,7 @@ class ResearchLog(Base):
     query = Column(String)
     num_results = Column(Integer)
     results_json = Column(JSON)  # Full API response
+    provider = Column(String)    # brave | tavily (which search API served the request)
     cost_usd = Column(Float)
     latency_ms = Column(Integer)
     cache_hit = Column(Boolean)
@@ -239,7 +251,7 @@ Future phase: Enable researching dynamic content (real-time stock tickers, inter
 
 **Phase E design (planned, not Phase A-D):**
 
-1. **Lite research (Phases A-D)** — Brave Search API + SEC EDGAR (covers ~80% of use cases)
+1. **Lite research (Phases A-D)** — Brave Search API + Tavily + SEC EDGAR (covers ~80% of use cases)
 2. **Heavy research (Phase E)** — Browser automation for:
    - Real-time stock charts (daily highs/lows)
    - Investor relations pages (latest presentations)
@@ -279,7 +291,24 @@ Brave Search API provides:
 
 Cost: ~£0.001 per search in bulk.
 
-### Secondary: Existing APIs
+### Secondary: Tavily Search (fallback + optional additional)
+
+Tavily Search API provides:
+- LLM-optimised snippets (`content` field with NLP summaries or chunks)
+- Native `topic` filter: `general`, `news`, `finance` — `finance` aligns with `news_search` and `sector_search`
+- `time_range` filter (day, week, month) for recency
+- `search_depth`: basic/fast (1 credit) or advanced (2 credits)
+
+Used as **fallback** when Brave times out or is rate-limited, and optionally as **additional** source for `news_search` (call both, merge results, dedupe by URL).
+
+| Factor | Brave Search | Tavily |
+|--------|-------------|--------|
+| Cost | Free tier: 2K/month; ~£0.003/call paid | 1K free/month; ~£0.006/call (basic) |
+| Quality | Good for news + web | Optimised for LLM consumption |
+| Latency | ~500ms | ~1s |
+| Finance focus | General filters | Native `topic: finance` |
+
+### Tertiary: Existing APIs
 
 - **yfinance** — OHLCV, technical indicators (free, within rate limits)
 - **Finnhub** — Analyst recommendations, insider sentiment (existing, budget constrained)
@@ -402,14 +431,18 @@ Remember: Focus on tail risks and second-order effects, not first-order thesis c
 ### Phase A — Research Tool Layer (1 session)
 
 **Deliverables:**
+- `src/agents/research/providers/base.py` — `SearchProviderProtocol`, `SearchResult` dataclass
+- `src/agents/research/providers/brave.py` — Brave Search client (implements protocol)
+- `src/agents/research/providers/tavily.py` — Tavily Search client (implements protocol)
+- `src/agents/research/providers/router.py` — ProviderRouter (primary/fallback/additional logic)
 - `src/agents/research/tools.py` — tool definitions
-- `src/agents/research/web_search.py` — Brave Search client wrapper
+- `src/agents/research/web_search.py` — uses ProviderRouter (not direct Brave call)
 - `src/agents/research/sec_search.py` — SEC EDGAR integration
 - `src/agents/research/cache.py` — research cache (4h TTL)
 - `src/agents/research/budget.py` — per-member budget enforcement
 - `src/agents/research/executor.py` — tool execution + logging
-- `ResearchLog` model + Alembic migration
-- Tests: budget enforcement, cache hits, tool execution
+- `ResearchLog` model + Alembic migration (includes `provider` column)
+- Tests: budget enforcement, cache hits, tool execution, provider fallback
 
 **Feature flag:** `research.enabled: false` (default)
 
@@ -419,11 +452,12 @@ Remember: Focus on tail risks and second-order effects, not first-order thesis c
 You are implementing the research tool layer for agentic research. Your job is to build the infrastructure that committee members will use to search for information.
 
 Create:
-1. Brave Search client (web_search.py):
-   - Wrapper around Brave Search API
-   - Methods: web_search(query, num_results), news_search(ticker, query, num_results)
-   - Error handling: rate limits, timeouts, invalid queries
-   - Returns: list of results with URL, title, snippet
+1. Provider abstraction (providers/base.py, brave.py, tavily.py, router.py):
+   - SearchProviderProtocol: search(query, num_results, topic, time_range) → list[SearchResult]
+   - BraveSearchClient: wrapper around Brave Search API
+   - TavilySearchClient: wrapper around Tavily Search API (topic: general|news|finance, search_depth)
+   - ProviderRouter: primary → fallback on failure; optional additional merge for news_search
+   - Normalise both providers to SearchResult(url, title, snippet/content)
 
 2. SEC EDGAR client (sec_search.py):
    - Fetch and parse SEC filings for a ticker (10-K, 10-Q, 8-K)
@@ -450,10 +484,10 @@ Create:
    - Error handling and fallback
 
 6. ResearchLog model:
-   - columns: cycle_id, member, ticker, tool_name, query, results_json, cost_usd, latency_ms, cache_hit, error
+   - columns: cycle_id, member, ticker, tool_name, query, results_json, provider (brave|tavily), cost_usd, latency_ms, cache_hit, error
    - indexes: (cycle_id), (member, ticker)
 
-Test with in-memory SQLite fixtures. No real API keys needed for basic tests (mock Brave responses).
+Test with in-memory SQLite fixtures. No real API keys needed for basic tests (mock Brave and Tavily responses).
 ```
 
 ### Phase B — Wire Into Strategy Engine (1 session)
@@ -569,7 +603,7 @@ what research the committee members conducted and what they found.
 
 Deliverables:
 1. Dashboard "Research Activity" panel:
-   - Table of research calls (member, ticker, tool, query, results_json, cost, latency, cache_hit)
+   - Table of research calls (member, ticker, tool, query, provider, results_json, cost, latency, cache_hit)
    - Filters: by member, by cycle, by ticker
    - Expandable rows: show full results and tool response
    - Summary stats: total calls, total cost, cache hit rate (%)
@@ -627,10 +661,26 @@ research:
   cache_ttl_hours: 4
   max_cache_entries: 10000
   
+  # Search provider strategy: primary, fallback, optional additional
+  search_providers:
+    primary: brave       # brave | tavily
+    fallback: tavily     # tavily | brave | none
+    additional_for_news: false  # If true: news_search calls both Brave + Tavily, merges results
+  
   # Research tools config
   brave_search:
     enabled: true
     num_results_default: 5
+    timeout_seconds: 10
+  
+  tavily_search:
+    enabled: true
+    search_depth: basic   # basic | fast | advanced (advanced = 2 credits)
+    topic_mapping:
+      web_search: general
+      news_search: finance
+      sector_search: finance
+      macro_search: news
     timeout_seconds: 10
   
   sec_search:
@@ -656,9 +706,10 @@ BRAVE_SEARCH_API_KEY=...          # Brave Search (free tier: 2000/month; paid: �
 BRAVE_SEARCH_ENDPOINT=https://api.search.brave.com/res/v1/web/search
 ```
 
-Optional:
+Optional (required if Tavily is primary, fallback, or additional):
 
 ```
+TAVILY_API_KEY=...                # Tavily Search (free tier: 1K credits/month; fallback/additional for agentic research)
 SEC_EDGAR_EMAIL=your_email@domain.com  # For politeness headers; optional but recommended
 RESEARCH_CACHE_REDIS_URL=redis://localhost:6379  # If using Redis instead of in-process cache
 ```
@@ -678,7 +729,8 @@ Combined risks from both PROJECT and IMPLEMENTATION_PLAN:
 | **Tool-use loops not terminating** | Low | High | Max 8 iterations per member, global timeout, force end-turn parsing | Implementation |
 | **Cache poisoning** | Very Low | High | Cache key is (ticker, tool, query); normalized queries; TTL 4h | Cache design |
 | **Budget exhaustion early in month** | Low | High | Monitor monthly spend via dashboard; adjust per-member budgets if needed | Operations |
-| **Brave Search API downtime** | Low | Medium | Fallback to cached results; emit alert if cache miss + API down; cycle continues | Executor |
+| **Brave Search API downtime** | Low | Medium | Fallback to Tavily; cached results; emit alert if both providers down; cycle continues | Executor |
+| **Tavily API downtime** | Low | Medium | Used as fallback only; if both Brave and Tavily fail, emit alert; cycle continues with cached/partial results | Executor |
 | **SEC EDGAR parser errors** | Low | Medium | Graceful fallback to snippet; log parse errors; retry with different doc_type | Executor |
 | **Skeptic doing insufficient falsification** | Medium | Medium | Test skeptic prompts with known theses; audit research queries in dashboard; A/B test | Prompt design |
 

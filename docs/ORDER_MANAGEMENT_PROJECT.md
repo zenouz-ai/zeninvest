@@ -29,7 +29,7 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 
 ### Pipeline integration
 
-- **After BUY execution:** Orchestrator calls `OrderManager.place_stop_loss(ticker, quantity, current_price, stop_loss_pct)` → T212 `POST /equity/orders/stop` (GTC). Stop price = `current_price × (1 + stop_loss_pct/100)` (e.g. -8% → 92% of price).
+- **After BUY execution:** Orchestrator calls `OrderManager.place_stop_loss(ticker, quantity, current_price, stop_loss_pct)` → T212 `POST /equity/orders/stop` (GTC). Stop price = `current_price × (1 + stop_loss_pct/100)` (e.g. -8% → 92% of price). The T212 API expects `timeValidity: "GOOD_TILL_CANCEL"` (not `"GTC"`); `T212Client` maps config/caller values accordingly.
 - **BUY path (market vs limit):** For each approved BUY, orchestrator reads `decision.entry_type` (default `"market"`). If `"limit_dip"`, it calls `StopLossManager.place_limit_buy(...)` with `target_amount_gbp`, `current_price`, and optional `offset_pct`; otherwise executes market order as today.
 - **Post-execution (same cycle):** After all trades, orchestrator calls:
   - `StopLossManager.reassess_stops(positions, stocks_data, cycle_id)` — ATR-based stop levels for all positions; only tighten if `only_tighten_stops` is true.
