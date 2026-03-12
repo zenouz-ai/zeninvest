@@ -553,7 +553,7 @@ The system maintains a comprehensive audit trail across ten database tables:
 | `api_logs` | Every external API call (T212, Finnhub, Alpha Vantage, brave_search, brave_answers, tavily) | `service`, `method`, `endpoint`, `status_code`, `duration_ms`, `error`; search APIs have monthly limits (2k each) via `search_api_tracker`. Web search fallback (Brave/Tavily for analyst/news when Finnhub/AV fail) is logged here. |
 | `portfolio_snapshots` | Portfolio state at end of each cycle | `total_value_gbp`, `cash_gbp`, `num_positions`, `positions_json`, `state` |
 | `instruments` | Company profiles and screening state | `ticker`, `sector`, `industry`, `market_cap`, `business_summary`, `data_available`, `last_screened_at` |
-| `opportunity_score_snapshots` | Per-cycle UOV scores/components for every evaluated ticker | `cycle_id`, `ticker`, `stage`, `uov_raw`, `uov_z`, `uov_final`, `uov_ewma`, `moderation_consensus`, `risk_verdict` |
+| `opportunity_score_snapshots` | Per-cycle UOV scores/components for every evaluated ticker | `cycle_id`, `ticker`, `stage`, `uov_raw`, `uov_z`, `uov_final`, `uov_ewma`, `moderation_consensus`, `risk_verdict`; for HOLD/QUEUED (stage `strategy_hold`/`strategy_queued`), moderation_consensus and risk_verdict are "not invoked" |
 | `opportunity_queue` | Active queued BUY opportunities awaiting execution | `ticker`, `queued_cycles`, `last_uov_ewma`, `last_seen_cycle_id`, `metadata_json` |
 
 ### 7.2 Traceability
@@ -573,13 +573,13 @@ cycle_20260225_0700_a1b2c3
 
 Stocks considered but **not traded** are also fully traceable. The cycle output includes a `rejected_stocks` list recording every rejection with:
 
-- **Stage** that blocked the trade: `strategy` (HOLD), `moderation` (BLOCKED), or `risk` (REJECT)
+- **Stage** that blocked the trade: `strategy_hold` (HOLD), `strategy_queued` (QUEUED), `moderation` (BLOCKED), or `risk` (REJECT); for HOLD/QUEUED, moderation_consensus and risk_verdict are "not invoked"
 - **Opportunity gate stage**: `opportunity_queue` when approved BUYs are deferred by UOV queueing/capacity rules; `opportunity_filtered` when below queue threshold or queue expiry
 - **Stage reason**: structured human-readable explanation (e.g. "Awaiting 2nd cycle for promotion", "Capacity gated (no slot or cash)", "Below UOV queue threshold (uov_ewma X < Y)") included in cycle summaries and notifications
 - **UOV diagnostics**: `uov_ewma` and `uov_z` included for opportunity-stage rejections to support threshold calibration
 - **Company metadata**: industry, market cap, business description
 - **Conviction** score from Claude's strategy assessment
-- **Rejection reason**: Claude's HOLD reasoning, moderation consensus, or triggered risk rules
+- **Rejection reason**: Claude's HOLD/QUEUED reasoning, moderation consensus, or triggered risk rules; cycle summary includes `rejected_by_action` (counts by strategy action: BUY, HOLD, QUEUED)
 
 This enables post-cycle analysis of missed opportunities and filter calibration. All rejections are also persisted in the `strategy_decisions`, `moderation_logs`, `risk_decisions`, and `opportunity_score_snapshots` tables for long-term querying across cycles.
 

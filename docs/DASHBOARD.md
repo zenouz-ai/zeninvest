@@ -109,8 +109,8 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 - Each event shows: timestamp, type icon, source, message, expandable metadata
 - Filter by event type, ticker, source
 
-**Quick actions (future, ties to command gateway):**
-- Trigger manual cycle (POST /api/system/trigger-cycle)
+**Quick actions:**
+- Dry Run and Live Run buttons (POST /api/runs/trigger, POST /api/runs/trigger-live); Live Run requires confirmation
 - Pause/Resume trading
 - Force sell a position
 
@@ -156,7 +156,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 ```
 
 - Research activity summary (Phase D): queries made, cache hits, cost
-- Rejected stocks: which stage blocked and why
+- Rejected stocks: which stage blocked and why; `rejected_by_action` breakdown (BUY, HOLD, QUEUED); for HOLD/QUEUED, moderation_consensus and risk_verdict show "not invoked"
 
 **Run comparison:**
 - Select two runs side by side
@@ -252,7 +252,9 @@ The backend exposes the following endpoints. All query the agent's existing SQLi
 GET /api/runs/                      # All runs, paginated, filterable by type/date
 GET /api/runs/{run_id}              # Single run details
 GET /api/runs/{run_id}/decisions    # Decisions for a specific run
-POST /api/system/trigger-cycle      # Trigger manual dry-run cycle
+POST /api/runs/trigger              # Trigger dry-run cycle
+POST /api/runs/trigger-live         # Trigger live cycle (executes real trades)
+POST /api/system/trigger-cycle      # Alias for dry-run trigger
 ```
 
 ### Universe
@@ -654,7 +656,9 @@ def db_session():
 
 **Implemented:** Background daemon thread that runs `Orchestrator(dry_run=True).run_cycle()`. Returns `{"message": "Dry-run cycle triggered in background", "status": "started"}`.
 
-**Status:** ✅ Endpoint functional and tested
+**POST /api/runs/trigger-live:** Same pattern but `Orchestrator(dry_run=False)` — executes real trades. Dashboard Home has Dry Run and Live Run buttons; Live Run shows a confirmation dialog.
+
+**Status:** ✅ Endpoints functional and tested
 
 ### Verification Results
 

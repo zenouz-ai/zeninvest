@@ -47,6 +47,14 @@ export const statusApi = {
 
 // Runs API
 export const runsApi = {
+  triggerDryRun: async (): Promise<{ message: string; status: string }> => {
+    const response = await api.post('/api/runs/trigger')
+    return response.data
+  },
+  triggerLiveRun: async (): Promise<{ message: string; status: string }> => {
+    const response = await api.post('/api/runs/trigger-live')
+    return response.data
+  },
   list: async (params?: {
     limit?: number
     offset?: number

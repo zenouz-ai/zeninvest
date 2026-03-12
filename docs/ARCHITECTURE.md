@@ -195,7 +195,7 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     +-- GET /api/universe, /api/universe/{ticker}
     +-- GET /api/portfolio, /api/orders
     +-- GET /api/events, /api/events/stream (SSE)
-    +-- POST /api/runs/trigger (dry-run)
+    +-- POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle)
     +-- GET /api/decisions, /api/decisions/waterfall, /api/decisions/{cycle_id}, /api/decisions/ticker/{ticker}
     +-- GET /api/moderation/{cycle_id}, /api/moderation/ticker/{ticker}; GET /api/risk/{cycle_id}
     +-- GET /api/opportunity/scores, /api/opportunity/queue, /api/opportunity/history/{ticker}
@@ -209,7 +209,7 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     v
 React frontend (SPA, served by FastAPI when dist/ exists)
     |
-    +-- 7 pages: Dashboard Home (system state badge, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
+    +-- 7 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
     +-- Universe: expandable rows with committee reasoning
     +-- Run History: timeline, run diff (new/closed/position changes)
     +-- Portfolio: positions, P&L chart, sector allocation
@@ -451,7 +451,7 @@ sequenceDiagram
 
     loop For each decision
         alt HOLD
-            O->>O: Record to rejected_stocks (stage: strategy)
+            O->>O: Record to rejected_stocks (stage: strategy_hold or strategy_queued)
         else BUY / SELL / REDUCE
             O->>O: Build market context (per-ticker news + strategy_assessment)
             O->>GP: Review trade proposal + market context
@@ -531,11 +531,13 @@ Each `run_cycle()` call returns a JSON result with:
       "stage": "moderation",
       "reason": "BLOCKED by moderation consensus",
       "conviction": 72,
+      "moderation_consensus": "BLOCKED",
       "industry": "Auto Manufacturers",
       "market_cap": 850000000000,
       "description": "Tesla, Inc. designs, develops, manufactures ..."
     }
   ],
+  "rejected_by_action": { "BUY": 1, "HOLD": 15, "QUEUED": 9 },
   "opportunity_ranking": [
     {
       "ticker": "AAPL_US_EQ",
@@ -554,6 +556,7 @@ Each `run_cycle()` call returns a JSON result with:
   ],
   "num_trades": 3,
   "num_rejected": 2,
+  "rejected_by_action": { "BUY": 1, "HOLD": 15, "QUEUED": 9 },
   "cost_summary": { ... },
   "status": "completed"
 }
@@ -563,7 +566,8 @@ Rejected stocks are tagged by the pipeline stage that blocked them:
 
 | Stage | Meaning | Extra fields |
 |-------|---------|--------------|
-| `strategy` | Claude returned HOLD | reasoning, conviction |
+| `strategy_hold` | Claude returned HOLD | reasoning, conviction; moderation_consensus/risk_verdict "not invoked" |
+| `strategy_queued` | Claude returned QUEUED | reasoning, conviction; moderation_consensus/risk_verdict "not invoked" |
 | `moderation` | GPT-4o + Gemini consensus BLOCKED | moderation verdict |
 | `risk` | Hard rules REJECTED | triggered_rules list |
 | `opportunity_queue` | Approved BUY deferred by UOV queueing/capacity | structured reason (awaiting_promotion, capacity_gated, below_immediate) + uov_ewma, uov_z |

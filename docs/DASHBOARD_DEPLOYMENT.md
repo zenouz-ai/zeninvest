@@ -63,6 +63,8 @@ dashboard:
   env_file: [.env]
   volumes:
     - ./data:/app/data
+    - ./journals:/app/journals
+    - ./logs:/app/logs
   ports:
     - "8000:8000"
   command: ["uvicorn", "dashboard.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
@@ -144,7 +146,7 @@ When the operator has run the steps above on a VPS:
 With VPS IP and HTTP:
 - Use firewall to restrict access (e.g. only your IP) if desired.
 - Consider basic auth or API key for the dashboard later.
-- Dashboard is read-only except `POST /api/runs/trigger` (dry-run only).
+- Dashboard Home has **Dry Run** and **Live Run** buttons; they call `POST /api/runs/trigger` and `POST /api/runs/trigger-live` respectively. Live Run requires confirmation.
 
 ## Related Notes
 

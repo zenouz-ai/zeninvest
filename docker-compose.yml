@@ -29,6 +29,8 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - ./journals:/app/journals
+      - ./logs:/app/logs
     ports:
       - "8000:8000"
     command: ["uvicorn", "dashboard.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

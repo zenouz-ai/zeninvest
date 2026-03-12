@@ -114,7 +114,7 @@ poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
 **Endpoints:**
-- `GET /api/runs/`, `GET /api/runs/diff`, `GET /api/runs/cycle/{cycle_id}`, `POST /api/runs/trigger` — Run history and trigger
+- `GET /api/runs/`, `GET /api/runs/diff`, `GET /api/runs/cycle/{cycle_id}`, `POST /api/runs/trigger`, `POST /api/runs/trigger-live` — Run history and dry/live cycle trigger
 - `GET /api/status/` — Next run, cycle_frequency, system state (ACTIVE/CAUTIOUS/HALTED), paused
 - `GET /api/universe/`, `GET /api/universe/{ticker}` — Universe and instrument detail
 - `GET /api/portfolio/`, `GET /api/portfolio/history` — Portfolio snapshot and history
@@ -142,11 +142,11 @@ npm run dev    # Dev server on http://localhost:3000 (proxies API)
 npm run build  # Production build (outputs to dist/)
 ```
 
-**Pages:** Dashboard Home (system state badge, next run countdown, P&L, SSE activity feed), Stock Universe (searchable table with `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, `UOV (ewma)` columns plus expandable rows with committee reasoning and **full LLM outputs** — strategy reasoning, exit conditions, news/market/portfolio text, raw JSON; all moderators’ verdicts and reasoning; risk reasoning and triggered rules). The Universe `Sold` metric is computed from both executed and dry-run SELL orders (SELL quantities stored as negative; the dashboard reports `abs(sum(quantity))`), and the detail panel shows whether any live BUY/SELL executions exist in Trading 212 for the ticker. Additional pages: Run History (timeline, run diff view), Portfolio (positions, P&L chart, sector allocation), Opportunity Pipeline (UOV scores and queue), Order Management (stop-loss levels and adjustment history), Costs (daily/monthly cost charts, degradation). The Dashboard Home “Latest trades & LLM reasons” table shows the most recent orders (including `status='failed'` attempts) alongside the latest committee reasoning per ticker for full auditability.
+**Pages:** Dashboard Home (system state badge, Dry Run/Live Run buttons, next run countdown, P&L, SSE activity feed), Stock Universe (searchable table with `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, `UOV (ewma)` columns plus expandable rows with committee reasoning and **full LLM outputs** — strategy reasoning, exit conditions, news/market/portfolio text, raw JSON; all moderators’ verdicts and reasoning; risk reasoning and triggered rules). The Universe `Sold` metric is computed from both executed and dry-run SELL orders (SELL quantities stored as negative; the dashboard reports `abs(sum(quantity))`), and the detail panel shows whether any live BUY/SELL executions exist in Trading 212 for the ticker. Additional pages: Run History (timeline, run diff view), Portfolio (positions, P&L chart, sector allocation), Opportunity Pipeline (UOV scores and queue), Order Management (stop-loss levels and adjustment history), Costs (daily/monthly cost charts, degradation). The Dashboard Home “Latest trades & LLM reasons” table shows the most recent orders (including `status='failed'` attempts) alongside the latest committee reasoning per ticker for full auditability.
 
 **Testing the dashboard:** Ensure `dashboard.enabled: true` in `config/settings.yaml`. Start the backend: `poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000`. Run the endpoint check: `poetry run python dashboard/backend/test_endpoints.py`. Then run the frontend (`npm run dev` in `dashboard/frontend` or open `http://localhost:8000` after `npm run build`). See `dashboard/backend/TESTING.md` for the full 7-page and API check.
 
-**Docker:** `docker compose up -d` runs both agent and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000). Activity feed (SSE) and Run History work when accessing via VPS IP — frontend uses relative API URLs. One-off live cycle: `docker exec -it investment-agent poetry run python -m src.orchestrator.main`; dry-run: add `--dry-run`.
+**Docker:** `docker compose up -d` runs both agent and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000). Activity feed (SSE) and Run History work when accessing via VPS IP — frontend uses relative API URLs. Use the **Dry Run** or **Live Run** buttons on Dashboard Home to trigger cycles, or: `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live); add `--dry-run` for dry-run.
 
 **Schedule (configurable):**
 

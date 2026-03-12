@@ -62,6 +62,18 @@ def _run_dry_cycle() -> None:
         logger.error("Triggered dry-run failed: %s", e, exc_info=True)
 
 
+def _run_live_cycle() -> None:
+    """Run a live cycle in background (daemon thread)."""
+    try:
+        from src.orchestrator.main import Orchestrator
+
+        orch = Orchestrator(dry_run=False)
+        orch.run_cycle()
+        orch.close()
+    except Exception as e:
+        logger.error("Triggered live run failed: %s", e, exc_info=True)
+
+
 @router.get("/", response_model=list[RunSchema])
 async def get_runs(
     limit: int = Query(default=50, ge=1, le=500),
@@ -201,3 +213,14 @@ async def trigger_manual_run():
     t = threading.Thread(target=_run_dry_cycle, daemon=True, name="TriggeredDryRun")
     t.start()
     return {"message": "Dry-run cycle triggered in background", "status": "started"}
+
+
+@router.post("/trigger-live")
+async def trigger_live_run():
+    """Trigger a live cycle in the background (executes real trades)."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    t = threading.Thread(target=_run_live_cycle, daemon=True, name="TriggeredLiveRun")
+    t.start()
+    return {"message": "Live cycle triggered in background", "status": "started"}

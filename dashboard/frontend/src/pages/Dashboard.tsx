@@ -52,6 +52,8 @@ export default function Dashboard() {
   const [tickerForLLM, setTickerForLLM] = useState<string | null>(null)
   const [tickerDetail, setTickerDetail] = useState<InstrumentDetail | null>(null)
   const [expandedRunId, setExpandedRunId] = useState<number | null>(null)
+  const [triggerLoading, setTriggerLoading] = useState<'dry' | 'live' | null>(null)
+  const [showLiveConfirm, setShowLiveConfirm] = useState(false)
   const { events: sseEvents, isConnected } = useSSE({ enabled: true })
 
   const now = useMemo(() => new Date(), [])
@@ -182,10 +184,33 @@ export default function Dashboard() {
     systemState === 'HALTED' ? 'bg-loss' : systemState === 'CAUTIOUS' ? 'bg-warning' : 'bg-gain'
   const stateBadgeText = paused ? 'PAUSED' : systemState
 
+  const handleDryRun = async () => {
+    setTriggerLoading('dry')
+    try {
+      await runsApi.triggerDryRun()
+    } catch (e) {
+      console.error('Dry run trigger failed:', e)
+    } finally {
+      setTriggerLoading(null)
+    }
+  }
+
+  const handleLiveRun = async () => {
+    setShowLiveConfirm(false)
+    setTriggerLoading('live')
+    try {
+      await runsApi.triggerLiveRun()
+    } catch (e) {
+      console.error('Live run trigger failed:', e)
+    } finally {
+      setTriggerLoading(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      {/* System state badge */}
-      <div className="flex items-center gap-2">
+      {/* System state badge + Trigger buttons */}
+      <div className="flex items-center gap-4 flex-wrap">
         <span
           className={`inline-flex items-center px-3 py-1 rounded font-mono text-sm font-semibold text-terminal-bg ${stateBadgeColor}`}
         >
@@ -194,7 +219,51 @@ export default function Dashboard() {
         {paused && (
           <span className="text-terminal-text-dim text-sm">Trading paused</span>
         )}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDryRun}
+            disabled={triggerLoading != null}
+            className="px-3 py-1.5 rounded text-sm font-medium bg-neutral/20 hover:bg-neutral/30 text-terminal-text disabled:opacity-50 disabled:cursor-not-allowed border border-terminal-border"
+          >
+            {triggerLoading === 'dry' ? 'Starting…' : 'Dry Run'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowLiveConfirm(true)}
+            disabled={triggerLoading != null || paused}
+            className="px-3 py-1.5 rounded text-sm font-medium bg-loss/20 hover:bg-loss/30 text-terminal-text border border-loss/50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {triggerLoading === 'live' ? 'Starting…' : 'Live Run'}
+          </button>
+        </div>
       </div>
+      {showLiveConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowLiveConfirm(false)}>
+          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-loss mb-2">Execute live cycle?</h3>
+            <p className="text-sm text-terminal-text-dim mb-4">
+              This will run a full cycle and execute real trades on the Trading 212 Practice account.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowLiveConfirm(false)}
+                className="px-3 py-1.5 rounded text-sm border border-terminal-border hover:bg-terminal-bg"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleLiveRun}
+                className="px-3 py-1.5 rounded text-sm bg-loss text-white hover:bg-loss/90"
+              >
+                Run live
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top Bar */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
