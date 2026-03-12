@@ -7,6 +7,7 @@ Sequence: Data -> Strategy -> Moderation -> Risk -> Execution -> Journal
 import json
 import sys
 import uuid
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
@@ -173,7 +174,9 @@ class Orchestrator:
         def _finalize(status: str) -> dict[str, Any]:
             result["status"] = status
             result["num_trades"] = len(result["trades"])
-            result["num_rejected"] = len(result["rejected_stocks"])
+            rejected = result["rejected_stocks"]
+            result["num_rejected"] = len(rejected)
+            result["rejected_by_action"] = dict(Counter(r.get("action", "HOLD") for r in rejected))
             result["cost_summary"] = get_cost_summary(days=1)
             _emit_cycle_summary()
             
@@ -532,9 +535,10 @@ class Orchestrator:
                     result["rejected_stocks"].append({
                         "ticker": ticker,
                         "action": action,
-                        "stage": "strategy",
+                        "stage": "strategy_hold" if action == "HOLD" else "strategy_queued",
                         "reason": hold_reason,
                         "conviction": conviction,
+                        "moderation_consensus": "not invoked",
                         **self._get_stock_metadata(ticker, stocks_data),
                     })
                     opportunity_evaluations.append({
@@ -543,8 +547,8 @@ class Orchestrator:
                         "stage": "strategy_queued" if action == "QUEUED" else "strategy_hold",
                         "decision": decision,
                         "reason": hold_reason,
-                        "moderation_consensus": None,
-                        "risk_verdict": None,
+                        "moderation_consensus": "not invoked",
+                        "risk_verdict": "not invoked",
                         "final_allocation_pct": None,
                     })
                     continue
@@ -1577,6 +1581,14 @@ class Orchestrator:
             )
             stage_reason = rejected.get("reason") or evaluation.get("reason")
 
+            # HOLD/QUEUED skip moderation and risk — show "not invoked" instead of null
+            mod_consensus = evaluation.get("moderation_consensus") or rejected.get("moderation_consensus")
+            risk_v = evaluation.get("risk_verdict") or rejected.get("risk_verdict")
+            if stage in ("strategy_hold", "strategy_queued") and mod_consensus is None:
+                mod_consensus = "not invoked"
+            if stage in ("strategy_hold", "strategy_queued") and risk_v is None:
+                risk_v = "not invoked"
+
             records.append({
                 "ticker": ticker,
                 "action": action,
@@ -1584,8 +1596,8 @@ class Orchestrator:
                 "conviction": decision.get("conviction"),
                 "target_allocation_pct": decision.get("target_allocation_pct"),
                 "final_allocation_pct": evaluation.get("final_allocation_pct"),
-                "moderation_consensus": evaluation.get("moderation_consensus"),
-                "risk_verdict": evaluation.get("risk_verdict"),
+                "moderation_consensus": mod_consensus,
+                "risk_verdict": risk_v,
                 "strategy_reasoning_excerpt": self._excerpt(decision.get("reasoning", ""), max_len=350),
                 "gpt_reasoning_excerpt": self._excerpt(gpt_verdict.get("reasoning", ""), max_len=250),
                 "gemini_assessment_excerpt": self._excerpt(gemini_verdict.get("assessment", ""), max_len=250),
