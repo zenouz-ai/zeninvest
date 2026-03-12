@@ -133,7 +133,7 @@ Both settings default to `true` if not specified.
 ## Next Steps (Phase 2)
 
 1. **Instrument the Agent**: Add event logging calls throughout the orchestrator pipeline
-2. **Frontend**: Build React frontend (see `docs/DASHBOARD_VISUALISATION_PROJECT.md` Prompt 3)
+2. **Frontend**: Build React frontend (see `docs/DASHBOARD.md`)
 3. **Deployment**: Set up nginx reverse proxy and deployment scripts (see Prompt 4)
 
 ## Testing

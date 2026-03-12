@@ -1,9 +1,16 @@
-# Investment Agent -- Governance, Security & Cost Controls
+---
+tags: [governance, security, risk, cost-controls, audit]
+status: current
+last_updated: 2026-03-11
+---
 
-**Document Owner:** Project Lead
-**Last Updated:** 2026-03-03
-**Version:** 1.1
-**Classification:** Internal -- Confidential
+# Governance, Security & Cost Controls
+
+> Governance framework, security measures, risk guardrails, cost management, and audit requirements.
+
+## Purpose
+
+This document defines the governance framework that ensures the investment agent operates safely, transparently, and within acceptable boundaries. It covers human oversight, defense in depth, security guardrails (API keys, prompt injection, rate limiting), the 9 hard risk rules, cost controls with graceful degradation, operational procedures, and the comprehensive audit trail.
 
 ---
 
@@ -91,7 +98,7 @@ The system is designed to fail closed, not open:
 
 **Principle:** API keys are secrets. They must never appear in source code, configuration files tracked by version control, logs, or LLM prompts.
 
-#### Current Implementation
+**Current Implementation**
 
 All API keys are loaded from environment variables via `src/utils/config.py`:
 
@@ -107,7 +114,7 @@ All API keys are loaded from environment variables via `src/utils/config.py`:
 
 Keys are loaded via `python-dotenv` from a `.env` file at the project root. The `.env` file must be listed in `.gitignore` and never committed.
 
-#### Key Rotation Schedule
+**Key Rotation Schedule**
 
 | Key | Rotation Frequency | Procedure |
 |-----|--------------------|-----------|
@@ -118,7 +125,7 @@ Keys are loaded via `python-dotenv` from a `.env` file at the project root. The 
 | Finnhub API Key | Every 180 days | Regenerate in Finnhub dashboard, update `.env`, restart |
 | Alpha Vantage API Key | Every 180 days | Regenerate in Alpha Vantage, update `.env`, restart |
 
-#### Key Management Rules
+**Key Management Rules**
 
 1. **Never hardcode keys.** All keys are accessed via `Settings.get_env()` which raises `EnvironmentError` if a key is missing.
 2. **Never log keys.** The logging configuration (`src/utils/logger.py`) must never include raw API key values. Log redaction should be applied to any output containing authorization headers.
@@ -129,13 +136,13 @@ Keys are loaded via `python-dotenv` from a `.env` file at the project root. The 
 
 Because the system uses three different LLMs, prompt injection is a material risk. The following defenses are in place:
 
-#### Structured JSON Output Enforcement
+**Structured JSON Output Enforcement**
 
 - The Claude strategy synthesis prompt (`STRATEGY_SYSTEM_PROMPT`) explicitly instructs: *"You must respond with ONLY valid JSON matching the exact schema specified. No markdown, no explanation outside the JSON."*
 - The strategy engine (`src/agents/strategy/engine.py`) parses the response as JSON and rejects any response that fails `json.loads()`.
 - GPT-4o and Gemini moderation modules are expected to return structured dictionaries with specific keys (`verdict`, `reasoning`, `risk_score`, etc.).
 
-#### Input Sanitization
+**Input Sanitization**
 
 - Market data inputs (from yfinance, Finnhub, Alpha Vantage) are numeric and structured. They are serialised to JSON strings with length caps before inclusion in prompts:
   - Analyst data: truncated to 3,000 characters
@@ -143,13 +150,13 @@ Because the system uses three different LLMs, prompt injection is a material ris
   - Portfolio state: truncated to 2,000 characters
 - No user-generated free text is included in LLM prompts. All inputs are system-sourced data.
 
-#### Output Validation
+**Output Validation**
 
 - Claude's JSON response is parsed and validated. If parsing fails, the cycle returns `"status": "strategy_error"` and no trades are placed.
 - Moderation verdicts must be one of `AGREE`, `DISAGREE`, `MODIFY`, or `SKIP`. Any other value is treated as unavailable.
 - The Risk Agent validates all numeric values (allocation percentages, drawdown calculations) independently of LLM outputs.
 
-#### Separation of Concerns
+**Separation of Concerns**
 
 - LLMs **propose** and **review** trades. They cannot **execute** trades directly.
 - The Risk Agent and Execution Agent are pure Python with no LLM interaction.
@@ -157,7 +164,7 @@ Because the system uses three different LLMs, prompt injection is a material ris
 
 ### 3.3 Rate Limiting and Circuit Breakers
 
-#### Trading 212 API Rate Limiting
+**Trading 212 API Rate Limiting**
 
 The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting:
 
@@ -166,20 +173,20 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 - All API calls use `tenacity` retry with exponential backoff: 3 attempts, 1-4 second wait.
 - Every API call is logged to the `api_logs` database table with method, endpoint, status code, duration, and any errors.
 
-#### LLM Circuit Breakers
+**LLM Circuit Breakers**
 
 - The cost tracker (`src/utils/cost_tracker.py`) acts as a circuit breaker for LLM calls.
 - Before every LLM call, `check_budget()` is called. If the daily or monthly budget is exceeded, the call is skipped entirely.
 - The degradation system (see [Section 5.3](#53-graceful-degradation)) progressively shuts down LLM providers as budgets are consumed.
 
-#### Order Deduplication and Stop-Loss
+**Order Deduplication and Stop-Loss**
 
 - The `OrderManager._is_duplicate()` method checks for matching orders (same ticker, direction, and quantity) placed within the last 5 minutes.
 - Duplicate orders are logged and skipped with `"status": "skipped", "reason": "duplicate"`.
 - After successful BUY executions, the system automatically places a GTC stop-loss order via `OrderManager.place_stop_loss()` using the `stop_loss_pct` from Claude's decision. This protects against downside risk without requiring manual intervention.
 - The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation.
 
-#### Intelligent Order Management
+**Intelligent Order Management**
 
 - **ATR-based stop reassessment**: After each cycle's execution phase, `StopLossManager.reassess_stops()` recalculates stop-loss levels for all held positions using 14-day ATR × configurable multiplier (default 2.0). Stops are clamped to `[min_stop_distance_pct, max_stop_distance_pct]`. By default, stops only tighten (never widen).
 - **Software trailing stops**: `StopLossManager.apply_trailing_stops()` tracks a high-water mark (HWM) per position. When price exceeds previous HWM, the stop ratchets up to `HWM × (1 - trail_pct/100)`. Implemented by cancelling the existing T212 stop order and placing a new one (T212 has no native trailing stop API).
@@ -189,7 +196,7 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 
 ### 3.4 Network Security
 
-#### HTTPS Only
+**HTTPS Only**
 
 All external API communication uses HTTPS:
 
@@ -204,13 +211,13 @@ All external API communication uses HTTPS:
 
 The T212 client uses `httpx.Client` with a 30-second timeout. All SDK clients (Anthropic, OpenAI, Google) enforce HTTPS by default.
 
-#### IP Allowlisting (Recommended)
+**IP Allowlisting (Recommended)**
 
 If deploying to a fixed infrastructure (e.g., a dedicated VPS or cloud VM), configure firewall rules to restrict outbound traffic to the specific API endpoints listed above. For Trading 212 specifically, restrict the source IP in the T212 API key settings if the feature is available.
 
 ### 3.5 Data Protection
 
-#### No PII in Prompts
+**No PII in Prompts**
 
 LLM prompts contain only:
 
@@ -221,14 +228,14 @@ LLM prompts contain only:
 
 No personally identifiable information (names, account numbers, addresses, etc.) is ever included in any LLM prompt.
 
-#### Log Redaction
+**Log Redaction**
 
 - API response bodies stored in `api_logs` are truncated to 5,000 characters maximum.
 - The T212 client uses Basic Auth via `Authorization: Basic <encoded>` headers. These headers are not logged; only the request body and response body are stored.
 - Cost logs (`cost_logs`) store provider name, model, token counts, and cost -- no prompt content.
 - Moderation logs store verdicts and reasoning -- the reasoning is the LLM's output, not the input prompt.
 
-#### Data Retention
+**Data Retention**
 
 - The SQLite database stores all historical data indefinitely by default.
 - Implement a retention policy (recommended: 12 months for detailed logs, indefinite for portfolio snapshots and orders) as a future improvement.
@@ -237,7 +244,7 @@ No personally identifiable information (names, account numbers, addresses, etc.)
 
 ## 4. Risk Guardrails
 
-### 4.1 The 8 Hard Rules
+### 4.1 The 9 Hard Rules
 
 The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules. These are implemented as deterministic Python functions with no LLM involvement. **No LLM output can override, modify, or bypass these rules.**
 
@@ -251,10 +258,11 @@ The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules
 | 6 | **Daily Loss Halt** | Daily loss >2%: no new buys for 24 hours | REJECT | `check_daily_loss_halt()` |
 | 7 | **Cash Floor** | Always maintain >= 10% cash | REJECT or RESIZE | `check_cash_floor()` |
 | 8 | **Min Positions** | Minimum 5 positions once invested (prevents over-concentration) | REJECT (on SELL or REDUCE) | `check_min_positions()` |
+| 9 | **Cautious State Guard** | In CAUTIOUS mode: no new BUYs, only SELL/REDUCE/HOLD | REJECT (on BUY) | `check_cautious_state()` |
 
 In addition to these risk rules, the Opportunity Agent enforces deterministic execution-capacity limits for BUY ordering (`max_positions` and investable cash above the configured cash floor) before order submission.
 
-#### Why These Rules Can Never Be Overridden
+**Why These Rules Can Never Be Overridden**
 
 The risk rules exist in a separate execution path from LLM outputs:
 
@@ -292,7 +300,7 @@ The system operates in one of three states, persisted in the `system_state` data
                       [all positions sold]
 ```
 
-#### State Behaviours
+**State Behaviours**
 
 | State | New Positions | Existing Positions | Max Position Size | Special Actions |
 |-------|--------------|-------------------|-------------------|-----------------|
@@ -300,7 +308,7 @@ The system operates in one of three states, persisted in the `system_state` data
 | **CAUTIOUS** | Blocked (except adding to winners) | Managed with reduced limits | 8% | Heightened conviction thresholds |
 | **HALTED** | Blocked | All liquidated | N/A | `liquidate_all()` called, all trading suspended |
 
-#### Transition Logic
+**Transition Logic**
 
 State transitions are evaluated at the start of every cycle in `Orchestrator.run_cycle()`:
 
@@ -362,7 +370,7 @@ FULL -> NO_GEMINI -> NO_GPT4O -> NO_STRATEGY -> HALTED
 | **NO_STRATEGY** | Anthropic daily budget exceeded | Skip entire strategy cycle. No new trades proposed. |
 | **HALTED** | Monthly cap exceeded | All LLM calls halted. System waits for next month. |
 
-#### Degradation Logic
+**Degradation Logic**
 
 From `cost_tracker.py`:
 
@@ -381,7 +389,7 @@ def get_degradation_level() -> DegradationLevel:
     return DegradationLevel.FULL
 ```
 
-#### Conviction Threshold Adjustments
+**Conviction Threshold Adjustments**
 
 When moderators are unavailable due to budget constraints, conviction thresholds are raised to compensate:
 
@@ -429,7 +437,7 @@ The system provides multiple cost visibility mechanisms:
 
 ### 6.1 Pause/Resume System
 
-#### Pausing
+**Pausing**
 
 ```bash
 poetry run python -m src.orchestrator.main --pause
@@ -439,7 +447,7 @@ poetry run python -m src.orchestrator.main --pause
 - All subsequent cycles check `self.state_machine.is_paused` at the start and skip execution if True.
 - The paused state is persisted across restarts.
 
-#### Resuming
+**Resuming**
 
 ```bash
 poetry run python -m src.orchestrator.main --resume
@@ -461,7 +469,7 @@ poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
 
 ### 6.3 Manual Override Procedures
 
-#### Changing System State Manually
+**Changing System State Manually**
 
 If the system is in HALTED and the operator wants to resume after addressing the underlying issue:
 
@@ -472,7 +480,7 @@ If the system is in HALTED and the operator wants to resume after addressing the
 
 > **Warning:** Manual state changes should be rare and documented. The HALTED state exists to protect capital. Overriding it prematurely risks further losses.
 
-#### Adjusting Risk Thresholds
+**Adjusting Risk Thresholds**
 
 Risk thresholds are configured in `config/settings.yaml`. To adjust:
 
@@ -484,7 +492,7 @@ Risk thresholds are configured in `config/settings.yaml`. To adjust:
 
 ### 6.4 Incident Response Playbook
 
-#### Severity Levels
+**Severity Levels**
 
 | Level | Description | Examples | Response Time |
 |-------|-------------|----------|---------------|
@@ -493,7 +501,7 @@ Risk thresholds are configured in `config/settings.yaml`. To adjust:
 | **P3 -- Medium** | Degraded functionality; cost overruns | LLM budget exceeded, data provider down | Within 4 hours |
 | **P4 -- Low** | Minor issues; informational | Single failed API call, log rotation | Next business day |
 
-#### P1 Response Procedure
+**P1 Response Procedure**
 
 1. **PAUSE the system immediately.**
    ```bash
@@ -506,7 +514,7 @@ Risk thresholds are configured in `config/settings.yaml`. To adjust:
 6. **Document the incident.** Record timeline, root cause, and remediation steps.
 7. **Resume only after root cause is resolved and verified.**
 
-#### P2 Response Procedure
+**P2 Response Procedure**
 
 1. **Review system status.** `--status` and daily report.
 2. **Check state machine.** If in CAUTIOUS, the system is already self-restricting.
@@ -544,7 +552,7 @@ Every cycle generates a unique `cycle_id` (format: `cycle_YYYYMMDD_HHMM_<6-hex>`
 cycle_20260225_0700_a1b2c3
   +-- strategy_decisions: Claude proposed BUY AAPL_US_EQ at 8% allocation
   +-- moderation_logs: GPT-4o AGREE, Gemini AGREE -> consensus APPROVED
-  +-- risk_decisions: APPROVE (all 8 rules passed)
+  +-- risk_decisions: APPROVE (all 9 rules passed)
   +-- cost_logs: Anthropic £0.042, OpenAI £0.018, Google £0.003
   +-- orders: BUY 5 x AAPL_US_EQ @ $187.50 = £750.00 -> filled
 ```
@@ -611,7 +619,7 @@ The SEC's Regulation SCI requires entities with automated trading systems to:
 
 The UK Financial Conduct Authority (FCA), under MiFID II implementation, requires firms using algorithmic trading to:
 
-- **Have effective systems and risk controls** to ensure trading systems are resilient and have sufficient capacity. The 8 hard risk rules, state machine, and circuit breakers address this.
+- **Have effective systems and risk controls** to ensure trading systems are resilient and have sufficient capacity. The 9 hard risk rules, state machine, and circuit breakers address this.
 - **Have appropriate thresholds and limits** to prevent erroneous orders. Position limits, sector caps, and cash floors prevent outsized or erroneous exposures.
 - **Prevent the system from creating or contributing to disorderly trading conditions.** The daily loss halt, VIX-based limits, and drawdown state machine prevent the system from trading aggressively during market stress.
 - **Ensure the system cannot be used for market abuse.** The system trades only on the basis of quantitative signals and publicly available data.
@@ -623,7 +631,7 @@ Key MiFID II requirements for algorithmic trading and their mapping to this syst
 | MiFID II Requirement | System Implementation |
 |---------------------|----------------------|
 | Kill functionality to urgently cancel orders | `--pause` command, `--force-sell`, `liquidate_all()` |
-| Pre-trade risk controls | 8 hard rules in Risk Agent, checked before every order |
+| Pre-trade risk controls | 9 hard rules in Risk Agent, checked before every order |
 | Post-trade monitoring | Portfolio snapshots, daily/weekly reports, order history |
 | Real-time monitoring | Cycle-level logging, cost tracking, state machine |
 | Annual self-assessment | This governance document; to be reviewed annually |
@@ -808,3 +816,13 @@ All data is stored in a SQLite database managed via SQLAlchemy + Alembic migrati
 ---
 
 *This document should be reviewed and updated at least quarterly, or whenever significant changes are made to the system architecture, risk parameters, or operational procedures.*
+
+---
+
+## Related Notes
+
+- [Architecture](ARCHITECTURE.md) — pipeline flow, state machine, database schema
+- [Deployment](DEPLOYMENT.md) — VPS setup, Docker, monitoring, backups
+- [Order Management](ORDER_MANAGEMENT_PROJECT.md) — stop-loss, trailing stops, limit orders
+- [Data Rationale](DATA_RATIONALE.md) — data sources, indicators, fundamental metrics
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — planned enhancements and prioritisation

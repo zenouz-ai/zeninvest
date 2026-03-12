@@ -1,8 +1,16 @@
-# Investment Agent — Project Presentation
-
-**Last Updated:** 2026-03-10
-
 ---
+tags: [presentation, stakeholder, overview]
+status: current
+last_updated: 2026-03-10
+---
+
+# Project Presentation
+
+> Slide-by-slide stakeholder deck for the Autonomous Investment Agent.
+
+## Purpose
+
+Communicate the system's architecture, innovation, risk controls, and roadmap to technical and non-technical audiences.
 
 ## Slide 1: Title
 
@@ -320,7 +328,8 @@ docker compose logs -f investment-agent
 - Take-profit orders (limit dip-buy already implemented)
 
 **Phase 3 — Production Hardening:**
-- Real-time alerting (Slack, email, PagerDuty)
+- ~~Real-time alerting (Slack, email)~~ → Delivered (US-1.5): Slack webhook + SMTP email with notification_logs audit trail
+- PagerDuty integration (future)
 - Human-in-the-loop for trades above £500
 - Multi-account support
 - Performance attribution analytics
@@ -351,3 +360,12 @@ docker compose logs -f investment-agent
 
 **An autonomous, cost-effective, multi-LLM investment system
 with defense-in-depth safety, universe discovery, and complete auditability.**
+
+---
+
+## Related Notes
+
+- [Architecture](ARCHITECTURE.md) — system diagrams and pipeline detail
+- [Governance](GOVERNANCE.md) — risk rules, cost controls, audit trail
+- [Competitive Analysis](COMPETITIVE_ANALYSIS.md) — positioning vs alternatives
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — planned enhancements

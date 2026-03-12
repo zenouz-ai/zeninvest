@@ -1,4 +1,16 @@
+---
+tags: [architecture, pipeline, database, diagrams]
+status: current
+last_updated: 2026-03-11
+---
+
 # Solution Architecture
+
+> Complete system architecture: pipeline flow, state machine, database schema, and Mermaid diagrams.
+
+## Purpose
+
+This document is the single source of truth for the investment agent's technical architecture. It covers the data flow from external APIs through the multi-LLM pipeline to execution, the state machine and cost degradation chain, the database schema, the dashboard backend, and the moderation consensus logic. All diagrams (ASCII and Mermaid) live here.
 
 ## System Overview (ASCII)
 
@@ -642,33 +654,21 @@ graph TB
 ```
 
 
-## Planned Near-Term Extensions
+## Near-Term Extensions
 
-These are approved near-term projects that are intentionally documented before implementation.
+For the full prioritised backlog and detailed user story specifications, see [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md). Key delivered extensions that interact with the architecture above:
 
-### 1) Chat Interface & Real-Time Alerts (US-1.5)
-- **Implemented in v1:** outbound notifications for trade instruction approvals, trade execution results, cycle run summaries, state transitions, and critical failures. Slack/email cycle summaries include per-decision ticker, action, quantity (or "queued"), committee summary (Moderation/Risk or "—" when not invoked, e.g. HOLD), reasoning excerpt, and stage reason for queued/filtered decisions.
-- **Implemented channels:** Slack webhook + email (SMTP), with retries/timeouts/dedup and fail-open behavior.
-- **Implemented persistence:** `notification_logs` table for send-attempt audit trail.
-- **Operational profile (current default):**
-  - `trade_instruction_approved` -> Slack only
-  - `trade_execution_result` -> Slack + Email
-  - `cycle_run_summary` -> Slack only
-  - `state_transition` -> Slack + Email
-  - `critical_cycle_failure` -> Slack + Email
-  - `order_adjustment` -> Slack only
-  - `include_dry_run_alerts: false`
-- **Hookup path used in production rollout:**
-  - Slack: Incoming Webhook URL in `.env` via `SLACK_WEBHOOK_URL`
-  - Email: SendGrid SMTP via `smtp.sendgrid.net:587`, `SMTP_USER=apikey`, `SMTP_USE_TLS=true`
-  - Verification: inspect `notification_logs` via in-container Python query + SendGrid Email Logs for final delivery status
-- **Future:** inbound command interface (`/status`, `/pause`, `/resume`, `/force-sell`) with auth and audit logs (see `docs/CHAT_INTERFACE_PROJECT.md`).
-- **Planned (US-1.6):** inbound natural language trade commands via Slack (e.g. "Buy 10 shares of AAPL", "Sell TSLA", "Review MSFT") — full single-ticker pipeline with user intent override; see `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.
+- **Chat & Notifications (US-1.5)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. See [Chat & Commands](CHAT_AND_COMMANDS.md).
+- **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
+- **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (7 pages). See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
 
-### 2) Backtesting Engine (US-5.1)
-- Implemented: `src/backtesting/` — engine, paper broker, io (load CSV + fetch yfinance + cache), metrics, deterministic policy, walk-forward runner, promotion report.
-- Deterministic historical replay with next-open fill and slippage; LLM-free policy proxy.
-- **Data:** If `data/backtest/<TICKER>.csv` is missing, CLI fetches OHLCV from yfinance and caches to CSV for subsequent runs.
-- Walk-forward validation and benchmark comparison; scenario configs (bull/bear/sideways); promotion report (safe to deploy vs hold).
-- CLI: `python -m src.backtesting.main --config backtests/default.yaml`, `--synthetic`, `--walk-forward`, `--scenario bull|bear|sideways`.
-- Detailed plan: `docs/BACKTESTING_PROJECT_PLAN.md`.
+---
+
+## Related Notes
+
+- [Data Rationale](DATA_RATIONALE.md) — why each data point exists and how it influences decisions
+- [Governance](GOVERNANCE.md) — risk rules, cost controls, audit trail
+- [Deployment](DEPLOYMENT.md) — VPS setup, Docker, monitoring
+- [Dashboard](DASHBOARD.md) — web dashboard design and implementation
+- [Chat & Commands](CHAT_AND_COMMANDS.md) — notifications and planned inbound commands
+- [Backtesting](BACKTESTING.md) — engine, walk-forward validation, promotion report

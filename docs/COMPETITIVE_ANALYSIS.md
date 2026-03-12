@@ -1,11 +1,18 @@
-# Competitive Analysis: Investment Agent vs Professional Quant Systems
-
-**Last Updated:** 2026-03-10
-**Purpose:** Honest assessment of where this system stands relative to institutional quant funds and leading AI trading research, to inform our sophistication roadmap.
-
+---
+tags: [strategy, competitive-analysis, positioning]
+status: current
+last_updated: 2026-03-11
 ---
 
-## 1. Our Strengths (Ahead or On Par)
+# Competitive Analysis
+
+> Honest assessment of where this system stands relative to institutional quant funds and leading AI trading research.
+
+## Purpose
+
+Inform the sophistication roadmap by mapping our strengths, gaps, and realistic return expectations against professional quant systems and academic benchmarks.
+
+## Our Strengths (Ahead or On Par)
 
 | Area | What We Have | Why It Matters |
 |------|-------------|----------------|
@@ -20,7 +27,7 @@
 
 ---
 
-## 2. Where We're Behind
+## Where We're Behind
 
 | Area | Our System | Professional Standard | Gap |
 |------|-----------|----------------------|-----|
@@ -38,7 +45,9 @@
 
 ---
 
-## 3. Realistic Return Expectations (£10k, 1 Year)
+## Realistic Return Expectations (£10k, 1 Year)
+
+*Projections as of March 2026. System deployed to Trading 212 Practice in early 2025; live data collection is ongoing.*
 
 ### Key Assumptions
 - Practice account on Trading 212 (no real slippage, but realistic pricing)
@@ -68,7 +77,7 @@
 
 ---
 
-## 4. Our Path Forward
+## Our Path Forward
 
 The system's biggest strength isn't its current alpha — it's the **infrastructure for systematic improvement**. We log everything (StrategyDecision, ModerationLog, RiskDecision, CostLog, PortfolioSnapshot, **performance_metrics**, **trade_outcomes**, **notification_logs**). We now also have **backtesting** (engine, paper broker, walk-forward, promotion report) and **measurement** (Sharpe/Sortino/drawdown from snapshots, per-trade P&L and conviction linkage). After 250+ trading days, we'll have a dataset that most retail traders never build.
 
@@ -90,3 +99,9 @@ See [SOPHISTICATION_ROADMAP.md](SOPHISTICATION_ROADMAP.md) for the detailed, pri
 - StockBench: https://arxiv.org/html/2510.02209v1
 - FINSABER: https://arxiv.org/html/2505.07078v3
 - LLM + RL in Equity Trading: https://arxiv.org/html/2508.02366v2
+
+## Related Notes
+
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md)
+- [Architecture](ARCHITECTURE.md)
+- [Backtesting Engine](BACKTESTING.md)

@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 207 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`.
+**Status:** POC — 207 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
 
 ## Architecture
 
@@ -183,7 +183,7 @@ docker exec -it investment-agent poetry run python -m src.orchestrator.main --dr
 
 Outbound chat interface v1 is live with persistent audit logging.
 
-- **Planned (US-1.6):** Inbound Slack natural language trade commands — e.g. "Buy 10 shares of AAPL", "Sell my position in TSLA", "Review MSFT". Triggers a full single-ticker pipeline (data → strategy → moderation → risk) with final decision overwritten by user intent; Risk can still veto. See [Slack Trade Commands Project](docs/SLACK_TRADE_COMMANDS_PROJECT.md).
+- **Planned (US-1.6):** Inbound Slack natural language trade commands — e.g. "Buy 10 shares of AAPL", "Sell my position in TSLA", "Review MSFT". Triggers a full single-ticker pipeline (data → strategy → moderation → risk) with final decision overwritten by user intent; Risk can still veto. See [Chat & Commands](docs/CHAT_AND_COMMANDS.md).
 - Channels (outbound): Slack webhook + SMTP email
 - Event types:
   - `trade_instruction_approved`
@@ -283,23 +283,23 @@ src/
 ├── scheduler/          # APScheduler with persistent job store
 ├── backtesting/        # Engine, paper broker, io (yfinance fetch + CSV cache), walk-forward, promotion report
 └── utils/              # Config, logger, cost tracker
-docs/                   # Project documentation
-├── ARCHITECTURE.md     # System architecture and component diagrams
-├── COMPETITIVE_ANALYSIS.md  # Assessment vs professional quant systems
-├── DATA_RATIONALE.md   # Every data point's purpose and keep/remove verdict
-├── DEPLOYMENT.md       # VPS deployment and monitoring guide
-├── GOVERNANCE.md       # Governance framework and security guardrails
-├── CHAT_INTERFACE_PROJECT.md  # ChatOps project plan: trade alerts + future command interface
-├── SLACK_TRADE_COMMANDS_PROJECT.md  # Planned: inbound Slack NL trade commands (buy/sell/review)
-├── ORDER_MANAGEMENT_PROJECT.md  # Stop-loss and limit order management: design, config, future options
-├── BACKTESTING_PROJECT_PLAN.md  # Detailed implementation plan for the backtesting gap
-├── BACKTESTING.md       # What backtesting is, why it matters, how it's implemented, benefits
-├── WALK_FORWARD_VALIDATION.md  # Walk-forward validation and promotion report
-├── DATA_EXPORT_RUNBOOK.md  # VPS-to-local data export with integrity checks
-├── LOCAL_LIVE_RUN.md   # Local live run guide (Trading 212 Practice)
-├── MAC_SETUP.md        # macOS-specific installation instructions
-├── PRESENTATION.md     # Project presentation and summary
-└── SOPHISTICATION_ROADMAP.md  # Prioritised improvement roadmap
+docs/                   # Project documentation (16 files; archived plans in docs/archived/)
+├── AGENTIC_RESEARCH.md          # Agentic research: independent tool access, implementation plan
+├── ARCHITECTURE.md              # System architecture and component diagrams
+├── BACKTESTING.md               # Backtesting engine, walk-forward validation, promotion report
+├── CHAT_AND_COMMANDS.md         # ChatOps: trade alerts, notification routing, planned commands
+├── COMPETITIVE_ANALYSIS.md      # Assessment vs professional quant systems
+├── DASHBOARD.md                 # Web dashboard architecture, phases, frontend/backend design
+├── DASHBOARD_DEPLOYMENT.md      # Dashboard VPS deployment: Docker, port 8000, SPA fallback
+├── DATA_EXPORT_RUNBOOK.md       # VPS-to-local data export with integrity checks
+├── DATA_RATIONALE.md            # Every data point's purpose and keep/remove verdict
+├── DEPLOYMENT.md                # VPS deployment and monitoring guide
+├── GOVERNANCE.md                # Governance framework, 9 risk rules, cost controls, audit trail
+├── LOCAL_SETUP.md               # Local setup guide (Trading 212 Practice)
+├── ORDER_MANAGEMENT_PROJECT.md  # Stop-loss, trailing stops, limit dip-buy: design and config
+├── PRESENTATION.md              # Project presentation and summary
+├── SOPHISTICATION_ROADMAP.md    # Prioritised improvement roadmap
+└── WALK_FORWARD_VALIDATION.md   # Walk-forward validation and promotion report
 notebooks/
 └── diagnostics.ipynb   # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
 ```
@@ -308,20 +308,19 @@ notebooks/
 
 - [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
 - [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — prioritised user stories for systematic improvement
-- [Dashboard & Visualisation Project](docs/DASHBOARD_VISUALISATION_PROJECT.md) — web dashboard (Phase 1 + Phase 1.5 Analytics Lite complete; stabilisation done; US-1.8 implemented)
-- [Dashboard Stabilisation Plan](docs/DASHBOARD_STABILISATION_PLAN.md) — test fixes, frontend-backend type alignment, API URL fixes
 - [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
+- [Governance](docs/GOVERNANCE.md) — 9 risk rules, security guardrails, cost controls, audit trail
 - [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
-- [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — repeatable VPS-to-local export procedure with integrity checks for investigations
 - [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts
-- [Governance](docs/GOVERNANCE.md) — security guardrails, kill switches, audit trail
-- [Chat Interface Project](docs/CHAT_INTERFACE_PROJECT.md) — roadmap-aligned plan for real-time trade alerts and future chat command controls
-- [Slack Trade Commands Project](docs/SLACK_TRADE_COMMANDS_PROJECT.md) — planned: inbound natural language trade commands via Slack (buy/sell/review, full pipeline + user override)
-- [Order Management Project](docs/ORDER_MANAGEMENT_PROJECT.md) — stop-loss (GTC, ATR reassessment, trailing) and limit dip-buy: current design, config, future sophistication
-- [Backtesting Project Plan](docs/BACKTESTING_PROJECT_PLAN.md) — detailed implementation plan to close the biggest maturity gap (historical validation)
-- [Backtesting](docs/BACKTESTING.md) — what backtesting is, why it matters, how it's implemented, benefits
+- [Dashboard](docs/DASHBOARD.md) — web dashboard architecture, phases, frontend/backend design
+- [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) — VPS deployment: Docker, port 8000, SPA fallback
+- [Chat & Commands](docs/CHAT_AND_COMMANDS.md) — trade alerts, notification routing, planned inbound commands
+- [Backtesting](docs/BACKTESTING.md) — engine, walk-forward validation, promotion report
 - [Walk-Forward Validation](docs/WALK_FORWARD_VALIDATION.md) — walk-forward validation and promotion report
-- [Local Live Run](docs/LOCAL_LIVE_RUN.md) — step-by-step guide for Trading 212 Practice mode
+- [Order Management](docs/ORDER_MANAGEMENT_PROJECT.md) — stop-loss, trailing stops, limit dip-buy: design and config
+- [Agentic Research](docs/AGENTIC_RESEARCH.md) — independent tool access for committee members
+- [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — VPS-to-local export procedure with integrity checks
+- [Local Setup](docs/LOCAL_SETUP.md) — local setup guide for Trading 212 Practice
 - [Presentation](docs/PRESENTATION.md) — project overview and summary
 
 ## Risk Rules (never overridden by LLMs)
@@ -334,6 +333,7 @@ notebooks/
 - Daily loss > 2%: no new buys for 24 hours
 - Cash floor: always >= 10%
 - Min 5 positions once invested (checked for SELL and REDUCE actions)
+- CAUTIOUS mode: no new BUYs (only SELL/REDUCE/HOLD)
 
 ## Cycle Output
 

@@ -1,9 +1,16 @@
+---
+tags: [roadmap, planning, user-stories, priorities]
+status: current
+last_updated: 2026-03-11
+---
+
 # Sophistication Roadmap
 
-**Last Updated:** 2026-03-10
-**Owner:** Project Lead (PhD Mathematics, Data Science Manager in Finance)  
-**Developers:** Claude Code Opus 4.6 (cloud, primary), Codex 5.3+ (local VS Code, secondary)  
-**Principle:** Innovation, simplicity, elegance, transparency. No feature for technology's sake — every addition must materially improve quality.
+> Prioritised backlog of enhancements: user stories, acceptance criteria, and delivery status.
+
+## Purpose
+
+This document tracks every planned and delivered enhancement to the investment agent, ordered by priority and feasibility. It serves as the single backlog for sprint planning and as a record of what has been shipped.
 
 ---
 
@@ -89,7 +96,7 @@ timeline
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
 | **US-1.7** | Dashboard & Visualisation | Web dashboard: 7 pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs); full API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system). Branch `feature/dashboard-full-spec`. | Full operational visibility; personal quant experience | **In Progress** (full API + 7 pages on branch) |
-| **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Operational visibility on live VPS | **Delivered** |
+| **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_DEPLOYMENT.md` | Operational visibility on live VPS | **Delivered** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
@@ -180,7 +187,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 
 ### P0 — Critical (Foundation)
 
-#### US-1.4: Deploy POC to VPS
+**US-1.4: Deploy POC to VPS**
 **Value:** Begin gathering live market data and performance evidence  
 **Effort:** Small (1–2 days, following DEPLOYMENT.md)  
 **Data Sources:** N/A  
@@ -195,7 +202,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 
 ---
 
-#### US-1.1: Performance Tracking Module
+**US-1.1: Performance Tracking Module**
 **Value:** Enables all future improvements — can't improve what you can't measure  
 **Effort:** Medium (3–5 days)  
 **Data Sources:** Existing database (portfolio_snapshots, orders, strategy_decisions)  
@@ -215,7 +222,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 
 ---
 
-#### US-1.2: Trade Outcome Tracker
+**US-1.2: Trade Outcome Tracker**
 **Value:** Links strategy decisions to actual P&L — core data for calibration  
 **Effort:** Medium (3–5 days)  
 **Data Sources:** Existing orders + portfolio data  
@@ -237,7 +244,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 
 ### P1 — High (Foundation & Calibration)
 
-#### US-1.3: Performance Dashboard (CLI + Export)
+**US-1.3: Performance Dashboard (CLI + Export)**
 **Value:** Personal quant experience — immediate visibility  
 **Effort:** Small (2–3 days)  
 **Data Sources:** performance_metrics, trade_outcomes, cost_logs  
@@ -252,13 +259,13 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 
 ---
 
-#### US-1.5: Chat Interface & Real-Time Trade Alerts
+**US-1.5: Chat Interface & Real-Time Trade Alerts**
 **Value:** Immediate operator visibility; foundation for human-in-the-loop  
 **Effort:** Medium (4–6 days)  
 **Data Sources:** Orchestrator decisions, orders, system_state, risk_decisions, moderation_logs  
 **Stage:** Delivered (Phase 1 outbound)  
 
-**Detailed plan:** `docs/CHAT_INTERFACE_PROJECT.md`  
+**Detailed plan:** `docs/CHAT_AND_COMMANDS.md`  
 
 **Status (2026-03-05):** Delivered (Phase 1 outbound alerts)  
 
@@ -273,7 +280,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 
 ---
 
-#### US-3.1: Risk-Parity Position Sizing
+**US-3.1: Risk-Parity Position Sizing**
 **Value:** High — reduces volatility without reducing returns; strong academic evidence  
 **Effort:** Medium (4–5 days)  
 **Data Sources:** Historical returns from market_data_cache  
@@ -291,13 +298,13 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 
 ---
 
-#### US-5.1: Backtesting Engine
+**US-5.1: Backtesting Engine**
 **Value:** Critical for long-term confidence; release gate before strategy changes  
 **Effort:** Large (5–8 days)  
 **Data Sources:** yfinance historical (fetch + CSV cache when data/backtest/ empty)  
 **Stage:** Delivered  
 
-**Detailed plan:** `docs/BACKTESTING_PROJECT_PLAN.md`. See `docs/BACKTESTING.md`, `docs/WALK_FORWARD_VALIDATION.md`.  
+**Detailed plan:** `docs/BACKTESTING.md`. See also `docs/WALK_FORWARD_VALIDATION.md`.  
 
 **Status (2026-03):** Delivered  
 
@@ -312,7 +319,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 
 ---
 
-#### US-3.5: Intelligent Order Management (Stop-Loss, Trailing, Limit Dip-Buy)
+**US-3.5: Intelligent Order Management (Stop-Loss, Trailing, Limit Dip-Buy)**
 
 **Value:** Automatic downside protection and smarter entries without manual intervention  
 **Effort:** Medium (implemented)  
@@ -335,7 +342,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-2.1: Conviction Calibration
+**US-2.1: Conviction Calibration**
 **Value:** Position sizing by calibrated conviction can add 2–5% annually  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** trade_outcomes, strategy_decisions  
@@ -351,7 +358,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-2.2: Dynamic Strategy Weighting
+**US-2.2: Dynamic Strategy Weighting**
 **Value:** Stops allocating to strategies that aren't working in current regime  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** trade_outcomes, strategy_decisions  
@@ -366,13 +373,13 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-1.6: Slack Natural Language Trade Commands
+**US-1.6: Slack Natural Language Trade Commands**
 **Value:** Manual override with full audit trail; single-ticker pipeline; user intent overwrites decision; Risk can veto  
 **Effort:** Medium–Large (5–8 days)  
 **Data Sources:** Full pipeline; new `slack_command_log`  
 **Stage:** Planned  
 
-**Detailed plan:** `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.  
+**Detailed plan:** `docs/CHAT_AND_COMMANDS.md`.  
 
 **Acceptance Criteria:**
 - [ ] Inbound Slack listener (Socket Mode)
@@ -387,14 +394,13 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-1.7: Dashboard & Visualisation System (Phase 1 MVP + full API)
+**US-1.7: Dashboard & Visualisation System (Phase 1 MVP + full API)**
 **Value:** Full operational visibility — activity feed, universe, run history, portfolio, opportunity, order management, costs
 **Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)
 **Data Sources:** Existing DB; new `events_log` (optionally `runs`); backend reads agent tables read-only (no duplicate tables)
 **Stage:** In Progress (full API and 7 pages on branch `feature/dashboard-full-spec`)
 
-**Detailed plan:** `docs/DASHBOARD_VISUALISATION_PROJECT.md`.
-**Stabilisation plan:** `docs/DASHBOARD_STABILISATION_PLAN.md`.
+**Detailed plan:** `docs/DASHBOARD.md`.
 
 **Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built. Agent instrumentation complete. Stabilisation complete. US-1.8 implemented: Docker service, multi-stage frontend build, SPA fallback. Phase 1.5 Analytics Lite: Decision Explorer (expandable universe rows), run diff, next-run countdown, P&L in top bar. **Full API and 7-page spec** (branch `feature/dashboard-full-spec`): backend exposes decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system; status includes system state (ACTIVE/CAUTIOUS/HALTED) and paused; frontend has 7 pages (Dashboard Home with state badge, Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs); Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only. Dashboard Home includes a “Latest trades & LLM reasons” audit table that surfaces recent orders (including failed attempts) with the latest committee reasoning by ticker; design tokens #0d1117, #58a6ff, #d4a017, grid texture.
 
@@ -409,7 +415,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Fix frontend-backend type mismatches (PortfolioSnapshot, Position, Order fields)
 - [x] Fix API client URL mismatches (portfolio endpoint, getByCycleId)
 - [x] Implement `POST /api/runs/trigger` (background daemon thread)
-- [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
+- [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_DEPLOYMENT.md`
 - [x] Phase 1.5 Analytics Lite: Decision Explorer, run diff, next-run countdown, P&L
 - [x] Full API: decisions (incl. pipeline waterfall), moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); status returns state and paused
 - [x] 7 pages: Dashboard Home (system state badge), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
@@ -419,13 +425,13 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-1.8: Dashboard VPS Deployment
+**US-1.8: Dashboard VPS Deployment**
 **Value:** Operational visibility on live VPS; no domain required
 **Effort:** Small (1–2 days)
 **Data Sources:** Same DB as agent (shared volume)
 **Stage:** Delivered
 
-**Detailed plan:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`
+**Detailed plan:** `docs/DASHBOARD_DEPLOYMENT.md`
 
 **Status (2026-03-10):** Delivered. Dashboard running on VPS: operator runs the deployment checklist in the plan (pull, `ufw allow 8000/tcp`, `docker compose up -d --build`); then dashboard is available at `http://YOUR_VPS_IP:8000`.
 
@@ -435,7 +441,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Access via `http://YOUR_VPS_IP:8000` (VPS IP — recommended; no domain)
 - [x] Firewall: port 8000 documented and included in deployment commands (`ufw allow 8000/tcp`)
 - [x] Activity feed (SSE), portfolio, runs, universe pages load correctly (relative API URLs work from VPS IP)
-- [x] Deployment complete checklist in `DASHBOARD_VPS_DEPLOYMENT_PLAN.md`; dashboard running on VPS once operator executes it
+- [x] Deployment complete checklist in `DASHBOARD_DEPLOYMENT.md`; dashboard running on VPS once operator executes it
 
 **Domain options:** VPS IP (recommended), purchase domain for HTTPS, or nginx reverse proxy. See deployment plan.
 
@@ -443,7 +449,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ### P2 — Medium (Calibration, Portfolio, Signals, Validation)
 
-#### US-2.3: Moderator Effectiveness Analysis
+**US-2.3: Moderator Effectiveness Analysis**
 **Value:** Understand which moderator adds value; informs cost optimisation  
 **Effort:** Small (2–3 days)  
 **Data Sources:** moderation_logs, trade_outcomes  
@@ -456,7 +462,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-3.2: Enhanced Regime Detection
+**US-3.2: Enhanced Regime Detection**
 **Value:** Regime-aware strategy selection improves hit rate  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** Existing macro (VIX, S&P, yields)  
@@ -472,7 +478,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-3.3: Correlation-Aware Trade Screening
+**US-3.3: Correlation-Aware Trade Screening**
 **Value:** Prevents positions that duplicate existing risk exposure  
 **Effort:** Small (2–3 days)  
 **Data Sources:** Historical returns from market_data_cache  
@@ -485,7 +491,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-4.1: Volume-Weighted Signals
+**US-4.1: Volume-Weighted Signals**
 **Value:** Volume confirms price moves; zero-cost enhancement  
 **Effort:** Small (2–3 days)  
 **Data Sources:** Existing yfinance OHLCV (volume already fetched)  
@@ -498,7 +504,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-4.2: Earnings Calendar Integration
+**US-4.2: Earnings Calendar Integration**
 **Value:** Avoid buying before earnings; position for post-earnings drift  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** yfinance earnings calendar (free)  
@@ -512,7 +518,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-5.2: Parameter Sensitivity Analysis
+**US-5.2: Parameter Sensitivity Analysis**
 **Value:** Focus tuning on parameters that matter  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** Backtesting engine output  
@@ -525,7 +531,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-6.1: Gradient-Boosted Trade Scoring
+**US-6.1: Gradient-Boosted Trade Scoring**
 **Value:** Potentially +3–7% annual; requires 500+ trade outcomes  
 **Effort:** Large (investigation + implementation); investigate before committing  
 **Data Sources:** trade_outcomes, strategy_decisions, indicators, fundamentals  
@@ -545,7 +551,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ### P3 — Lower priority
 
-#### US-4.3: Sector Rotation Signal
+**US-4.3: Sector Rotation Signal**
 **Value:** Sector momentum over long term  
 **Effort:** Medium (3–5 days)  
 **Data Sources:** Sector ETFs via yfinance (XLK, XLF, etc.)  
@@ -558,7 +564,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-6.2: Trade Journal Embeddings & Similarity Search
+**US-6.2: Trade Journal Embeddings & Similarity Search**
 **Value:** "Have we seen this pattern before?" context  
 **Effort:** Medium (3–5 days)  
 **Data Sources:** Existing markdown trade journals  
@@ -571,7 +577,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-6.3: Reinforcement Learning Investigation
+**US-6.3: Reinforcement Learning Investigation**
 **Value:** Uncertain; investigate only  
 **Effort:** Investigation (3–5 days)  
 **Data Sources:** Academic literature, backtesting results  
@@ -584,7 +590,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-#### US-3.4: Universal Opportunity Value (UOV) Ranking and Queueing
+**US-3.4: Universal Opportunity Value (UOV) Ranking and Queueing**
 **Value:** Solves capital saturation; deterministic opportunity ranking and queue  
 **Effort:** Medium  
 **Data Sources:** strategy_decisions, moderation_logs, risk_decisions, sub-strategy, sentiment, instruments  
@@ -628,21 +634,23 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 **Immediate (next session):**
 - **US-1.4** — Deploy POC to VPS (when ready)
-- **US-1.8** — Delivered; deploy to VPS per `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` if not yet deployed
+- **US-1.8** — Delivered; deploy to VPS per `docs/DASHBOARD_DEPLOYMENT.md` if not yet deployed
 
 **Then:**
 - **US-1.4** — Deploy POC to VPS (when ready)
 - **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (once ~50 trades available)
-- **US-4.4** — Agentic Research (after US-1.8; see `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md`)
+- **US-4.4** — Agentic Research (after US-1.8; see `docs/AGENTIC_RESEARCH.md`)
 - **US-5.2 prep** — Parameter sensitivity harness (registry, baseline configs, result schema)
 
 **Delivery references:**
-- `docs/CHAT_INTERFACE_PROJECT.md`
-- `docs/SLACK_TRADE_COMMANDS_PROJECT.md`
 - `docs/ORDER_MANAGEMENT_PROJECT.md`
-- `docs/BACKTESTING_PROJECT_PLAN.md`
-- `docs/DASHBOARD_VISUALISATION_PROJECT.md`
-- `docs/AGENTIC_RESEARCH_PROJECT.md`, `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md`
+- `docs/WALK_FORWARD_VALIDATION.md`
+- `docs/DASHBOARD_DEPLOYMENT.md`
+- `docs/archived/CHAT_INTERFACE_PROJECT.md`
+- `docs/archived/SLACK_TRADE_COMMANDS_PROJECT.md`
+- `docs/archived/BACKTESTING_PROJECT_PLAN.md`
+- `docs/archived/DASHBOARD_VISUALISATION_PROJECT.md`
+- `docs/archived/AGENTIC_RESEARCH_PROJECT.md`, `docs/archived/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md`
 
 ---
 
@@ -658,3 +666,12 @@ All roadmap items integrate with the existing POC:
 6. **Logging:** New computations logged to database for audit.
 
 The POC runs continuously and accumulates data while we add features in priority order.
+
+---
+
+## Related Notes
+
+- [Architecture](ARCHITECTURE.md) — pipeline flow, state machine, database schema
+- [Governance](GOVERNANCE.md) — risk rules, cost controls, audit trail
+- [Competitive Analysis](COMPETITIVE_ANALYSIS.md) — positioning vs alternatives
+- [Presentation](PRESENTATION.md) — stakeholder deck overview

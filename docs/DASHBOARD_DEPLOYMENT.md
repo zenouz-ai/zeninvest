@@ -1,11 +1,16 @@
-# Dashboard VPS Deployment Plan
-
-**Status:** Implemented (2026-03-10)
-**Created:** 2026-03-10
-**Roadmap:** US-1.8 Dashboard VPS Deployment
-**Prerequisite:** US-1.7 Dashboard stabilisation (branch `claude/dashboard-stabilisation` merged)
-
 ---
+tags: [dashboard, deployment, vps, docker]
+status: delivered
+last_updated: 2026-03-10
+---
+
+# Dashboard Deployment
+
+> VPS deployment plan for the 7-page monitoring dashboard (US-1.8).
+
+## Purpose
+
+Deploy the dashboard backend (FastAPI + SSE) and frontend (built SPA) as a Docker service on the VPS, sharing the agent's SQLite database.
 
 ## Domain / Access Options
 
@@ -140,3 +145,9 @@ With VPS IP and HTTP:
 - Use firewall to restrict access (e.g. only your IP) if desired.
 - Consider basic auth or API key for the dashboard later.
 - Dashboard is read-only except `POST /api/runs/trigger` (dry-run only).
+
+## Related Notes
+
+- [Dashboard System](DASHBOARD.md)
+- [Deployment (VPS)](DEPLOYMENT.md)
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — US-1.8

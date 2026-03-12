@@ -1,9 +1,16 @@
-# Order Management: Stop-Loss and Limit Trading — Project Summary
-
-**Status:** Implemented (order management module live). This doc captures current design, config, and optional future sophistication.  
-**Reference:** GOVERNANCE.md §3.3 (Intelligent Order Management), ARCHITECTURE.md (Order Manager / Stop-Loss Manager), CLAUDE.md (rule 9, order_management config).
-
 ---
+tags: [order-management, stop-loss, trailing, limit-orders]
+status: delivered
+last_updated: 2026-03-10
+---
+
+# Order Management
+
+> Stop-loss, trailing stops, and limit dip-buy order lifecycle.
+
+## Purpose
+
+Manage post-trade order lifecycle — initial stop-loss placement, ATR-based reassessment, software trailing stops, and limit dip-buy orders. All adjustments are audited and gated by config switches.
 
 ## Scope
 
@@ -99,17 +106,7 @@ order_management:
 
 ---
 
-## Cross-References
-
-- **ARCHITECTURE.md** — Order Manager and Stop-Loss Manager in pipeline; T212 stop/limit APIs.
-- **GOVERNANCE.md** — §3.3 Intelligent Order Management; dedup; stop-loss; ATR, trailing, limit; audit and notifications.
-- **CLAUDE.md** — Rule 9 (stop-loss), order_management config, `StopLossAdjustment` model.
-- **README.md** — Order types (market, stop-loss).
-- **PRESENTATION.md** — Stop-loss as completed; Phase 2 “Limit orders / take-profit orders”.
-
----
-
-## Future Sophistication (roadmap candidates)
+## Future Sophistication (Roadmap Candidates)
 
 These are **not** yet committed user stories; they are candidate enhancements for the roadmap.
 
@@ -119,3 +116,9 @@ These are **not** yet committed user stories; they are candidate enhancements fo
 - **Backtesting alignment** — Paper broker and backtesting engine to model stop-loss and limit order fills (e.g. next-bar stop hit, limit fill when price touches) for consistency with live behaviour.
 
 When a future user story is adopted, add it to `docs/SOPHISTICATION_ROADMAP.md` with acceptance criteria and link back to this doc.
+
+## Related Notes
+
+- [Architecture](ARCHITECTURE.md) — Order Manager and Stop-Loss Manager in pipeline
+- [Governance](GOVERNANCE.md) — §3.3 Intelligent Order Management, dedup, audit
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md)

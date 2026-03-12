@@ -1,8 +1,16 @@
+---
+tags: [data, pipeline, indicators, fundamentals, rationale]
+status: current
+last_updated: 2026-03-11
+---
+
 # Data Pipeline Rationale
 
-Every data point in the investment agent pipeline must justify its existence by demonstrably
-influencing a trading decision. This document maps each data point to its decision path,
-explains how it alters outcomes, and flags data that has been removed for not earning its place.
+> Every data point must justify its existence by demonstrably influencing a trading decision.
+
+## Purpose
+
+This document maps each data point in the pipeline to its decision path, explains how it alters outcomes, and flags data that has been removed for not earning its place. It serves as the authoritative reference for what data the system consumes, why, and what was deliberately excluded.
 
 **Principle:** A simpler model with fewer, well-understood inputs outperforms a complex model
 overloaded with noise. Every field must answer: "How does this change what we buy or sell?"
@@ -439,3 +447,12 @@ and reliability tradeoff of local deployment.
 | 2026-02-27 | Added 72-hour screening cooldown | `last_screened_at` column on Instrument table. Screened stocks are excluded from future screens for 72 hours (configurable via `screening_cooldown_hours`), preventing the same candidates from appearing in consecutive cycles. |
 | 2026-03-06 | Added macro intelligence module | Sector performance (Alpha Vantage SECTOR) and economic headlines (Finnhub /news) feed strategy and moderation. Enables "fundamentally strong but sector headwind — defer buy" in committee decisions. Cached 4h. |
 | 2026-03-06 | yfinance sector fallback | When Alpha Vantage SECTOR fails (rate limit, error), fallback to SPDR sector ETFs via yfinance. Config: `sector_fallback_yfinance: true`. |
+
+---
+
+## Related Notes
+
+- [Architecture](ARCHITECTURE.md) — system diagrams and full pipeline flow
+- [Governance](GOVERNANCE.md) — risk rules that consume these data points
+- [Competitive Analysis](COMPETITIVE_ANALYSIS.md) — how our data choices compare to alternatives
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — planned data enhancements (volume, earnings, sector rotation)

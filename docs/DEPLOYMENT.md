@@ -1,6 +1,16 @@
-# Investment Agent -- VPS Deployment & Monitoring Guide
+---
+tags: [deployment, vps, docker, monitoring, operations]
+status: current
+last_updated: 2026-03-11
+---
 
-This guide covers deploying the Investment Agent on a VPS, monitoring its operation, managing logs and backups, and retrieving activity data for local analysis.
+# Deployment & Monitoring Guide
+
+> VPS deployment, Docker setup, monitoring, backups, and data retrieval for the investment agent.
+
+## Purpose
+
+This guide covers end-to-end deployment of the investment agent on a VPS: server setup, Docker and non-Docker paths, monitoring, log management, backups, updates, troubleshooting, data retrieval for local analysis, backtesting on VPS, and dashboard deployment.
 
 > Path and username note: examples use `/home/deploy` and user `deploy`. If your VPS user differs (for example `deploy_invest_ai`), replace those values consistently in all commands and service files.
 
@@ -225,7 +235,7 @@ SMTP_USE_TLS=true
 
 For production email delivery, use a transactional SMTP provider (for example SendGrid/Postmark/Resend SMTP) with `SMTP_PORT=587` and `SMTP_USE_TLS=true`.
 
-**Planned (US-1.6 — Slack natural language trade commands):** When implemented, inbound Slack will require `SLACK_APP_TOKEN` (xapp-…) and `SLACK_BOT_TOKEN` (xoxb-…), and an optional long-running `slack_trade_listener` process or container. See `docs/SLACK_TRADE_COMMANDS_PROJECT.md`.
+**Planned (US-1.6 — Slack natural language trade commands):** When implemented, inbound Slack will require `SLACK_APP_TOKEN` (xapp-…) and `SLACK_BOT_TOKEN` (xoxb-…), and an optional long-running `slack_trade_listener` process or container. See `docs/CHAT_AND_COMMANDS.md`.
 
 Secure the file:
 
@@ -1611,7 +1621,7 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 ## 13. Dashboard VPS Deployment
 
-The web dashboard (activity feed, portfolio, run history, universe, 7 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`. **Status:** US-1.8 delivered; dashboard running on VPS once the operator runs the deployment steps below.
+The web dashboard (activity feed, portfolio, run history, universe, 7 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-1.8 delivered; dashboard running on VPS once the operator runs the deployment steps below.
 
 ### Access Options (no domain required)
 
@@ -1685,3 +1695,13 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 ├── Dockerfile
 └── src/                          # Application code
 ```
+
+---
+
+## Related Notes
+
+- [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md) — dashboard-specific Docker and VPS setup
+- [Data Export Runbook](DATA_EXPORT_RUNBOOK.md) — exporting VPS data for local analysis
+- [Local Setup](LOCAL_SETUP.md) — local development and Mac environment setup
+- [Governance](GOVERNANCE.md) — operational controls, incident response, audit trail
+- [Architecture](ARCHITECTURE.md) — system diagrams and pipeline flow

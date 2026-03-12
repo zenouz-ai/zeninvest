@@ -1,4 +1,16 @@
-# Walk-Forward Validation in the Investment Agent
+---
+tags: [backtesting, validation, walk-forward]
+status: current
+last_updated: 2026-03-10
+---
+
+# Walk-Forward Validation
+
+> Multi-fold time-series validation to assess strategy stability and gate deployments.
+
+## Purpose
+
+Test the strategy across non-overlapping time windows so that performance claims are not overfitted to a single historical period. The promotion report turns walk-forward results into a go/no-go deployment decision.
 
 ## What is walk-forward validation?
 
@@ -82,8 +94,8 @@ Scenario YAMLs under `backtests/scenarios/` (e.g. `bull.yaml`, `bear.yaml`, `sid
 
 ---
 
-## References
+## Related Notes
 
-- Backtesting overview: [BACKTESTING.md](BACKTESTING.md)
-- Backtesting plan (including walk-forward): [BACKTESTING_PROJECT_PLAN.md](BACKTESTING_PROJECT_PLAN.md)
-- Roadmap: [SOPHISTICATION_ROADMAP.md](SOPHISTICATION_ROADMAP.md) (US-5.1, US-5.2)
+- [Backtesting Engine](BACKTESTING.md)
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — US-5.1, US-5.2
+- [Governance & Audit Trail](GOVERNANCE.md)

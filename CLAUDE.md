@@ -50,6 +50,9 @@ poetry run python -m src.orchestrator.main --report
 poetry run python -m src.backtesting.main --config backtests/default.yaml
 poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward
 poetry run python -m src.backtesting.main --synthetic --output-dir backtests/results/run1
+
+# Diagnostics notebook (tests every pipeline component independently)
+poetry run jupyter notebook notebooks/diagnostics.ipynb
 ```
 
 ## Project Layout
@@ -88,6 +91,8 @@ dashboard/
 config/
 ├── settings.yaml          # All tuneable parameters (trading, risk, strategy, universe, costs, notifications)
 └── .env.example           # Environment variables template (required core API keys + optional notification keys)
+notebooks/
+└── diagnostics.ipynb      # 24-section Jupyter notebook testing every pipeline component (Config → Backtesting → Walk-Forward)
 tests/                     # pytest — all use in-memory SQLite fixtures
 ```
 
@@ -325,22 +330,19 @@ Files to check on every feature:
 | `docs/ARCHITECTURE.md` | Pipeline flow changes, new database tables/columns, new component interactions |
 | `docs/GOVERNANCE.md` | Audit trail changes (new logged fields, new tables), risk rule changes, new kill switches |
 | `docs/PRESENTATION.md` | Major feature additions that change the project's story or metrics |
-| `docs/LOCAL_LIVE_RUN.md` | New setup steps, new pre-flight checks, new CLI commands |
+| `docs/LOCAL_SETUP.md` | New setup steps, new pre-flight checks, new CLI commands |
 | `docs/DEPLOYMENT.md` | Infrastructure changes, new env vars, new Docker config, new systemd settings |
 | `docs/DATA_RATIONALE.md` | New data sources, removed data points, changed data flow |
 | `docs/SOPHISTICATION_ROADMAP.md` | Features completed (move to "done"), new user stories added |
-| `docs/CHAT_INTERFACE_PROJECT.md` | Chat alerts / command interface scope, acceptance criteria, and rollout decisions |
-| `docs/SLACK_TRADE_COMMANDS_PROJECT.md` | Planned inbound Slack NL trade commands (buy/sell/review), single-ticker pipeline, audit |
+| `docs/COMPETITIVE_ANALYSIS.md` | Positioning changes, new differentiators, market landscape updates |
+| `docs/CHAT_AND_COMMANDS.md` | Chat alerts, command interface scope, Slack trade commands |
 | `docs/ORDER_MANAGEMENT_PROJECT.md` | Stop-loss and limit order management: current design, config, future sophistication |
-| `docs/BACKTESTING_PROJECT_PLAN.md` | Backtesting scope, validation assumptions, and release-gate criteria |
-| `docs/BACKTESTING.md` | What backtesting is, why it matters, how implemented, benefits |
+| `docs/BACKTESTING.md` | Backtesting scope, engine design, validation assumptions, walk-forward |
 | `docs/WALK_FORWARD_VALIDATION.md` | Walk-forward validation and promotion report |
 | `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
-| `docs/DASHBOARD_VISUALISATION_PROJECT.md` | Dashboard & Visualisation System: architecture, phases, data alignment, Claude prompts |
-| `docs/DASHBOARD_STABILISATION_PLAN.md` | Dashboard stabilisation: test fixes, frontend-backend type alignment, API URL fixes |
-| `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` | Dashboard VPS deployment: Docker service, VPS IP access (no domain), firewall |
-| `docs/AGENTIC_RESEARCH_PROJECT.md` | Agentic research: independent tool access for committee members (US-4.4) |
-| `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md` | Implementation plan, viability assessment, phase breakdown for Agentic Research |
+| `docs/DASHBOARD.md` | Dashboard architecture, phases, data alignment, frontend/backend design |
+| `docs/DASHBOARD_DEPLOYMENT.md` | Dashboard VPS deployment: Docker service, VPS IP access, firewall |
+| `docs/AGENTIC_RESEARCH.md` | Agentic research: independent tool access, implementation plan, phase breakdown |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 
@@ -357,11 +359,11 @@ Files to check on every feature:
 ## Near-term delivery focus (updated 2026-03-10)
 
 **Delivered:**
-- **US-1.5 Chat Interface & Real-Time Trade Alerts** (`docs/CHAT_INTERFACE_PROJECT.md`) [delivered; outbound phase complete]
-- **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING_PROJECT_PLAN.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
+- **US-1.5 Chat Interface & Real-Time Trade Alerts** (`docs/CHAT_AND_COMMANDS.md`) [delivered; outbound phase complete]
+- **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
 
 **Immediate (next session):**
-- **US-1.8 Dashboard VPS Deployment** — Delivered. Deployment complete: checklist in `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` (pull, `ufw allow 8000/tcp`, `docker compose up -d --build`). Dashboard is running on VPS once the operator runs those steps.
+- **US-1.8 Dashboard VPS Deployment** — Delivered. Deployment complete: checklist in `docs/DASHBOARD_DEPLOYMENT.md` (pull, `ufw allow 8000/tcp`, `docker compose up -d --build`). Dashboard is running on VPS once the operator runs those steps.
 - **US-1.7 Dashboard full spec** — Full API and 7-page frontend on branch `feature/dashboard-full-spec`; merge when ready.
 
 **Then:**
@@ -370,8 +372,8 @@ Files to check on every feature:
 
 ## Known issues (2026-03-10)
 
-1. **Dashboard VPS deployment** — US-1.8 delivered; deployment checklist in `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md`. Operator runs: pull, `ufw allow 8000/tcp`, `docker compose up -d --build` → dashboard running at `http://VPS_IP:8000`. Phase 1.5 Analytics Lite delivered (Decision Explorer, run diff, next-run countdown, P&L). Activity feed SSE uses relative URL.
+1. **Dashboard VPS deployment** — US-1.8 delivered; deployment checklist in `docs/DASHBOARD_DEPLOYMENT.md`. Operator runs: pull, `ufw allow 8000/tcp`, `docker compose up -d --build` → dashboard running at `http://VPS_IP:8000`. Phase 1.5 Analytics Lite delivered (Decision Explorer, run diff, next-run countdown, P&L). Activity feed SSE uses relative URL.
 2. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
 3. **Finnhub timeouts in cloud VMs** — Finnhub API calls may time out in VPS/cloud environments due to network latency. Pipeline handles gracefully: analyst recommendations and insider sentiment are missing but cycle completes. See AGENTS.md.
 
-When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD_VISUALISATION_PROJECT.md`, `docs/DASHBOARD_STABILISATION_PLAN.md`, and `docs/DASHBOARD_VPS_DEPLOYMENT_PLAN.md` synchronized.
+When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD.md`, and `docs/DASHBOARD_DEPLOYMENT.md` synchronized.

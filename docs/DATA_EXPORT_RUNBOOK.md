@@ -1,6 +1,16 @@
-# Data Export Runbook (VPS -> Local Analysis)
+---
+tags: [operations, export, vps, analysis]
+status: current
+last_updated: 2026-03-10
+---
 
-This runbook defines a repeatable export procedure so investigations always include the full evidence set: database, logs, journals, config, and integrity manifest.
+# Data Export Runbook
+
+> Repeatable VPS-to-local export procedure for database, logs, journals, and config.
+
+## Purpose
+
+Ensure every investigation includes the full evidence set — database snapshot, logs, journals, config, and integrity manifest — exported safely from the VPS while the scheduler is running.
 
 ## 1) Create a timestamped export package on VPS
 
@@ -98,9 +108,15 @@ When analysing results, ensure all layers are used:
 8. Cost and budget behavior: `cost_logs`
 9. Data availability context: `instruments`, `market_data_cache`, `news_sentiment_cache`
 
-## 9) Common pitfalls
+## Troubleshooting
 
 - Do not copy a live `.db` file directly while writes are ongoing; use `.backup`.
 - Keep timestamps in UTC when comparing scheduler events and DB rows.
 - Never export `.env` in shared analysis bundles.
+
+## Related Notes
+
+- [Deployment (VPS)](DEPLOYMENT.md)
+- [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md)
+- [Governance & Audit Trail](GOVERNANCE.md)
 

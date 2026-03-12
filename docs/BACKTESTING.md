@@ -1,47 +1,34 @@
-# Backtesting in the Investment Agent
+---
+tags: [backtesting, validation, testing]
+status: current
+last_updated: 2026-03-10
+---
 
-## What is backtesting?
+# Backtesting Engine
+
+> Replay trading strategies on historical data to validate performance before live deployment.
+
+## Purpose
 
 **Backtesting** is the practice of running a trading strategy on historical market data to see how it would have performed in the past. Instead of executing real orders, a **paper broker** simulates fills (e.g. at the next day’s open, with configurable slippage), and the system records an **equity curve** and **trade list** as if the strategy had been live.
 
+This project’s backtesting system addresses the **biggest maturity gap**: lack of historical evidence of edge. Current pipeline quality is strong (orchestration, moderation, risk controls, execution logging), but without backtesting and walk-forward validation:
+- Parameter changes are difficult to justify
+- Apparent improvements can be noise
+- Risk of overfitting rises
+- Live capital deployment confidence remains limited
+
 In this project, backtesting:
-
-- Replays **daily bars** for a fixed universe of tickers over a date range.
-- Rebuilds **signals at each date** using only data available at that time (no lookahead).
-- Uses a **deterministic, LLM-free policy** (e.g. close vs SMA rules) so runs are reproducible and cheap.
-- Applies **portfolio and risk constraints** (cash floor, max positions, slippage) to mimic live behaviour.
-
----
-
-## Why it is important
-
-1. **Evidence gap**  
-   Without backtesting, we only know how the system behaves in live or practice mode. We cannot say whether a parameter change (e.g. strategy weights, risk limits) would have helped or hurt over past years.
-
-2. **Parameter and strategy discipline**  
-   Backtests let us:
-   - Justify strategy and risk parameter changes with quantitative results.
-   - Avoid overfitting by using **walk-forward validation** (train/validate on one period, test on a later one).
-   - Compare the strategy to a **benchmark** (e.g. SPY buy-and-hold) to measure excess return and risk-adjusted performance.
-
-3. **Governance and release gating**  
-   The backtesting pipeline produces a **promotion report** (e.g. “safe to deploy” vs “hold”) based on Sharpe, drawdown, hit rate, and excess return. That gives a clear gate before promoting strategy or config changes to live.
-
-4. **Cost and speed**  
-   Running thousands of days with real LLM calls would be expensive and slow. A **deterministic policy proxy** (e.g. simple rules from the same inputs the live strategy uses) makes large-scale backtests feasible and reproducible.
+- Replays **daily bars** for a fixed universe of tickers over a date range
+- Rebuilds **signals at each date** using only data available at that time (no lookahead)
+- Uses a **deterministic, LLM-free policy** (e.g. close vs SMA rules) so runs are reproducible and cheap
+- Applies **portfolio and risk constraints** (cash floor, max positions, slippage) to mimic live behaviour
 
 ---
 
-## How it is implemented
+## Architecture
 
-### Location and entrypoints
-
-- **Package:** `src/backtesting/`
-- **CLI:**  
-  `poetry run python -m src.backtesting.main --config backtests/default.yaml`  
-  Optional: `--synthetic` (use synthetic data), `--walk-forward`, `--scenario bull|bear|sideways`, `--output-dir <path>`.
-
-### Main components
+### Components
 
 | Component | Role |
 |-----------|------|
@@ -51,46 +38,174 @@ In this project, backtesting:
 | **metrics** | `compute_metrics()`: Sharpe, Sortino, max drawdown, CAGR, hit rate, turnover, optional excess vs benchmark. |
 | **policies** | `DeterministicPolicy`: LLM-free rules (e.g. BUY when close > SMA, SELL when close < SMA) with configurable SMA period and max positions. |
 
-### Data and assumptions
+### Data and Assumptions
 
-- **Frequency:** daily bars only (v1).
-- **Fill model:** next-day open plus fixed slippage (bps).
-- **No lookahead:** at each date, only data on or before that date is used to compute signals.
-- **Reproducibility:** every run uses an explicit **seed**; same config + seed produce the same results.
-- **Data sources:** If no CSV files exist in `data/backtest/<TICKER>.csv`, the CLI automatically fetches OHLCV from **yfinance** for the config date range and **caches** them to CSV for subsequent runs. Delete the CSV files to force a refresh.
+**Frequency:** Daily bars only (v1).
+
+**Fill model:** Next-day open plus fixed slippage (bps).
+
+**No lookahead bias:** At each date, only data on or before that date is used to compute signals. Strict feature timestamps and unit tests specifically guard against lookahead.
+
+**Reproducibility:** Every run uses an explicit **seed**; same config + seed produce identical results. This requirement prevents noise from affecting comparisons.
+
+**Data sources:**
+- If no CSV files exist in `data/backtest/<TICKER>.csv`, the CLI automatically fetches OHLCV from **yfinance** for the config date range.
+- OHLCV is cached to CSV for subsequent runs to reduce API load.
+- Delete the CSV files to force a refresh.
+- Corporate actions adjustments come from provider data.
+
+**Cost realism:** Include spread/slippage/fees assumptions with configurable sensitivity ranges (default: fixed bps by liquidity tier).
+
+**Reproducible splits:** Rolling walk-forward splits (train/validate/test by time, not random split) with fixed split schema and seed control.
+
+---
+
+## Implementation
+
+### Entrypoints
+
+**Package location:** `src/backtesting/`
+
+**CLI commands:**
+
+```bash
+# Single run with default config
+poetry run python -m src.backtesting.main --config backtests/default.yaml
+
+# Synthetic data (for regression testing)
+poetry run python -m src.backtesting.main --synthetic
+
+# Walk-forward validation with promotion report
+poetry run python -m src.backtesting.main --walk-forward
+
+# Scenario analysis (bull/bear/sideways)
+poetry run python -m src.backtesting.main --scenario bull|bear|sideways
+
+# Custom output directory
+poetry run python -m src.backtesting.main --config backtests/default.yaml --output-dir <path>
+```
 
 ### Outputs (per run)
 
-- `results.json` — summary metrics (Sharpe, Sortino, max drawdown, hit rate, etc.).
-- `trades.csv` — every simulated fill (timestamp, ticker, side, quantity, price, value, pnl_gbp).
-- `equity_curve.csv` — date and portfolio value.
-- `run_metadata.json` — config hash, seed, timestamp.
+Every backtest produces four artifacts in a timestamped results directory:
 
-See **Walk-Forward Validation** for multi-fold runs and the promotion report.
+- **`results.json`** — Summary metrics including CAGR, Sharpe, Sortino, max drawdown, hit rate, turnover, exposure.
+- **`trades.csv`** — Every simulated fill (timestamp, ticker, side, quantity, price, value, pnl_gbp).
+- **`equity_curve.csv`** — Date and portfolio value.
+- **`run_metadata.json`** — Config hash, commit hash, seed, timestamp.
+
+Benchmark comparison (e.g. SPY buy-and-hold baseline) is included in every report when available.
+
+### Strategy Proxy
+
+**Phase 2 — LLM-free deterministic policy:**
+- Deterministic synthesis heuristic from sub-strategy outputs (momentum, mean reversion, factor)
+- Optional calibrated conviction mapping
+- Optional moderation/risk proxy toggles (in future evolution)
+- Allows backtests to run at scale without real LLM calls
+
+**Benchmark comparison:**
+- Excess return and drawdown vs SPY or configurable baseline
+- Risk-adjusted metrics for regime-aware improvements
+
+**Scenario profiles:**
+- Bull, bear, and sideways sample periods for regime testing
+- Different date windows show how strategy behaves in different regimes
 
 ---
 
-## How it benefits this project
+## Technical Principles
 
-1. **Quantitative release gate**  
-   Strategy or risk changes can be required to pass a backtest and walk-forward check (e.g. Sharpe above a threshold, drawdown and hit rate within bounds) before going live.
+1. **No lookahead bias**
+   Indicators and signals only use data available at decision time. Strict enforcement via unit tests for leakage checks.
 
-2. **Calibration and tuning**  
-   Once we have backtest and live results, we can compare recent backtest windows to actual outcomes to calibrate conviction, sizing, and strategy weights (e.g. US-2.1, US-2.2 in the roadmap).
+2. **Deterministic and reproducible**
+   Same config + seed produces identical results across multiple runs. Essential for reliable parameter tuning.
 
-3. **Scenario and regime analysis**  
-   Scenario configs (bull, bear, sideways) and different date windows show how the strategy behaves in different regimes, supporting regime-aware improvements (e.g. US-3.2).
+3. **Cost realism**
+   Include spread/slippage/fees assumptions with configurable sensitivity ranges. Conservative and optimistic bands help identify fragility.
 
-4. **Transparency and audit**  
-   Every run is reproducible (seed + config), and artefacts are stored so we can audit what was tested before a deployment.
+4. **Config-driven**
+   Backtest behaviour is toggled via `backtests/default.yaml` and scenario profiles; reuses existing strategy/risk configuration values.
 
-5. **Future extensions**  
-   The same engine can later plug in **reused sub-strategy logic** (momentum, mean reversion, factor) and **risk rules** from the live pipeline for closer alignment between backtest and production.
+5. **Fail-closed promotion**
+   If walk-forward evidence is weak (e.g. Sharpe below threshold, drawdown exceeds bounds, hit rate unstable), do not promote strategy changes to live. Quantitative evidence is mandatory.
 
 ---
 
-## References
+## Validation and Acceptance Criteria
 
-- Implementation plan: [BACKTESTING_PROJECT_PLAN.md](BACKTESTING_PROJECT_PLAN.md)
-- Walk-forward and promotion report: [WALK_FORWARD_VALIDATION.md](WALK_FORWARD_VALIDATION.md)
-- Roadmap: [SOPHISTICATION_ROADMAP.md](SOPHISTICATION_ROADMAP.md) (US-5.1, US-5.2)
+- [x] End-to-end backtest run completes for 5+ years daily data without errors.
+- [x] Walk-forward report generated with at least 3 rolling folds.
+- [x] Outputs include: CAGR, Sharpe, Sortino, max drawdown, hit rate, turnover, exposure.
+- [x] Benchmark comparison included in every report.
+- [x] Leakage checks: no future data access paths in strategy/risk inputs.
+- [x] Determinism check: repeated run with same seed yields identical results.
+- [x] CI tests cover core engine, fill logic, metric calculations, and split logic.
+
+---
+
+## Collaborative Development
+
+This project is built and maintained collaboratively:
+
+**Claude Code (primary):**
+- Backtest architecture and simulation model assumptions
+- Validation methodology (walk-forward, leakage guards, metrics interpretation)
+- Statistical sanity checks and promotion criteria
+
+**Codex (primary):**
+- Engine implementation, CLI wiring, data loading plumbing
+- Test suite and regression fixtures
+- Integration with existing config/logging/docs
+
+**Shared review responsibilities:**
+- Assumptions review before first run
+- Result interpretation review before deployment
+- Joint sign-off for release gating rules
+
+---
+
+## Benefits
+
+1. **Quantitative release gate**
+   Strategy or risk changes must pass a backtest and walk-forward check (e.g. Sharpe above threshold, drawdown and hit rate within bounds) before going live. This closes the evidence gap.
+
+2. **Calibration and tuning**
+   Once backtest and live results are compared, calibration is possible for conviction, sizing, and strategy weights (e.g. US-2.1, US-2.2 in roadmap). Recent backtest windows can be compared to actual outcomes.
+
+3. **Scenario and regime analysis**
+   Scenario configs (bull, bear, sideways) and different date windows show strategy behaviour in different regimes, supporting regime-aware improvements (e.g. US-3.2).
+
+4. **Transparency and audit**
+   Every run is reproducible (seed + config) and artefacts are stored for audit. Parameter sweep registries and experiment tracking prevent overfitting through repeated tuning.
+
+5. **Future extensions**
+   The same engine can later plug in reused sub-strategy logic (momentum, mean reversion, factor) and risk rules from the live pipeline for closer alignment between backtest and production.
+
+---
+
+## Risks and Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| Overfitting through repeated tuning | Lock validation windows, track experiment registry, walk-forward discipline |
+| Unrealistic execution assumptions | Run conservative and optimistic slippage bands, sensitivity analysis |
+| Data leakage | Strict feature timestamps, unit tests for leakage checks, `check_no_lookahead()` validation |
+| Complexity creep | Ship minimal reliable v1 before adding advanced microstructure (margin financing, borrow costs) |
+
+---
+
+## Success Metrics
+
+- **Backtest runtime:** < 10 minutes for a 5-year daily run on standard dev machine
+- **Reproducibility:** 100% deterministic for same config + seed
+- **Research utility:** Every strategy PR includes backtest + walk-forward summary
+- **Governance utility:** Promotion decision documented from quantitative evidence before deployment
+
+---
+
+## Related Notes
+
+- [Walk-Forward Validation](WALK_FORWARD_VALIDATION.md) — Multi-fold rolling splits and promotion report template
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — US-5.1 (Core Engine) and US-5.2 (Walk-Forward + Promotion) status
