@@ -218,18 +218,31 @@ async def get_universe_bubble(
             except Exception:
                 pass
 
-        # Total sold quantity per ticker (positive = shares sold). SELL orders store negative quantity.
-        sold_rows = (
+        # Total sold quantity per ticker (positive = shares sold).
+        # SELL orders store negative quantity; we report abs(sum(quantity)).
+        # We also split into live vs dry-run components for transparency.
+        sold_live_rows = (
             session.query(Order.ticker, func.sum(func.abs(Order.quantity)))
             .filter(
                 Order.ticker.in_(tickers),
                 Order.action == "SELL",
-                Order.status.in_(("filled", "dry_run")),
+                Order.status == "filled",
             )
             .group_by(Order.ticker)
             .all()
         )
-        sold_qty: dict[str, float] = {t: float(q or 0.0) for t, q in sold_rows}
+        sold_dry_run_rows = (
+            session.query(Order.ticker, func.sum(func.abs(Order.quantity)))
+            .filter(
+                Order.ticker.in_(tickers),
+                Order.action == "SELL",
+                Order.status == "dry_run",
+            )
+            .group_by(Order.ticker)
+            .all()
+        )
+        sold_live_qty: dict[str, float] = {t: float(q or 0.0) for t, q in sold_live_rows}
+        sold_dry_run_qty: dict[str, float] = {t: float(q or 0.0) for t, q in sold_dry_run_rows}
 
         result = []
         for i in instruments:
@@ -254,7 +267,9 @@ async def get_universe_bubble(
                     reduce_count=stats["REDUCE"],
                     hold_count=stats["HOLD"],
                     hold_qty=holdings.get(i.ticker, 0.0),
-                    sold_qty=sold_qty.get(i.ticker, 0.0),
+                    sold_qty=sold_live_qty.get(i.ticker, 0.0) + sold_dry_run_qty.get(i.ticker, 0.0),
+                    sold_live_qty=sold_live_qty.get(i.ticker, 0.0),
+                    sold_dry_run_qty=sold_dry_run_qty.get(i.ticker, 0.0),
                 )
             )
         return result
@@ -264,7 +279,7 @@ async def get_universe_bubble(
 
 @router.get("/{ticker}", response_model=InstrumentDetailSchema)
 async def get_instrument(ticker: str):
-    """Get detailed instrument info with latest committee reasoning."""
+    """Get detailed instrument info with latest committee reasoning and execution summary."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
@@ -275,6 +290,37 @@ async def get_instrument(ticker: str):
             raise HTTPException(status_code=404, detail="Instrument not found")
 
         label, decision = _get_instrument_label(session, ticker)
+
+        # Lightweight execution summary: latest BUY/SELL orders for this ticker
+        latest_buy = (
+            session.query(Order)
+            .filter(Order.ticker == ticker, Order.action == "BUY")
+            .order_by(desc(Order.timestamp))
+            .first()
+        )
+        latest_sell = (
+            session.query(Order)
+            .filter(Order.ticker == ticker, Order.action == "SELL")
+            .order_by(desc(Order.timestamp))
+            .first()
+        )
+
+        execution_summary: dict[str, Any] = {}
+        if latest_buy:
+            execution_summary["last_buy"] = {
+                "timestamp": latest_buy.timestamp.isoformat(),
+                "status": latest_buy.status,
+                "quantity": latest_buy.quantity,
+            }
+        if latest_sell:
+            execution_summary["last_sell"] = {
+                "timestamp": latest_sell.timestamp.isoformat(),
+                "status": latest_sell.status,
+                "quantity": latest_sell.quantity,
+            }
+        if execution_summary:
+            decision = decision or {}
+            decision["execution_summary"] = execution_summary
 
         return InstrumentDetailSchema(
             ticker=instrument.ticker,

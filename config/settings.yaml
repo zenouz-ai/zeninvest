@@ -61,8 +61,10 @@ universe:
   large_cap_min: 10000000000  # $10B
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
-  screening_cooldown_hours: 48  # Hours before a screened stock can be re-screened
+  screening_cooldown_hours: 24  # Hours before a screened stock can be re-screened
   uninvestigated_target_pct: 0.5  # Target share of per-cycle candidates that have never been investigated (approx)
+  batch_enrichment_enabled: true   # Scheduled job to enrich instruments missing sector/market_cap
+  batch_enrichment_per_run: 50     # Max instruments to enrich per scheduler run
 
 cost_limits:
   anthropic_daily_gbp: 1.00
@@ -70,6 +72,12 @@ cost_limits:
   google_daily_gbp: 0.50
   total_monthly_gbp: 50.00
   alert_threshold_pct: 80
+
+# Search API monthly call limits (project-wide) — Brave, Tavily for enrichment
+search_api_limits:
+  brave_search_monthly_calls: 2000
+  brave_answer_monthly_calls: 2000
+  tavily_monthly_calls: 2000
 
 opportunity:
   enabled: true
@@ -94,6 +102,7 @@ opportunity:
     market_cap: 0.03
   penalties:
     strategy_hold: -0.8
+    strategy_queued: -0.6   # Less punitive than hold (potential BUY next cycle)
     moderation_blocked: -1.2
     risk_reject: -1.6
     risk_resize: -0.35

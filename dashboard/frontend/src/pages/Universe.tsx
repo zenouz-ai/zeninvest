@@ -221,7 +221,18 @@ export default function Universe() {
         cell: (info) => {
           const ticker = info.row.original.ticker
           const qty = soldMap[ticker] ?? 0
-          return <span className="font-mono text-xs">{qty ? qty.toFixed(2) : '0'}</span>
+          return (
+            <span
+              className="font-mono text-xs"
+              title={
+                typeof qty === 'number'
+                  ? `Total shares sold across live and dry-run cycles: ${qty.toFixed(2)}`
+                  : undefined
+              }
+            >
+              {qty ? qty.toFixed(2) : '0'}
+            </span>
+          )
         },
       }),
       columnHelper.display({

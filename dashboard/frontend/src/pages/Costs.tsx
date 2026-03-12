@@ -46,13 +46,19 @@ export default function Costs() {
   }
 
   const dailyChartData = daily
-    .map((d) => ({
-      date: d.date,
-      anthropic: d.anthropic_gbp,
-      openai: d.openai_gbp,
-      google: d.google_gbp,
-      total: d.total_gbp,
-    }))
+    .map((d) => {
+      const llm = (d.llm_cost_gbp ?? d.total_gbp) || 0
+      const api = d.api_cost_gbp ?? 0
+      return {
+        date: d.date,
+        anthropic: d.anthropic_gbp,
+        openai: d.openai_gbp,
+        google: d.google_gbp,
+        llm,
+        api,
+        total: llm + api,
+      }
+    })
     .sort((a, b) => a.date.localeCompare(b.date))
 
   return (
@@ -76,7 +82,7 @@ export default function Costs() {
       )}
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Daily cost by provider (last 30 days)</h2>
+        <h2 className="text-lg font-semibold mb-3">Daily cost: API vs LLM (last 30 days)</h2>
         {dailyChartData.length === 0 ? (
           <p className="text-terminal-text-dim">No cost data.</p>
         ) : (
@@ -92,6 +98,7 @@ export default function Costs() {
                   formatter={(value: number) => [`£${value.toFixed(4)}`, '']}
                 />
                 <Legend />
+                <Area type="monotone" dataKey="api" stackId="1" stroke="#ff6b6b" fill="#ff6b6b33" name="API (Brave/Tavily)" />
                 <Area type="monotone" dataKey="anthropic" stackId="1" stroke="#00ff88" fill="#00ff8833" name="Anthropic" />
                 <Area type="monotone" dataKey="openai" stackId="1" stroke="#58a6ff" fill="#58a6ff33" name="OpenAI" />
                 <Area type="monotone" dataKey="google" stackId="1" stroke="#d4a017" fill="#d4a01733" name="Google" />
@@ -102,7 +109,7 @@ export default function Costs() {
       </div>
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Monthly cumulative (£)</h2>
+        <h2 className="text-lg font-semibold mb-3">Monthly cumulative (£): API vs LLM</h2>
         {monthly.length === 0 ? (
           <p className="text-terminal-text-dim">No monthly data.</p>
         ) : (
@@ -112,6 +119,8 @@ export default function Costs() {
                 <tr className="border-b border-terminal-border text-left">
                   <th className="py-2 font-mono">Month</th>
                   <th className="py-2 font-mono">Total</th>
+                  <th className="py-2 font-mono">API</th>
+                  <th className="py-2 font-mono">LLM</th>
                   <th className="py-2 font-mono">Anthropic</th>
                   <th className="py-2 font-mono">OpenAI</th>
                   <th className="py-2 font-mono">Google</th>
@@ -122,6 +131,8 @@ export default function Costs() {
                   <tr key={m.year_month} className="border-b border-terminal-border">
                     <td className="py-2 font-mono">{m.year_month}</td>
                     <td className="py-2 font-mono">{m.total_gbp?.toFixed(2)}</td>
+                    <td className="py-2 font-mono">£{(m.api_cost_gbp ?? 0).toFixed(2)}</td>
+                    <td className="py-2 font-mono">£{(m.llm_cost_gbp ?? 0).toFixed(2)}</td>
                     <td className="py-2 font-mono">{m.by_provider?.anthropic?.toFixed(2) ?? '—'}</td>
                     <td className="py-2 font-mono">{m.by_provider?.openai?.toFixed(2) ?? '—'}</td>
                     <td className="py-2 font-mono">{m.by_provider?.google?.toFixed(2) ?? '—'}</td>

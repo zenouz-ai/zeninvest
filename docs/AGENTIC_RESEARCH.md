@@ -702,14 +702,14 @@ research:
 Required (add to `.env`):
 
 ```
-BRAVE_SEARCH_API_KEY=...          # Brave Search (free tier: 2000/month; paid: £10/10k searches)
+BRAVE_SEARCH_API_KEY=...          # Brave Search ($5/1k requests; 50 RPS; free $5 credits/month)
 BRAVE_SEARCH_ENDPOINT=https://api.search.brave.com/res/v1/web/search
 ```
 
 Optional (required if Tavily is primary, fallback, or additional):
 
 ```
-TAVILY_API_KEY=...                # Tavily Search (free tier: 1K credits/month; fallback/additional for agentic research)
+TAVILY_API_KEY=...                # Tavily Search (free: 1K credits/month; pay-as-you-go: $0.008/credit; Project: $30/month for 4k credits)
 SEC_EDGAR_EMAIL=your_email@domain.com  # For politeness headers; optional but recommended
 RESEARCH_CACHE_REDIS_URL=redis://localhost:6379  # If using Redis instead of in-process cache
 ```

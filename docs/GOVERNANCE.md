@@ -422,6 +422,18 @@ if status.is_at_alert_threshold:
 
 The 80% threshold is configurable via `cost_limits.alert_threshold_pct` in `settings.yaml`.
 
+### 5.4.1 Search API Costs (Brave, Tavily)
+
+Brave and Tavily are used for batch universe enrichment (sector/market_cap extraction) and planned Agentic Research. They are **not** tracked in `cost_logs`; usage is logged to `api_logs` and enforced via `search_api_tracker` (2,000 calls/month each).
+
+| API | Pricing | Rate limit | Free tier |
+|-----|---------|------------|-----------|
+| **Brave Search** | $5.00 per 1,000 requests | 50 RPS | $5 credits/month |
+| **Brave Answers** | $4.00 per 1,000 queries + $5/1M input + $5/1M output tokens | 2 RPS | $5 credits/month |
+| **Tavily** | $0.008/credit pay-as-you-go; $30/month for 4,000 credits (Project) | — | 1,000 credits/month (Researcher) |
+
+At 2,000 calls/month each: Brave Search ≈ $10 (or partly covered by $5 credits); Brave Answers ≈ $8+ token costs (or partly covered by $5 credits); Tavily ≈ $16 pay-as-you-go or Project plan $30 for 4,000 credits.
+
 ### 5.5 Cost Visibility
 
 The system provides multiple cost visibility mechanisms:
@@ -538,7 +550,7 @@ The system maintains a comprehensive audit trail across ten database tables:
 | `moderation_logs` | Every moderation verdict from GPT-4o and Gemini | `cycle_id`, `ticker`, `moderator`, `verdict`, `reasoning`, `growth_score`, `risk_score`, `consensus` |
 | `risk_decisions` | Every risk evaluation | `cycle_id`, `ticker`, `verdict`, `rules_checked_json`, `triggered_rules_json`, `reasoning` |
 | `cost_logs` | Every LLM API call cost | `provider`, `model`, `input_tokens`, `output_tokens`, `cost_gbp`, `cycle_id`, `purpose` |
-| `api_logs` | Every external API call | `service`, `method`, `endpoint`, `status_code`, `duration_ms`, `error` |
+| `api_logs` | Every external API call (T212, Finnhub, Alpha Vantage, brave_search, brave_answers, tavily) | `service`, `method`, `endpoint`, `status_code`, `duration_ms`, `error`; search APIs have monthly limits (2k each) via `search_api_tracker`. Web search fallback (Brave/Tavily for analyst/news when Finnhub/AV fail) is logged here. |
 | `portfolio_snapshots` | Portfolio state at end of each cycle | `total_value_gbp`, `cash_gbp`, `num_positions`, `positions_json`, `state` |
 | `instruments` | Company profiles and screening state | `ticker`, `sector`, `industry`, `market_cap`, `business_summary`, `data_available`, `last_screened_at` |
 | `opportunity_score_snapshots` | Per-cycle UOV scores/components for every evaluated ticker | `cycle_id`, `ticker`, `stage`, `uov_raw`, `uov_z`, `uov_final`, `uov_ewma`, `moderation_consensus`, `risk_verdict` |
@@ -766,7 +778,7 @@ universe:
   large_cap_min: 10000000000
   mid_cap_min: 2000000000
   small_cap_min: 300000000
-  screening_cooldown_hours: 72    # Hours before re-screening a stock
+  screening_cooldown_hours: 24    # Hours before re-screening a stock
 
 cost_limits:
   anthropic_daily_gbp: 1.00

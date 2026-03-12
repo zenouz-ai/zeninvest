@@ -16,6 +16,10 @@ from src.agents.market_data.fundamentals import get_fundamentals
 from src.agents.market_data.macro_intelligence import get_macro_intelligence
 from src.agents.market_data.indicators import calculate_indicators, calculate_relative_strength
 from src.agents.market_data.seed_universe import get_seed_instruments
+from src.agents.market_data.brave_enrichment import (
+    SECTOR_ALIASES,
+    extract_sector_market_cap_brave_answers,
+)
 from src.data.database import get_session
 from src.data.models import Instrument, MarketDataCache, NewsSentimentCache, StrategyDecision
 from src.utils.config import get_settings
@@ -498,40 +502,57 @@ class DataFetcher:
             )
 
             if not instruments:
-                # Fallback: grab whatever is available
-                logger.warning("No instruments with sector/market_cap. Using raw universe.")
-                return self._get_fallback_universe(exclude, total, session)
+                # Fallback: grab whatever is available (seed if needed, or rotate when all in cooldown)
+                logger.warning("No instruments with sector/market_cap past cooldown. Using fallback.")
+                return self._get_fallback_universe(exclude, total, session, cooldown_cutoff)
 
-            # Determine which tickers have been investigated before (strategy_decisions present)
+            # Last-investigated timestamp per ticker (max of StrategyDecision.timestamp)
             tickers = [inst.ticker for inst in instruments]
-            investigated_set = {
-                t
-                for (t,) in session.query(StrategyDecision.ticker)
+            last_inv_rows = (
+                session.query(StrategyDecision.ticker, func.max(StrategyDecision.timestamp).label("last_ts"))
                 .filter(StrategyDecision.ticker.in_(tickers))
-                .distinct()
+                .group_by(StrategyDecision.ticker)
                 .all()
-            }
+            )
+            last_investigated: dict[str, datetime] = {r.ticker: r.last_ts for r in last_inv_rows}
 
-            # Bucket by market-cap tier and investigation status
-            large_fresh: list[Instrument] = []
-            large_investigated: list[Instrument] = []
-            mid_fresh: list[Instrument] = []
-            mid_investigated: list[Instrument] = []
-            small_fresh: list[Instrument] = []
-            small_investigated: list[Instrument] = []
+            # Review vs new: review = investigated 24-48h ago; new = never or >48h ago
+            rw = getattr(settings, "review_window_hours", None) or [24, 48]
+            try:
+                min_h, max_h = int(rw[0]), int(rw[1])
+            except (TypeError, IndexError, ValueError):
+                min_h, max_h = 24, 48
+            cutoff_newer = datetime.now(timezone.utc) - timedelta(hours=min_h)
+            cutoff_older = datetime.now(timezone.utc) - timedelta(hours=max_h)
+
+            def _is_review(t: str) -> bool:
+                ts = last_investigated.get(t)
+                if ts is None:
+                    return False
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                return cutoff_older <= ts <= cutoff_newer
+
+            # Bucket by market-cap tier and review/new status
+            large_new: list[Instrument] = []
+            large_review: list[Instrument] = []
+            mid_new: list[Instrument] = []
+            mid_review: list[Instrument] = []
+            small_new: list[Instrument] = []
+            small_review: list[Instrument] = []
 
             for inst in instruments:
                 if inst.ticker in exclude:
                     continue
                 cap = inst.market_cap or 0
-                is_investigated = inst.ticker in investigated_set
+                is_review = _is_review(inst.ticker)
                 target_list = None
                 if cap >= settings.large_cap_min:
-                    target_list = large_investigated if is_investigated else large_fresh
+                    target_list = large_review if is_review else large_new
                 elif cap >= settings.mid_cap_min:
-                    target_list = mid_investigated if is_investigated else mid_fresh
+                    target_list = mid_review if is_review else mid_new
                 else:
-                    target_list = small_investigated if is_investigated else small_fresh
+                    target_list = small_review if is_review else small_new
                 target_list.append(inst)
 
             # Target counts per tier
@@ -539,47 +560,41 @@ class DataFetcher:
             n_mid = max(1, int(total * settings.mid_cap_pct))
             n_small = max(1, total - n_large - n_mid)
 
-            # Within each tier, target share of never-investigated tickers.
-            # In tests, settings may be a MagicMock, so be defensive.
+            # Within each tier, target share from "new" pool (uninvestigated_target_pct = new_share)
             try:
-                share_val = float(getattr(settings, "uninvestigated_target_pct", 0.5))
+                new_share = max(0.0, min(1.0, float(getattr(settings, "uninvestigated_target_pct", 0.5))))
             except Exception:
-                share_val = 0.5
-            fresh_share = max(0.0, min(1.0, share_val))
+                new_share = 0.5
 
-            def _sample_tier(fresh_bucket: list[Instrument], investigated_bucket: list[Instrument], n: int) -> list[Instrument]:
+            def _sample_tier(new_bucket: list[Instrument], review_bucket: list[Instrument], n: int) -> list[Instrument]:
                 if n <= 0:
                     return []
-                target_fresh = int(round(n * fresh_share))
-                # cap by available
-                target_fresh = min(target_fresh, len(fresh_bucket))
+                target_new = min(int(round(n * new_share)), len(new_bucket))
                 selected: list[Instrument] = []
-                if target_fresh > 0:
-                    selected.extend(self._sector_balanced_sample(fresh_bucket, target_fresh, settings.candidates_per_sector))
+                if target_new > 0:
+                    selected.extend(self._sector_balanced_sample(new_bucket, target_new, settings.candidates_per_sector))
                 remaining = n - len(selected)
                 if remaining > 0:
-                    selected.extend(self._sector_balanced_sample(investigated_bucket, remaining, settings.candidates_per_sector))
-                # If still short (e.g. not enough investigated either), top up from remaining fresh
+                    selected.extend(self._sector_balanced_sample(review_bucket, remaining, settings.candidates_per_sector))
                 if len(selected) < n:
-                    remaining_needed = n - len(selected)
-                    leftover_fresh = [i for i in fresh_bucket if i not in selected]
-                    selected.extend(self._sector_balanced_sample(leftover_fresh, remaining_needed, settings.candidates_per_sector))
+                    leftover_new = [i for i in new_bucket if i not in selected]
+                    selected.extend(self._sector_balanced_sample(leftover_new, n - len(selected), settings.candidates_per_sector))
                 return selected[:n]
 
-            # Sample within each tier using sector-balanced selection and fresh/investigated mix
+            # Sample within each tier: 50% new, 50% review (sector-balanced)
             selected: list[Instrument] = []
-            selected.extend(_sample_tier(large_fresh, large_investigated, n_large))
-            selected.extend(_sample_tier(mid_fresh, mid_investigated, n_mid))
-            selected.extend(_sample_tier(small_fresh, small_investigated, n_small))
+            selected.extend(_sample_tier(large_new, large_review, n_large))
+            selected.extend(_sample_tier(mid_new, mid_review, n_mid))
+            selected.extend(_sample_tier(small_new, small_review, n_small))
 
             logger.info(
-                "Screened universe: %s candidates (large=%s, mid=%s, small=%s, cooldown=%sh, fresh_share=%.2f)",
+                "Screened universe: %s candidates (large=%s, mid=%s, small=%s, cooldown=%sh, new_share=%.2f)",
                 len(selected),
                 n_large,
                 n_mid,
                 n_small,
                 cooldown_hours,
-                fresh_share,
+                new_share,
             )
 
             candidates = [
@@ -602,17 +617,20 @@ class DataFetcher:
                     for c in candidates:
                         sector_counts[c.get("sector", "Unknown")] += 1
                     
+                    large_count = len(large_new) + len(large_review)
+                    mid_count = len(mid_new) + len(mid_review)
+                    small_count = len(small_new) + len(small_review)
                     log_event(
                         event_type="universe_updated",
                         source="screener",
-                        message=f"Screened {len(candidates)} candidates (large={min(n_large, len(large))}, mid={min(n_mid, len(mid))}, small={min(n_small, len(small))})",
+                        message=f"Screened {len(candidates)} candidates (large={min(n_large, large_count)}, mid={min(n_mid, mid_count)}, small={min(n_small, small_count)})",
                         metadata={
                             "num_candidates": len(candidates),
                             "tickers": tickers_list[:50],  # Limit to first 50 for storage
                             "sector_distribution": dict(sector_counts),
-                            "large_cap_count": min(n_large, len(large)),
-                            "mid_cap_count": min(n_mid, len(mid)),
-                            "small_cap_count": min(n_small, len(small)),
+                            "large_cap_count": min(n_large, large_count),
+                            "mid_cap_count": min(n_mid, mid_count),
+                            "small_cap_count": min(n_small, small_count),
                             "cooldown_hours": cooldown_hours,
                         },
                     )
@@ -664,6 +682,7 @@ class DataFetcher:
         exclude: set[str],
         total: int,
         session: Any,
+        cooldown_cutoff: datetime | None = None,
     ) -> list[dict[str, Any]]:
         """Fallback using curated seed universe of well-known stocks.
 
@@ -671,51 +690,153 @@ class DataFetcher:
         before enrichment), use the curated seed list of known-good US equities
         instead of random T212 picks that often include delisted/unfetchable tickers.
         Seeds are upserted into the instruments table so they persist.
+
+        When all enriched instruments are in cooldown (pool exhausted), orders by
+        last_screened_at ASC (oldest first) to rotate through the pool instead of
+        returning the same top 30 by market cap every cycle.
         """
-        seed_stocks = get_seed_instruments()
-        logger.info(f"Seeding universe with {len(seed_stocks)} curated stocks")
+        # Only seed when no enriched instruments exist; otherwise we're in "all in cooldown" path
+        has_enriched = (
+            session.query(Instrument)
+            .filter(
+                Instrument.sector.isnot(None),
+                Instrument.market_cap.isnot(None),
+                Instrument.market_cap > self.settings.small_cap_min,
+                Instrument.data_available != False,  # noqa: E712
+            )
+            .limit(1)
+            .first()
+            is not None
+        )
+        if not has_enriched:
+            seed_stocks = get_seed_instruments()
+            logger.info(f"Seeding universe with {len(seed_stocks)} curated stocks")
+            for seed in seed_stocks:
+                existing = session.query(Instrument).filter_by(ticker=seed["ticker"]).first()
+                if existing:
+                    if not existing.sector or existing.sector == "Unknown":
+                        existing.sector = seed["sector"]
+                    if not existing.market_cap:
+                        existing.market_cap = seed["market_cap"]
+                    if not existing.name:
+                        existing.name = seed["name"]
+                else:
+                    session.add(Instrument(
+                        ticker=seed["ticker"],
+                        name=seed["name"],
+                        sector=seed["sector"],
+                        market_cap=seed["market_cap"],
+                    ))
+            session.commit()
 
-        # Upsert seed data into instruments table
-        for seed in seed_stocks:
-            existing = session.query(Instrument).filter_by(ticker=seed["ticker"]).first()
-            if existing:
-                # Back-fill sector/market_cap if missing
-                if not existing.sector or existing.sector == "Unknown":
-                    existing.sector = seed["sector"]
-                if not existing.market_cap:
-                    existing.market_cap = seed["market_cap"]
-                if not existing.name:
-                    existing.name = seed["name"]
-            else:
-                session.add(Instrument(
-                    ticker=seed["ticker"],
-                    name=seed["name"],
-                    sector=seed["sector"],
-                    market_cap=seed["market_cap"],
-                ))
-        session.commit()
+        settings = self.settings
 
-        # Now query back the seeded instruments, excluding bad tickers
+        # First try: same cooldown logic as main path
+        if cooldown_cutoff is not None:
+            instruments = (
+                session.query(Instrument)
+                .filter(
+                    Instrument.sector.isnot(None),
+                    Instrument.sector != "",
+                    Instrument.sector != "Unknown",
+                    Instrument.market_cap.isnot(None),
+                    Instrument.market_cap > settings.small_cap_min,
+                    Instrument.data_available != False,  # noqa: E712
+                    (Instrument.last_screened_at.is_(None))
+                    | (Instrument.last_screened_at < cooldown_cutoff),
+                )
+                .all()
+            )
+            if instruments:
+                # Apply exclude and sector-balanced sample; use review/new bucketing same as main path
+                tickers = [inst.ticker for inst in instruments]
+                last_inv_rows = (
+                    session.query(StrategyDecision.ticker, func.max(StrategyDecision.timestamp).label("last_ts"))
+                    .filter(StrategyDecision.ticker.in_(tickers))
+                    .group_by(StrategyDecision.ticker)
+                    .all()
+                )
+                last_inv = {r.ticker: r.last_ts for r in last_inv_rows}
+                rw = getattr(settings, "review_window_hours", None) or [24, 48]
+                try:
+                    min_h, max_h = int(rw[0]), int(rw[1])
+                except (TypeError, IndexError, ValueError):
+                    min_h, max_h = 24, 48
+                cutoff_newer = datetime.now(timezone.utc) - timedelta(hours=min_h)
+                cutoff_older = datetime.now(timezone.utc) - timedelta(hours=max_h)
+
+                def _is_review(t: str) -> bool:
+                    ts = last_inv.get(t)
+                    if ts is None:
+                        return False
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    return cutoff_older <= ts <= cutoff_newer
+
+                large_new, large_review = [], []
+                mid_new, mid_review = [], []
+                small_new, small_review = [], []
+                for inst in instruments:
+                    if inst.ticker in exclude:
+                        continue
+                    cap = inst.market_cap or 0
+                    is_rev = _is_review(inst.ticker)
+                    if cap >= settings.large_cap_min:
+                        (large_review if is_rev else large_new).append(inst)
+                    elif cap >= settings.mid_cap_min:
+                        (mid_review if is_rev else mid_new).append(inst)
+                    else:
+                        (small_review if is_rev else small_new).append(inst)
+                try:
+                    new_share = max(0.0, min(1.0, float(getattr(settings, "uninvestigated_target_pct", 0.5))))
+                except Exception:
+                    new_share = 0.5
+                n_large = max(1, int(total * settings.large_cap_pct))
+                n_mid = max(1, int(total * settings.mid_cap_pct))
+                n_small = max(1, total - n_large - n_mid)
+
+                def _sample_tier(nb, rb, n):
+                    if n <= 0:
+                        return []
+                    tf = min(int(round(n * new_share)), len(nb))
+                    sel = []
+                    if tf > 0:
+                        sel.extend(self._sector_balanced_sample(nb, tf, settings.candidates_per_sector))
+                    rem = n - len(sel)
+                    if rem > 0:
+                        sel.extend(self._sector_balanced_sample(rb, rem, settings.candidates_per_sector))
+                    if len(sel) < n:
+                        leftover = [i for i in nb if i not in sel]
+                        sel.extend(self._sector_balanced_sample(leftover, n - len(sel), settings.candidates_per_sector))
+                    return sel[:n]
+
+                selected = []
+                selected.extend(_sample_tier(large_new, large_review, n_large))
+                selected.extend(_sample_tier(mid_new, mid_review, n_mid))
+                selected.extend(_sample_tier(small_new, small_review, n_small))
+                return [
+                    {"ticker": i.ticker, "name": i.name, "sector": i.sector or "Unknown", "market_cap": i.market_cap, "exchange": i.exchange, "currency": i.currency}
+                    for i in selected
+                ]
+
+        # All in cooldown: order by last_screened_at ASC (oldest first) to rotate pool
         instruments = (
             session.query(Instrument)
             .filter(
                 Instrument.sector.isnot(None),
                 Instrument.market_cap.isnot(None),
+                Instrument.market_cap > settings.small_cap_min,
                 Instrument.data_available != False,  # noqa: E712
             )
-            .order_by(Instrument.market_cap.desc())
+            .order_by(Instrument.last_screened_at.asc().nulls_first(), Instrument.market_cap.desc())
             .all()
         )
-
+        logger.info(
+            "Pool exhausted: using least-recently-screened rotation (%d instruments ordered by last_screened_at ASC)",
+            len(instruments),
+        )
         result = [
-            {
-                "ticker": i.ticker,
-                "name": i.name,
-                "sector": i.sector or "Unknown",
-                "market_cap": i.market_cap,
-                "exchange": i.exchange,
-                "currency": i.currency,
-            }
+            {"ticker": i.ticker, "name": i.name, "sector": i.sector or "Unknown", "market_cap": i.market_cap, "exchange": i.exchange, "currency": i.currency}
             for i in instruments
             if i.ticker not in exclude
         ]
@@ -747,6 +868,122 @@ class DataFetcher:
         except Exception as e:
             logger.error(f"Failed to enrich instrument {ticker}: {e}")
             session.rollback()
+        finally:
+            session.close()
+
+    def _ticker_to_yf(self, ticker: str) -> str:
+        """Convert T212 ticker to yfinance-style (e.g. AAPL_US_EQ -> AAPL)."""
+        return ticker.replace("_US_EQ", "").replace("_UK_EQ", "").strip()
+
+    def _normalize_sector(self, raw: str | None) -> str | None:
+        """Map raw sector/industry string to standard sector name."""
+        if not raw or not str(raw).strip():
+            return None
+        low = str(raw).strip().lower()
+        return SECTOR_ALIASES.get(low, raw.strip())
+
+    def enrich_instruments_batch(self, max_per_run: int | None = None) -> int:
+        """Enrich instruments missing sector/market_cap via cascade: yfinance → Finnhub → AV → BRAVE_ANSWERS.
+
+        Queries instruments where sector or market_cap is null/empty, enriches up to max_per_run.
+        Sources tried in order: yfinance (fastest, free), Finnhub, Alpha Vantage, BRAVE_ANSWERS.
+
+        Returns:
+            Number of instruments successfully enriched.
+        """
+        settings = self.settings
+        limit = max_per_run or settings.batch_enrichment_per_run
+        session = get_session()
+        try:
+            candidates = (
+                session.query(Instrument)
+                .filter(
+                    Instrument.data_available != False,  # noqa: E712
+                    (
+                        (Instrument.sector.is_(None))
+                        | (Instrument.sector == "")
+                        | (Instrument.sector == "Unknown")
+                        | (Instrument.market_cap.is_(None))
+                        | (Instrument.market_cap == 0),
+                    ),
+                )
+                .limit(limit)
+                .all()
+            )
+            if not candidates:
+                logger.info("No instruments need batch enrichment")
+                return 0
+
+            enriched = 0
+            for inst in candidates:
+                yf_symbol = self._ticker_to_yf(inst.ticker)
+                sector = None
+                market_cap = None
+
+                # 1. yfinance (fastest, free, high accuracy for US)
+                try:
+                    fund = get_fundamentals(yf_symbol)
+                    if "error" not in fund:
+                        s = fund.get("sector")
+                        if s and s != "Unknown":
+                            sector = self._normalize_sector(s)
+                        mc = fund.get("market_cap")
+                        if mc and float(mc or 0) > 0:
+                            market_cap = int(float(mc))
+                except Exception as e:
+                    logger.debug(f"yfinance fundamentals failed for {inst.ticker}: {e}")
+
+                # 2. Finnhub
+                if not sector or not market_cap:
+                    try:
+                        profile = self.finnhub.get_company_profile(yf_symbol)
+                        ind = profile.get("finnhubIndustry")
+                        cap = profile.get("marketCapitalization")
+                        if ind and not sector:
+                            sector = self._normalize_sector(ind)
+                        if cap and cap > 0 and not market_cap:
+                            market_cap = cap
+                    except Exception as e:
+                        logger.debug(f"Finnhub profile failed for {inst.ticker}: {e}")
+
+                # 3. Alpha Vantage (25/day shared)
+                if not sector or not market_cap:
+                    try:
+                        ov = self.alpha_vantage.get_company_overview(yf_symbol)
+                        if ov.get("Sector") and not sector:
+                            sector = self._normalize_sector(ov["Sector"])
+                        if ov.get("MarketCapitalization") and not market_cap:
+                            market_cap = ov["MarketCapitalization"]
+                    except Exception as e:
+                        logger.debug(f"Alpha Vantage OVERVIEW failed for {inst.ticker}: {e}")
+
+                # 4. BRAVE_ANSWERS (last resort, 2k/month)
+                if not sector or not market_cap:
+                    try:
+                        result = extract_sector_market_cap_brave_answers(inst.ticker)
+                        if result.get("sector") and not sector:
+                            sector = self._normalize_sector(result["sector"])
+                        if result.get("market_cap") and not market_cap:
+                            market_cap = result["market_cap"]
+                    except Exception as e:
+                        logger.debug(f"Brave Answers enrichment failed for {inst.ticker}: {e}")
+
+                if sector or market_cap:
+                    if sector and (not inst.sector or inst.sector == "Unknown"):
+                        inst.sector = sector
+                    if market_cap and (not inst.market_cap or inst.market_cap == 0):
+                        inst.market_cap = market_cap
+                    inst.updated_at = datetime.now(timezone.utc)
+                    enriched += 1
+                    logger.debug(f"Enriched {inst.ticker}: sector={sector}, market_cap={market_cap}")
+
+            session.commit()
+            logger.info(f"Batch enrichment: {enriched}/{len(candidates)} instruments updated")
+            return enriched
+        except Exception as e:
+            logger.error(f"Batch enrichment failed: {e}")
+            session.rollback()
+            return 0
         finally:
             session.close()
 

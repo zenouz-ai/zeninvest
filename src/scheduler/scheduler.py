@@ -212,6 +212,22 @@ def _refresh_instruments() -> None:
         logger.error(f"Instrument refresh failed: {e}")
 
 
+def _enrich_universe() -> None:
+    """Batch-enrich instruments missing sector/market_cap (Finnhub + Brave/Gemini fallback)."""
+    from src.agents.market_data.data_fetcher import DataFetcher
+    if not get_settings().batch_enrichment_enabled:
+        logger.debug("Batch enrichment disabled, skipping enrich_universe job")
+        return
+    logger.info("Running batch universe enrichment...")
+    try:
+        fetcher = DataFetcher()
+        count = fetcher.enrich_instruments_batch()
+        fetcher.close()
+        logger.info(f"Batch enrichment updated {count} instruments")
+    except Exception as e:
+        logger.error(f"Batch enrichment failed: {e}")
+
+
 def create_scheduler() -> BlockingScheduler:
     """Create and configure the APScheduler instance."""
     settings = get_settings()
@@ -270,6 +286,18 @@ def create_scheduler() -> BlockingScheduler:
         replace_existing=True,
         misfire_grace_time=3600,
     )
+
+    # Batch enrichment: daily 06:00 UTC (enriches instruments missing sector/market_cap)
+    if get_settings().batch_enrichment_enabled:
+        scheduler.add_job(
+            _enrich_universe,
+            "cron",
+            hour=6,
+            minute=0,
+            id="enrich_universe",
+            replace_existing=True,
+            misfire_grace_time=3600,
+        )
 
     return scheduler
 

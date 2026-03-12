@@ -23,7 +23,7 @@ for mod in _stubs:
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.data.models import Base, Instrument
+from src.data.models import Base, Instrument, StrategyDecision
 from src.agents.market_data.data_fetcher import DataFetcher
 
 
@@ -58,6 +58,8 @@ def mock_settings():
     settings.mid_cap_min = 2_000_000_000
     settings.small_cap_min = 300_000_000
     settings.screening_cooldown_hours = 72
+    settings.review_window_hours = [24, 48]
+    settings.uninvestigated_target_pct = 0.5
     return settings
 
 
@@ -173,9 +175,26 @@ class TestDataAvailableFiltering:
         # No instruments in DB at all — fallback should populate from seeds
         candidates = fetcher.get_screened_universe()
         assert len(candidates) > 0
-        # Should contain well-known stocks from the seed list
+        # Should contain stocks from the seed list (sector-balanced sample may vary)
         tickers = {c["ticker"] for c in candidates}
-        assert "AAPL_US_EQ" in tickers or "MSFT_US_EQ" in tickers
+        assert all(t.endswith("_US_EQ") or t.endswith("_UK_EQ") for t in tickers), f"Expected seed-format tickers, got {tickers}"
+
+    def test_all_in_cooldown_uses_least_recently_screened_rotation(self, db_session, fetcher):
+        """When all instruments are in cooldown, fallback should order by last_screened_at ASC."""
+        # Add 3 instruments, all recently screened (within 72h cooldown)
+        recent_a = datetime.now(timezone.utc) - timedelta(hours=50)  # screened 50h ago
+        recent_b = datetime.now(timezone.utc) - timedelta(hours=30)  # screened 30h ago
+        recent_c = datetime.now(timezone.utc) - timedelta(hours=10)  # screened 10h ago
+        _make_instrument(db_session, "OLDEST_US_EQ", "Technology", 5e12, last_screened_at=recent_a)
+        _make_instrument(db_session, "MIDDLE_US_EQ", "Technology", 4e12, last_screened_at=recent_b)
+        _make_instrument(db_session, "NEWEST_US_EQ", "Technology", 3e12, last_screened_at=recent_c)
+
+        candidates = fetcher.get_screened_universe()
+        tickers = [c["ticker"] for c in candidates]
+        # All 3 are in cooldown; fallback should return them ordered by last_screened_at ASC
+        # OLDEST (50h ago) first, then MIDDLE (30h), then NEWEST (10h)
+        assert len(tickers) >= 1
+        assert tickers[0] == "OLDEST_US_EQ", f"Expected OLDEST first (least recently screened), got {tickers}"
 
     def test_fallback_excludes_unavailable_seeds(self, db_session, fetcher):
         """Seed instruments marked unavailable should not appear in fallback."""
@@ -190,3 +209,56 @@ class TestDataAvailableFiltering:
         tickers = {c["ticker"] for c in candidates}
         # AAPL should not appear because it's flagged unavailable
         assert "AAPL_US_EQ" not in tickers
+
+
+class TestReviewNewBucketing:
+    """Tests for time-based review (24-48h) vs new (never or >48h) bucketing."""
+
+    def _add_decision(self, session, ticker: str, hours_ago: float):
+        """Add a StrategyDecision for ticker at given hours ago."""
+        ts = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+        session.add(StrategyDecision(
+            cycle_id="test",
+            ticker=ticker,
+            action="HOLD",
+            timestamp=ts,
+        ))
+        session.commit()
+
+    def test_review_bucket_includes_24_to_48h_investigated(self, db_session, fetcher):
+        """Tickers investigated 24-48h ago should be in review pool and eligible."""
+        # Cooldown 72h so 36h-ago screened is past cooldown
+        now = datetime.now(timezone.utc)
+        screened_36h = now - timedelta(hours=36)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_36h)
+        _make_instrument(db_session, "MSFT_US_EQ", "Technology", 2.5e12, last_screened_at=screened_36h)
+        # AAPL investigated 36h ago (in 24-48h review window)
+        self._add_decision(db_session, "AAPL_US_EQ", 36)
+        # MSFT never investigated
+        self._add_decision(db_session, "MSFT_US_EQ", 60)  # 60h ago = new bucket
+
+        candidates = fetcher.get_screened_universe()
+        tickers = {c["ticker"] for c in candidates}
+        assert "AAPL_US_EQ" in tickers
+        assert "MSFT_US_EQ" in tickers
+
+    def test_new_bucket_includes_never_investigated(self, db_session, fetcher):
+        """Tickers with no StrategyDecision should be in new pool."""
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12)
+        _make_instrument(db_session, "MSFT_US_EQ", "Technology", 2.5e12)
+
+        candidates = fetcher.get_screened_universe()
+        tickers = {c["ticker"] for c in candidates}
+        assert "AAPL_US_EQ" in tickers
+        assert "MSFT_US_EQ" in tickers
+
+    def test_new_bucket_includes_over_48h_investigated(self, db_session, fetcher):
+        """Tickers last investigated >48h ago should be in new pool."""
+        now = datetime.now(timezone.utc)
+        screened_60h = now - timedelta(hours=60)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_60h)
+        self._add_decision(db_session, "AAPL_US_EQ", 60)
+
+        candidates = fetcher.get_screened_universe()
+        tickers = {c["ticker"] for c in candidates}
+        assert "AAPL_US_EQ" in tickers

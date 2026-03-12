@@ -202,6 +202,30 @@ class FinnhubClient:
             "insider_sentiment": self.get_insider_sentiment(symbol),
         }
 
+    def get_company_profile(self, symbol: str) -> dict[str, Any]:
+        """Get company profile (sector, market cap) from Finnhub /stock/profile2.
+
+        Returns:
+            Dict with finnhubIndustry, marketCapitalization (in USD, converted from millions).
+            marketCapitalization is None if missing; finnhubIndustry may need sector mapping.
+        """
+        try:
+            data = self._request("/stock/profile2", {"symbol": symbol})
+            if not data:
+                return {"finnhubIndustry": None, "marketCapitalization": None}
+            industry = data.get("finnhubIndustry")
+            cap_raw = data.get("marketCapitalization")
+            # Finnhub returns market cap in millions
+            cap_usd = None
+            if cap_raw is not None and isinstance(cap_raw, (int, float)):
+                cap_usd = int(float(cap_raw) * 1_000_000)
+                if cap_usd < 0:
+                    cap_usd = None
+            return {"finnhubIndustry": industry, "marketCapitalization": cap_usd}
+        except Exception as e:
+            logger.debug(f"Finnhub profile2 unavailable for {symbol}: {e}")
+            return {"finnhubIndustry": None, "marketCapitalization": None}
+
     def get_market_news(self, category: str = "general") -> list[dict[str, Any]]:
         """Get general market news (free tier).
 

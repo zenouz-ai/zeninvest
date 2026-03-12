@@ -120,9 +120,11 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 - Columns: ticker, name, sector, industry, market_cap tier, last_screened_at, data_available
 - Colour-coded labels based on latest committee verdict (from most recent `strategy_decisions` + `risk_decisions`)
 - Screening cooldown indicator (greyed out if within 72h window)
+ - `Sold` column: total number of shares sold per ticker based on executed **and dry-run** SELL orders, with the backend exposing a live vs dry-run split so the UI can highlight when Sold > 0 is driven entirely by hypothetical dry-run cycles.
 
 **Ticker detail panel (expand/drill-down):**
 - Latest committee trail: Strategy decision → Moderation scores → Risk verdict → UOV score
+- Execution summary: most recent BUY/SELL orders for the ticker (quantity, status, timestamp), so reviewers can see whether BUY decisions actually resulted in Trading 212 orders or remained hypothetical (dry-run only or blocked before execution)
 - Historical decisions: timeline of all past evaluations for this ticker
 - Research trail (Phase D): what each member searched for this ticker, key findings
 - Company profile: business summary, sector, industry (from `instruments`)
@@ -203,14 +205,19 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 ### Page 7: Cost & API Monitoring
 
+**Cost split: API vs LLM (daily and monthly):**
+- Dashboard Home "This month" card shows total cost with API and LLM split; daily breakdown table for last 7 days
+- Costs page: daily chart stacks API (Brave/Tavily) + LLM (Anthropic, OpenAI, Google); monthly table has API, LLM, and per-provider columns
+- API cost is estimated from `api_logs` call counts × published rates (Brave, Tavily); LLM cost from `cost_logs`
+
 **LLM costs (from `cost_logs`):**
-- Daily spend by provider (Anthropic, OpenAI, Google) — bar chart
+- Daily spend by provider (Anthropic, OpenAI, Google) — bar/area chart
 - Monthly cumulative vs £50 cap — progress bar
 - Degradation history: when did the system drop from FULL to NO_GEMINI, etc.
 - Cost per trade: total LLM cost ÷ trades executed
 
 **API usage (from `api_logs`):**
-- Calls per provider per day (T212, Finnhub, AV, Brave Search)
+- Calls per provider per day (T212, Finnhub, AV, brave_search, brave_answers, tavily)
 - Error rates and latency percentiles
 - Rate limit proximity warnings
 
@@ -376,7 +383,7 @@ GET /api/events/stream              # Server-Sent Events (SSE) stream of activit
 | Performance | `performance_metrics` | Sharpe, Sortino, drawdown, win rates, alpha |
 | Cost Tracking | `cost_logs` | Per-provider per-call costs, degradation state |
 | Notifications | `notification_logs` | Sent/failed/skipped/deduped attempts |
-| API Usage | `api_logs` | External API call audit (T212, Finnhub, AV) |
+| API Usage | `api_logs` | External API call audit (T212, Finnhub, AV, brave_search, brave_answers, tavily) |
 | Research (Phase D) | `research_logs` | Per-member research queries, cache hits, findings |
 | Backtesting | `backtests/results/` (filesystem) | Walk-forward reports, promotion results |
 

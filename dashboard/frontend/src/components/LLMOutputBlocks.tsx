@@ -218,6 +218,18 @@ export type LastDecision = {
   strategy?: StrategyFull
   moderation?: ModerationEntry[] | null
   risk?: RiskFull
+  execution_summary?: {
+    last_buy?: {
+      timestamp: string
+      status: string
+      quantity: number
+    }
+    last_sell?: {
+      timestamp: string
+      status: string
+      quantity: number
+    }
+  }
 } | null
 
 export function LLMOutputPanel({
@@ -249,6 +261,28 @@ export function LLMOutputPanel({
           <span className="text-terminal-text-dim text-xs">{lastDecision.cycle_id}</span>
         )}
       </div>
+
+      {lastDecision.execution_summary && (
+        <div className="text-xs text-terminal-text-dim">
+          {lastDecision.execution_summary.last_buy ? (
+            <span>
+              Last BUY: {lastDecision.execution_summary.last_buy.quantity.toFixed(2)}&nbsp;sh ·{' '}
+              {lastDecision.execution_summary.last_buy.status} ·{' '}
+              {new Date(lastDecision.execution_summary.last_buy.timestamp).toUTCString()}
+            </span>
+          ) : (
+            <span>No recorded BUY orders for this ticker.</span>
+          )}
+          {lastDecision.execution_summary.last_sell && (
+            <span>
+              {' '}
+              · Last SELL: {lastDecision.execution_summary.last_sell.quantity.toFixed(2)}&nbsp;sh ·{' '}
+              {lastDecision.execution_summary.last_sell.status} ·{' '}
+              {new Date(lastDecision.execution_summary.last_sell.timestamp).toUTCString()}
+            </span>
+          )}
+        </div>
+      )}
 
       {lastDecision.strategy && (
         <LLMStrategyBlock

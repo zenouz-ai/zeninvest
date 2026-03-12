@@ -66,9 +66,14 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |        +-- UNIVERSE SCREENER (get_screened_universe)
                    |              [Sector-balanced, cap-tiered sampling:
                    |               70% large, 20% mid, 10% small cap]
-                   |              [Cooldown prevents re-screening within window]
-                   |              [Fresh vs investigated mix via uninvestigated_target_pct (approx 50% fresh)]
-                   |              [Back-fills sector/market_cap to instruments]
+                   |              [Cooldown (24h) prevents re-screening within window]
+                   |              [When pool exhausted: order by last_screened_at ASC to rotate]
+                   |              [Review (24-48h ago) vs new (never or >48h) buckets, 50% each via uninvestigated_target_pct]
+                   |              [Batch enrichment job (daily 06:00): cascade yfinance → Finnhub → AV OVERVIEW → BRAVE_ANSWERS for sector/market_cap]
+                   |
+                   |        +-- WEB SEARCH FALLBACK (get_news_sentiment_fallback)
+                   |              [When Finnhub analyst or AV ticker sentiment fails:
+                   |               Brave/Tavily supplies analyst/news snippets for strategy prompt]
                    |
                    v
           +-- STRATEGY ENGINE -----+
@@ -318,7 +323,7 @@ graph TB
         AV[Alpha Vantage<br/>Per-Ticker News Sentiment]
         IND[Technical Indicators<br/>RSI, MACD, BB, 50MA]
         MACRO[Macro Data<br/>VIX, S&P vs 200MA<br/>+ sector perf, economic headlines]
-        UNIV[Universe Screener<br/>Sector-balanced, cap-tiered<br/>72h cooldown]
+        UNIV[Universe Screener<br/>Sector-balanced, cap-tiered<br/>24h cooldown, review/new buckets]
     end
 
     subgraph Strategy["Strategy Engine"]
@@ -427,7 +432,7 @@ sequenceDiagram
     O->>D: Fetch market data (positions + universe candidates)
     D->>D: yfinance: OHLCV + fundamentals
     D->>D: Macro: VIX, S&P, sector performance, economic headlines
-    D->>D: Universe screener: sector-balanced, cap-tiered (72h cooldown)
+    D->>D: Universe screener: sector-balanced, cap-tiered (24h cooldown, review/new buckets)
     D->>D: Mark screened instruments (cooldown stamp)
     D->>D: Enrich instruments: back-fill sector/market_cap
     D-->>O: Stocks data + macro

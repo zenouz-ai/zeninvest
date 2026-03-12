@@ -434,6 +434,18 @@ When Agentic Research (US-4.4) is implemented, committee members will have on-de
 
 **Provider strategy:** Primary (Brave) with Tavily as fallback on timeout/rate-limit. Optional `additional_for_news` mode calls both and merges results. ResearchCache deduplicates by (ticker, tool, query). See [Agentic Research](AGENTIC_RESEARCH.md).
 
+### 12.1 Search API Pricing (Brave, Tavily)
+
+Used for batch universe enrichment (sector/market_cap extraction) and planned Agentic Research. Project limit: 2,000 calls/month each.
+
+| API | Pricing | Rate limit | Notes |
+|-----|---------|------------|-------|
+| **Brave Search** | $5.00 per 1,000 requests | 50 RPS | Free $5 credits/month. Real-time search, LLM-optimised context. |
+| **Brave Answers** | $4.00 per 1,000 queries + $5/1M input tokens + $5/1M output tokens | 2 RPS | Free $5 credits/month. Summarised answers grounded on search. |
+| **Tavily** | Free: 1,000 credits/month; Pay-as-you-go: $0.008/credit; Project: $30/month for 4,000 credits | — | 2,000 calls ≈ $16 pay-as-you-go or covered by Project ($30). |
+
+**Budget impact at 2,000 calls/month each:** Brave Search ≈ $10 (or $5 with credits); Brave Answers ≈ $8+ token costs (or $5 with credits); Tavily ≈ $16 or Project plan.
+
 ---
 
 ## 13. Changelog
@@ -462,6 +474,14 @@ When Agentic Research (US-4.4) is implemented, committee members will have on-de
 | 2026-03-06 | Added macro intelligence module | Sector performance (Alpha Vantage SECTOR) and economic headlines (Finnhub /news) feed strategy and moderation. Enables "fundamentally strong but sector headwind — defer buy" in committee decisions. Cached 4h. |
 | 2026-03-06 | yfinance sector fallback | When Alpha Vantage SECTOR fails (rate limit, error), fallback to SPDR sector ETFs via yfinance. Config: `sector_fallback_yfinance: true`. |
 | 2026-03-12 | Added Agentic Research data sources (Section 12) | Documented Brave + Tavily dual-provider strategy for planned US-4.4. Tavily as fallback and optional additional for news. |
+| 2026-03-12 | Fallback cooldown fix in universe screening | When all instruments are in cooldown, fallback now orders by `last_screened_at ASC` (least recently screened first) instead of market_cap DESC, rotating through the pool. |
+| 2026-03-12 | Batch enrichment: Finnhub profile2 + Brave/Tavily+Gemini | `enrich_instruments_batch()` uses Finnhub /stock/profile2 first, Brave Search or Tavily + Gemini when Finnhub fails. Daily 06:00 UTC scheduler job. |
+| 2026-03-12 | Search API limits (Brave, Tavily) | 2,000 calls/month each (config: `search_api_limits`). Logged to `api_logs`; enforced before each call by `search_api_tracker`. |
+| 2026-03-12 | Search API pricing (Section 12.1) | Documented Brave Search ($5/1k, 50 RPS), Brave Answers ($4/1k + tokens, 2 RPS), Tavily ($0.008/credit; $30 for 4k). |
+| 2026-03-12 | Review/new screening buckets | Replaced binary "investigated" with time-based buckets: review = last StrategyDecision in 24–48h ago; new = never or >48h ago. Targets 50% each via `review_window_hours`, `uninvestigated_target_pct`. |
+| 2026-03-12 | Screening cooldown 24h | Reduced from 48h to enable 60–90 decisions/day with 3 intraday cycles. |
+| 2026-03-12 | Enrichment cascade (yf → Finnhub → AV → BRAVE_ANSWERS) | `enrich_instruments_batch` tries yfinance first (fast, free), then Finnhub, Alpha Vantage OVERVIEW, BRAVE_ANSWERS. Expands ticker pool beyond 160. |
+| 2026-03-12 | Web search fallback for analyst/news | When Finnhub analyst or Alpha Vantage ticker sentiment times out/fails, `get_news_sentiment_fallback` (Brave/Tavily) supplies analyst/news snippets. Config: `data_fallback_web_search_enabled`. |
 
 ---
 

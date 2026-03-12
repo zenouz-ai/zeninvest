@@ -218,6 +218,8 @@ export const dashboardApi = {
     year_month: string
     runs_count: number
     cost_gbp: number
+    llm_cost_gbp: number
+    api_cost_gbp: number
     portfolio_start_gbp: number | null
     portfolio_end_gbp: number | null
     pnl_gbp: number | null

@@ -86,6 +86,8 @@ class UniverseBubbleSchema(BaseModel):
     hold_count: int = 0
     hold_qty: float = 0.0
     sold_qty: float = 0.0
+    sold_live_qty: float = 0.0
+    sold_dry_run_qty: float = 0.0
 
 
 class PositionSchema(BaseModel):
@@ -341,21 +343,25 @@ class PerformanceMetricSchema(BaseModel):
 
 
 class CostDailySchema(BaseModel):
-    """Daily cost breakdown by provider."""
+    """Daily cost breakdown by provider, with API vs LLM split."""
 
     date: str
     anthropic_gbp: float
     openai_gbp: float
     google_gbp: float
-    total_gbp: float
+    total_gbp: float  # LLM only (anthropic + openai + google)
+    llm_cost_gbp: float = 0.0   # same as total_gbp
+    api_cost_gbp: float = 0.0   # estimated from api_logs
 
 
 class CostMonthlySchema(BaseModel):
-    """Monthly cumulative cost."""
+    """Monthly cumulative cost with API vs LLM split."""
 
     year_month: str
-    total_gbp: float
+    total_gbp: float  # llm + api
     by_provider: dict[str, float]
+    llm_cost_gbp: float = 0.0   # sum of LLM providers
+    api_cost_gbp: float = 0.0   # estimated from api_logs
 
 
 class CostForCycleSchema(BaseModel):

@@ -35,10 +35,18 @@ export default function Dashboard() {
   const [monthlySummary, setMonthlySummary] = useState<{
     runs_count: number
     cost_gbp: number
+    llm_cost_gbp: number
+    api_cost_gbp: number
     portfolio_start_gbp: number | null
     portfolio_end_gbp: number | null
     pnl_gbp: number | null
   } | null>(null)
+  const [dailyCosts, setDailyCosts] = useState<Array<{
+    date: string
+    llm_cost_gbp: number
+    api_cost_gbp: number
+    total_gbp: number
+  }>>([])
   const [latestOrders, setLatestOrders] = useState<Order[]>([])
   const [runFeed, setRunFeed] = useState<RunFeedEntry[]>([])
   const [tickerForLLM, setTickerForLLM] = useState<string | null>(null)
@@ -53,7 +61,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [runs, portfolioData, eventsData, statusData, monthly, orders, feed] = await Promise.all([
+        const [runs, portfolioData, eventsData, statusData, monthly, orders, feed, dailyCostData] = await Promise.all([
           runsApi.list({ limit: 1 }),
           portfolioApi.current(),
           eventsApi.list({ limit: 50 }),
@@ -61,6 +69,7 @@ export default function Dashboard() {
           dashboardApi.getMonthlySummary(currentYear, currentMonth),
           ordersApi.list({ limit: 15 }),
           dashboardApi.getRunFeed({ limit: 15 }),
+          costsApi.getDaily({ days: 31 }),
         ])
         setLatestRun(runs[0] || null)
         setPortfolio(portfolioData)
@@ -71,6 +80,18 @@ export default function Dashboard() {
         setMonthlySummary(monthly)
         setLatestOrders(orders)
         setRunFeed(feed)
+        setDailyCosts(
+          (dailyCostData || []).map((d: { date: string; llm_cost_gbp?: number; api_cost_gbp?: number; total_gbp?: number }) => {
+            const llm = d.llm_cost_gbp ?? d.total_gbp ?? 0
+            const api = d.api_cost_gbp ?? 0
+            return {
+              date: d.date,
+              llm_cost_gbp: llm,
+              api_cost_gbp: api,
+              total_gbp: llm + api,
+            }
+          })
+        )
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error)
       } finally {
@@ -267,8 +288,11 @@ export default function Dashboard() {
               <div className="font-mono">{monthlySummary.runs_count}</div>
             </div>
             <div>
-              <div className="text-xs text-terminal-text-dim">Cost</div>
+              <div className="text-xs text-terminal-text-dim">Cost (monthly)</div>
               <div className="font-mono">£{monthlySummary.cost_gbp.toFixed(2)}</div>
+              <div className="text-xs text-terminal-text-dim mt-0.5">
+                API: £{(monthlySummary.api_cost_gbp ?? 0).toFixed(2)} · LLM: £{(monthlySummary.llm_cost_gbp ?? monthlySummary.cost_gbp).toFixed(2)}
+              </div>
             </div>
             <div>
               <div className="text-xs text-terminal-text-dim">Portfolio (start → end)</div>
@@ -289,6 +313,33 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+          {dailyCosts.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-terminal-border">
+              <div className="text-xs text-terminal-text-dim mb-2">Daily cost (API vs LLM, last 7 days)</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-terminal-border text-left">
+                      <th className="py-1 font-mono text-xs">Date</th>
+                      <th className="py-1 font-mono text-xs">API</th>
+                      <th className="py-1 font-mono text-xs">LLM</th>
+                      <th className="py-1 font-mono text-xs">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailyCosts.slice(0, 7).map((d) => (
+                      <tr key={d.date} className="border-b border-terminal-border/50">
+                        <td className="py-1 font-mono text-xs">{d.date}</td>
+                        <td className="py-1 font-mono">£{d.api_cost_gbp.toFixed(2)}</td>
+                        <td className="py-1 font-mono">£{d.llm_cost_gbp.toFixed(2)}</td>
+                        <td className="py-1 font-mono">£{d.total_gbp.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

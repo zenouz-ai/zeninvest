@@ -246,9 +246,32 @@ class Settings:
         return int(self.universe.get("screening_cooldown_hours", 72))
 
     @property
+    def review_window_hours(self) -> list[int]:
+        """Review = investigated in this window [min_h, max_h]. E.g. [24, 48] = 24-48h ago."""
+        val = self.universe.get("review_window_hours", [24, 48])
+        if isinstance(val, list) and len(val) >= 2:
+            return [int(val[0]), int(val[1])]
+        return [24, 48]
+
+    @property
+    def data_fallback_web_search_enabled(self) -> bool:
+        """Use Brave/Tavily when Finnhub/Alpha Vantage fail for analyst/news."""
+        return bool(self.universe.get("data_fallback_web_search_enabled", False))
+
+    @property
     def uninvestigated_target_pct(self) -> float:
-        """Approximate share of per-cycle candidates that should have no prior strategy_decisions."""
+        """Share of per-cycle candidates from "new" pool (never investigated or >48h ago). Maps to new_share."""
         return float(self.universe.get("uninvestigated_target_pct", 0.5))
+
+    @property
+    def batch_enrichment_enabled(self) -> bool:
+        """Whether the batch enrichment scheduler job is enabled."""
+        return bool(self.universe.get("batch_enrichment_enabled", False))
+
+    @property
+    def batch_enrichment_per_run(self) -> int:
+        """Max instruments to enrich per batch enrichment run."""
+        return int(self.universe.get("batch_enrichment_per_run", 50))
 
     # --- Opportunity Scoring / Optimizer ---
     @property
@@ -306,6 +329,7 @@ class Settings:
     def opportunity_penalties(self) -> dict[str, float]:
         defaults = {
             "strategy_hold": -0.8,
+            "strategy_queued": -0.6,
             "moderation_blocked": -1.2,
             "risk_reject": -1.6,
             "risk_resize": -0.35,
@@ -338,6 +362,23 @@ class Settings:
     @property
     def alert_threshold_pct(self) -> float:
         return float(self.cost_limits["alert_threshold_pct"])
+
+    # --- Search API Limits (Brave, Tavily — monthly call budgets) ---
+    @property
+    def search_api_limits(self) -> dict[str, Any]:
+        return self._config.get("search_api_limits", {})
+
+    @property
+    def brave_search_monthly_calls(self) -> int:
+        return int(self.search_api_limits.get("brave_search_monthly_calls", 2000))
+
+    @property
+    def brave_answer_monthly_calls(self) -> int:
+        return int(self.search_api_limits.get("brave_answer_monthly_calls", 2000))
+
+    @property
+    def tavily_monthly_calls(self) -> int:
+        return int(self.search_api_limits.get("tavily_monthly_calls", 2000))
 
     # --- Order Management ---
     @property

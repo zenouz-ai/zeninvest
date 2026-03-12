@@ -96,6 +96,18 @@ export interface InstrumentDetail extends Instrument {
     strategy?: StrategyFull
     moderation?: ModerationEntry[] | null
     risk?: RiskFull
+    execution_summary?: {
+      last_buy?: {
+        timestamp: string
+        status: string
+        quantity: number
+      }
+      last_sell?: {
+        timestamp: string
+        status: string
+        quantity: number
+      }
+    }
   } | null
 }
 

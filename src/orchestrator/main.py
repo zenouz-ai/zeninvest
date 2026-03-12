@@ -16,6 +16,10 @@ from src.agents.execution.order_manager import OrderManager
 from src.agents.execution.stop_loss_manager import StopLossManager
 from src.agents.execution.t212_client import T212Client
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
+from src.agents.market_data.brave_enrichment import (
+    get_news_sentiment_fallback,
+    get_news_sentiment_fallback_batch,
+)
 from src.agents.market_data.data_fetcher import DataFetcher
 from src.agents.market_data.macro_intelligence import get_sector_headwind
 from src.agents.moderation.panel import ModerationPanel
@@ -369,6 +373,15 @@ class Orchestrator:
                     logger.warning(f"Finnhub analyst data error for {ticker}: {e}")
                     analyst_data_map[ticker] = {}
 
+            # Web search fallback when Finnhub returns error/unavailable (if enabled)
+            if getattr(self.settings, "data_fallback_web_search_enabled", False):
+                for ticker in active_review_tickers:
+                    data = analyst_data_map.get(ticker, {})
+                    if data.get("error") or data.get("unavailable"):
+                        fallback = get_news_sentiment_fallback(ticker)
+                        if fallback:
+                            analyst_data_map[ticker] = {**data, "web_fallback": fallback}
+
             # Get Alpha Vantage ticker-specific news sentiment (1 API call for all tickers)
             av_ticker_sentiment: dict[str, Any] = {}
             av_all_articles: list[dict[str, Any]] = []
@@ -416,6 +429,11 @@ class Orchestrator:
                                   f"Avg sentiment: {av_ticker_sentiment.get('average_sentiment', 0):.4f} | "
                                   f"Bullish: {av_ticker_sentiment.get('bullish_articles', 0)} | "
                                   f"Bearish: {av_ticker_sentiment.get('bearish_articles', 0)}")
+            elif active_review_tickers and getattr(self.settings, "data_fallback_web_search_enabled", False):
+                fallback_blob = get_news_sentiment_fallback_batch(active_review_tickers)
+                if fallback_blob:
+                    news_parts.append("\n### Web Search Fallback (AV ticker sentiment unavailable)")
+                    news_parts.append(fallback_blob)
 
             # Add broad market sentiment
             if av_broad_sentiment and "error" not in av_broad_sentiment:
@@ -443,7 +461,8 @@ class Orchestrator:
             news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
 
             # Build company profiles for top candidates
-            company_profiles = self._build_company_profiles(stocks_data, top_tickers)
+            all_stock_tickers = [s.get("ticker", "") for s in stocks_data if s.get("ticker")][:35]
+            company_profiles = self._build_company_profiles(stocks_data, all_stock_tickers)
             uov_swap_context = self.opportunity_scorer.build_swap_context(existing_tickers)
 
             # Claude synthesis
@@ -508,8 +527,8 @@ class Orchestrator:
                 conviction = decision.get("conviction", 0)
                 target_alloc = decision.get("target_allocation_pct", 0)
 
-                if action == "HOLD":
-                    hold_reason = decision.get("reasoning", "HOLD — no action required")
+                if action in ("HOLD", "QUEUED"):
+                    hold_reason = decision.get("reasoning", f"{action} — no action this cycle")
                     result["rejected_stocks"].append({
                         "ticker": ticker,
                         "action": action,
@@ -521,7 +540,7 @@ class Orchestrator:
                     opportunity_evaluations.append({
                         "ticker": ticker,
                         "action": action,
-                        "stage": "strategy_hold",
+                        "stage": "strategy_queued" if action == "QUEUED" else "strategy_hold",
                         "decision": decision,
                         "reason": hold_reason,
                         "moderation_consensus": None,
@@ -1317,7 +1336,7 @@ class Orchestrator:
         for stock in stocks_data:
             data_by_ticker[stock.get("ticker", "")] = stock
 
-        for ticker in top_tickers[:15]:
+        for ticker in top_tickers[:35]:
             stock = data_by_ticker.get(ticker, {})
             fundamentals = stock.get("fundamentals", {})
             summary = fundamentals.get("business_summary", "")

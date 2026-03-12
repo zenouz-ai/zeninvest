@@ -444,6 +444,8 @@ class OpportunityScorer:
     def _stage_penalty(stage: str, risk_verdict: str | None, penalties: dict[str, float]) -> float:
         if stage == "strategy_hold":
             return penalties["strategy_hold"]
+        if stage == "strategy_queued":
+            return penalties.get("strategy_queued", -0.6)
         if stage == "moderation_blocked":
             return penalties["moderation_blocked"]
         if stage == "risk_reject":

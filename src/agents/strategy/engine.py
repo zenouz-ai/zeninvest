@@ -71,8 +71,8 @@ class StrategyEngine:
             factor_score = calculate_factor_score(ticker, fundamentals, indicators, rs, six_mo_return)
             factor_scores.append(factor_score)
 
-        # Rank by factor score
-        top_factor = rank_by_factor(factor_scores, top_n=10)
+        # Rank by factor score (top 30 for 60-90 decisions/day target)
+        top_factor = rank_by_factor(factor_scores, top_n=30)
 
         return {
             "momentum": momentum_signals,
@@ -82,28 +82,25 @@ class StrategyEngine:
         }
 
     def _format_momentum_proposals(self, signals: list[MomentumSignal]) -> str:
-        """Format momentum signals for the prompt."""
-        # Only include actionable signals
-        actionable = [s for s in signals if s.action != "HOLD" or s.score >= 40]
-        actionable.sort(key=lambda s: s.score, reverse=True)
+        """Format momentum signals for the prompt. Include all tickers (up to 35) for one-decision-per-ticker."""
+        sorted_sigs = sorted(signals, key=lambda s: s.score, reverse=True)
         lines = []
-        for s in actionable[:20]:
+        for s in sorted_sigs[:35]:
             lines.append(f"- {s.ticker}: {s.action} (score: {s.score:.0f}) — {s.reasoning}")
-        return "\n".join(lines) if lines else "No strong momentum signals"
+        return "\n".join(lines) if lines else "No momentum signals"
 
     def _format_mean_reversion_proposals(self, signals: list[MeanReversionSignal]) -> str:
-        """Format mean reversion signals for the prompt."""
-        actionable = [s for s in signals if s.action != "HOLD" or s.score >= 40]
-        actionable.sort(key=lambda s: s.score, reverse=True)
+        """Format mean reversion signals for the prompt. Include all tickers (up to 35)."""
+        sorted_sigs = sorted(signals, key=lambda s: s.score, reverse=True)
         lines = []
-        for s in actionable[:20]:
+        for s in sorted_sigs[:35]:
             lines.append(f"- {s.ticker}: {s.action} (score: {s.score:.0f}) — {s.reasoning}")
-        return "\n".join(lines) if lines else "No mean reversion opportunities"
+        return "\n".join(lines) if lines else "No mean reversion signals"
 
     def _format_factor_proposals(self, scores: list[FactorScore]) -> str:
-        """Format factor scores for the prompt."""
+        """Format factor scores for the prompt. Include top 30."""
         lines = []
-        for s in scores[:15]:
+        for s in scores[:30]:
             lines.append(
                 f"- {s.ticker}: composite={s.composite_score:.0f} "
                 f"(V={s.value_score:.0f} Q={s.quality_score:.0f} M={s.momentum_score:.0f}) — {s.reasoning}"
@@ -134,6 +131,9 @@ class StrategyEngine:
         if system_state == "CAUTIOUS":
             max_pos_pct = 8.0
 
+        all_tickers = [s.ticker for s in sub_strategy_results["momentum"]]
+        tickers_list = ", ".join(all_tickers[:35])
+
         prompt = build_strategy_prompt(
             portfolio_state=portfolio_state,
             market_regime=market_regime,
@@ -143,6 +143,7 @@ class StrategyEngine:
             analyst_data=analyst_data,
             news_sentiment=news_sentiment,
             company_profiles=company_profiles,
+            tickers_to_decide=tickers_list,
             system_state=system_state,
             vix=vix,
             cash_pct=cash_pct,
@@ -158,7 +159,7 @@ class StrategyEngine:
         try:
             response = self.client.messages.create(
                 model=self.settings.strategy_model,
-                max_tokens=8192,
+                max_tokens=16384,  # Support 30+ decisions (one per ticker)
                 system=STRATEGY_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )

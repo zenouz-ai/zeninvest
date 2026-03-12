@@ -100,6 +100,32 @@ class AlphaVantageClient:
             endpoint = params.get("function", "unknown")
             self._log_api_call(endpoint, status_code, response_text, duration, error_msg)
 
+    def get_company_overview(self, symbol: str) -> dict[str, Any]:
+        """Get company overview (Sector, MarketCapitalization) from Alpha Vantage OVERVIEW.
+
+        Returns:
+            Dict with Sector, MarketCapitalization (in USD). Both None if missing/error.
+        Note: Free tier 25 requests/day shared with other AV calls.
+        """
+        try:
+            data = self._request({"function": "OVERVIEW", "symbol": symbol})
+            if not data or "error" in data or "Error Message" in data:
+                return {"Sector": None, "MarketCapitalization": None}
+            sector = data.get("Sector")
+            cap_raw = data.get("MarketCapitalization")
+            cap_usd = None
+            if cap_raw is not None and str(cap_raw).strip() and str(cap_raw) != "None":
+                try:
+                    cap_usd = int(float(cap_raw))
+                    if cap_usd < 0:
+                        cap_usd = None
+                except (ValueError, TypeError):
+                    pass
+            return {"Sector": sector, "MarketCapitalization": cap_usd}
+        except Exception as e:
+            logger.debug(f"Alpha Vantage OVERVIEW failed for {symbol}: {e}")
+            return {"Sector": None, "MarketCapitalization": None}
+
     def get_market_news_sentiment(
         self,
         topics: str | None = None,

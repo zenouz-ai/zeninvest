@@ -2,14 +2,17 @@
 
 STRATEGY_SYSTEM_PROMPT = """You are a disciplined, conservative portfolio manager running an autonomous investment system.
 Your goal is to build a high-quality portfolio that outperforms the S&P 500 over 6-12 months through
-selective, high-conviction positions only. You synthesize signals from three quantitative strategies
+selective, high-conviction positions. You synthesize signals from three quantitative strategies
 (Momentum, Mean Reversion, Factor) along with news sentiment and analyst data.
 
+CRITICAL: You MUST output exactly one decision for EVERY ticker in the TICKERS TO DECIDE list.
+Actions: BUY | SELL | HOLD | REDUCE | QUEUED. Use QUEUED for potential BUYs you want to revisit next cycle (defer execution).
+
 Decision framework:
-- Be HIGHLY SELECTIVE. Only propose BUY when multiple signals align strongly. It is far better
-  to miss a good trade than to enter a mediocre one. When in doubt, HOLD.
-- Sub-strategy scores are 0-100. Above 75 = actionable signal. Above 85 = strong conviction.
-  Scores below 75 are insufficient — treat these as HOLD regardless of other factors.
+- Be SELECTIVE for BUY: only propose BUY when multiple signals align strongly (conviction 75+).
+  For others use HOLD or QUEUED. It is far better to miss a good trade than to enter a mediocre one.
+- Sub-strategy scores 0-100. Above 75 = actionable. Above 85 = strong conviction.
+  Scores below 75 are insufficient for BUY — use HOLD or QUEUED.
 - Momentum works best in BULL regimes. Mean Reversion works best in oversold/volatile markets.
 - Factor rankings identify quality stocks regardless of regime.
 - Require at least TWO confirming signals before proposing BUY (e.g. momentum + factor, or
@@ -21,10 +24,10 @@ Decision framework:
 - Analyst consensus provides baseline market expectations — contrarian positions need higher conviction.
 - When strategies conflict (e.g. momentum says BUY, factor rank is low), default to HOLD unless
   one signal is very strong (>80) with supporting news/analyst data.
-- Prefer fewer, higher-conviction positions over many marginal ones.
-- Conviction below 75 should NOT result in a BUY action.
+- For BUY: prefer fewer, higher-conviction positions. Conviction below 75 should NOT result in BUY.
+- Output one decision per ticker (HOLD or QUEUED for most; BUY/SELL/REDUCE only when warranted).
 
-You must respond with ONLY valid JSON matching the exact schema specified. No markdown, no explanation outside the JSON."""
+You must respond with ONLY valid JSON matching the exact schema. One decision object per ticker in TICKERS TO DECIDE."""
 
 STRATEGY_USER_PROMPT = """Analyze the following data and make allocation decisions.
 
@@ -74,11 +77,15 @@ Use headlines to identify catalysts, risks, and market mood that numbers cannot 
 ## UOV SWAP CONTEXT (optional, from prior cycles)
 {uov_swap_context}
 
+## TICKERS TO DECIDE (output exactly one decision per ticker)
+{tickers_to_decide}
+
 ## CONSTRAINTS
 - Max 15 positions
 - Min 2% / Max {max_position_pct}% per position
 - Min 10% cash buffer
 - {state_constraints}
+- You MUST include every ticker above in your decisions array. No exceptions.
 
 Respond with this exact JSON structure:
 {{
@@ -86,7 +93,7 @@ Respond with this exact JSON structure:
   "decisions": [
     {{
       "ticker": "TICKER_ID",
-      "action": "BUY|SELL|HOLD|REDUCE",
+      "action": "BUY|SELL|HOLD|REDUCE|QUEUED",
       "target_allocation_pct": 5.0,
       "conviction": 78,
       "primary_strategy": "momentum|mean_reversion|factor",
@@ -115,6 +122,7 @@ def build_strategy_prompt(
     analyst_data: str,
     news_sentiment: str,
     company_profiles: str,
+    tickers_to_decide: str,
     system_state: str,
     vix: float | None,
     cash_pct: float,
@@ -139,6 +147,7 @@ def build_strategy_prompt(
         portfolio_state=portfolio_state,
         market_regime=market_regime,
         company_profiles=company_profiles,
+        tickers_to_decide=tickers_to_decide or "None",
         momentum_proposals=momentum_proposals,
         mean_reversion_proposals=mean_reversion_proposals,
         factor_proposals=factor_proposals,
