@@ -26,8 +26,7 @@ _STALE_RUN_THRESHOLD_MINUTES = 15
 
 
 def _reconcile_stale_runs(session: Session) -> int:
-    """Mark runs stuck in 'running' as completed when strategy_decisions exist.
-    Returns count of runs reconciled."""
+    """Mark runs stuck in 'running' as completed. Reconciles all stale runs (with or without decisions)."""
     threshold = datetime.now(timezone.utc) - timedelta(minutes=_STALE_RUN_THRESHOLD_MINUTES)
     stale = (
         session.query(Run)
@@ -44,14 +43,18 @@ def _reconcile_stale_runs(session: Session) -> int:
                 .scalar()
             )
             run.completed_at = last_ts or run.started_at
-            run.status = "completed"
             summary = dict(run.summary_json) if isinstance(run.summary_json, dict) else {}
             summary["num_rejected"] = summary.get("num_rejected", decision_count)
-            if run.completed_at and run.started_at:
-                summary["duration_seconds"] = (run.completed_at - run.started_at).total_seconds()
-            run.summary_json = summary
-            reconciled += 1
-            logger.info("Reconciled stale run %s to completed (%d decisions)", run.cycle_id, decision_count)
+        else:
+            run.completed_at = run.started_at + timedelta(minutes=_STALE_RUN_THRESHOLD_MINUTES)
+            summary = dict(run.summary_json) if isinstance(run.summary_json, dict) else {}
+            summary["reconciled"] = "stale_no_decisions"
+        run.status = "completed"
+        if run.completed_at and run.started_at:
+            summary["duration_seconds"] = (run.completed_at - run.started_at).total_seconds()
+        run.summary_json = summary
+        reconciled += 1
+        logger.info("Reconciled stale run %s to completed (%d decisions)", run.cycle_id, decision_count)
     if reconciled:
         session.commit()
     return reconciled

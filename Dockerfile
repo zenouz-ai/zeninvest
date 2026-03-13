@@ -32,6 +32,7 @@ RUN poetry config virtualenvs.create false \
 # Copy application code
 COPY src/ src/
 COPY config/ config/
+COPY docs/ docs/
 COPY alembic.ini ./
 COPY dashboard/ dashboard/
 
