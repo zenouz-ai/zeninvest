@@ -1,7 +1,7 @@
 ---
 tags: [strategy, competitive-analysis, positioning]
 status: current
-last_updated: 2026-03-11
+last_updated: 2026-03-13
 ---
 
 # Competitive Analysis
@@ -21,9 +21,35 @@ Inform the sophistication roadmap by mapping our strengths, gaps, and realistic 
 | **State machine (ACTIVE/CAUTIOUS/HALTED)** | Auto-reduction at 5% drawdown, auto-liquidation at 15% | Similar to institutional drawdown-triggered deleveraging. Simple but sound. |
 | **Cost-aware degradation** | FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED | Unique for retail. Professional firms have unlimited compute budgets; we've built graceful degradation for budget constraints. |
 | **Clean modular architecture** | Agent pipeline with clear separation of concerns | Professional-grade software design. Easy to extend, test, and reason about. |
-| **Comprehensive test suite** | 207 tests covering all critical components (including backtesting, performance/trade-outcome trackers, order management, notifications, dashboard) | Above average for retail algo projects. |
+| **Comprehensive test suite** | 218 tests covering all critical components (including backtesting, performance/trade-outcome trackers, order management, notifications, dashboard) | Above average for retail algo projects. |
 | **Sector-balanced universe screening** | Cap-tier sampling (70/20/10 large/mid/small), cooldown rotation, sector minimums | Prevents concentration bias in opportunity discovery. |
 | **Defense-in-depth pipeline** | Strategy → Moderation → Risk → Execution, any layer can block | True institutional pattern — multiple independent checks. |
+
+---
+
+## Emerging Landscape (2025–2026)
+
+The AI trading landscape has expanded rapidly:
+
+| System | Role | Relevance to Us |
+|--------|------|-----------------|
+| **QuantAgent** | Price-driven multi-agent LLMs for HFT; couples LLM with technical indicators (MACD, RSI, patterns) | Similar signal architecture; we differ with multi-adversarial moderation and deterministic risk |
+| **TradingAgents** (Tauric Research) | Multi-agent framework: technical, sentiment, fundamental analysts + traders + risk | We have adversarial moderation; they have role specialization |
+| **Agent Market Arena** | Live multi-market benchmark (crypto + stocks) for LLM agents | New evaluation standard for rigorous agent comparison |
+| **AgentSmyth** | $8.7M raised (June 2025); 48 institutions, up to $50B AUM | Institutional autonomous agents; validates market demand |
+| **Coinrule** | Feb 2026: expanded to US equities/ETFs via 7 brokers; 1.7M strategies; 76% of users want AI execution | Retail AI trading demand growing |
+| **MarketSenseAI 2.0** | 125.9% cumulative vs 73.5% index (S&P 100, 2023–24); 33.8% higher Sortino on S&P 500 (2024) | Single-LLM + RAG + CoA; we use multi-adversarial |
+
+**Market sizing:** Quant AI HFT market ~$3.2B (2025) → $12B (2030); agentic AI market → $197B (2034). Bank of America estimates 20–30% profit lift for banks by 2030 from embedding AI agents into trading workflows.
+
+### Our Differentiators vs New Entrants
+
+| Dimension | Us | Typical New Entrants | Advantage |
+|-----------|----|----------------------|-----------|
+| **Committee architecture** | Multi-adversarial (Claude + GPT-4o + Gemini) with distinct mandates | Single-LLM or role-based multi-agent | Skeptic + risk assessor create genuine diversity |
+| **Risk** | Deterministic VETO; no LLM can override | Often LLM-in-the-loop for risk | Institutional pattern; auditability |
+| **Cost** | Graceful degradation; per-provider budgets; £50 monthly cap | Unlimited or opaque costs | Retail-viable; sustainable |
+| **Audit trail** | Full logging (StrategyDecision, ModerationLog, RiskDecision, ResearchLog, etc.) | Variable | Evidence-based improvement |
 
 ---
 
@@ -96,6 +122,8 @@ See [SOPHISTICATION_ROADMAP.md](SOPHISTICATION_ROADMAP.md) for the detailed, pri
 ## References
 
 - MarketSenseAI 2.0: https://arxiv.org/html/2502.00415v2
+- QuantAgent (price-driven multi-agent HFT): https://arxiv.org/html/2509.09995v3
+- Agent Market Arena (When Agents Trade): https://arxiv.org/abs/2510.11695
 - StockBench: https://arxiv.org/html/2510.02209v1
 - FINSABER: https://arxiv.org/html/2505.07078v3
 - LLM + RL in Equity Trading: https://arxiv.org/html/2508.02366v2

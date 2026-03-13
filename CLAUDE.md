@@ -384,19 +384,22 @@ Files to check on every feature:
 - **Key docs:** `docs/SOPHISTICATION_ROADMAP.md` (backlog), `docs/COMPETITIVE_ANALYSIS.md` (positioning)
 
 
-## Near-term delivery focus (updated 2026-03-10)
+## Near-term delivery focus (updated 2026-03-13)
 
 **Delivered:**
-- **US-1.5 Chat Interface & Real-Time Trade Alerts** (`docs/CHAT_AND_COMMANDS.md`) [delivered; outbound phase complete]
-- **US-5.1 Backtesting Engine foundations** (`docs/BACKTESTING.md`) [delivered; engine, walk-forward, promotion report, yfinance fetch + CSV cache]
+- **US-1.5** Chat Interface & Real-Time Trade Alerts
+- **US-5.1** Backtesting Engine (engine, walk-forward, promotion report)
+- **US-1.8** Dashboard VPS Deployment
+- **US-1.7** Dashboard full spec (full API + 7 pages)
+- **US-1.4** Deploy POC to VPS
 
-**Immediate (next session):**
-- **US-1.8 Dashboard VPS Deployment** — Delivered. Deployment complete: checklist in `docs/DASHBOARD_DEPLOYMENT.md` (pull, `ufw allow 8000/tcp`, `docker compose up -d --build`). Dashboard is running on VPS once the operator runs those steps.
-- **US-1.7 Dashboard full spec** — Full API and 7-page frontend on branch `feature/dashboard-full-spec`; merge when ready.
+**Immediate (current focus):**
+- **US-4.4 Agentic Research** — Independent tool access for Strategy + Moderation (Brave + Tavily + SEC EDGAR). See `docs/AGENTIC_RESEARCH.md` for implementation plan (Phases A–D).
 
-**Then:**
-- Calibration (US-2.1, US-2.2) and portfolio optimisation (US-3.1)
-- Additional plans incoming: LLM tool access review, dashboard review feedback
+**Deferred (await data or later sprint):**
+- Calibration (US-2.1, US-2.2) — requires ~50 trades
+- US-5.2 Parameter sensitivity harness
+- US-1.6 Slack NL trade commands
 
 ## Known issues (2026-03-13)
 

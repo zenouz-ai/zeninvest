@@ -1,7 +1,7 @@
 ---
 tags: [agentic-research, tool-use, committee]
-status: planned
-last_updated: 2026-03-12
+status: in-progress
+last_updated: 2026-03-13
 ---
 
 # Agentic Research
@@ -16,7 +16,7 @@ Transform the investment agent's committee pipeline from a **fixed data payload*
 
 ### Current Status
 
-This project is **US-4.4** in the sophistication roadmap. Status: **Planned** — to implement after US-1.8 Dashboard VPS Deployment (code implemented; VPS deploy via Docker when ready).
+This project is **US-4.4** in the sophistication roadmap. Status: **In Progress** — US-1.8 Dashboard VPS Deployment is complete. Implementation can proceed. See [Implementation Plan](#implementation-plan) below and [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) for the step-by-step checklist.
 
 ### Benefits
 
@@ -41,7 +41,17 @@ This project is **US-4.4** in the sophistication roadmap. Status: **Planned** �
 
 ### Verdict
 
-**Viable and recommended.** Implementation should proceed after US-1.8 and before ML features (US-6.x). Feature flags allow gradual rollout and A/B comparison.
+**Viable and recommended.** Implementation should proceed. Feature flags allow gradual rollout and A/B comparison.
+
+### Existing Infrastructure (Reuse)
+
+| Component | Location | Purpose | Agentic Research Use |
+|-----------|----------|---------|----------------------|
+| Brave Search / Tavily | `src/agents/market_data/brave_enrichment.py` | Enrichment, web search fallback | Research layer will use same APIs via new provider abstraction. Do *not* duplicate HTTP logic — extract or share. |
+| Search API tracker | `src/utils/search_api_tracker.py` | Monthly call limits (2k each for brave_search, brave_answers, tavily) | Research calls consume from **same** monthly limits. Enforce before each research tool call. |
+| API logging | `ApiLog` model | Audit trail for external calls | Research adds `ResearchLog` for per-call detail; `ApiLog` continues for search API calls (shared). |
+
+**Budget model:** Research enforces **two** constraints: (1) **Search API monthly limits** (2,000 calls/month each) — shared with enrichment/fallback; (2) **Research cost cap** (£50/month) — tracked in `CostLog`/`ResearchLog`. If either limit is hit, research is disabled (graceful degradation).
 
 ## The Problem
 
@@ -116,7 +126,7 @@ Research tools are accessed via a standardised LLM tool-use interface. The `Rese
 |------|-------------|----------|----------------|------|------------|
 | `web_search(query: str, num_results: int = 5) → list[SearchResult]` | General-purpose web search for news, analysis, SEC filings | Brave Search API + Tavily (fallback, optionally additional) | Top N results with URL, title, snippet/content, domain | £0.003–0.006/call | 100/min |
 | `news_search(ticker: str, query: str, num_results: int = 5) → list[NewsResult]` | Financial news search (earnings, upgrades, insider, filings) | Brave + Tavily (topic: finance; fallback/additional) | News + sentiment + source credibility | £0.005/call | 100/min |
-| `sec_search(ticker: str, doc_type: str, num_results: int = 3) → list[SECResult]` | Search SEC filings for a company (10-K, 10-Q, 8-K, proxy) | EDGAR via LangChain | Filing summary, key excerpts, filing date | £0.002/call | 10/min |
+| `sec_search(ticker: str, doc_type: str, num_results: int = 3) → list[SECResult]` | Search SEC filings for a company (10-K, 10-Q, 8-K, proxy) | SEC EDGAR API (direct HTTP; no LangChain) | Filing summary, key excerpts, filing date | Free | 10/min |
 | `sector_search(sector: str, query: str, num_results: int = 5) → list[SectorResult]` | Search sector rotation, peer analysis, industry trends | Brave + Tavily (topic: finance; fallback) | Results ranked by recency and authority | £0.003/call | 100/min |
 | `macro_search(query: str, num_results: int = 5) → list[MacroResult]` | Search macro events (Fed, inflation, geopolitics, correlations) | Brave + Tavily (topic: news; fallback) | Current headlines + economic calendar | £0.003/call | 100/min |
 
@@ -426,6 +436,67 @@ Synthesis:
 Remember: Focus on tail risks and second-order effects, not first-order thesis criticism.
 ```
 
+---
+
+## Implementation Plan
+
+### Overview
+
+| Phase | Focus | Deliverables | Depends On |
+|-------|-------|--------------|------------|
+| **A** | Research tool layer | Providers, cache, budget, executor, ResearchLog | None |
+| **B** | Strategy engine tool-use | Claude tool-use loop, research in synthesis | Phase A |
+| **C** | Moderation tool-use | GPT-4o + Gemini tool-use | Phase A |
+| **D** | Observability | Dashboard panel, Slack, API, events | Phase A, B, C |
+
+### Execution Order
+
+```mermaid
+flowchart TD
+    A[Phase A: Research Tool Layer] --> B[Phase B: Strategy Engine]
+    A --> C[Phase C: Moderation Panel]
+    B --> D[Phase D: Observability]
+    C --> D
+```
+
+### Key Technical Decisions
+
+1. **Provider layer:** Build `src/agents/research/providers/` with `BraveSearchClient`, `TavilySearchClient`, `ProviderRouter`. Reuse HTTP patterns from `brave_enrichment.py` but keep research modules independent (avoid circular imports). Call `search_api_tracker.check_search_api_budget()` before each search.
+2. **SEC EDGAR:** Use direct SEC HTTP APIs (`data.sec.gov`, `www.sec.gov/cgi-bin/browse-edgar`). No LangChain. Optional `SEC_EDGAR_EMAIL` for User-Agent politeness.
+3. **Budget enforcement:** `ResearchBudget` checks (a) per-member per-cycle (£0.30/0.20/0.20), (b) monthly £50 cap, (c) `check_search_api_budget(service)` before each Brave/Tavily call.
+4. **Tool-use formats:** Claude uses `tool_use` blocks; OpenAI uses `function_calls`; Gemini uses `function_declarations`. Executor normalises tool names and parameters; each LLM client handles its own format.
+5. **Config:** Add `research` block to `settings.yaml`; add `research_*` properties to `Settings` in `config.py`.
+
+### File Structure
+
+```
+src/agents/research/
+├── __init__.py
+├── providers/
+│   ├── __init__.py
+│   ├── base.py      # SearchProviderProtocol, SearchResult
+│   ├── brave.py     # BraveSearchClient
+│   ├── tavily.py    # TavilySearchClient
+│   └── router.py    # ProviderRouter
+├── tools.py         # Tool definitions (name, description, input_schema)
+├── cache.py         # ResearchCache
+├── budget.py        # ResearchBudget
+├── executor.py      # ResearchExecutor (orchestrates tools, cache, budget, logging)
+├── sec_search.py    # SEC EDGAR client
+└── prompts.py       # Research-specific prompt fragments (optional)
+```
+
+### Acceptance Criteria (All Phases)
+
+- [ ] Phase A: Providers, cache, budget, executor, ResearchLog; tests pass; `research.enabled: false` default
+- [ ] Phase B: Claude tool-use loop; max 8 iterations; ResearchLog entries; `research.strategy_research_enabled: false` default
+- [ ] Phase C: GPT-4o and Gemini tool-use; skeptic/risk research; feature flags
+- [ ] Phase D: Dashboard research panel, GET /api/research/*, Slack insights, EventsLog
+- [ ] All research disabled when `research.enabled: false` or search/monthly cap hit
+- [ ] Documentation updated: CLAUDE.md, ARCHITECTURE.md, GOVERNANCE.md, DATA_RATIONALE.md, DASHBOARD.md
+
+---
+
 ## Implementation Phases
 
 ### Phase A — Research Tool Layer (1 session)
@@ -446,6 +517,8 @@ Remember: Focus on tail risks and second-order effects, not first-order thesis c
 
 **Feature flag:** `research.enabled: false` (default)
 
+**Integration:** Call `search_api_tracker.check_search_api_budget(SERVICE_BRAVE_SEARCH)` (or `SERVICE_TAVILY`) before each Brave/Tavily request. Log via `log_search_api_call()`. Research shares the 2,000 calls/month limit with enrichment.
+
 **Claude Code Prompt:**
 
 ```
@@ -461,8 +534,8 @@ Create:
 
 2. SEC EDGAR client (sec_search.py):
    - Fetch and parse SEC filings for a ticker (10-K, 10-Q, 8-K)
-   - Use LangChain's SEC loader or direct EDGAR API
-   - Extract key sections (MD&A, Risk Factors, Financial Statements)
+   - Use direct SEC EDGAR API (https://www.sec.gov/cgi-bin/browse-edgar, data.sec.gov); no LangChain dependency
+   - Extract key sections (MD&A, Risk Factors, Financial Statements) via HTML parsing or SEC JSON API
    - Returns: filing summary with key excerpts
 
 3. Cache layer (cache.py):
@@ -766,6 +839,7 @@ When implementing this feature, update these documentation files:
 
 ## Related Notes
 
+- [Agentic Research Implementation Plan](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) — Step-by-step checklist
 - [Architecture](ARCHITECTURE.md) — Data flow with research tool layer
 - [Governance](GOVERNANCE.md) — Audit trail (ResearchLog, cost tracking, monthly budgets)
 - [Dashboard](DASHBOARD.md) — Research Activity panel (Phase D)

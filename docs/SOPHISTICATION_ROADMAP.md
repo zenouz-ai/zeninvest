@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-12
+last_updated: 2026-03-13
 ---
 
 # Sophistication Roadmap
@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **8** · In Progress **1** (US-1.7 Dashboard) · Pipeline **16** (order by priority and feasibility below)
+**At a glance:** Delivered **10** · In Progress **1** (US-4.4 Agentic Research) · Pipeline **14** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -32,10 +32,11 @@ timeline
         US-3.5 : Intelligent Order Management
         US-5.1 : Backtesting Engine
         US-1.8 : Dashboard VPS Deployment
-    section In Progress
-        US-1.7 : Dashboard & Visualisation (stabilisation)
-    section Pipeline (priority order)
+        US-1.7 : Dashboard & Visualisation
         US-1.4 : Deploy POC to VPS
+    section In Progress
+        US-4.4 : Agentic Research
+    section Pipeline (priority order)
         US-1.6 : Slack NL Trade Commands
         US-2.1 : Conviction Calibration
         US-2.2 : Dynamic Strategy Weighting
@@ -65,23 +66,23 @@ timeline
 | | 6 | US-3.5 | Intelligent Order Management |
 | | 7 | US-5.1 | Backtesting Engine |
 | | 8 | US-1.8 | Dashboard VPS Deployment |
-| **In Progress** | 1 | US-1.7 | Dashboard & Visualisation (full API + 7 pages on branch `feature/dashboard-full-spec`) |
-| **Pipeline** | 1 | US-1.4 | Deploy POC to VPS |
-| | 2 | US-1.6 | Slack NL Trade Commands |
-| | 3 | US-2.1 | Conviction Calibration |
-| | 4 | US-2.2 | Dynamic Strategy Weighting |
-| | 5 | US-3.1 | Risk-Parity Sizing |
-| | 6 | US-2.3 | Moderator Effectiveness |
-| | 7 | US-4.1 | Volume Signals |
-| | 8 | US-5.2 | Parameter Sensitivity |
-| | 9 | US-3.2 | Regime Detection |
-| | 10 | US-3.3 | Correlation Screening |
-| | 11 | US-4.2 | Earnings Calendar |
-| | 12 | US-4.3 | Sector Rotation |
-| | 13 | US-4.4 | Agentic Research (independent tool access for committee) |
-| | 14 | US-6.1 | ML Trade Scoring (investigation) |
-| | 15 | US-6.2 | Journal Embeddings |
-| | 16 | US-6.3 | RL Investigation |
+| | 9 | US-1.7 | Dashboard & Visualisation (full API + 7 pages) |
+| | 10 | US-1.4 | Deploy POC to VPS |
+| **In Progress** | 1 | US-4.4 | Agentic Research (independent tool access; see `docs/AGENTIC_RESEARCH.md`) |
+| **Pipeline** | 1 | US-1.6 | Slack NL Trade Commands |
+| | 2 | US-2.1 | Conviction Calibration |
+| | 3 | US-2.2 | Dynamic Strategy Weighting |
+| | 4 | US-3.1 | Risk-Parity Sizing |
+| | 5 | US-2.3 | Moderator Effectiveness |
+| | 6 | US-4.1 | Volume Signals |
+| | 7 | US-5.2 | Parameter Sensitivity |
+| | 8 | US-3.2 | Regime Detection |
+| | 9 | US-3.3 | Correlation Screening |
+| | 10 | US-4.2 | Earnings Calendar |
+| | 11 | US-4.3 | Sector Rotation |
+| | 12 | US-6.1 | ML Trade Scoring (investigation) |
+| | 13 | US-6.2 | Journal Embeddings |
+| | 14 | US-6.3 | RL Investigation |
 
 ---
 
@@ -92,10 +93,10 @@ timeline
 | **US-1.1** | Performance Tracking | Daily Sharpe/Sortino/drawdown, win rate by strategy, alpha vs benchmark; `performance_metrics` table, CLI `--performance` | Enables all future improvements; can't improve what you can't measure | **Delivered** |
 | **US-1.2** | Trade Outcome Tracker | Link each BUY to SELL/REDUCE; per-trade P&L, conviction linkage; `trade_outcomes` table | Core data for calibration and strategy tuning | **Delivered** |
 | **US-1.3** | Performance Dashboard (CLI) | CLI `--dashboard`: portfolio value, Sharpe, win rate, costs, active positions | Immediate visibility into system behaviour | **Delivered** (export/summary open) |
-| **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Planned** |
+| **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Delivered** |
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
-| **US-1.7** | Dashboard & Visualisation | Web dashboard: 7 pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs); full API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system). Branch `feature/dashboard-full-spec`. | Full operational visibility; personal quant experience | **In Progress** (full API + 7 pages on branch) |
+| **US-1.7** | Dashboard & Visualisation | Web dashboard: 7 pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs); full API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system). | Full operational visibility; personal quant experience | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_DEPLOYMENT.md` | Operational visibility on live VPS | **Delivered** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
@@ -108,7 +109,7 @@ timeline
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
-| **US-4.4** | Agentic Research | Independent tool access (web search, news, SEC) for Strategy + Moderation; Brave + Tavily dual-provider (fallback/additional); differentiated research mandates | Stale context mitigation, follow-up ability, broader coverage | **Planned** |
+| **US-4.4** | Agentic Research | Independent tool access (web search, news, SEC) for Strategy + Moderation; Brave + Tavily dual-provider (fallback/additional); differentiated research mandates | Stale context mitigation, follow-up ability, broader coverage | **In Progress** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
@@ -191,14 +192,16 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 **Value:** Begin gathering live market data and performance evidence  
 **Effort:** Small (1–2 days, following DEPLOYMENT.md)  
 **Data Sources:** N/A  
-**Stage:** Planned  
+**Stage:** Delivered  
+
+**Note:** Deployment *implementation* (Docker, DEPLOYMENT.md, DASHBOARD_DEPLOYMENT.md) was delivered as code. US-1.4 is the operator checklist: run on VPS, first cycle logged, health/backup confirmed.
 
 **Acceptance Criteria:**
-- [ ] Docker container running on VPS
-- [ ] Health check cron job active
-- [ ] Backup script scheduled
-- [ ] First successful cycle logged
-- [ ] Monitoring access confirmed from local machine
+- [x] Docker container running on VPS
+- [x] Health check cron job active
+- [x] Backup script scheduled
+- [x] First successful cycle logged
+- [x] Monitoring access confirmed from local machine
 
 ---
 
@@ -632,15 +635,17 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ## Next sprint focus
 
-**Immediate (next session):**
-- **US-1.4** — Deploy POC to VPS (when ready)
-- **US-1.8** — Delivered; deploy to VPS per `docs/DASHBOARD_DEPLOYMENT.md` if not yet deployed
+**Completed:**
+- **US-1.7** — Dashboard full spec merged to main
+- **US-1.4** — POC deployed to VPS (Docker, first cycle logged, health/backup confirmed)
 
-**Then:**
-- **US-1.4** — Deploy POC to VPS (when ready)
-- **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (once ~50 trades available)
-- **US-4.4** — Agentic Research (after US-1.8; see `docs/AGENTIC_RESEARCH.md`)
-- **US-5.2 prep** — Parameter sensitivity harness (registry, baseline configs, result schema)
+**Immediate (current focus):**
+- **US-4.4** — Agentic Research: independent tool access for Strategy + Moderation (Brave + Tavily + SEC EDGAR). See `docs/AGENTIC_RESEARCH.md` (design) and `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md` (checklist).
+
+**Deferred (await data or later sprint):**
+- **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (requires ~50 trades)
+- **US-5.2 prep** — Parameter sensitivity harness
+- **US-1.6** — Slack NL trade commands (Phase 2 chat)
 
 **Delivery references:**
 - `docs/ORDER_MANAGEMENT_PROJECT.md`

@@ -284,7 +284,8 @@ src/
 ├── backtesting/        # Engine, paper broker, io (yfinance fetch + CSV cache), walk-forward, promotion report
 └── utils/              # Config, logger, cost tracker
 docs/                   # Project documentation (16 files; archived plans in docs/archived/)
-├── AGENTIC_RESEARCH.md          # Agentic research: independent tool access, implementation plan
+├── AGENTIC_RESEARCH.md          # Agentic research: design, tool definitions, phases
+├── AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md  # US-4.4 step-by-step checklist
 ├── ARCHITECTURE.md              # System architecture and component diagrams
 ├── BACKTESTING.md               # Backtesting engine, walk-forward validation, promotion report
 ├── CHAT_AND_COMMANDS.md         # ChatOps: trade alerts, notification routing, planned commands
@@ -318,7 +319,7 @@ notebooks/
 - [Backtesting](docs/BACKTESTING.md) — engine, walk-forward validation, promotion report
 - [Walk-Forward Validation](docs/WALK_FORWARD_VALIDATION.md) — walk-forward validation and promotion report
 - [Order Management](docs/ORDER_MANAGEMENT_PROJECT.md) — stop-loss, trailing stops, limit dip-buy: design and config
-- [Agentic Research](docs/AGENTIC_RESEARCH.md) — independent tool access for committee members
+- [Agentic Research](docs/AGENTIC_RESEARCH.md) — design; [Implementation Plan](docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) — checklist
 - [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — VPS-to-local export procedure with integrity checks
 - [Local Setup](docs/LOCAL_SETUP.md) — local setup guide for Trading 212 Practice
 - [Presentation](docs/PRESENTATION.md) — project overview and summary
