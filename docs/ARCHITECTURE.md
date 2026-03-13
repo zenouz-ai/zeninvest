@@ -88,6 +88,7 @@ Anthropic  -------> CLAUDE SONNET SYNTHESIS
                      (per-ticker, aggregate, broad, sector, economic) + analyst data
                      + portfolio state] → decisions with conviction
                      → market_assessment thesis
+                     [When research.enabled: tool-use loop (web_search, news_search, sector_search, sec_search) — caps 20/8/7 per member, 35 total/cycle]
                             |
                             v
                    MARKET CONTEXT (context.py)
@@ -98,10 +99,10 @@ Anthropic  -------> CLAUDE SONNET SYNTHESIS
                             |
                             v
 OpenAI ----------> GPT-4o MODERATOR ---+
-  (skeptic)        (full data access)  |
+  (skeptic)        (full data access; when skeptic_research_enabled: tool-use)  |
                                        +--> MODERATION PANEL --> SQLite
 Gemini ----------> GEMINI MODERATOR ---+    (consensus logic)   (moderation_logs)
-  (risk assessor)  (full data access)  |
+  (risk assessor)  (full data access; when risk_research_enabled: tool-use TBD)  |
                             +----------+
                             |
                             v

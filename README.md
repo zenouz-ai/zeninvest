@@ -303,6 +303,7 @@ docs/                   # Project documentation (16 files; archived plans in doc
 └── WALK_FORWARD_VALIDATION.md   # Walk-forward validation and promotion report
 notebooks/
 ├── diagnostics.ipynb       # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
+├── research_api_investigation.ipynb  # Phase 0: Brave vs Tavily API comparison, SEC EDGAR validation (see docs/AGENTIC_RESEARCH.md)
 ├── brave_api_smoke.py      # Manual smoke test for Brave Search + Answers APIs (requires API keys)
 ├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
 └── enrichment_benchmark.py # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy

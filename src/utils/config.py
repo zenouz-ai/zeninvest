@@ -378,7 +378,41 @@ class Settings:
 
     @property
     def tavily_monthly_calls(self) -> int:
-        return int(self.search_api_limits.get("tavily_monthly_calls", 2000))
+        return int(self.search_api_limits.get("tavily_monthly_calls", 1000))
+
+    # --- Research (Agentic Research US-4.4) ---
+    @property
+    def research(self) -> dict[str, Any]:
+        return self._config.get("research", {})
+
+    @property
+    def research_enabled(self) -> bool:
+        return bool(self.research.get("enabled", False))
+
+    @property
+    def strategy_research_enabled(self) -> bool:
+        return bool(self.research.get("strategy_research_enabled", False))
+
+    @property
+    def skeptic_research_enabled(self) -> bool:
+        return bool(self.research.get("skeptic_research_enabled", False))
+
+    @property
+    def risk_research_enabled(self) -> bool:
+        return bool(self.research.get("risk_research_enabled", False))
+
+    @property
+    def research_max_calls_per_member_per_cycle(self) -> dict[str, int]:
+        caps = self.research.get("max_calls_per_member_per_cycle") or {}
+        return {
+            "strategy": int(caps.get("strategy", 20)),
+            "skeptic": int(caps.get("skeptic", 8)),
+            "risk": int(caps.get("risk", 7)),
+        }
+
+    @property
+    def research_max_total_calls_per_cycle(self) -> int:
+        return int(self.research.get("max_total_research_calls_per_cycle", 35))
 
     # --- Order Management ---
     @property

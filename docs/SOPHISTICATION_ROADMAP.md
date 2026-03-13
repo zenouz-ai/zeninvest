@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **10** · In Progress **1** (US-4.4 Agentic Research) · Pipeline **14** (order by priority and feasibility below)
+**At a glance:** Delivered **11** · Pipeline **14** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -34,7 +34,6 @@ timeline
         US-1.8 : Dashboard VPS Deployment
         US-1.7 : Dashboard & Visualisation
         US-1.4 : Deploy POC to VPS
-    section In Progress
         US-4.4 : Agentic Research
     section Pipeline (priority order)
         US-1.6 : Slack NL Trade Commands
@@ -48,7 +47,6 @@ timeline
         US-3.3 : Correlation Screening
         US-4.2 : Earnings Calendar
         US-4.3 : Sector Rotation
-        US-4.4 : Agentic Research
         US-6.1 : ML Trade Scoring (investigation)
         US-6.2 : Journal Embeddings
         US-6.3 : RL Investigation
@@ -68,7 +66,7 @@ timeline
 | | 8 | US-1.8 | Dashboard VPS Deployment |
 | | 9 | US-1.7 | Dashboard & Visualisation (full API + 7 pages) |
 | | 10 | US-1.4 | Deploy POC to VPS |
-| **In Progress** | 1 | US-4.4 | Agentic Research (independent tool access; see `docs/AGENTIC_RESEARCH.md`) |
+| | 11 | US-4.4 | Agentic Research (web search, SEC EDGAR, Strategy/Skeptic tool-use; caps 20/8/7, total 35) |
 | **Pipeline** | 1 | US-1.6 | Slack NL Trade Commands |
 | | 2 | US-2.1 | Conviction Calibration |
 | | 3 | US-2.2 | Dynamic Strategy Weighting |
@@ -109,7 +107,7 @@ timeline
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
-| **US-4.4** | Agentic Research | Independent tool access (web search, news, SEC) for Strategy + Moderation; Brave + Tavily dual-provider (fallback/additional); differentiated research mandates | Stale context mitigation, follow-up ability, broader coverage | **In Progress** |
+| **US-4.4** | Agentic Research | Independent tool access (web search, news, sector, SEC EDGAR) for Strategy + Skeptic + Risk; Brave primary, Tavily fallback; caps 20/8/7 per member, 35 total/cycle; Phase 0 notebook, ResearchLog, dashboard API | Stale context mitigation, follow-up ability, broader coverage | **Delivered** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |

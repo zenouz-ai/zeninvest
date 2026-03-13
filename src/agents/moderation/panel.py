@@ -64,6 +64,7 @@ class ModerationPanel:
         market_context: dict[str, Any],
         conviction: int,
         cycle_id: str,
+        research_executor=None,
     ) -> ModerationResult:
         """Run the full moderation panel on a trade proposal.
 
@@ -97,6 +98,7 @@ class ModerationPanel:
         if use_gpt4o:
             gpt4o_result = openai_mod.review_trade(
                 trade_proposal, portfolio_context, market_context, cycle_id,
+                research_executor=research_executor if self.settings.skeptic_research_enabled else None,
             )
             if not gpt4o_result.get("available", False):
                 gpt4o_result = None
@@ -104,6 +106,7 @@ class ModerationPanel:
         if use_gemini:
             gemini_result = gemini_mod.review_trade(
                 trade_proposal, portfolio_context, market_context, cycle_id,
+                research_executor=research_executor if self.settings.risk_research_enabled else None,
             )
             if not gemini_result.get("available", False):
                 gemini_result = None

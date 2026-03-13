@@ -53,6 +53,7 @@ def review_trade(
     portfolio_context: str,
     market_context: dict[str, Any],
     cycle_id: str | None = None,
+    research_executor=None,
 ) -> dict[str, Any]:
     """Have Gemini review a trade proposal with full market context.
 
@@ -62,10 +63,12 @@ def review_trade(
         market_context: Rich dict containing indicators, fundamentals, macro,
                        sub-strategy scores, analyst data, and news sentiment.
         cycle_id: Optional cycle identifier for cost tracking.
-
+        research_executor: Optional ResearchExecutor for tool-use (risk research).
+                         When provided, uses single-turn for now; tool-use loop TBD.
     Returns:
         Moderator verdict with scores and reasoning.
     """
+    # Tool-use loop for Gemini Risk can be added when Gemini SDK supports it
     settings = get_settings()
 
     if not check_budget(Provider.GOOGLE.value):

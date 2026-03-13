@@ -24,6 +24,7 @@ from .routers import (
     outcomes,
     performance,
     portfolio,
+    research,
     risk,
     runs,
     status,
@@ -78,6 +79,7 @@ app.include_router(risk.router, prefix="/api/risk", tags=["risk"])
 app.include_router(opportunity.router, prefix="/api/opportunity", tags=["opportunity"])
 app.include_router(outcomes.router, prefix="/api/outcomes", tags=["outcomes"])
 app.include_router(stop_loss.router, prefix="/api/stop-loss", tags=["stop-loss"])
+app.include_router(research.router, prefix="/api/research", tags=["research"])
 app.include_router(performance.router, prefix="/api/performance", tags=["performance"])
 app.include_router(costs.router, prefix="/api/costs", tags=["costs"])
 app.include_router(api_usage.router, prefix="/api/api-usage", tags=["api-usage"])

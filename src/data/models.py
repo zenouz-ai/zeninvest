@@ -7,6 +7,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Float,
+    Index,
     Integer,
     String,
     Text,
@@ -275,6 +276,29 @@ class ApiLog(Base):
     response_body = Column(Text, nullable=True)
     duration_ms = Column(Float, nullable=True)
     error = Column(Text, nullable=True)
+
+
+class ResearchLog(Base):
+    """Audit trail for agentic research tool calls."""
+
+    __tablename__ = "research_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cycle_id = Column(String(50), nullable=True, index=True)
+    member = Column(String(30), nullable=False)  # strategy, skeptic, risk
+    ticker = Column(String(50), nullable=True, index=True)
+    tool_name = Column(String(50), nullable=False)
+    query = Column(Text, nullable=True)
+    num_results = Column(Integer, nullable=True)
+    results_json = Column(Text, nullable=True)
+    provider = Column(String(30), nullable=True)  # brave, tavily, sec
+    cost_usd = Column(Float, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    cache_hit = Column(Boolean, nullable=False, default=False)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (Index("ix_research_logs_member_ticker", "member", "ticker"),)
 
 
 class CostLog(Base):

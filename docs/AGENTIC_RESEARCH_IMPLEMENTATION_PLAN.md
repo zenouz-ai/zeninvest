@@ -17,16 +17,29 @@ last_updated: 2026-03-13
 
 | # | Task | Phase | Est. |
 |---|------|-------|------|
-| 1 | Create `src/agents/research/` module; providers (base, brave, tavily, router) | A | 1 session |
-| 2 | SEC EDGAR client (`sec_search.py`) — direct HTTP, no LangChain | A | 0.5 session |
-| 3 | ResearchCache, ResearchBudget, ResearchExecutor; ResearchLog model + migration | A | 1 session |
-| 4 | Add `research` config block to settings.yaml; Settings properties in config.py | A | 0.5 session |
-| 5 | Tests: providers, cache, budget, executor (mock APIs) | A | 0.5 session |
-| 6 | Wire tool-use into Strategy engine (`synthesize_with_claude`) | B | 1 session |
-| 7 | Wire tool-use into Moderation (GPT-4o skeptic, Gemini risk) | C | 1 session |
-| 8 | Dashboard research panel, API `/api/research/*`, Slack, EventsLog | D | 1 session |
+| 1 | Create `notebooks/research_api_investigation.ipynb` (Phase 0) | 0 | done |
+| 2 | Run Phase 0; document Brave vs Tavily recommendation | 0 | done |
+| 3 | Create `src/agents/research/` module; providers (base, brave, tavily, router) | A | 1 session |
+| 4 | SEC EDGAR client (`sec_search.py`) — direct HTTP, no LangChain | A | 0.5 session |
+| 5 | ResearchCache, ResearchBudget, ResearchExecutor; ResearchLog model + migration | A | 1 session |
+| 6 | Add `research` config block to settings.yaml; caps (20/8/7, total 35); `tavily_monthly_calls: 1000` | A | 0.5 session |
+| 7 | Wire tool-use into Strategy engine (`synthesize_with_claude`) | B | 1 session |
+| 8 | Wire tool-use into Moderation (GPT-4o skeptic, Gemini risk) | C | 1 session |
+| 9 | Dashboard research panel, API `/api/research/*`, Slack, EventsLog | D | 1 session |
 
-**Total:** ~6–7 sessions. Phases A–D are sequential; B and C can be parallelised after A.
+**Total:** ~6 sessions. Phase 0 complete. Phases A–D are sequential; B and C can be parallelised after A.
+
+### Phase 0 Context
+
+- **SEC EDGAR:** Free; no API key. Use `company_tickers.json` for ticker→CIK, then `data.sec.gov/submissions/CIK{cik}.json` for filing metadata. User-Agent header required.
+- **Config caps:** `max_calls_per_member_per_cycle: {strategy: 20, skeptic: 8, risk: 7}`, `max_total_research_calls_per_cycle: 35`, `tavily_monthly_calls: 1000`.
+
+## Phase 0 Checklist (Complete)
+
+- [x] `notebooks/research_api_investigation.ipynb` — sections 0.1–0.7 (Environment, Brave, Tavily, A/B, SEC EDGAR, Summary, Mock Tool Execution)
+- [x] Brave vs Tavily recommendation documented (Brave primary, Tavily fallback)
+- [x] SEC EDGAR parsing approach confirmed
+- [x] Suggested caps validated (20/8/7, total 35)
 
 ## Phase A Checklist
 
@@ -36,7 +49,7 @@ last_updated: 2026-03-13
 - [ ] `src/agents/research/providers/router.py` — ProviderRouter (primary/fallback/additional)
 - [ ] `src/agents/research/sec_search.py` — SEC EDGAR (direct API)
 - [ ] `src/agents/research/cache.py` — ResearchCache (4h TTL)
-- [ ] `src/agents/research/budget.py` — ResearchBudget (per-member + £50 cap)
+- [ ] `src/agents/research/budget.py` — ResearchBudget (per-member caps 20/8/7, total 35)
 - [ ] `src/agents/research/executor.py` — ResearchExecutor
 - [ ] `src/agents/research/tools.py` — tool definitions
 - [ ] `ResearchLog` model + Alembic migration

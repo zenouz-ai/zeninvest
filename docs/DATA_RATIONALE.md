@@ -422,21 +422,21 @@ and reliability tradeoff of local deployment.
 
 ---
 
-## 12. Agentic Research Data Sources (Planned)
+## 12. Agentic Research Data Sources (US-4.4 — Delivered)
 
-When Agentic Research (US-4.4) is implemented, committee members will have on-demand search tools backed by:
+Committee members have on-demand search tools backed by:
 
 | Source | Role | Decision Path | Rationale |
 |--------|------|---------------|-----------|
-| Brave Search API | Primary for web/news/sector/macro search | Path 2 | Real-time web, financial news filter, privacy-respecting. Free tier 2K/month. |
-| Tavily Search API | Fallback + optional additional for `news_search` | Path 2 | LLM-optimised snippets, native `topic: finance`. Used when Brave fails or as supplemental source for richer news coverage. |
-| SEC EDGAR | 10-K, 10-Q, 8-K filings | Path 2 | Official filings, fundamentals verification. |
+| Brave Search API | Primary for web/news/sector search | Path 2 | Real-time web, financial news. 2K/month shared with enrichment. |
+| Tavily Search API | Fallback on Brave timeout/5xx | Path 2 | LLM-optimised snippets, native `topic: finance`. 1K/month. |
+| SEC EDGAR | 10-K, 10-Q, 8-K, proxy filings | Path 2 | Free; institutional-grade primary source. Direct HTTP to data.sec.gov. |
 
-**Provider strategy:** Primary (Brave) with Tavily as fallback on timeout/rate-limit. Optional `additional_for_news` mode calls both and merges results. ResearchCache deduplicates by (ticker, tool, query). See [Agentic Research](AGENTIC_RESEARCH.md).
+**Provider strategy:** Brave primary, Tavily fallback. Per-member caps: Strategy 20, Skeptic 8, Risk 7; total 35/cycle. ResearchCache deduplicates by (ticker, tool, query). See [Agentic Research](AGENTIC_RESEARCH.md).
 
 ### 12.1 Search API Pricing (Brave, Tavily)
 
-Used for batch universe enrichment (sector/market_cap extraction) and planned Agentic Research. Project limit: 2,000 calls/month each.
+Used for batch universe enrichment and Agentic Research. Limits: Brave Search 2,000, Brave Answers 2,000, Tavily 1,000 calls/month.
 
 | API | Pricing | Rate limit | Notes |
 |-----|---------|------------|-------|

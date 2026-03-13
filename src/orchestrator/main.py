@@ -504,6 +504,14 @@ class Orchestrator:
             decisions = strategy_result.get("decisions", [])
             strategy_decisions = decisions
             logger.info(f"Strategy produced {len(decisions)} decisions")
+
+            # Research executor for moderation tool-use (shared budget per cycle)
+            research_executor = None
+            if self.settings.research_enabled and (
+                self.settings.skeptic_research_enabled or self.settings.risk_research_enabled
+            ):
+                from src.agents.research import ResearchExecutor
+                research_executor = ResearchExecutor(cycle_id=cycle_id)
             
             # Log strategy decisions
             if DASHBOARD_AVAILABLE and log_event:
@@ -587,6 +595,7 @@ class Orchestrator:
                     market_context=market_context,
                     conviction=conviction,
                     cycle_id=cycle_id,
+                    research_executor=research_executor,
                 )
                 mod_dict = mod_result.to_dict()
                 

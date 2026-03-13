@@ -73,11 +73,23 @@ cost_limits:
   total_monthly_gbp: 50.00
   alert_threshold_pct: 80
 
-# Search API monthly call limits (project-wide) — Brave, Tavily for enrichment
+# Search API monthly call limits (project-wide) — Brave, Tavily for enrichment + research
 search_api_limits:
   brave_search_monthly_calls: 2000
   brave_answer_monthly_calls: 2000
-  tavily_monthly_calls: 2000
+  tavily_monthly_calls: 1000  # 1000 for research spec; shared with enrichment/fallback
+
+# Agentic research (US-4.4) — tool-use for Strategy, Skeptic, Risk
+research:
+  enabled: false
+  strategy_research_enabled: false  # Enable tool-use in Strategy when research.enabled
+  skeptic_research_enabled: false   # Enable tool-use in GPT-4o Skeptic
+  risk_research_enabled: false      # Enable tool-use in Gemini Risk
+  max_calls_per_member_per_cycle:
+    strategy: 20
+    skeptic: 8
+    risk: 7
+  max_total_research_calls_per_cycle: 35
 
 opportunity:
   enabled: true

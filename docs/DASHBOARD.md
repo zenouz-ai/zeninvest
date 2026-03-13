@@ -19,7 +19,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 - **Order auditing** — stop-loss adjustments, trailing stops, limit orders, execution trail
 - **Cost monitoring** — LLM spend tracking, degradation state, API usage
 - **Performance analysis** — win rates, Sharpe/Sortino, trade outcomes, attribution by committee member
-- **Research transparency** (Phase D) — per-member research activity, cache hit rates, influence tracking
+- **Research transparency** (Phase D) — per-member research activity via `GET /api/research/logs`, `GET /api/research/summary`; cache hit rates; `research_call` events in SSE stream
 
 ---
 
@@ -29,7 +29,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **FastAPI Backend** | Complete | REST for runs, status (incl. system state), universe, portfolio, orders, events; decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); SSE stream. All read from agent SQLite; no duplicate tables. |
+| **FastAPI Backend** | Complete | REST for runs, status (incl. system state), universe, portfolio, orders, events; decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, research (logs, summary); system (state, trigger, pause, resume); SSE stream. All read from agent SQLite; no duplicate tables. |
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
