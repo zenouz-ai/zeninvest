@@ -482,6 +482,7 @@ Used for batch universe enrichment and Agentic Research. Limits: Brave Search 2,
 | 2026-03-12 | Screening cooldown 24h | Reduced from 48h to enable 60–90 decisions/day with 3 intraday cycles. |
 | 2026-03-12 | Enrichment cascade (yf → Finnhub → AV → BRAVE_ANSWERS) | `enrich_instruments_batch` tries yfinance first (fast, free), then Finnhub, Alpha Vantage OVERVIEW, BRAVE_ANSWERS. Expands ticker pool beyond 160. |
 | 2026-03-12 | Web search fallback for analyst/news | When Finnhub analyst or Alpha Vantage ticker sentiment times out/fails, `get_news_sentiment_fallback` (Brave/Tavily) supplies analyst/news snippets. Config: `data_fallback_web_search_enabled`. |
+| 2026-03-13 | Effective cooldown for intraday + proactive seed | `effective_screening_cooldown_hours` = min(base, cycle_hours) when intraday so each cycle gets 20–35 candidates. Fallback seeds when pool < 2×max_candidates. Pool-size diagnostic logging. Fixes low decision count (2 vs 20–35 per cycle). |
 
 ---
 

@@ -256,6 +256,15 @@ class Settings:
         return int(self.universe.get("screening_cooldown_hours", 72))
 
     @property
+    def effective_screening_cooldown_hours(self) -> int:
+        """For intraday, cap cooldown at cycle_hours so each cycle gets fresh pool.
+        With 3 cycles at 08/12/16, 4h cooldown ensures cycle 2 and 3 see instruments from cycle 1 as eligible."""
+        base = self.screening_cooldown_hours
+        if self.cycle_frequency == "intraday":
+            return min(base, self.cycle_hours)
+        return base
+
+    @property
     def review_window_hours(self) -> list[int]:
         """Review = investigated in this window [min_h, max_h]. E.g. [24, 48] = 24-48h ago."""
         val = self.universe.get("review_window_hours", [24, 48])

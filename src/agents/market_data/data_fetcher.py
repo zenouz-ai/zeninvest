@@ -482,7 +482,10 @@ class DataFetcher:
 
         try:
             # Cooldown cutoff: exclude instruments screened within the window
-            cooldown_hours = settings.screening_cooldown_hours
+            # For intraday, use effective (capped at cycle_hours) so each cycle gets fresh pool
+            cooldown_hours = getattr(
+                settings, "effective_screening_cooldown_hours", None
+            ) or settings.screening_cooldown_hours
             cooldown_cutoff = datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)
 
             # Query all instruments that have sector + market_cap populated
@@ -505,7 +508,21 @@ class DataFetcher:
 
             if not instruments:
                 # Fallback: grab whatever is available (seed if needed, or rotate when all in cooldown)
-                logger.warning("No instruments with sector/market_cap past cooldown. Using fallback.")
+                eligible_total = (
+                    session.query(Instrument)
+                    .filter(
+                        Instrument.sector.isnot(None),
+                        Instrument.market_cap.isnot(None),
+                        Instrument.market_cap > settings.small_cap_min,
+                        Instrument.data_available != False,  # noqa: E712
+                    )
+                    .count()
+                )
+                logger.warning(
+                    "No instruments past cooldown (cooldown=%dh). Eligible pool size: %d. Using fallback.",
+                    cooldown_hours,
+                    eligible_total,
+                )
                 return self._get_fallback_universe(exclude, total, session, cooldown_cutoff)
 
             # Last-investigated timestamp per ticker (max of StrategyDecision.timestamp)
@@ -696,23 +713,32 @@ class DataFetcher:
         When all enriched instruments are in cooldown (pool exhausted), orders by
         last_screened_at ASC (oldest first) to rotate through the pool instead of
         returning the same top 30 by market cap every cycle.
+
+        Proactive seed: when eligible pool is below 2*max_candidates, merge seed
+        instruments to ensure rotation has enough headroom.
         """
-        # Only seed when no enriched instruments exist; otherwise we're in "all in cooldown" path
-        has_enriched = (
+        settings = self.settings
+        min_pool_threshold = 2 * total  # Need 2x headroom for rotation
+
+        eligible_count = (
             session.query(Instrument)
             .filter(
                 Instrument.sector.isnot(None),
                 Instrument.market_cap.isnot(None),
-                Instrument.market_cap > self.settings.small_cap_min,
+                Instrument.market_cap > settings.small_cap_min,
                 Instrument.data_available != False,  # noqa: E712
             )
-            .limit(1)
-            .first()
-            is not None
+            .count()
         )
-        if not has_enriched:
+
+        if eligible_count < min_pool_threshold:
             seed_stocks = get_seed_instruments()
-            logger.info(f"Seeding universe with {len(seed_stocks)} curated stocks")
+            logger.info(
+                "Pool below threshold (%d < %d): bootstrapping with %d seed instruments",
+                eligible_count,
+                min_pool_threshold,
+                len(seed_stocks),
+            )
             for seed in seed_stocks:
                 existing = session.query(Instrument).filter_by(ticker=seed["ticker"]).first()
                 if existing:
@@ -731,6 +757,7 @@ class DataFetcher:
                     ))
             session.commit()
 
+        # Reuse settings for filters below
         settings = self.settings
 
         # First try: same cooldown logic as main path
@@ -833,15 +860,17 @@ class DataFetcher:
             .order_by(Instrument.last_screened_at.asc().nulls_first(), Instrument.market_cap.desc())
             .all()
         )
-        logger.info(
-            "Pool exhausted: using least-recently-screened rotation (%d instruments ordered by last_screened_at ASC)",
-            len(instruments),
-        )
         result = [
             {"ticker": i.ticker, "name": i.name, "sector": i.sector or "Unknown", "market_cap": i.market_cap, "exchange": i.exchange, "currency": i.currency}
             for i in instruments
             if i.ticker not in exclude
         ]
+        logger.info(
+            "Pool exhausted: using least-recently-screened rotation. Returning %d candidates (pool had %d eligible, excluded %d)",
+            len(result[:total]),
+            len(instruments),
+            len(exclude),
+        )
         return result[:total]
 
     def enrich_instrument_metadata(self, ticker: str, fundamentals: dict[str, Any]) -> None:

@@ -62,7 +62,7 @@ universe:
   large_cap_min: 10000000000  # $10B
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
-  screening_cooldown_hours: 24  # Hours before a screened stock can be re-screened
+  screening_cooldown_hours: 24  # Base hours; for intraday, effective = min(24, cycle_hours)=4 so each cycle gets fresh pool
   uninvestigated_target_pct: 0.5  # Target share of per-cycle candidates that have never been investigated (approx)
   batch_enrichment_enabled: true   # Scheduled job to enrich instruments missing sector/market_cap
   batch_enrichment_per_run: 50     # Max instruments to enrich per scheduler run

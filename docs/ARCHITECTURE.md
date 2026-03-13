@@ -67,8 +67,8 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |              [Runs every cycle regardless of state; Risk blocks new BUYs in CAUTIOUS]
                    |              [Sector-balanced, cap-tiered sampling:
                    |               70% large, 20% mid, 10% small cap]
-                   |              [Cooldown (24h) prevents re-screening within window]
-                   |              [When pool exhausted: order by last_screened_at ASC to rotate]
+                   |              [Cooldown: intraday=4h effective, standard=24h; prevents re-screening within window]
+                   |              [When pool exhausted: order by last_screened_at ASC to rotate; proactive seed when pool < 2×max_candidates]
                    |              [Review (24-48h ago) vs new (never or >48h) buckets, 50% each via uninvestigated_target_pct]
                    |              [Batch enrichment job (daily 06:00): cascade yfinance → Finnhub → AV OVERVIEW → BRAVE_ANSWERS for sector/market_cap]
                    |
