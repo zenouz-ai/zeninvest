@@ -31,7 +31,7 @@ Leave it running. In another terminal:
 poetry run python dashboard/backend/test_endpoints.py
 ```
 
-This checks: health, status (with state/paused), runs, universe, portfolio, orders, events, **decisions** (list + waterfall), **moderation**, **risk**, **opportunity** (scores, queue), **outcomes** (list, stats), **stop-loss** (current, adjustments), **performance** (metrics, history), **costs** (daily, monthly, degradation), **api-usage/daily**, **system/state**. Expect 200 or 404/503; connection errors mean the server is not running.
+This checks: health, status (with state/paused), runs, universe, portfolio, orders, events, **decisions** (list + waterfall), **moderation**, **risk**, **opportunity** (config, scores, queue), **outcomes** (list, stats), **stop-loss** (current, adjustments), **performance** (metrics, history), **costs** (daily, monthly, degradation), **api-usage/daily**, **system/state**. Expect 200 or 404/503; connection errors mean the server is not running.
 
 ### 4. Open API docs (optional)
 
@@ -60,7 +60,7 @@ In the browser, confirm each route loads without errors:
 | Universe        | `/universe`   | Table, expand row for committee reasoning          |
 | Run History     | `/runs`       | Timeline, run diff (from/to)                        |
 | Portfolio       | `/portfolio`  | Positions, P&L, charts                             |
-| Opportunity     | `/opportunity`| UOV queue and scores table                          |
+| Opportunity     | `/opportunity`| UOV queue (when/why/when action) and scores table   |
 | Order Management| `/orders`     | Current stops, adjustment history                   |
 | Costs           | `/costs`      | Degradation badge, daily chart, monthly table      |
 

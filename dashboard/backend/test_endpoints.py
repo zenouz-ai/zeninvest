@@ -64,6 +64,7 @@ def main() -> int:
         ("/api/decisions/waterfall?cycle_id=test&ticker=AAPL_US_EQ", "GET"),
         ("/api/moderation/test-cycle", "GET"),
         ("/api/risk/test-cycle", "GET"),
+        ("/api/opportunity/config/", "GET"),
         ("/api/opportunity/scores/", "GET"),
         ("/api/opportunity/queue/", "GET"),
         ("/api/outcomes/", "GET"),

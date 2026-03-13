@@ -198,7 +198,7 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     +-- POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle)
     +-- GET /api/decisions, /api/decisions/waterfall, /api/decisions/{cycle_id}, /api/decisions/ticker/{ticker}
     +-- GET /api/moderation/{cycle_id}, /api/moderation/ticker/{ticker}; GET /api/risk/{cycle_id}
-    +-- GET /api/opportunity/scores, /api/opportunity/queue, /api/opportunity/history/{ticker}
+    +-- GET /api/opportunity/config, /api/opportunity/scores, /api/opportunity/queue, /api/opportunity/history/{ticker}
     +-- GET /api/outcomes, /api/outcomes/stats
     +-- GET /api/stop-loss/current, /api/stop-loss/adjustments
     +-- GET /api/performance/metrics, /api/performance/history
@@ -209,7 +209,7 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     v
 React frontend (SPA, served by FastAPI when dist/ exists)
     |
-    +-- 7 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
+    +-- 7 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline (queue: when/why queued, when action taken), Order Management, Costs
     +-- Universe: sortable columns, expandable rows with committee reasoning
     +-- Run History: timeline, run diff (new/closed/position changes)
     +-- Portfolio: positions, P&L chart, sector allocation
