@@ -6,6 +6,7 @@ import {
   getSortedRowModel,
   flexRender,
   createColumnHelper,
+  type SortingState,
 } from '@tanstack/react-table'
 import { universeApi } from '../api/client'
 import type { Instrument, InstrumentDetail, UniverseBubbleItem } from '../types'
@@ -13,7 +14,25 @@ import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 
-const columnHelper = createColumnHelper<Instrument>()
+type UniverseRow = Instrument & {
+  _investigated: boolean
+  _reviews: number
+  _holding: number
+  _sold: number
+  _uov_ewma: number | null
+}
+
+const columnHelper = createColumnHelper<UniverseRow>()
+
+function SortIndicator({ column }: { column: { getIsSorted: () => false | 'asc' | 'desc' } }) {
+  const sort = column.getIsSorted()
+  if (!sort) return <span className="opacity-40 ml-1">⇅</span>
+  return (
+    <span className="ml-1 text-accent">
+      {sort === 'asc' ? '↑' : '↓'}
+    </span>
+  )
+}
 
 export default function Universe() {
   const [instruments, setInstruments] = useState<Instrument[]>([])
@@ -30,6 +49,7 @@ export default function Universe() {
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null)
   const [detail, setDetail] = useState<InstrumentDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [sorting, setSorting] = useState<SortingState>([])
 
   useEffect(() => {
     const fetchUniverse = async () => {
@@ -96,6 +116,7 @@ export default function Universe() {
     () => [
       columnHelper.accessor('ticker', {
         header: 'Ticker',
+        enableSorting: true,
         cell: (info) => (
           <span className="font-mono font-semibold">
             {cleanTicker(info.getValue())}
@@ -104,6 +125,7 @@ export default function Universe() {
       }),
       columnHelper.accessor('name', {
         header: 'Name',
+        enableSorting: true,
         cell: (info) => (
           <span className="truncate max-w-[160px] inline-block align-middle">
             {info.getValue()}
@@ -112,12 +134,14 @@ export default function Universe() {
       }),
       columnHelper.accessor('sector', {
         header: 'Sector',
+        enableSorting: true,
         cell: (info) => (
           <span className="text-terminal-text-dim">{info.getValue() || 'N/A'}</span>
         ),
       }),
       columnHelper.accessor('industry', {
         header: 'Industry',
+        enableSorting: true,
         cell: (info) => (
           <span className="text-terminal-text-dim text-sm">
             {info.getValue() || 'N/A'}
@@ -126,6 +150,7 @@ export default function Universe() {
       }),
       columnHelper.accessor('market_cap', {
         header: 'Market Cap',
+        enableSorting: true,
         cell: (info) => {
           const value = info.getValue()
           if (!value) return 'N/A'
@@ -137,6 +162,7 @@ export default function Universe() {
       }),
       columnHelper.accessor('last_screened_at', {
         header: 'Last Screened',
+        enableSorting: true,
         cell: (info) => {
           const date = info.getValue()
           if (!date) return <span className="text-terminal-text-dim">Never</span>
@@ -149,6 +175,7 @@ export default function Universe() {
       }),
       columnHelper.accessor('data_available', {
         header: 'Status',
+        enableSorting: true,
         cell: (info) => (
           <span
             className={
@@ -161,37 +188,35 @@ export default function Universe() {
           </span>
         ),
       }),
-      columnHelper.display({
-        id: 'investigated',
+      columnHelper.accessor('_investigated', {
         header: 'Investigated',
+        enableSorting: true,
         cell: (info) => {
-          const ticker = info.row.original.ticker
-          const investigated = investigatedMap[ticker] ?? false
+          const v = info.getValue()
           return (
             <span
               className={
-                investigated
+                v
                   ? 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono bg-accent text-terminal-bg'
                   : 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono bg-terminal-surface text-terminal-text-dim'
               }
             >
-              {investigated ? 'Yes' : 'No'}
+              {v ? 'Yes' : 'No'}
             </span>
           )
         },
       }),
-      columnHelper.display({
-        id: 'reviews',
+      columnHelper.accessor('_reviews', {
         header: 'Reviews',
-        cell: (info) => {
-          const ticker = info.row.original.ticker
-          const s = decisionStatsMap[ticker]
-          return <span className="font-mono text-xs">{s?.count ?? 0}</span>
-        },
+        enableSorting: true,
+        cell: (info) => (
+          <span className="font-mono text-xs">{info.getValue()}</span>
+        ),
       }),
       columnHelper.display({
         id: 'decision_summary',
         header: 'Decisions',
+        enableSorting: false,
         cell: (info) => {
           const ticker = info.row.original.ticker
           const s = decisionStatsMap[ticker]
@@ -206,21 +231,20 @@ export default function Universe() {
           return <span className="text-terminal-text-dim text-xs font-mono">{parts.join(' / ')}</span>
         },
       }),
-      columnHelper.display({
-        id: 'holding',
+      columnHelper.accessor('_holding', {
         header: 'Holding',
-        cell: (info) => {
-          const ticker = info.row.original.ticker
-          const qty = holdingsMap[ticker] ?? 0
-          return <span className="font-mono text-xs">{qty ? qty.toFixed(2) : '0'}</span>
-        },
+        enableSorting: true,
+        cell: (info) => (
+          <span className="font-mono text-xs">
+            {info.getValue() ? info.getValue().toFixed(2) : '0'}
+          </span>
+        ),
       }),
-      columnHelper.display({
-        id: 'sold',
+      columnHelper.accessor('_sold', {
         header: 'Sold',
+        enableSorting: true,
         cell: (info) => {
-          const ticker = info.row.original.ticker
-          const qty = soldMap[ticker] ?? 0
+          const qty = info.getValue()
           return (
             <span
               className="font-mono text-xs"
@@ -235,12 +259,19 @@ export default function Universe() {
           )
         },
       }),
-      columnHelper.display({
-        id: 'uov_ewma',
+      columnHelper.accessor('_uov_ewma', {
         header: 'UOV (ewma)',
+        enableSorting: true,
+        sortingFn: (rowA, rowB) => {
+          const a = rowA.getValue('_uov_ewma') as number | null
+          const b = rowB.getValue('_uov_ewma') as number | null
+          if (a == null && b == null) return 0
+          if (a == null) return 1
+          if (b == null) return -1
+          return a - b
+        },
         cell: (info) => {
-          const ticker = info.row.original.ticker
-          const v = uovMap[ticker]
+          const v = info.getValue()
           return (
             <span className="font-mono text-xs">
               {v != null ? v.toFixed(3) : '—'}
@@ -249,55 +280,61 @@ export default function Universe() {
         },
       }),
     ],
-    [investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap]
+    [decisionStatsMap]
   )
 
   const filteredData = useMemo(() => {
-    const scored = instruments.map((inst) => {
+    const scored = instruments.map((inst): UniverseRow => {
       const ticker = inst.ticker
       const investigated = investigatedMap[ticker] ?? false
       const uov = uovMap[ticker]
       const stats = decisionStatsMap[ticker]
       const reviews = stats?.count ?? 0
-      return { inst, investigated, uov: uov ?? null, reviews }
+      const holding = holdingsMap[ticker] ?? 0
+      const sold = soldMap[ticker] ?? 0
+      return {
+        ...inst,
+        _investigated: investigated,
+        _reviews: reviews,
+        _holding: holding,
+        _sold: sold,
+        _uov_ewma: uov ?? null,
+      }
     })
 
-    const filtered = scored.filter(({ inst }) => {
+    const filtered = scored.filter((row) => {
       const matchesSearch =
         !search ||
-        cleanTicker(inst.ticker).toLowerCase().includes(search.toLowerCase()) ||
-        inst.name.toLowerCase().includes(search.toLowerCase())
-      const matchesSector = !sectorFilter || inst.sector === sectorFilter
+        cleanTicker(row.ticker).toLowerCase().includes(search.toLowerCase()) ||
+        row.name.toLowerCase().includes(search.toLowerCase())
+      const matchesSector = !sectorFilter || row.sector === sectorFilter
       return matchesSearch && matchesSector
     })
 
+    // Default order when no user sort applied
     filtered.sort((a, b) => {
-      // Investigated first
-      if (a.investigated !== b.investigated) {
-        return a.investigated ? -1 : 1
+      if (a._investigated !== b._investigated) return a._investigated ? -1 : 1
+      if (a._uov_ewma != null || b._uov_ewma != null) {
+        if (a._uov_ewma == null) return 1
+        if (b._uov_ewma == null) return -1
+        if (b._uov_ewma !== a._uov_ewma) return b._uov_ewma - a._uov_ewma
       }
-      // Higher UOV ewma first when available
-      if (a.uov != null || b.uov != null) {
-        if (a.uov == null) return 1
-        if (b.uov == null) return -1
-        if (b.uov !== a.uov) return b.uov - a.uov
-      }
-      // More reviews first
-      if (b.reviews !== a.reviews) return b.reviews - a.reviews
-      // Fallback: by last_screened_at desc
-      const ad = a.inst.last_screened_at ?? ''
-      const bd = b.inst.last_screened_at ?? ''
+      if (b._reviews !== a._reviews) return b._reviews - a._reviews
+      const ad = a.last_screened_at ?? ''
+      const bd = b.last_screened_at ?? ''
       if (ad < bd) return 1
       if (ad > bd) return -1
       return 0
     })
 
-    return filtered.map(({ inst }) => inst)
-  }, [instruments, search, sectorFilter])
+    return filtered
+  }, [instruments, search, sectorFilter, investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap])
 
   const table = useReactTable({
     data: filteredData,
     columns,
+    state: { sorting },
+    onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -352,16 +389,28 @@ export default function Universe() {
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-terminal-border">
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim"
-                  >
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
+                {headerGroup.headers.map((header) => {
+                  const canSort = header.column.getCanSort()
+                  return (
+                    <th
+                      key={header.id}
+                      className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim"
+                    >
+                      {header.isPlaceholder ? null : canSort ? (
+                        <button
+                          type="button"
+                          onClick={() => header.column.toggleSorting(header.column.getIsSorted() === 'asc')}
+                          className="flex items-center hover:text-terminal-text transition-colors"
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          <SortIndicator column={header.column} />
+                        </button>
+                      ) : (
+                        flexRender(header.column.columnDef.header, header.getContext())
+                      )}
+                    </th>
+                  )
+                })}
               </tr>
             ))}
           </thead>
