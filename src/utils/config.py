@@ -39,6 +39,16 @@ class Settings:
         return self.trading["base_url"]
 
     @property
+    def account_type(self) -> str:
+        """practice = relaxed state machine (always ACTIVE); live = full CAUTIOUS/HALTED."""
+        return self.trading.get("account_type", "practice")
+
+    @property
+    def is_practice_account(self) -> bool:
+        """True when account_type is practice; state machine stays ACTIVE."""
+        return self.account_type == "practice"
+
+    @property
     def cycle_frequency(self) -> str:
         """standard = 2 cycles/day, intraday = 3 cycles/day during market hours."""
         return self.trading.get("cycle_frequency", "standard")

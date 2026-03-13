@@ -293,8 +293,9 @@ class Orchestrator:
             cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
 
             # Update peak and check drawdown
-            if not self.dry_run:
-                # Live: mutate DB state as normal
+            practice_skips_state_machine = self.settings.is_practice_account
+            if not self.dry_run and not practice_skips_state_machine:
+                # Live + real account: full state machine (CAUTIOUS/HALTED)
                 self.state_machine.update_peak(current_value)
                 state_info = self.state_machine.get_state()
                 peak_value = state_info.get("peak_portfolio_value", current_value)
@@ -313,15 +314,16 @@ class Orchestrator:
                 drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
                 self.state_machine.update_drawdown(drawdown_pct)
             else:
-                # Dry-run: log what would happen but don't persist or block screening
+                # Dry-run or practice account: log drawdown but stay ACTIVE (no state transitions)
                 state_info = self.state_machine.get_state()
                 peak_value = state_info.get("peak_portfolio_value", current_value)
                 drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
                 drawdown_state = self.risk_manager.get_drawdown_state(current_value, peak_value)
                 if drawdown_state != "ACTIVE":
+                    reason = "dry-run" if self.dry_run else "practice account"
                     logger.info(
-                        f"Dry-run: drawdown {drawdown_pct:.1f}% would trigger {drawdown_state}, "
-                        f"ignoring (state not mutated in dry-run mode)"
+                        f"{reason.capitalize()}: drawdown {drawdown_pct:.1f}% would trigger {drawdown_state}, "
+                        f"staying ACTIVE (state machine relaxed)"
                     )
                 current_state = "ACTIVE"
 
@@ -1074,7 +1076,7 @@ class Orchestrator:
         Two phases:
         1. Analyze all current positions (always).
         2. Screen the instrument universe for new candidates using sector-balanced,
-           market-cap-tiered sampling (skip in CAUTIOUS — no new positions allowed).
+           market-cap-tiered sampling (always run; Risk blocks new BUYs in CAUTIOUS).
 
         When cycle_frequency is intraday: uses get_stock_analysis_lite (Tier 1 only,
         no Finnhub) for screening. Finnhub/AV fetched later for active-review tickers.
@@ -1110,53 +1112,52 @@ class Orchestrator:
                 stocks_data.append({"ticker": ticker, "indicators": {}, "fundamentals": {}})
             analyzed_tickers.add(ticker)
 
-        # Phase 2: Screen universe for new candidates (not in CAUTIOUS mode)
-        if system_state != "CAUTIOUS":
-            all_exclude = analyzed_tickers | (exclude_tickers or set())
-            try:
-                candidates = self.data_fetcher.get_screened_universe(
-                    exclude_tickers=all_exclude,
-                )
-                self.data_fetcher.mark_instruments_screened(
-                    [c["ticker"] for c in candidates],
-                )
-                logger.info(f"Screening {len(candidates)} universe candidates...")
-                skipped_no_data = 0
-                for candidate in candidates:
-                    c_ticker = candidate["ticker"]
-                    yf_ticker = c_ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
-                    if c_ticker in analyzed_tickers:
-                        continue
-                    try:
-                        cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
-                        if cached:
-                            if cached.get("indicators", {}).get("error"):
-                                skipped_no_data += 1
-                                continue
-                            cached["ticker"] = c_ticker
-                            stocks_data.append(cached)
-                        else:
-                            data = fetch_fn(yf_ticker)
-                            data["ticker"] = c_ticker
-                            if data.get("indicators", {}).get("error"):
-                                logger.debug(f"Skipping {c_ticker}: no OHLCV data available")
-                                self.data_fetcher.mark_instrument_unavailable(c_ticker)
-                                skipped_no_data += 1
-                                continue
-                            stocks_data.append(data)
-                            self.data_fetcher.enrich_instrument_metadata(
-                                c_ticker, data.get("fundamentals", {}),
-                            )
-                    except Exception as e:
-                        logger.warning(f"Failed to fetch data for candidate {c_ticker}: {e}")
-                    analyzed_tickers.add(c_ticker)
-                if skipped_no_data:
-                    logger.info(f"Skipped {skipped_no_data} candidates with no OHLCV data")
-            except Exception as e:
-                logger.warning(f"Universe screening failed: {e}")
+        # Phase 2: Screen universe for new candidates (always; Risk blocks new BUYs in CAUTIOUS)
+        all_exclude = analyzed_tickers | (exclude_tickers or set())
+        try:
+            candidates = self.data_fetcher.get_screened_universe(
+                exclude_tickers=all_exclude,
+            )
+            self.data_fetcher.mark_instruments_screened(
+                [c["ticker"] for c in candidates],
+            )
+            logger.info(f"Screening {len(candidates)} universe candidates...")
+            skipped_no_data = 0
+            for candidate in candidates:
+                c_ticker = candidate["ticker"]
+                yf_ticker = c_ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                if c_ticker in analyzed_tickers:
+                    continue
+                try:
+                    cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
+                    if cached:
+                        if cached.get("indicators", {}).get("error"):
+                            skipped_no_data += 1
+                            continue
+                        cached["ticker"] = c_ticker
+                        stocks_data.append(cached)
+                    else:
+                        data = fetch_fn(yf_ticker)
+                        data["ticker"] = c_ticker
+                        if data.get("indicators", {}).get("error"):
+                            logger.debug(f"Skipping {c_ticker}: no OHLCV data available")
+                            self.data_fetcher.mark_instrument_unavailable(c_ticker)
+                            skipped_no_data += 1
+                            continue
+                        stocks_data.append(data)
+                        self.data_fetcher.enrich_instrument_metadata(
+                            c_ticker, data.get("fundamentals", {}),
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to fetch data for candidate {c_ticker}: {e}")
+                analyzed_tickers.add(c_ticker)
+            if skipped_no_data:
+                logger.info(f"Skipped {skipped_no_data} candidates with no OHLCV data")
+        except Exception as e:
+            logger.warning(f"Universe screening failed: {e}")
 
         # Phase 3: Re-evaluate queued tickers (bypass cooldown so they can reach 2nd cycle)
-        if system_state != "CAUTIOUS" and self.settings.opportunity_enabled:
+        if self.settings.opportunity_enabled:
             try:
                 session = get_session()
                 queued_rows = session.query(OpportunityQueue).all()

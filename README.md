@@ -19,7 +19,7 @@ Orchestrator (configurable: 3 cycles at 08/12/16 UTC or 2 at 07/19 UTC)
   └── Journal & Reporting  → Per-trade journals, daily + weekly reports
 ```
 
-**State Machine:** ACTIVE → CAUTIOUS (>5% drawdown) → HALTED (>15% drawdown, liquidate all)
+**State Machine:** ACTIVE → CAUTIOUS (>30% drawdown, configurable) → HALTED (>40% drawdown, liquidate all)
 
 ## Setup
 
@@ -334,7 +334,7 @@ notebooks/
 - No single stock > 15% of portfolio
 - No single sector > 35%
 - Portfolio avg pairwise correlation < 0.7
-- 5% drawdown → CAUTIOUS mode; 15% → HALTED (liquidate all)
+- 30% drawdown → CAUTIOUS mode; 40% → HALTED (liquidate all); configurable in settings
 - VIX > 25: max 8% position; VIX > 35: max 5%
 - Daily loss > 2%: no new buys for 24 hours
 - Cash floor: always >= 10%

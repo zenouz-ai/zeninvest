@@ -122,8 +122,8 @@ P/E, P/B, ROE, profit margins, D/E ratio, earnings growth, earnings momentum (Qo
 | Max single stock | 15% | Resize or reject |
 | Max sector | 35% | Resize or reject |
 | Max correlation | 0.7 avg | Reject |
-| Cautious drawdown | 5% | Reduce position sizes to 8% |
-| Halt drawdown | 15% | **Liquidate ALL positions** |
+| Cautious drawdown | 30% (config) | Reduce position sizes to 8% |
+| Halt drawdown | 40% (config) | **Liquidate ALL positions** |
 | VIX high/extreme | 25/35 | Cap positions at 8%/5% |
 | Daily loss halt | 2% | No new buys for 24h |
 | Cash floor | 10% | Reject if insufficient |

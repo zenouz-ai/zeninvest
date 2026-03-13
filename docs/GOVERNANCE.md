@@ -87,7 +87,7 @@ The system is designed to fail closed, not open:
 - **If any LLM call fails, the trade is skipped.** The orchestrator catches exceptions at every stage and logs errors without proceeding.
 - **If the T212 API is unreachable, no trades are placed.** In dry-run mode, a mock portfolio is used; in live mode, the cycle terminates with an error.
 - **If cost budgets are exceeded, the system degrades gracefully** rather than spending more. See [Section 5: Cost Controls](#5-cost-controls).
-- **If drawdown exceeds 15%, all positions are liquidated automatically.** This is a hard, non-negotiable safety threshold.
+- **If drawdown exceeds `halt_drawdown_pct` (default 40%), all positions are liquidated automatically.** This is a hard, non-negotiable safety threshold.
 - **Order deduplication prevents double-execution.** A 5-minute dedup window (`DEDUP_WINDOW_MINUTES = 5`) prevents the same order from being placed twice.
 
 ---
@@ -254,7 +254,7 @@ The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules
 | 1 | **Max Single Stock** | No single stock > 15% of portfolio | REJECT or RESIZE | `check_max_single_stock()` |
 | 2 | **Max Sector Concentration** | No single sector > 35% of portfolio | REJECT or RESIZE | `check_max_sector()` |
 | 3 | **Correlation Limit** | Portfolio avg pairwise correlation < 0.7 | REJECT | `check_correlation()` |
-| 4 | **Drawdown State Machine** | >5% drawdown -> CAUTIOUS; >15% -> HALTED (liquidate all) | State transition + REJECT | `check_drawdown()` |
+| 4 | **Drawdown State Machine** | >cautious_drawdown_pct (30%) -> CAUTIOUS; >halt_drawdown_pct (40%) -> HALTED (liquidate all) | State transition + REJECT | `check_drawdown()` |
 | 5 | **VIX-Based Position Limits** | VIX >25: max 8%; VIX >35: max 5% per position | RESIZE | `check_vix_limit()` |
 | 6 | **Daily Loss Halt** | Daily loss >2%: no new buys for 24 hours | REJECT | `check_daily_loss_halt()` |
 | 7 | **Cash Floor** | Always maintain >= 10% cash | REJECT or RESIZE | `check_cash_floor()` |
@@ -282,15 +282,15 @@ The risk rules exist in a separate execution path from LLM outputs:
 The system operates in one of three states, persisted in the `system_state` database table:
 
 ```
-                  drawdown < 5%
+              drawdown < cautious_drawdown_pct
               +------------------+
               |                  |
               v                  |
          +--------+         +----------+
          | ACTIVE | ------> | CAUTIOUS |
-         +--------+  >5%    +----------+
+         +--------+ >30%    +----------+
               ^              |
-              |  recovery    | >15% drawdown
+              |  recovery    | >halt_drawdown_pct (40%)
               |              v
               |         +---------+
               +-------- | HALTED  |
@@ -320,6 +320,8 @@ if drawdown_state != current_state:
 ```
 
 The `HALTED` state triggers immediate liquidation of all positions. Recovery from `HALTED` requires manual intervention -- the system does not automatically resume trading.
+
+**Practice account bypass:** When `trading.account_type: practice`, the state machine is relaxed. Drawdown is logged but the system always stays ACTIVE; transitions to CAUTIOUS/HALTED are skipped. Use `account_type: live` for real money to enable full state machine enforcement.
 
 **Portfolio value for drawdown:** The system uses `totalValue` from T212's `/equity/account/summary` when available. This includes cash, investments, and reserved funds (pending orders). If the summary endpoint is unavailable, it falls back to `cash + invested + reservedForOrders` from the cash endpoint. This ensures pending orders are not misclassified as losses.
 
@@ -509,8 +511,8 @@ Risk thresholds are configured in `config/settings.yaml`. To adjust:
 
 | Level | Description | Examples | Response Time |
 |-------|-------------|----------|---------------|
-| **P1 -- Critical** | System executing unintended trades; data breach; >15% drawdown | Runaway orders, API key leaked | Immediate |
-| **P2 -- High** | System not functioning correctly; unexpected losses | Strategy errors, T212 API failures, >5% drawdown | Within 1 hour |
+| **P1 -- Critical** | System executing unintended trades; data breach; >halt_drawdown_pct | Runaway orders, API key leaked | Immediate |
+| **P2 -- High** | System not functioning correctly; unexpected losses | Strategy errors, T212 API failures, >cautious_drawdown_pct | Within 1 hour |
 | **P3 -- Medium** | Degraded functionality; cost overruns | LLM budget exceeded, data provider down | Within 4 hours |
 | **P4 -- Low** | Minor issues; informational | Single failed API call, log rotation | Next business day |
 
@@ -747,8 +749,8 @@ risk:
   max_single_stock_pct: 15
   max_sector_pct: 35
   max_correlation: 0.7
-  cautious_drawdown_pct: 5
-  halt_drawdown_pct: 15
+  cautious_drawdown_pct: 30
+  halt_drawdown_pct: 40
   daily_loss_halt_pct: 2
   vix_high: 25
   vix_extreme: 35

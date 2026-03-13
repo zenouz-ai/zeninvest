@@ -1,5 +1,6 @@
 trading:
   mode: active
+  account_type: practice  # practice = relaxed state machine (always ACTIVE); live = full CAUTIOUS/HALTED
   base_url: https://demo.trading212.com/api/v0
   cycle_frequency: intraday  # standard = 2 cycles (07:00, 19:00), intraday = 3 cycles (08:00, 12:00, 16:00)
   cycle_hours: 4
@@ -15,8 +16,8 @@ risk:
   max_single_stock_pct: 15
   max_sector_pct: 35
   max_correlation: 0.7
-  cautious_drawdown_pct: 5
-  halt_drawdown_pct: 15
+  cautious_drawdown_pct: 30  # CAUTIOUS at 30% drawdown; practice-friendly (real money: consider 5/15)
+  halt_drawdown_pct: 40     # HALTED at 40% drawdown
   daily_loss_halt_pct: 2
   vix_high: 25
   vix_extreme: 35

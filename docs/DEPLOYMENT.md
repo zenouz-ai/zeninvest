@@ -1234,7 +1234,7 @@ session.close()
 
 ### 9.5a CAUTIOUS triggered incorrectly (few decisions, no real drawdown)
 
-**Symptom**: Runs produce only 2–3 decisions (positions only), state shows CAUTIOUS, but you have not had a real 5% drawdown.
+**Symptom**: Runs produce only 2–3 decisions (positions only), state shows CAUTIOUS, but you have not had a real drawdown meeting cautious_drawdown_pct.
 
 **Cause**: Peak portfolio value may have been set incorrectly (e.g. from a data glitch, fallback calculation difference, or Practice account reset). Drawdown is measured from peak, so an inflated peak yields a false positive.
 
