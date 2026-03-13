@@ -250,6 +250,18 @@ This opens the notebook in your browser. Select the **"Investment Agent (Python)
 
 Sections 0-8, 12, 15, and 17-18 work **without any API keys** (they use free yfinance data and local computations). You can run these first to verify the local setup is correct before adding paid API keys.
 
+### Optional: Brave/Tavily Enrichment Scripts
+
+If using Brave Search, Brave Answers, or Tavily for batch enrichment, you can validate connectivity with:
+
+```bash
+poetry run python notebooks/brave_api_smoke.py      # Smoke test Brave Search + Answers (requires BRAVE_* keys)
+poetry run python notebooks/brave_tavily_comparison.py  # Compare Brave vs Tavily extraction
+poetry run python notebooks/enrichment_benchmark.py     # Benchmark cost, time, accuracy across providers
+```
+
+These are **manual scripts** (not pytest); they call real APIs and print results.
+
 ### Expected LLM Costs Per Notebook Run
 
 | Provider | Approximate cost |

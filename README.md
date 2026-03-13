@@ -302,7 +302,10 @@ docs/                   # Project documentation (16 files; archived plans in doc
 ├── SOPHISTICATION_ROADMAP.md    # Prioritised improvement roadmap
 └── WALK_FORWARD_VALIDATION.md   # Walk-forward validation and promotion report
 notebooks/
-└── diagnostics.ipynb   # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
+├── diagnostics.ipynb       # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
+├── brave_api_smoke.py      # Manual smoke test for Brave Search + Answers APIs (requires API keys)
+├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
+└── enrichment_benchmark.py # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
 ```
 
 ## Documentation

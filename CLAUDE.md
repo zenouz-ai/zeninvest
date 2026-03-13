@@ -93,7 +93,10 @@ config/
 ├── settings.yaml          # All tuneable parameters (trading, risk, strategy, universe, costs, notifications)
 └── .env.example           # Environment variables template (required core API keys + optional notification keys)
 notebooks/
-└── diagnostics.ipynb      # 24-section Jupyter notebook testing every pipeline component (Config → Backtesting → Walk-Forward)
+├── diagnostics.ipynb      # 24-section Jupyter notebook testing every pipeline component (Config → Backtesting → Walk-Forward)
+├── brave_api_smoke.py     # Manual smoke test for Brave Search + Answers APIs (requires API keys)
+├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
+└── enrichment_benchmark.py    # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
 tests/                     # pytest — all use in-memory SQLite fixtures
 ```
 
