@@ -9,7 +9,7 @@ import sys
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 import click
 
@@ -42,8 +42,10 @@ from src.utils.logger import get_logger
 logger = get_logger("orchestrator")
 
 # Dashboard event logger (fail-open import)
+log_event: Callable[..., None] | None
 try:
-    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.services.event_logger import log_event as _log_event
+    log_event = _log_event
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False
@@ -117,7 +119,7 @@ class Orchestrator:
         # Log run_started and create Run record only when NOT invoked by scheduler
         # (scheduler creates its own Run and passes scheduled_cycle_id)
         cycle_start_time = datetime.now(timezone.utc)
-        if DASHBOARD_AVAILABLE and log_event and not scheduled_cycle_id:
+        if DASHBOARD_AVAILABLE and log_event is not None and not scheduled_cycle_id:
             try:
                 log_event(
                     event_type="run_started",
@@ -189,7 +191,7 @@ class Orchestrator:
             
             # Log run_completed event (when called directly, not via scheduler)
             cycle_end_time = datetime.now(timezone.utc)
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
                     log_event(
@@ -514,7 +516,7 @@ class Orchestrator:
                 research_executor = ResearchExecutor(cycle_id=cycle_id)
             
             # Log strategy decisions
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     for decision in decisions:
                         log_event(
@@ -600,7 +602,7 @@ class Orchestrator:
                 mod_dict = mod_result.to_dict()
                 
                 # Log moderation decision
-                if DASHBOARD_AVAILABLE and log_event:
+                if DASHBOARD_AVAILABLE and log_event is not None:
                     try:
                         log_event(
                             event_type="decision_made",
@@ -672,7 +674,7 @@ class Orchestrator:
                 )
                 
                 # Log risk decision
-                if DASHBOARD_AVAILABLE and log_event:
+                if DASHBOARD_AVAILABLE and log_event is not None:
                     try:
                         log_event(
                             event_type="decision_made",

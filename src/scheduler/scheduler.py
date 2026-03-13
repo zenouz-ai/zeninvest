@@ -3,6 +3,7 @@
 import signal
 import sys
 from datetime import datetime, timezone
+from typing import Callable
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -14,10 +15,12 @@ from src.utils.logger import get_logger
 logger = get_logger("scheduler")
 
 # Dashboard event logger (fail-open import)
+log_event: Callable[..., None] | None
 try:
-    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.services.event_logger import log_event as _log_event
     from dashboard.backend.app.database import Run
     from src.data.database import get_session as get_db_session
+    log_event = _log_event
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False
@@ -33,7 +36,7 @@ def _run_analysis_cycle() -> None:
     cycle_id = None
     
     # Log run_started event
-    if DASHBOARD_AVAILABLE and log_event:
+    if DASHBOARD_AVAILABLE and log_event is not None:
         try:
             cycle_id = f"scheduled_{cycle_start_time.strftime('%Y%m%d_%H%M%S')}"
             log_event(
@@ -74,7 +77,7 @@ def _run_analysis_cycle() -> None:
         logger.info(f"Cycle completed: {result.get('status')} — {result.get('num_trades', 0)} trades")
         
         # Log run_completed event
-        if DASHBOARD_AVAILABLE and log_event:
+        if DASHBOARD_AVAILABLE and log_event is not None:
             try:
                 cycle_end_time = datetime.now(timezone.utc)
                 duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
@@ -117,7 +120,7 @@ def _run_analysis_cycle() -> None:
         logger.error(f"Scheduled cycle failed: {e}")
         
         # Log run_completed with error
-        if DASHBOARD_AVAILABLE and log_event:
+        if DASHBOARD_AVAILABLE and log_event is not None:
             try:
                 cycle_end_time = datetime.now(timezone.utc)
                 duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()

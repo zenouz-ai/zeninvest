@@ -20,8 +20,10 @@ from src.utils.logger import get_logger
 logger = get_logger("notifications")
 
 # Dashboard event logger (fail-open import)
+log_event: Callable[..., None] | None
 try:
-    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.services.event_logger import log_event as _log_event
+    log_event = _log_event
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False
@@ -258,7 +260,7 @@ class NotificationService:
                     )
                     
                     # Log notification_sent event to dashboard (only on successful send)
-                    if DASHBOARD_AVAILABLE and log_event:
+                    if DASHBOARD_AVAILABLE and log_event is not None:
                         try:
                             log_event(
                                 event_type="notification_sent",

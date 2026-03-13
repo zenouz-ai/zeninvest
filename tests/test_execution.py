@@ -35,30 +35,25 @@ def db_session():
 
 
 def _event_logger_session_factory(db_session):
-    """Return a callable that creates fresh sessions for the event_logger worker.
+    """Return a sessionmaker for the event_logger worker.
     The event_logger runs in a background thread and must not share the main test
     session (SQLAlchemy sessions are not thread-safe). Each call gets a new
     session from the same engine.
     """
-    Session = sessionmaker(bind=db_session.get_bind())
-
-    def get_session():
-        return Session()
-
-    return get_session
+    return sessionmaker(bind=db_session.get_bind())
 
 
 @pytest.fixture(autouse=True)
 def mock_get_session(db_session):
     """Patch get_session to use the test database."""
-    event_logger_get_session = (
+    event_logger_SessionLocal = (
         _event_logger_session_factory(db_session)
         if DashboardBase is not None
         else lambda: db_session
     )
     with patch("src.agents.execution.order_manager.get_session", return_value=db_session), patch(
-        "dashboard.backend.app.services.event_logger.get_session",
-        side_effect=event_logger_get_session,
+        "dashboard.backend.app.services.event_logger.SessionLocal",
+        event_logger_SessionLocal,
     ):
         yield
 

@@ -39,6 +39,34 @@ class ModerationResult:
         self.moderators_available = moderators_available
         self.caution_flag = caution_flag
 
+    @property
+    def gpt_score(self) -> int | float | None:
+        """Extract score from GPT-4o verdict (confidence_score if present)."""
+        if self.gpt4o_verdict is None:
+            return None
+        return self.gpt4o_verdict.get("score") or self.gpt4o_verdict.get("confidence_score")
+
+    @property
+    def gemini_score(self) -> int | float | None:
+        """Extract score from Gemini verdict."""
+        if self.gemini_verdict is None:
+            return None
+        return self.gemini_verdict.get("score") or self.gemini_verdict.get("confidence_score")
+
+    @property
+    def gpt_reasoning(self) -> str | None:
+        """Extract reasoning from GPT-4o verdict."""
+        if self.gpt4o_verdict is None:
+            return None
+        return self.gpt4o_verdict.get("reasoning")
+
+    @property
+    def gemini_reasoning(self) -> str | None:
+        """Extract reasoning from Gemini verdict."""
+        if self.gemini_verdict is None:
+            return None
+        return self.gemini_verdict.get("reasoning") or self.gemini_verdict.get("assessment")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "ticker": self.ticker,

@@ -4,7 +4,7 @@ import json
 import random
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 import yfinance as yf
@@ -28,8 +28,10 @@ from src.utils.logger import get_logger
 logger = get_logger("data_fetcher")
 
 # Dashboard event logger (fail-open import)
+log_event: Callable[..., None] | None
 try:
-    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.services.event_logger import log_event as _log_event
+    log_event = _log_event
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False
@@ -610,7 +612,7 @@ class DataFetcher:
             ]
             
             # Log universe_updated event
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     tickers_list = [c["ticker"] for c in candidates]
                     sector_counts = defaultdict(int)

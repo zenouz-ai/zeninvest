@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.data.database import get_session
@@ -12,8 +12,10 @@ from src.utils.logger import get_logger
 logger = get_logger("order_manager")
 
 # Dashboard event logger (fail-open import)
+log_event: Callable[..., None] | None
 try:
-    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.services.event_logger import log_event as _log_event
+    log_event = _log_event
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False
@@ -160,7 +162,7 @@ class OrderManager:
             )
             
             # Log order_placed event
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     log_event(
                         event_type="order_placed",
@@ -193,7 +195,7 @@ class OrderManager:
 
         try:
             # Log order_placed event before execution
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     log_event(
                         event_type="order_placed",
@@ -234,7 +236,7 @@ class OrderManager:
             logger.info(f"Order executed: {action} {abs(quantity)} x {ticker} = £{value_gbp:.2f}")
             
             # Log order_executed event
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     log_event(
                         event_type="order_executed",
