@@ -58,6 +58,7 @@ def mock_settings():
     settings.mid_cap_min = 2_000_000_000
     settings.small_cap_min = 300_000_000
     settings.screening_cooldown_hours = 72
+    settings.effective_screening_cooldown_hours = None  # Use base when None
     settings.review_window_hours = [24, 48]
     settings.uninvestigated_target_pct = 0.5
     return settings
@@ -181,18 +182,19 @@ class TestDataAvailableFiltering:
 
     def test_all_in_cooldown_uses_least_recently_screened_rotation(self, db_session, fetcher):
         """When all instruments are in cooldown, fallback should order by last_screened_at ASC."""
-        # Add 3 instruments, all recently screened (within 72h cooldown)
-        recent_a = datetime.now(timezone.utc) - timedelta(hours=50)  # screened 50h ago
-        recent_b = datetime.now(timezone.utc) - timedelta(hours=30)  # screened 30h ago
-        recent_c = datetime.now(timezone.utc) - timedelta(hours=10)  # screened 10h ago
+        # Need pool >= 2*max_candidates (20) to avoid proactive seed; add 20 instruments all in cooldown
+        recent_a = datetime.now(timezone.utc) - timedelta(hours=50)
+        recent_b = datetime.now(timezone.utc) - timedelta(hours=30)
+        recent_c = datetime.now(timezone.utc) - timedelta(hours=10)
         _make_instrument(db_session, "OLDEST_US_EQ", "Technology", 5e12, last_screened_at=recent_a)
         _make_instrument(db_session, "MIDDLE_US_EQ", "Technology", 4e12, last_screened_at=recent_b)
         _make_instrument(db_session, "NEWEST_US_EQ", "Technology", 3e12, last_screened_at=recent_c)
+        for i in range(17):
+            t = f"EXTRA{i}_US_EQ"
+            _make_instrument(db_session, t, "Technology", 3e12 - i * 1e9, last_screened_at=recent_b)
 
         candidates = fetcher.get_screened_universe()
         tickers = [c["ticker"] for c in candidates]
-        # All 3 are in cooldown; fallback should return them ordered by last_screened_at ASC
-        # OLDEST (50h ago) first, then MIDDLE (30h), then NEWEST (10h)
         assert len(tickers) >= 1
         assert tickers[0] == "OLDEST_US_EQ", f"Expected OLDEST first (least recently screened), got {tickers}"
 
@@ -227,14 +229,12 @@ class TestReviewNewBucketing:
 
     def test_review_bucket_includes_24_to_48h_investigated(self, db_session, fetcher):
         """Tickers investigated 24-48h ago should be in review pool and eligible."""
-        # Cooldown 72h so 36h-ago screened is past cooldown
+        # Screened 80h ago so past 72h cooldown; AAPL investigated 36h ago (review window), MSFT 60h ago (new)
         now = datetime.now(timezone.utc)
-        screened_36h = now - timedelta(hours=36)
-        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_36h)
-        _make_instrument(db_session, "MSFT_US_EQ", "Technology", 2.5e12, last_screened_at=screened_36h)
-        # AAPL investigated 36h ago (in 24-48h review window)
-        self._add_decision(db_session, "AAPL_US_EQ", 36)
-        # MSFT never investigated
+        screened_80h = now - timedelta(hours=80)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_80h)
+        _make_instrument(db_session, "MSFT_US_EQ", "Technology", 2.5e12, last_screened_at=screened_80h)
+        self._add_decision(db_session, "AAPL_US_EQ", 36)  # investigated 36h ago = review (24-48h)
         self._add_decision(db_session, "MSFT_US_EQ", 60)  # 60h ago = new bucket
 
         candidates = fetcher.get_screened_universe()
@@ -254,11 +254,57 @@ class TestReviewNewBucketing:
 
     def test_new_bucket_includes_over_48h_investigated(self, db_session, fetcher):
         """Tickers last investigated >48h ago should be in new pool."""
+        # Screened 80h ago so past 72h cooldown; investigated 60h ago = new bucket
         now = datetime.now(timezone.utc)
-        screened_60h = now - timedelta(hours=60)
-        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_60h)
+        screened_80h = now - timedelta(hours=80)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_80h)
         self._add_decision(db_session, "AAPL_US_EQ", 60)
 
         candidates = fetcher.get_screened_universe()
         tickers = {c["ticker"] for c in candidates}
         assert "AAPL_US_EQ" in tickers
+
+
+class TestEffectiveCooldownAndProactiveSeed:
+    """Tests for effective_screening_cooldown_hours (intraday) and proactive seed when pool small."""
+
+    def test_effective_cooldown_4h_makes_5h_screened_eligible(self, db_session, fetcher):
+        """With effective_screening_cooldown_hours=4, instrument screened 5h ago is past cooldown."""
+        fetcher.settings.effective_screening_cooldown_hours = 4
+        screened_5h = datetime.now(timezone.utc) - timedelta(hours=5)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_5h)
+
+        candidates = fetcher.get_screened_universe()
+        tickers = {c["ticker"] for c in candidates}
+        assert "AAPL_US_EQ" in tickers
+
+    def test_effective_cooldown_4h_excludes_2h_screened(self, db_session, fetcher):
+        """With effective_screening_cooldown_hours=4, instrument screened 2h ago is in cooldown."""
+        fetcher.settings.effective_screening_cooldown_hours = 4
+        screened_2h = datetime.now(timezone.utc) - timedelta(hours=2)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_2h)
+        _make_instrument(db_session, "MSFT_US_EQ", "Technology", 2.5e12)  # never screened
+
+        candidates = fetcher.get_screened_universe()
+        tickers = {c["ticker"] for c in candidates}
+        assert "AAPL_US_EQ" not in tickers
+        assert "MSFT_US_EQ" in tickers
+
+    def test_proactive_seed_when_pool_below_threshold(self, db_session, fetcher):
+        """When pool has < 2*max_candidates eligible, fallback should bootstrap with seed."""
+        # Add only 5 instruments (below 2*10=20 threshold)
+        for i, ticker in enumerate(["AAPL_US_EQ", "MSFT_US_EQ", "GOOGL_US_EQ", "AMZN_US_EQ", "NVDA_US_EQ"]):
+            _make_instrument(
+                db_session, ticker, "Technology",
+                50_000_000_000 - i * 1e9,  # above small_cap_min
+            )
+        # Mark all 5 as recently screened so main path returns 0, triggering fallback
+        recent = datetime.now(timezone.utc) - timedelta(hours=1)
+        for inst in db_session.query(Instrument).all():
+            inst.last_screened_at = recent
+        db_session.commit()
+
+        candidates = fetcher.get_screened_universe()
+        # Proactive seed merges ~160; fallback returns up to max_candidates (10)
+        assert len(candidates) >= 1, "Should get candidates after proactive seed bootstrap"
+        assert len(candidates) <= 10, "Should cap at max_candidates"

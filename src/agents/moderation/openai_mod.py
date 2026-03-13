@@ -54,6 +54,7 @@ def review_trade(
     portfolio_context: str,
     market_context: dict[str, Any],
     cycle_id: str | None = None,
+    research_executor=None,
 ) -> dict[str, Any]:
     """Have GPT-4o review a trade proposal with full market context.
 
@@ -63,10 +64,27 @@ def review_trade(
         market_context: Rich dict containing indicators, fundamentals, macro,
                        sub-strategy scores, analyst data, and news sentiment.
         cycle_id: Optional cycle identifier for cost tracking.
+        research_executor: Optional ResearchExecutor for tool-use (skeptic research).
 
     Returns:
         Moderator verdict with reasoning.
     """
+    if research_executor:
+        return _review_with_tools(
+            trade_proposal, portfolio_context, market_context, cycle_id, research_executor,
+        )
+    return _review_single_turn(
+        trade_proposal, portfolio_context, market_context, cycle_id,
+    )
+
+
+def _review_single_turn(
+    trade_proposal: dict[str, Any],
+    portfolio_context: str,
+    market_context: dict[str, Any],
+    cycle_id: str | None,
+) -> dict[str, Any]:
+    """Single-turn moderation without tools."""
     settings = get_settings()
 
     if not check_budget(Provider.OPENAI.value):
@@ -74,7 +92,6 @@ def review_trade(
         return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
 
     context_text = format_market_context(market_context)
-
     user_prompt = f"""Review this proposed trade:
 
 ## Trade Proposal
@@ -101,7 +118,6 @@ Respond with JSON only."""
             temperature=0.4,
         )
 
-        # Log cost
         usage = response.usage
         if usage:
             log_cost(
@@ -114,7 +130,6 @@ Respond with JSON only."""
             )
 
         content = response.choices[0].message.content or ""
-        # Extract JSON
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0]
         elif "```" in content:
@@ -142,3 +157,125 @@ Respond with JSON only."""
             "moderator": "gpt-4o",
             "available": False,
         }
+
+
+def _review_with_tools(
+    trade_proposal: dict[str, Any],
+    portfolio_context: str,
+    market_context: dict[str, Any],
+    cycle_id: str | None,
+    research_executor: Any,
+) -> dict[str, Any]:
+    """Moderation with tool-use loop (skeptic research)."""
+    from src.agents.research.tools import get_research_tools_openai
+
+    settings = get_settings()
+    ticker = trade_proposal.get("ticker", "general")
+    context_text = format_market_context(market_context)
+    tools = get_research_tools_openai()
+    sys_prompt = SYSTEM_PROMPT + "\n\nYou may use research tools to find bear cases or analyst downgrades. Use sparingly (1-2 searches). When done, respond with JSON only."
+    user_prompt = f"""Review this proposed trade:
+
+## Trade Proposal
+{json.dumps(trade_proposal, indent=2)}
+
+## Portfolio Context
+{portfolio_context}
+
+{context_text}
+
+Challenge the thesis. Use tools if needed to find bear cases or downgrades. Respond with JSON only."""
+
+    messages: list[dict] = [
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    max_iter = 4
+
+    try:
+        client = openai.OpenAI(api_key=settings.openai_api_key)
+        for _ in range(max_iter):
+            if not check_budget(Provider.OPENAI.value):
+                return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
+
+            response = client.chat.completions.create(
+                model=settings.moderator_1_model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                max_tokens=1024,
+                temperature=0.4,
+            )
+
+            usage = response.usage
+            if usage:
+                log_cost(
+                    provider=Provider.OPENAI.value,
+                    model=settings.moderator_1_model,
+                    input_tokens=usage.prompt_tokens,
+                    output_tokens=usage.completion_tokens,
+                    cycle_id=cycle_id,
+                    purpose="moderation_gpt4o",
+                )
+
+            msg = response.choices[0].message
+            tool_calls = getattr(msg, "tool_calls", None) or []
+
+            if not tool_calls and msg.content:
+                content = msg.content or ""
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0]
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0]
+                result = json.loads(content)
+                result["moderator"] = "gpt-4o"
+                result["available"] = True
+                return result
+
+            if not tool_calls:
+                break
+
+            messages.append({
+                "role": "assistant",
+                "content": msg.content or "",
+                "tool_calls": [
+                    {"id": tc.id, "type": "function", "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                    for tc in tool_calls
+                ],
+            })
+
+            tool_result_parts = []
+            for tc in tool_calls:
+                fn = tc.function
+                name = fn.name
+                try:
+                    inp = json.loads(fn.arguments or "{}")
+                except json.JSONDecodeError:
+                    inp = {}
+                t = inp.get("ticker", ticker) or "general"
+                n = inp.get("num_results", 5)
+
+                if name == "web_search":
+                    res = research_executor.web_search("skeptic", t, inp.get("query", ""), n)
+                elif name == "news_search":
+                    res = research_executor.news_search("skeptic", t, inp.get("query", ""), n)
+                elif name == "sector_search":
+                    res = research_executor.sector_search("skeptic", t, inp.get("sector", ""), inp.get("query", ""), n)
+                elif name == "sec_search":
+                    res = research_executor.sec_search_tool("skeptic", t, inp.get("doc_type", "10-K"), n or 3)
+                else:
+                    res = [{"error": f"Unknown tool: {name}"}]
+
+                tool_result_parts.append({
+                    "type": "tool_result",
+                    "tool_call_id": tc.id,
+                    "content": json.dumps(res)[:8000] if res else "[]",
+                })
+
+            messages.append({"role": "user", "content": tool_result_parts})
+
+        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
+
+    except Exception as e:
+        logger.error(f"GPT-4o tool-use moderation failed: {e}")
+        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)

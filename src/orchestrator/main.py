@@ -9,7 +9,7 @@ import sys
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 import click
 
@@ -33,7 +33,7 @@ from src.agents.reporting.trade_outcome_tracker import update_trade_outcomes
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
-from src.data.models import Base, Instrument, PerformanceMetric, PortfolioSnapshot
+from src.data.models import Base, Instrument, OpportunityQueue, PerformanceMetric, PortfolioSnapshot
 from src.orchestrator.state_machine import StateMachine
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
@@ -42,8 +42,10 @@ from src.utils.logger import get_logger
 logger = get_logger("orchestrator")
 
 # Dashboard event logger (fail-open import)
+log_event: Callable[..., None] | None
 try:
-    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.services.event_logger import log_event as _log_event
+    log_event = _log_event
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False
@@ -117,7 +119,7 @@ class Orchestrator:
         # Log run_started and create Run record only when NOT invoked by scheduler
         # (scheduler creates its own Run and passes scheduled_cycle_id)
         cycle_start_time = datetime.now(timezone.utc)
-        if DASHBOARD_AVAILABLE and log_event and not scheduled_cycle_id:
+        if DASHBOARD_AVAILABLE and log_event is not None and not scheduled_cycle_id:
             try:
                 log_event(
                     event_type="run_started",
@@ -189,7 +191,7 @@ class Orchestrator:
             
             # Log run_completed event (when called directly, not via scheduler)
             cycle_end_time = datetime.now(timezone.utc)
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
                     log_event(
@@ -239,7 +241,7 @@ class Orchestrator:
                             session.commit()
                         session.close()
                     except Exception as e:
-                        logger.debug(f"Failed to update Run record (fail-open): {e}", exc_info=True)
+                        logger.warning(f"Failed to update Run record (fail-open): {e}", exc_info=True)
                 except Exception:
                     pass  # Fail-open
             
@@ -291,8 +293,9 @@ class Orchestrator:
             cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
 
             # Update peak and check drawdown
-            if not self.dry_run:
-                # Live: mutate DB state as normal
+            practice_skips_state_machine = self.settings.is_practice_account
+            if not self.dry_run and not practice_skips_state_machine:
+                # Live + real account: full state machine (CAUTIOUS/HALTED)
                 self.state_machine.update_peak(current_value)
                 state_info = self.state_machine.get_state()
                 peak_value = state_info.get("peak_portfolio_value", current_value)
@@ -311,15 +314,16 @@ class Orchestrator:
                 drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
                 self.state_machine.update_drawdown(drawdown_pct)
             else:
-                # Dry-run: log what would happen but don't persist or block screening
+                # Dry-run or practice account: log drawdown but stay ACTIVE (no state transitions)
                 state_info = self.state_machine.get_state()
                 peak_value = state_info.get("peak_portfolio_value", current_value)
                 drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
                 drawdown_state = self.risk_manager.get_drawdown_state(current_value, peak_value)
                 if drawdown_state != "ACTIVE":
+                    reason = "dry-run" if self.dry_run else "practice account"
                     logger.info(
-                        f"Dry-run: drawdown {drawdown_pct:.1f}% would trigger {drawdown_state}, "
-                        f"ignoring (state not mutated in dry-run mode)"
+                        f"{reason.capitalize()}: drawdown {drawdown_pct:.1f}% would trigger {drawdown_state}, "
+                        f"staying ACTIVE (state machine relaxed)"
                     )
                 current_state = "ACTIVE"
 
@@ -335,7 +339,7 @@ class Orchestrator:
                 vix = None
                 market_regime = "SIDEWAYS"
 
-            existing_tickers = {p.get("ticker", "") for p in portfolio_data.get("positions", [])}
+            existing_tickers = {t for p in portfolio_data.get("positions", []) if (t := self._ticker_from_position(p))}
 
             # Get data for current positions AND screen universe for new candidates
             stocks_data = self._fetch_stocks_data(
@@ -504,9 +508,17 @@ class Orchestrator:
             decisions = strategy_result.get("decisions", [])
             strategy_decisions = decisions
             logger.info(f"Strategy produced {len(decisions)} decisions")
+
+            # Research executor for moderation tool-use (shared budget per cycle)
+            research_executor = None
+            if self.settings.research_enabled and (
+                self.settings.skeptic_research_enabled or self.settings.risk_research_enabled
+            ):
+                from src.agents.research import ResearchExecutor
+                research_executor = ResearchExecutor(cycle_id=cycle_id)
             
             # Log strategy decisions
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     for decision in decisions:
                         log_event(
@@ -587,11 +599,12 @@ class Orchestrator:
                     market_context=market_context,
                     conviction=conviction,
                     cycle_id=cycle_id,
+                    research_executor=research_executor,
                 )
                 mod_dict = mod_result.to_dict()
                 
                 # Log moderation decision
-                if DASHBOARD_AVAILABLE and log_event:
+                if DASHBOARD_AVAILABLE and log_event is not None:
                     try:
                         log_event(
                             event_type="decision_made",
@@ -663,7 +676,7 @@ class Orchestrator:
                 )
                 
                 # Log risk decision
-                if DASHBOARD_AVAILABLE and log_event:
+                if DASHBOARD_AVAILABLE and log_event is not None:
                     try:
                         log_event(
                             event_type="decision_made",
@@ -1063,7 +1076,7 @@ class Orchestrator:
         Two phases:
         1. Analyze all current positions (always).
         2. Screen the instrument universe for new candidates using sector-balanced,
-           market-cap-tiered sampling (skip in CAUTIOUS — no new positions allowed).
+           market-cap-tiered sampling (always run; Risk blocks new BUYs in CAUTIOUS).
 
         When cycle_frequency is intraday: uses get_stock_analysis_lite (Tier 1 only,
         no Finnhub) for screening. Finnhub/AV fetched later for active-review tickers.
@@ -1078,7 +1091,7 @@ class Orchestrator:
 
         # Phase 1: Analyze current positions
         for pos in current_positions:
-            ticker = pos.get("ticker", "")
+            ticker = self._ticker_from_position(pos)
             if not ticker:
                 continue
             yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
@@ -1099,50 +1112,84 @@ class Orchestrator:
                 stocks_data.append({"ticker": ticker, "indicators": {}, "fundamentals": {}})
             analyzed_tickers.add(ticker)
 
-        # Phase 2: Screen universe for new candidates (not in CAUTIOUS mode)
-        if system_state != "CAUTIOUS":
-            all_exclude = analyzed_tickers | (exclude_tickers or set())
+        # Phase 2: Screen universe for new candidates (always; Risk blocks new BUYs in CAUTIOUS)
+        all_exclude = analyzed_tickers | (exclude_tickers or set())
+        try:
+            candidates = self.data_fetcher.get_screened_universe(
+                exclude_tickers=all_exclude,
+            )
+            self.data_fetcher.mark_instruments_screened(
+                [c["ticker"] for c in candidates],
+            )
+            logger.info(f"Screening {len(candidates)} universe candidates...")
+            skipped_no_data = 0
+            for candidate in candidates:
+                c_ticker = candidate["ticker"]
+                yf_ticker = c_ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                if c_ticker in analyzed_tickers:
+                    continue
+                try:
+                    cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
+                    if cached:
+                        if cached.get("indicators", {}).get("error"):
+                            skipped_no_data += 1
+                            continue
+                        cached["ticker"] = c_ticker
+                        stocks_data.append(cached)
+                    else:
+                        data = fetch_fn(yf_ticker)
+                        data["ticker"] = c_ticker
+                        if data.get("indicators", {}).get("error"):
+                            logger.debug(f"Skipping {c_ticker}: no OHLCV data available")
+                            self.data_fetcher.mark_instrument_unavailable(c_ticker)
+                            skipped_no_data += 1
+                            continue
+                        stocks_data.append(data)
+                        self.data_fetcher.enrich_instrument_metadata(
+                            c_ticker, data.get("fundamentals", {}),
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to fetch data for candidate {c_ticker}: {e}")
+                analyzed_tickers.add(c_ticker)
+            if skipped_no_data:
+                logger.info(f"Skipped {skipped_no_data} candidates with no OHLCV data")
+        except Exception as e:
+            logger.warning(f"Universe screening failed: {e}")
+
+        # Phase 3: Re-evaluate queued tickers (bypass cooldown so they can reach 2nd cycle)
+        if self.settings.opportunity_enabled:
             try:
-                candidates = self.data_fetcher.get_screened_universe(
-                    exclude_tickers=all_exclude,
-                )
-                self.data_fetcher.mark_instruments_screened(
-                    [c["ticker"] for c in candidates],
-                )
-                logger.info(f"Screening {len(candidates)} universe candidates...")
-                skipped_no_data = 0
-                for candidate in candidates:
-                    c_ticker = candidate["ticker"]
-                    yf_ticker = c_ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
-                    if c_ticker in analyzed_tickers:
-                        continue
+                session = get_session()
+                queued_rows = session.query(OpportunityQueue).all()
+                session.close()
+                queued_tickers = [r.ticker for r in queued_rows if r.ticker and r.ticker not in analyzed_tickers]
+                added_queued = 0
+                for ticker in queued_tickers:
+                    yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
                     try:
                         cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
                         if cached:
                             if cached.get("indicators", {}).get("error"):
-                                skipped_no_data += 1
                                 continue
-                            cached["ticker"] = c_ticker
+                            cached["ticker"] = ticker
                             stocks_data.append(cached)
                         else:
                             data = fetch_fn(yf_ticker)
-                            data["ticker"] = c_ticker
+                            data["ticker"] = ticker
                             if data.get("indicators", {}).get("error"):
-                                logger.debug(f"Skipping {c_ticker}: no OHLCV data available")
-                                self.data_fetcher.mark_instrument_unavailable(c_ticker)
-                                skipped_no_data += 1
                                 continue
                             stocks_data.append(data)
                             self.data_fetcher.enrich_instrument_metadata(
-                                c_ticker, data.get("fundamentals", {}),
+                                ticker, data.get("fundamentals", {}),
                             )
+                        analyzed_tickers.add(ticker)
+                        added_queued += 1
                     except Exception as e:
-                        logger.warning(f"Failed to fetch data for candidate {c_ticker}: {e}")
-                    analyzed_tickers.add(c_ticker)
-                if skipped_no_data:
-                    logger.info(f"Skipped {skipped_no_data} candidates with no OHLCV data")
+                        logger.debug(f"Failed to fetch queued ticker {ticker}: {e}")
+                if added_queued:
+                    logger.info(f"Re-evaluating {added_queued} queued tickers for promotion")
             except Exception as e:
-                logger.warning(f"Universe screening failed: {e}")
+                logger.warning(f"Queued ticker re-evaluation failed: {e}")
 
         logger.info(f"Total stocks analyzed: {len(stocks_data)} "
                      f"(positions: {len(current_positions)}, "
@@ -1700,6 +1747,24 @@ class Orchestrator:
 
         return ticker
 
+    @staticmethod
+    def _ticker_from_position(pos: dict) -> str:
+        """Resolve ticker from T212 (instrument.ticker) or normalized format."""
+        return (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
+
+    @staticmethod
+    def _normalize_position_for_snapshot(pos: dict) -> dict:
+        """Convert T212 position format to dashboard schema (ticker, quantity, value_gbp, pnl_gbp, pnl_pct)."""
+        ticker = Orchestrator._ticker_from_position(pos)
+        quantity = float(pos.get("quantity", 0))
+        current_price = float(pos.get("currentPrice", 0))
+        wallet = pos.get("walletImpact") or {}
+        value_gbp = float(wallet.get("currentValue", 0)) or (quantity * current_price if quantity and current_price else 0)
+        pnl_gbp = float(wallet.get("unrealizedProfitLoss", 0))
+        total_cost = float(wallet.get("totalCost", 0))
+        pnl_pct = (pnl_gbp / total_cost * 100) if total_cost else 0.0
+        return {"ticker": ticker, "quantity": quantity, "value_gbp": value_gbp, "pnl_gbp": pnl_gbp, "pnl_pct": pnl_pct}
+
     def _get_sector_allocations(self, portfolio_data: dict) -> dict[str, float]:
         # Simplified — would need instrument metadata for full implementation
         return {}
@@ -1710,16 +1775,24 @@ class Orchestrator:
             return {}
         result: dict[str, float] = {}
         for pos in portfolio_data.get("positions", []):
-            ticker = pos.get("ticker", "")
-            qty = float(pos.get("quantity", 0))
-            price = float(pos.get("currentPrice", 0))
-            result[ticker] = (qty * price / total) * 100
+            ticker = self._ticker_from_position(pos)
+            if not ticker:
+                continue
+            wallet = pos.get("walletImpact") or {}
+            value = float(pos.get("value_gbp", 0)) or float(wallet.get("currentValue", 0))
+            if not value:
+                qty = float(pos.get("quantity", 0))
+                price = float(pos.get("currentPrice", 0))
+                value = qty * price
+            result[ticker] = (value / total) * 100
         return result
 
     def _save_snapshot(self, portfolio_data: dict, state: str) -> None:
-        """Save a portfolio snapshot."""
+        """Save a portfolio snapshot. Positions are normalised from T212 format for dashboard display."""
         session = get_session()
         try:
+            raw_positions = portfolio_data.get("positions", [])
+            normalised = [self._normalize_position_for_snapshot(p) for p in raw_positions]
             session.add(PortfolioSnapshot(
                 timestamp=datetime.now(timezone.utc),
                 total_value_gbp=portfolio_data.get("total_value", 0),
@@ -1728,7 +1801,7 @@ class Orchestrator:
                 pnl_gbp=0.0,
                 pnl_pct=portfolio_data.get("total_return_pct", 0),
                 num_positions=portfolio_data.get("num_positions", 0),
-                positions_json=json.dumps(portfolio_data.get("positions", []), default=str),
+                positions_json=json.dumps(normalised, default=str),
                 state=state,
             ))
             session.commit()
@@ -1833,8 +1906,18 @@ def _get_dashboard_summary() -> dict[str, Any]:
         positions: list[dict[str, Any]] = []
         if latest and latest.positions_json:
             positions = json.loads(latest.positions_json)
+        def _pos_ticker(p: dict) -> str:
+            return (p.get("instrument") or {}).get("ticker") or p.get("ticker", "")
+
+        def _pos_value(p: dict) -> float:
+            v = p.get("value_gbp") or p.get("value")
+            if v is not None:
+                return float(v)
+            w = p.get("walletImpact") or {}
+            return float(w.get("currentValue", 0))
+
         summary["active_positions"] = [
-            {"ticker": p.get("ticker"), "quantity": p.get("quantity"), "value_gbp": p.get("value", 0)}
+            {"ticker": _pos_ticker(p), "quantity": p.get("quantity"), "value_gbp": _pos_value(p)}
             for p in positions[:20]
         ]
         return summary
@@ -1848,6 +1931,7 @@ def _get_dashboard_summary() -> dict[str, Any]:
 @click.option("--force-sell", "force_sell_ticker", default=None, help="Force sell a position")
 @click.option("--pause", is_flag=True, help="Pause the system")
 @click.option("--resume", "do_resume", is_flag=True, help="Resume the system")
+@click.option("--reset-peak", "do_reset_peak", is_flag=True, help="Reset peak to current portfolio value and clear CAUTIOUS")
 @click.option("--report", is_flag=True, help="Generate a status report")
 @click.option("--status", is_flag=True, help="Show system status")
 @click.option("--performance", is_flag=True, help="Show performance metrics summary")
@@ -1858,6 +1942,7 @@ def main(
     force_sell_ticker: str | None,
     pause: bool,
     do_resume: bool,
+    do_reset_peak: bool,
     report: bool,
     status: bool,
     performance: bool,
@@ -1888,6 +1973,19 @@ def main(
         if do_resume:
             orchestrator.state_machine.resume()
             click.echo("System RESUMED")
+            return
+
+        if do_reset_peak:
+            try:
+                portfolio_data = orchestrator._get_portfolio_state()
+                current = float(portfolio_data.get("total_value", 0))
+                if current <= 0:
+                    click.echo("Cannot reset peak: portfolio value is 0 or missing", err=True)
+                else:
+                    orchestrator.state_machine.reset_peak_to_current(current)
+                    click.echo(f"Peak reset to {current:.2f}, state -> ACTIVE")
+            except Exception as e:
+                click.echo(f"Reset peak failed: {e}", err=True)
             return
 
         if force_sell_ticker:

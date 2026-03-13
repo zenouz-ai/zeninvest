@@ -213,3 +213,38 @@ def test_dry_run_logs_would_trigger_cautious(db_session, monkeypatch, caplog):
     assert any("would trigger CAUTIOUS" in msg for msg in caplog.messages), (
         f"Expected dry-run CAUTIOUS warning in logs, got: {caplog.messages}"
     )
+
+
+def test_practice_account_live_run_stays_active(db_session, monkeypatch):
+    """When account_type is practice, live run stays ACTIVE (no CAUTIOUS/HALTED transition)."""
+    monkeypatch.setattr("src.orchestrator.main.get_cost_summary", lambda days=1: {})
+
+    ss = SystemState(
+        state="ACTIVE",
+        peak_portfolio_value=10000.0,
+        current_drawdown_pct=0.0,
+        paused=False,
+    )
+    db_session.add(ss)
+    db_session.commit()
+
+    orchestrator, screening_called = _build_orchestrator(portfolio_value=9300.0)
+    orchestrator.dry_run = False  # Live run
+
+    # Ensure practice account (default in config, but be explicit)
+    orchestrator.settings._config.setdefault("trading", {})["account_type"] = "practice"
+
+    result = orchestrator.run_cycle()
+
+    # Screening should run with ACTIVE (not skipped)
+    assert screening_called["value"], "Screening should have been called"
+    assert screening_called["system_state"] == "ACTIVE", (
+        f"Practice account should pass ACTIVE to screening, got {screening_called['system_state']}"
+    )
+
+    # DB state should not have transitioned to CAUTIOUS
+    db_session.expire_all()
+    state = db_session.query(SystemState).first()
+    assert state.state == "ACTIVE", f"Practice account should stay ACTIVE, got {state.state}"
+
+    assert result["status"] == "completed"

@@ -79,12 +79,16 @@ def patch_all_get_session(db_session):
         "src.agents.reporting.trade_outcome_tracker.get_session",
         "src.agents.opportunity.scorer.get_session",
         "src.agents.opportunity.optimizer.get_session",
-        "dashboard.backend.app.services.event_logger.get_session",
+        "dashboard.backend.app.services.event_logger.SessionLocal",
     ]
     patches = []
+    event_logger_sessionmaker = sessionmaker(bind=db_session.get_bind())
     for target in targets:
         try:
-            p = patch(target, return_value=db_session)
+            if "event_logger.SessionLocal" in target:
+                p = patch(target, event_logger_sessionmaker)
+            else:
+                p = patch(target, return_value=db_session)
             p.start()
             patches.append(p)
         except (AttributeError, ModuleNotFoundError):

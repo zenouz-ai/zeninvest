@@ -43,6 +43,26 @@ This project is **US-4.4** in the sophistication roadmap. Status: **In Progress*
 
 **Viable and recommended.** Implementation should proceed. Feature flags allow gradual rollout and A/B comparison.
 
+### Phase 0 — API Investigation (Pre-Build)
+
+Before any `src/` code, a Phase 0 notebook validates APIs and establishes baselines:
+
+- **Location:** `notebooks/research_api_investigation.ipynb`
+- **Sections:** 0.1 Environment, 0.2 Brave Search, 0.3 Tavily Search, 0.4 A/B Comparison, 0.5 SEC EDGAR, 0.6 Cost/Latency Summary, 0.7 Mock Tool Execution
+- **Output:** Brave vs Tavily recommendation, suggested caps, SEC EDGAR parsing approach
+
+**Phase 0 Recommendation (Brave vs Tavily):**
+
+| Factor | Brave Search | Tavily |
+|--------|--------------|--------|
+| Latency | ~300–500 ms | ~800–1200 ms |
+| Snippet quality | Good; raw snippets | LLM-optimised `content` field |
+| Finance relevance | General web; no native filter | Native `topic: finance` filter |
+| **Primary** | ✓ Use as primary | Fallback on timeout/5xx |
+| **Fallback** | — | ✓ Use when Brave fails |
+
+**Recommendation:** Brave as primary (lower latency, existing integration), Tavily as fallback. For `news_search`, Tavily's `topic: finance` is valuable — consider Tavily for news-heavy queries when Brave returns thin results.
+
 ### Existing Infrastructure (Reuse)
 
 | Component | Location | Purpose | Agentic Research Use |
@@ -51,7 +71,12 @@ This project is **US-4.4** in the sophistication roadmap. Status: **In Progress*
 | Search API tracker | `src/utils/search_api_tracker.py` | Monthly call limits (2k each for brave_search, brave_answers, tavily) | Research calls consume from **same** monthly limits. Enforce before each research tool call. |
 | API logging | `ApiLog` model | Audit trail for external calls | Research adds `ResearchLog` for per-call detail; `ApiLog` continues for search API calls (shared). |
 
-**Budget model:** Research enforces **two** constraints: (1) **Search API monthly limits** (2,000 calls/month each) — shared with enrichment/fallback; (2) **Research cost cap** (£50/month) — tracked in `CostLog`/`ResearchLog`. If either limit is hit, research is disabled (graceful degradation).
+**Budget model:** Research enforces **call caps** (primary) and **cost cap** (secondary):
+
+- **Search API monthly limits** — shared with enrichment/fallback: Brave Search 2,000, Brave Answers 2,000, Tavily 1,000 calls/month.
+- **Per-member caps per cycle:** Strategy 20, Skeptic 8, Risk 7. **Total per cycle:** 35 (hard limit).
+- **Strategy typical usage:** 10–15 calls/cycle; focus on 5–10 high-conviction tickers, 2–3 searches each.
+- **Cost cap:** £50/month — tracked in `CostLog`/`ResearchLog`. If any limit is hit, research is disabled (graceful degradation).
 
 ## The Problem
 
@@ -108,11 +133,11 @@ Risk Manager ← deterministic rules, NO tool access (unchanged)
 
 ### Key Principles
 
-| Member | Mandate | Tools | Research Angle | Max Budget |
-|--------|---------|-------|-----------------|------------|
-| **Claude (Strategy)** | Identify opportunities; verify thesis validity | web_search, news_search, sector_search | Bulls case; recent news; company fundamentals; competitive positioning | £0.30/cycle |
-| **GPT-4o (Skeptic)** | Falsify thesis; find downsides | web_search, news_search, sector_search | Bears case; analyst downgrades; regulatory risks; sector headwinds; short theses | £0.20/cycle |
-| **Gemini (Risk)** | Evaluate tail risks and macro context | web_search, macro_search | Macro events; volatility spikes; central bank actions; geopolitical; sector correlation | £0.20/cycle |
+| Member | Mandate | Tools | Research Angle | Max Calls/Cycle |
+|--------|---------|-------|-----------------|-----------------|
+| **Claude (Strategy)** | Identify opportunities; verify thesis validity | web_search, news_search, sector_search, sec_search | Bulls case; recent news; company fundamentals; competitive positioning | 20 (typical 10–15) |
+| **GPT-4o (Skeptic)** | Falsify thesis; find downsides | web_search, news_search, sector_search | Bears case; analyst downgrades; regulatory risks; sector headwinds; short theses | 8 |
+| **Gemini (Risk)** | Evaluate tail risks and macro context | web_search, macro_search (defer until needed) | Macro events; volatility spikes; central bank actions; geopolitical; sector correlation | 7 |
 
 ## Architecture
 
@@ -179,10 +204,12 @@ class ResearchCache:
 
 #### Research Budget
 
-Each committee member has:
-1. **Per-cycle budget** (e.g., Claude £0.30, GPT-4o £0.20, Gemini £0.20)
-2. **Monthly cap** — £50 total research cost; tracked via `CostLog`
-3. **Graceful degradation** — if monthly cap hit, research is disabled (all members fall back to zero-tool-use)
+**Call caps (primary constraint):** The binding limit is **search API monthly call count** (2,000 Brave Search, 2,000 Brave Answers, 1,000 Tavily) — shared with enrichment/fallback.
+
+1. **Per-member caps per cycle:** Strategy 20, Skeptic 8, Risk 7 calls
+2. **Total per cycle cap:** 35 (hard limit across all members)
+3. **Cost cap:** £50/month — tracked via `CostLog`; secondary to call caps
+4. **Graceful degradation** — if any cap hit, research is disabled (all members fall back to zero-tool-use)
 
 Implementation:
 
@@ -243,13 +270,24 @@ Transform `synthesize_with_claude()` to include tool-use (see Phase B for implem
 
 Wire tool-use into GPT-4o (skeptic) and Gemini (risk assessor) (see Phase C for implementation details). Each moderator has distinct research mandate and tools aligned with their role.
 
+### Efficiency Mechanisms
+
+| Mechanism               | Purpose                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| **ResearchCache**       | Dedupe across members; key `(ticker, tool, normalized_query)`; 4h TTL |
+| **Call order**          | Strategy → Skeptic → Risk — cache warms; Skeptic/Risk benefit from Strategy's prior searches |
+| **Hard cap per member** | 20/8/7 — prevent runaway; enforce in `ResearchBudget`          |
+| **Hard cap total**      | 35 per cycle — respect monthly search limits                    |
+| **Prompt guidance**     | "Use tools sparingly; prefer 1–2 high-value searches per ticker" |
+| **Provider selection**  | Phase 0 validated Brave primary, Tavily fallback               |
+
 ### Research Cache Deduplication
 
 Research results are cached by `(ticker, tool_name, normalized_query)` with a 4-hour TTL. This prevents redundant API calls when multiple committee members evaluate the same ticker.
 
 #### Research Budget Enforcement
 
-Per-member and aggregate budgets prevent runaway costs. Each member has cycle budget; if monthly cap is hit, all research is disabled (graceful degradation).
+Per-member and aggregate call caps prevent runaway usage. If any cap is hit, research is disabled (graceful degradation).
 
 #### Research Audit Trail
 
@@ -318,12 +356,24 @@ Used as **fallback** when Brave times out or is rate-limited, and optionally as 
 | Latency | ~500ms | ~1s |
 | Finance focus | General filters | Native `topic: finance` |
 
+### SEC EDGAR — What It Is
+
+**SEC EDGAR** (Electronic Data Gathering, Analysis, and Retrieval) is the U.S. Securities and Exchange Commission's system for corporate filings. All public U.S. companies must file here.
+
+| Filing   | Purpose                                                           |
+| -------- | ----------------------------------------------------------------- |
+| **10-K** | Annual report — audited financials, MD&A, risk factors            |
+| **10-Q** | Quarterly report — unaudited financials                           |
+| **8-K**  | Current report — material events (M&A, exec changes, bankruptcy) |
+| **Proxy**| Shareholder meeting materials — voting, exec compensation         |
+
+**Benefits:** Free; no API key required. Institutional-grade primary source. The `sec_search` tool queries EDGAR for a ticker and returns structured excerpts (e.g. Risk Factors, MD&A) instead of relying on secondary news.
+
 ### Tertiary: Existing APIs
 
 - **yfinance** — OHLCV, technical indicators (free, within rate limits)
 - **Finnhub** — Analyst recommendations, insider sentiment (existing, budget constrained)
 - **Alpha Vantage** — News sentiment, sector performance (existing, budget constrained)
-- **SEC EDGAR** — Official filings, press releases (free)
 
 ### Future: Premium Sources
 

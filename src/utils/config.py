@@ -39,6 +39,16 @@ class Settings:
         return self.trading["base_url"]
 
     @property
+    def account_type(self) -> str:
+        """practice = relaxed state machine (always ACTIVE); live = full CAUTIOUS/HALTED."""
+        return self.trading.get("account_type", "practice")
+
+    @property
+    def is_practice_account(self) -> bool:
+        """True when account_type is practice; state machine stays ACTIVE."""
+        return self.account_type == "practice"
+
+    @property
     def cycle_frequency(self) -> str:
         """standard = 2 cycles/day, intraday = 3 cycles/day during market hours."""
         return self.trading.get("cycle_frequency", "standard")
@@ -246,6 +256,15 @@ class Settings:
         return int(self.universe.get("screening_cooldown_hours", 72))
 
     @property
+    def effective_screening_cooldown_hours(self) -> int:
+        """For intraday, cap cooldown at cycle_hours so each cycle gets fresh pool.
+        With 3 cycles at 08/12/16, 4h cooldown ensures cycle 2 and 3 see instruments from cycle 1 as eligible."""
+        base = self.screening_cooldown_hours
+        if self.cycle_frequency == "intraday":
+            return min(base, self.cycle_hours)
+        return base
+
+    @property
     def review_window_hours(self) -> list[int]:
         """Review = investigated in this window [min_h, max_h]. E.g. [24, 48] = 24-48h ago."""
         val = self.universe.get("review_window_hours", [24, 48])
@@ -378,7 +397,41 @@ class Settings:
 
     @property
     def tavily_monthly_calls(self) -> int:
-        return int(self.search_api_limits.get("tavily_monthly_calls", 2000))
+        return int(self.search_api_limits.get("tavily_monthly_calls", 1000))
+
+    # --- Research (Agentic Research US-4.4) ---
+    @property
+    def research(self) -> dict[str, Any]:
+        return self._config.get("research", {})
+
+    @property
+    def research_enabled(self) -> bool:
+        return bool(self.research.get("enabled", False))
+
+    @property
+    def strategy_research_enabled(self) -> bool:
+        return bool(self.research.get("strategy_research_enabled", False))
+
+    @property
+    def skeptic_research_enabled(self) -> bool:
+        return bool(self.research.get("skeptic_research_enabled", False))
+
+    @property
+    def risk_research_enabled(self) -> bool:
+        return bool(self.research.get("risk_research_enabled", False))
+
+    @property
+    def research_max_calls_per_member_per_cycle(self) -> dict[str, int]:
+        caps = self.research.get("max_calls_per_member_per_cycle") or {}
+        return {
+            "strategy": int(caps.get("strategy", 20)),
+            "skeptic": int(caps.get("skeptic", 8)),
+            "risk": int(caps.get("risk", 7)),
+        }
+
+    @property
+    def research_max_total_calls_per_cycle(self) -> int:
+        return int(self.research.get("max_total_research_calls_per_cycle", 35))
 
     # --- Order Management ---
     @property

@@ -7,6 +7,7 @@ import Portfolio from './pages/Portfolio'
 import Opportunity from './pages/Opportunity'
 import OrderManagement from './pages/OrderManagement'
 import Costs from './pages/Costs'
+import Roadmap from './pages/Roadmap'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 transition-colors rounded focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface ${
@@ -40,6 +41,9 @@ function NavLinks({ mobile = false }: { mobile?: boolean }) {
       </NavLink>
       <NavLink to="/costs" className={mobile ? linkClass : navLinkClass}>
         Costs
+      </NavLink>
+      <NavLink to="/roadmap" className={mobile ? linkClass : navLinkClass}>
+        Roadmap
       </NavLink>
     </>
   )
@@ -102,6 +106,7 @@ function App() {
             <Route path="/opportunity" element={<Opportunity />} />
             <Route path="/orders" element={<OrderManagement />} />
             <Route path="/costs" element={<Costs />} />
+            <Route path="/roadmap" element={<Roadmap />} />
           </Routes>
         </main>
       </div>

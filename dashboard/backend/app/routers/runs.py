@@ -3,15 +3,15 @@
 import json
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from src.data.database import get_session
-from src.data.models import PortfolioSnapshot
+from src.data.models import PortfolioSnapshot, StrategyDecision
 from src.utils.config import get_settings
 
 from ..database import Run
@@ -20,6 +20,44 @@ from ..schemas import RunCreateSchema, RunSchema
 logger = logging.getLogger(__name__)
 router = APIRouter()
 settings = get_settings()
+
+# Runs "running" longer than this are considered stale and may be reconciled
+_STALE_RUN_THRESHOLD_MINUTES = 15
+
+
+def _reconcile_stale_runs(session: Session) -> int:
+    """Mark runs stuck in 'running' as completed. Reconciles all stale runs (with or without decisions)."""
+    threshold = datetime.now(timezone.utc) - timedelta(minutes=_STALE_RUN_THRESHOLD_MINUTES)
+    stale = (
+        session.query(Run)
+        .filter(Run.status == "running", Run.started_at < threshold)
+        .all()
+    )
+    reconciled = 0
+    for run in stale:
+        decision_count = session.query(StrategyDecision).filter(StrategyDecision.cycle_id == run.cycle_id).count()
+        if decision_count > 0:
+            last_ts = (
+                session.query(func.max(StrategyDecision.timestamp))
+                .filter(StrategyDecision.cycle_id == run.cycle_id)
+                .scalar()
+            )
+            run.completed_at = last_ts or run.started_at
+            summary = dict(run.summary_json) if isinstance(run.summary_json, dict) else {}
+            summary["num_rejected"] = summary.get("num_rejected", decision_count)
+        else:
+            run.completed_at = run.started_at + timedelta(minutes=_STALE_RUN_THRESHOLD_MINUTES)
+            summary = dict(run.summary_json) if isinstance(run.summary_json, dict) else {}
+            summary["reconciled"] = "stale_no_decisions"
+        run.status = "completed"
+        if run.completed_at and run.started_at:
+            summary["duration_seconds"] = (run.completed_at - run.started_at).total_seconds()
+        run.summary_json = summary
+        reconciled += 1
+        logger.info("Reconciled stale run %s to completed (%d decisions)", run.cycle_id, decision_count)
+    if reconciled:
+        session.commit()
+    return reconciled
 
 
 def _get_snapshot_for_run(session: Session, run: Run) -> PortfolioSnapshot | None:
@@ -88,6 +126,7 @@ async def get_runs(
 
     session = get_session()
     try:
+        _reconcile_stale_runs(session)
         query = session.query(Run)
 
         if run_type:

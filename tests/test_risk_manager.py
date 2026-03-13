@@ -102,14 +102,14 @@ class TestDrawdown:
         assert result.passed
 
     def test_cautious_drawdown(self, risk_mgr):
-        # 6% drawdown — CAUTIOUS warning
-        result = risk_mgr.check_drawdown(9400, 10000)
+        # 30% drawdown — CAUTIOUS warning (cautious_drawdown_pct=30)
+        result = risk_mgr.check_drawdown(7000, 10000)
         assert result.passed  # Still passes but message indicates CAUTIOUS
         assert "CAUTIOUS" in result.message
 
     def test_halt_drawdown(self, risk_mgr):
-        # 16% drawdown — HALT
-        result = risk_mgr.check_drawdown(8400, 10000)
+        # 45% drawdown — HALT (halt_drawdown_pct=40)
+        result = risk_mgr.check_drawdown(5500, 10000)
         assert not result.passed
         assert "HALT" in result.message
 
@@ -123,10 +123,12 @@ class TestDrawdownState:
         assert risk_mgr.get_drawdown_state(10000, 10000) == "ACTIVE"
 
     def test_cautious(self, risk_mgr):
-        assert risk_mgr.get_drawdown_state(9400, 10000) == "CAUTIOUS"
+        # 30% drawdown triggers CAUTIOUS (cautious_drawdown_pct=30)
+        assert risk_mgr.get_drawdown_state(7000, 10000) == "CAUTIOUS"
 
     def test_halted(self, risk_mgr):
-        assert risk_mgr.get_drawdown_state(8400, 10000) == "HALTED"
+        # 45% drawdown triggers HALTED (halt_drawdown_pct=40)
+        assert risk_mgr.get_drawdown_state(5500, 10000) == "HALTED"
 
 
 class TestVixLimit:
@@ -267,8 +269,9 @@ class TestEvaluateTrade:
         assert verdict.adjusted_allocation_pct == 15.0
 
     def test_reject_on_halt_drawdown(self, risk_mgr):
+        # 45% drawdown triggers HALT (halt_drawdown_pct=40)
         verdict = risk_mgr.evaluate_trade(**self._default_params(
-            current_value=8000.0,
+            current_value=5500.0,
             peak_value=10000.0,
         ))
         assert verdict.verdict == "REJECT"

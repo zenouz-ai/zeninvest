@@ -39,6 +39,34 @@ class ModerationResult:
         self.moderators_available = moderators_available
         self.caution_flag = caution_flag
 
+    @property
+    def gpt_score(self) -> int | float | None:
+        """Extract score from GPT-4o verdict (confidence_score if present)."""
+        if self.gpt4o_verdict is None:
+            return None
+        return self.gpt4o_verdict.get("score") or self.gpt4o_verdict.get("confidence_score")
+
+    @property
+    def gemini_score(self) -> int | float | None:
+        """Extract score from Gemini verdict."""
+        if self.gemini_verdict is None:
+            return None
+        return self.gemini_verdict.get("score") or self.gemini_verdict.get("confidence_score")
+
+    @property
+    def gpt_reasoning(self) -> str | None:
+        """Extract reasoning from GPT-4o verdict."""
+        if self.gpt4o_verdict is None:
+            return None
+        return self.gpt4o_verdict.get("reasoning")
+
+    @property
+    def gemini_reasoning(self) -> str | None:
+        """Extract reasoning from Gemini verdict."""
+        if self.gemini_verdict is None:
+            return None
+        return self.gemini_verdict.get("reasoning") or self.gemini_verdict.get("assessment")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "ticker": self.ticker,
@@ -64,6 +92,7 @@ class ModerationPanel:
         market_context: dict[str, Any],
         conviction: int,
         cycle_id: str,
+        research_executor=None,
     ) -> ModerationResult:
         """Run the full moderation panel on a trade proposal.
 
@@ -97,6 +126,7 @@ class ModerationPanel:
         if use_gpt4o:
             gpt4o_result = openai_mod.review_trade(
                 trade_proposal, portfolio_context, market_context, cycle_id,
+                research_executor=research_executor if self.settings.skeptic_research_enabled else None,
             )
             if not gpt4o_result.get("available", False):
                 gpt4o_result = None
@@ -104,6 +134,7 @@ class ModerationPanel:
         if use_gemini:
             gemini_result = gemini_mod.review_trade(
                 trade_proposal, portfolio_context, market_context, cycle_id,
+                research_executor=research_executor if self.settings.risk_research_enabled else None,
             )
             if not gemini_result.get("available", False):
                 gemini_result = None

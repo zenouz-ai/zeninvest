@@ -87,7 +87,7 @@ The system is designed to fail closed, not open:
 - **If any LLM call fails, the trade is skipped.** The orchestrator catches exceptions at every stage and logs errors without proceeding.
 - **If the T212 API is unreachable, no trades are placed.** In dry-run mode, a mock portfolio is used; in live mode, the cycle terminates with an error.
 - **If cost budgets are exceeded, the system degrades gracefully** rather than spending more. See [Section 5: Cost Controls](#5-cost-controls).
-- **If drawdown exceeds 15%, all positions are liquidated automatically.** This is a hard, non-negotiable safety threshold.
+- **If drawdown exceeds `halt_drawdown_pct` (default 40%), all positions are liquidated automatically.** This is a hard, non-negotiable safety threshold.
 - **Order deduplication prevents double-execution.** A 5-minute dedup window (`DEDUP_WINDOW_MINUTES = 5`) prevents the same order from being placed twice.
 
 ---
@@ -183,6 +183,7 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 
 - The `OrderManager._is_duplicate()` method checks for matching orders (same ticker, direction, and quantity) placed within the last 5 minutes.
 - Duplicate orders are logged and skipped with `"status": "skipped", "reason": "duplicate"`.
+- **Order status from T212**: The T212 API response `status` is mapped: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/etc→pending, REJECTED/CANCELLED→failed. Do not assume a 200 OK implies execution; pending orders may not appear in T212 order history until filled.
 - After successful BUY executions, the system automatically places a GTC stop-loss order via `OrderManager.place_stop_loss()` using the `stop_loss_pct` from Claude's decision. This protects against downside risk without requiring manual intervention.
 - The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation.
 
@@ -253,7 +254,7 @@ The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules
 | 1 | **Max Single Stock** | No single stock > 15% of portfolio | REJECT or RESIZE | `check_max_single_stock()` |
 | 2 | **Max Sector Concentration** | No single sector > 35% of portfolio | REJECT or RESIZE | `check_max_sector()` |
 | 3 | **Correlation Limit** | Portfolio avg pairwise correlation < 0.7 | REJECT | `check_correlation()` |
-| 4 | **Drawdown State Machine** | >5% drawdown -> CAUTIOUS; >15% -> HALTED (liquidate all) | State transition + REJECT | `check_drawdown()` |
+| 4 | **Drawdown State Machine** | >cautious_drawdown_pct (30%) -> CAUTIOUS; >halt_drawdown_pct (40%) -> HALTED (liquidate all) | State transition + REJECT | `check_drawdown()` |
 | 5 | **VIX-Based Position Limits** | VIX >25: max 8%; VIX >35: max 5% per position | RESIZE | `check_vix_limit()` |
 | 6 | **Daily Loss Halt** | Daily loss >2%: no new buys for 24 hours | REJECT | `check_daily_loss_halt()` |
 | 7 | **Cash Floor** | Always maintain >= 10% cash | REJECT or RESIZE | `check_cash_floor()` |
@@ -281,15 +282,15 @@ The risk rules exist in a separate execution path from LLM outputs:
 The system operates in one of three states, persisted in the `system_state` database table:
 
 ```
-                  drawdown < 5%
+              drawdown < cautious_drawdown_pct
               +------------------+
               |                  |
               v                  |
          +--------+         +----------+
          | ACTIVE | ------> | CAUTIOUS |
-         +--------+  >5%    +----------+
+         +--------+ >30%    +----------+
               ^              |
-              |  recovery    | >15% drawdown
+              |  recovery    | >halt_drawdown_pct (40%)
               |              v
               |         +---------+
               +-------- | HALTED  |
@@ -319,6 +320,8 @@ if drawdown_state != current_state:
 ```
 
 The `HALTED` state triggers immediate liquidation of all positions. Recovery from `HALTED` requires manual intervention -- the system does not automatically resume trading.
+
+**Practice account bypass:** When `trading.account_type: practice`, the state machine is relaxed. Drawdown is logged but the system always stays ACTIVE; transitions to CAUTIOUS/HALTED are skipped. Use `account_type: live` for real money to enable full state machine enforcement.
 
 **Portfolio value for drawdown:** The system uses `totalValue` from T212's `/equity/account/summary` when available. This includes cash, investments, and reserved funds (pending orders). If the summary endpoint is unavailable, it falls back to `cash + invested + reservedForOrders` from the cash endpoint. This ensures pending orders are not misclassified as losses.
 
@@ -508,8 +511,8 @@ Risk thresholds are configured in `config/settings.yaml`. To adjust:
 
 | Level | Description | Examples | Response Time |
 |-------|-------------|----------|---------------|
-| **P1 -- Critical** | System executing unintended trades; data breach; >15% drawdown | Runaway orders, API key leaked | Immediate |
-| **P2 -- High** | System not functioning correctly; unexpected losses | Strategy errors, T212 API failures, >5% drawdown | Within 1 hour |
+| **P1 -- Critical** | System executing unintended trades; data breach; >halt_drawdown_pct | Runaway orders, API key leaked | Immediate |
+| **P2 -- High** | System not functioning correctly; unexpected losses | Strategy errors, T212 API failures, >cautious_drawdown_pct | Within 1 hour |
 | **P3 -- Medium** | Degraded functionality; cost overruns | LLM budget exceeded, data provider down | Within 4 hours |
 | **P4 -- Low** | Minor issues; informational | Single failed API call, log rotation | Next business day |
 
@@ -550,8 +553,9 @@ The system maintains a comprehensive audit trail across ten database tables:
 | `moderation_logs` | Every moderation verdict from GPT-4o and Gemini | `cycle_id`, `ticker`, `moderator`, `verdict`, `reasoning`, `growth_score`, `risk_score`, `consensus` |
 | `risk_decisions` | Every risk evaluation | `cycle_id`, `ticker`, `verdict`, `rules_checked_json`, `triggered_rules_json`, `reasoning` |
 | `cost_logs` | Every LLM API call cost | `provider`, `model`, `input_tokens`, `output_tokens`, `cost_gbp`, `cycle_id`, `purpose` |
-| `api_logs` | Every external API call (T212, Finnhub, Alpha Vantage, brave_search, brave_answers, tavily) | `service`, `method`, `endpoint`, `status_code`, `duration_ms`, `error`; search APIs have monthly limits (2k each) via `search_api_tracker`. Web search fallback (Brave/Tavily for analyst/news when Finnhub/AV fail) is logged here. |
-| `portfolio_snapshots` | Portfolio state at end of each cycle | `total_value_gbp`, `cash_gbp`, `num_positions`, `positions_json`, `state` |
+| `api_logs` | Every external API call (T212, Finnhub, Alpha Vantage, brave_search, brave_answers, tavily) | `service`, `method`, `endpoint`, `status_code`, `duration_ms`, `error`; search APIs have monthly limits (2k Brave Search, 2k Brave Answers, 1k Tavily) via `search_api_tracker`. Web search fallback (Brave/Tavily for analyst/news when Finnhub/AV fail) is logged here. |
+| `research_logs` | Agentic research tool calls (US-4.4) | `cycle_id`, `member` (strategy/skeptic/risk), `ticker`, `tool_name`, `query`, `provider`, `cache_hit`; per-member caps 20/8/7, total 35/cycle; budget monitoring via ResearchBudget. |
+| `portfolio_snapshots` | Portfolio state at end of each cycle | `total_value_gbp`, `cash_gbp`, `invested_gbp`, `num_positions`, `positions_json` (normalised: ticker, quantity, value_gbp, pnl_gbp, pnl_pct), `state` |
 | `instruments` | Company profiles and screening state | `ticker`, `sector`, `industry`, `market_cap`, `business_summary`, `data_available`, `last_screened_at` |
 | `opportunity_score_snapshots` | Per-cycle UOV scores/components for every evaluated ticker | `cycle_id`, `ticker`, `stage`, `uov_raw`, `uov_z`, `uov_final`, `uov_ewma`, `moderation_consensus`, `risk_verdict`; for HOLD/QUEUED (stage `strategy_hold`/`strategy_queued`), moderation_consensus and risk_verdict are "not invoked" |
 | `opportunity_queue` | Active queued BUY opportunities awaiting execution | `ticker`, `queued_cycles`, `last_uov_ewma`, `last_seen_cycle_id`, `metadata_json` |
@@ -745,8 +749,8 @@ risk:
   max_single_stock_pct: 15
   max_sector_pct: 35
   max_correlation: 0.7
-  cautious_drawdown_pct: 5
-  halt_drawdown_pct: 15
+  cautious_drawdown_pct: 30
+  halt_drawdown_pct: 40
   daily_loss_halt_pct: 2
   vix_high: 25
   vix_extreme: 35

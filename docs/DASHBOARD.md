@@ -1,7 +1,7 @@
 ---
 tags: [dashboard, frontend, api]
 status: current
-last_updated: 2026-03-10
+last_updated: 2026-03-13
 ---
 
 # Dashboard System
@@ -19,7 +19,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 - **Order auditing** — stop-loss adjustments, trailing stops, limit orders, execution trail
 - **Cost monitoring** — LLM spend tracking, degradation state, API usage
 - **Performance analysis** — win rates, Sharpe/Sortino, trade outcomes, attribution by committee member
-- **Research transparency** (Phase D) — per-member research activity, cache hit rates, influence tracking
+- **Research transparency** (Phase D) — per-member research activity via `GET /api/research/logs`, `GET /api/research/summary`; cache hit rates; `research_call` events in SSE stream
 
 ---
 
@@ -29,11 +29,11 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **FastAPI Backend** | Complete | REST for runs, status (incl. system state), universe, portfolio, orders, events; decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); SSE stream. All read from agent SQLite; no duplicate tables. |
+| **FastAPI Backend** | Complete | REST for runs, status (incl. system state), universe, portfolio, orders, events; decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, research (logs, summary); system (state, trigger, pause, resume); SSE stream. All read from agent SQLite; no duplicate tables. |
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **7 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
+| **React Frontend** | Complete | **8 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -58,11 +58,11 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│              React Frontend (Vite) — 7 pages                                  │
-│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┐ │
-│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Costs  │ │
-│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │        │ │
-│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┘ │
+│              React Frontend (Vite) — 8 pages                                  │
+│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┬────────┐ │
+│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Costs  │ Roadmap│ │
+│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │        │ & Arch │ │
+│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┴────────┘ │
 │         Recharts / TanStack Table / dark terminal design (#0d1117, etc.)     │
 └──────────────────┬──────────────────────────────────────────────────────────┘
                     │ REST + Server-Sent Events (SSE)
@@ -98,7 +98,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 ### Page 1: Dashboard Home (Operations Hub)
 
 **Top metrics bar:**
-- System state badge: ACTIVE / CAUTIOUS / HALTED (from `system_state`)
+- System state badge: ACTIVE / CAUTIOUS / HALTED (from `system_state`). When CAUTIOUS, a "Reset Peak" button appears to clear false drawdown and return to ACTIVE.
 - Last cycle timestamp + next scheduled cycle countdown
 - Portfolio total value + daily P&L (from latest `portfolio_snapshots`)
 - Cost burn: today's LLM spend vs daily budget (from `cost_logs`)
@@ -166,10 +166,12 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 ### Page 4: Portfolio & Performance
 
-**Current positions (from `portfolio_snapshots` + live T212 data if available):**
-- Table: ticker, quantity, avg entry, current price, unrealised P&L, stop-loss level, trailing stop status
-- Sector allocation donut chart
-- Position sizing vs risk limits visualisation (are any positions near the 15% cap?)
+**Summary cards:** Cash Balance, Investments (`invested_gbp`), Positions count, Last Updated.
+
+**Current positions (from `portfolio_snapshots.positions_json`; normalised from T212 `instrument.ticker` / `walletImpact`):**
+- Table: ticker, sector, quantity, value (GBP), P&L (GBP), P&L %
+- Sector allocation pie chart (from position values; zero-value sectors filtered)
+- Portfolio value history line chart (chronological: oldest left, newest right; rightmost point = latest snapshot)
 
 **Historical performance (from `performance_metrics`):**
 - Portfolio value over time (line chart, daily)
@@ -196,7 +198,12 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 ### Page 6: Order Management & Stop Loss Audit
 
-**Active orders and adjustments (from `orders` + `stop_loss_adjustments`):**
+**Recent orders (from `orders`):**
+- Table of all recent orders: time, ticker, action, quantity, order type, status (filled/pending/dry_run/failed)
+- Market orders (BUY/SELL/REDUCE) and stop orders in one view
+- Status reflects T212 API response when live (FILLED→filled, NEW→pending, REJECTED→failed)
+
+**Current stop-loss levels (from `orders` + `stop_loss_adjustments`):**
 - Current stop-loss levels for all positions with distance from current price
 - Trailing stop tracking: high-water mark, current trail level, visualised on a mini price chart
 - Limit dip-buy orders: pending limits with entry target vs current price
@@ -228,7 +235,30 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Cache hit rate over time
 - Most-queried tickers and topics
 
-### Page 8: Research Explorer (Phase D — Agentic Research)
+### Page 8: Roadmap & Architecture
+
+**Tabbed layout:** `[Gantt | Roadmap | Architecture]` (default: Gantt)
+
+**Gantt tab:**
+- Mermaid Gantt chart: timeline of delivered work (green) and planned pipeline (grey)
+- Sections by topic; nominal dates for pipeline items based on effort
+
+**Roadmap tab:**
+- Project evolution from day 0 (2026-02-22) to now; days-in-development counter
+- Summary cards: 11 delivered · 14 pipeline · 44% complete
+- Topic filter: All, Foundation, Calibration, Portfolio & Risk, Signals, Validation, ML / Advanced
+- Vertical timeline grouped by topic; delivered (● green) vs pipeline (○ grey)
+- Expandable milestone details: description, effort, priority, architecture components
+
+**Architecture tab:**
+- Pipeline diagram (Mermaid) with component-to-US mapping
+- Links to `docs/ARCHITECTURE.md` and `docs/SOPHISTICATION_ROADMAP.md` served via `GET /api/docs/ARCHITECTURE` and `GET /api/docs/SOPHISTICATION_ROADMAP`
+
+**Docs links:** In-app modal fetches and displays ARCHITECTURE.md and SOPHISTICATION_ROADMAP.md (avoids new-tab issues).
+
+**URL:** `/roadmap`; optional `?tab=gantt`, `?tab=roadmap`, `?tab=architecture` for direct linking.
+
+### Page 9: Research Explorer (Phase D — Agentic Research)
 
 **Per-cycle research summary:**
 - Total searches by member, cache hit rate, total cost
@@ -249,6 +279,8 @@ Strategy (Claude) → conviction 0.8, action BUY
 The backend exposes the following endpoints. All query the agent's existing SQLite tables directly (no duplication).
 
 ### Activity & Runs
+
+Runs fetched via `GET /api/runs/` or run-feed are **auto-reconciled**: any run stuck in "running" for >15 min with `strategy_decisions` is marked "completed" before returning. See `docs/DEPLOYMENT.md` §9.5.
 
 ```
 GET /api/runs/                      # All runs, paginated, filterable by type/date
@@ -359,6 +391,14 @@ GET /api/research/stats             # Aggregate research metrics
 GET /api/system/state               # Current system state (ACTIVE/CAUTIOUS/HALTED), paused flag
 POST /api/system/pause              # Pause trading
 POST /api/system/resume             # Resume trading
+POST /api/system/reset-peak         # Reset peak to current, clear CAUTIOUS if incorrect
+```
+
+### Documentation (served as Markdown)
+
+```
+GET /api/docs/ARCHITECTURE          # docs/ARCHITECTURE.md
+GET /api/docs/SOPHISTICATION_ROADMAP # docs/SOPHISTICATION_ROADMAP.md
 ```
 
 ### Real-time Events
@@ -381,7 +421,7 @@ GET /api/events/stream              # Server-Sent Events (SSE) stream of activit
 | Run History | `runs` + `events_log` | Run metadata + per-run events ✅ |
 | Stock Universe | `instruments` | Sector, industry, market_cap, business_summary, last_screened_at, data_available |
 | Committee Decisions | `strategy_decisions` + `moderation_logs` + `risk_decisions` | Full pipeline trail per ticker per cycle |
-| Portfolio | `portfolio_snapshots` + `orders` | Snapshots for history, orders for current state |
+| Portfolio | `portfolio_snapshots` + `orders` | Snapshots for history, orders for current state. `positions_json` stores **normalized** positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) — orchestrator converts from T212 `instrument.ticker` and `walletImpact` before saving. Dashboard router supports both normalized and legacy T212 format for backward compatibility. |
 | P&L / Trade Outcomes | `trade_outcomes` | Links BUY→SELL with P&L, conviction, moderator scores |
 | UOV Scoring | `opportunity_score_snapshots` + `opportunity_queue` | Per-cycle UOV components, queue state |
 | Order Management | `orders` + `stop_loss_adjustments` | Stop-loss audit trail, trailing stops, limit orders |

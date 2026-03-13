@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react'
 import { useSSE } from '../hooks/useSSE'
-import { runsApi, portfolioApi, eventsApi, statusApi, costsApi, dashboardApi, ordersApi, universeApi } from '../api/client'
+import { runsApi, portfolioApi, eventsApi, statusApi, costsApi, dashboardApi, ordersApi, universeApi, systemApi } from '../api/client'
 import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail } from '../types'
 import { safeFormat } from '../utils/date'
 import { cleanTicker } from '../types'
@@ -63,6 +63,8 @@ export default function Dashboard() {
     status: '',
   })
   const [triggerLoading, setTriggerLoading] = useState<'dry' | 'live' | null>(null)
+  const [resetPeakLoading, setResetPeakLoading] = useState(false)
+  const [showResetPeakConfirm, setShowResetPeakConfirm] = useState(false)
   const [showLiveConfirm, setShowLiveConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { events: sseEvents, isConnected } = useSSE({ enabled: true })
@@ -237,6 +239,20 @@ export default function Dashboard() {
     }
   }
 
+  const handleResetPeak = async () => {
+    setResetPeakLoading(true)
+    try {
+      await systemApi.resetPeak()
+      setSystemState('ACTIVE')
+      setShowResetPeakConfirm(false)
+      fetchData()
+    } catch (e) {
+      console.error('Reset peak failed:', e)
+    } finally {
+      setResetPeakLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -254,6 +270,16 @@ export default function Dashboard() {
         </span>
         {paused && (
           <span className="text-terminal-text-dim text-sm">Trading paused</span>
+        )}
+        {systemState === 'CAUTIOUS' && (
+          <button
+            type="button"
+            onClick={() => setShowResetPeakConfirm(true)}
+            disabled={resetPeakLoading}
+            className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {resetPeakLoading ? 'Resetting…' : 'Reset Peak'}
+          </button>
         )}
         <div className="flex items-center gap-2">
           <button
@@ -287,6 +313,24 @@ export default function Dashboard() {
               </button>
               <button type="button" onClick={handleLiveRun} className="btn-danger-solid text-sm py-1.5">
                 Run live
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showResetPeakConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowResetPeakConfirm(false)}>
+          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-accent mb-2">Reset peak?</h3>
+            <p className="text-sm text-terminal-text-dim mb-4">
+              Sets peak portfolio value to current value and transitions to ACTIVE. Use when CAUTIOUS was triggered incorrectly (e.g. no real 5% drawdown).
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setShowResetPeakConfirm(false)} className="btn-secondary text-sm py-1.5">
+                Cancel
+              </button>
+              <button type="button" onClick={handleResetPeak} disabled={resetPeakLoading} className="btn-secondary text-sm py-1.5 disabled:opacity-50">
+                {resetPeakLoading ? 'Resetting…' : 'Reset'}
               </button>
             </div>
           </div>
@@ -543,6 +587,7 @@ export default function Dashboard() {
                   >
                     <option value="">All</option>
                     <option value="filled">filled</option>
+                    <option value="pending">pending</option>
                     <option value="failed">failed</option>
                     <option value="dry_run">dry_run</option>
                   </select>

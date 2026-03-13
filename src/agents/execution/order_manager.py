@@ -2,7 +2,7 @@
 
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.data.database import get_session
@@ -12,8 +12,10 @@ from src.utils.logger import get_logger
 logger = get_logger("order_manager")
 
 # Dashboard event logger (fail-open import)
+log_event: Callable[..., None] | None
 try:
-    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.services.event_logger import log_event as _log_event
+    log_event = _log_event
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False
@@ -160,7 +162,7 @@ class OrderManager:
             )
             
             # Log order_placed event
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     log_event(
                         event_type="order_placed",
@@ -193,7 +195,7 @@ class OrderManager:
 
         try:
             # Log order_placed event before execution
-            if DASHBOARD_AVAILABLE and log_event:
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     log_event(
                         event_type="order_placed",
@@ -214,6 +216,18 @@ class OrderManager:
             
             result = self.client.place_market_order(ticker, quantity)
             t212_order_id = result.get("id") or result.get("orderId")
+            t212_status = (result.get("status") or "").upper()
+
+            # Map T212 status to our DB status (do not assume filled — T212 may return NEW/pending)
+            if t212_status in ("FILLED", "PARTIALLY_FILLED"):
+                db_status = "filled"
+            elif t212_status in ("REJECTED", "CANCELLED", "CANCELLING"):
+                db_status = "failed"
+                logger.warning(f"T212 order {t212_order_id} status={t212_status}")
+            else:
+                db_status = "pending"
+                if t212_status and t212_status not in ("NEW", "CONFIRMED", "UNCONFIRMED", "LOCAL"):
+                    logger.info(f"T212 order {t212_order_id} status={t212_status} -> pending")
 
             order = self._log_order(
                 ticker=ticker,
@@ -223,7 +237,7 @@ class OrderManager:
                 price=current_price,
                 value_gbp=value_gbp,
                 t212_order_id=str(t212_order_id) if t212_order_id else None,
-                status="filled",
+                status=db_status,
                 strategy=strategy,
                 conviction=conviction,
                 moderation_result=moderation_result,
@@ -231,15 +245,17 @@ class OrderManager:
                 dedup_key=dedup_key,
             )
 
-            logger.info(f"Order executed: {action} {abs(quantity)} x {ticker} = £{value_gbp:.2f}")
-            
-            # Log order_executed event
-            if DASHBOARD_AVAILABLE and log_event:
+            logger.info(
+                f"Order {'filled' if db_status == 'filled' else 'placed'}: {action} {abs(quantity)} x {ticker} = £{value_gbp:.2f} (T212 status={t212_status})"
+            )
+
+            # Log order_executed event (or order_placed for pending)
+            if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     log_event(
                         event_type="order_executed",
                         source="execution",
-                        message=f"Order executed: {action} {abs(quantity)} x {ticker} @ {current_price} = £{value_gbp:.2f}",
+                        message=f"Order {db_status}: {action} {abs(quantity)} x {ticker} @ {current_price} = £{value_gbp:.2f}",
                         metadata={
                             "order_id": order.id,
                             "t212_order_id": str(t212_order_id) if t212_order_id else None,
@@ -248,16 +264,17 @@ class OrderManager:
                             "quantity": abs(quantity),
                             "price": current_price,
                             "value_gbp": value_gbp,
-                            "status": "filled",
+                            "status": db_status,
+                            "t212_status": t212_status,
                             "strategy": strategy,
                             "conviction": conviction,
                         },
                     )
                 except Exception:
                     pass  # Fail-open
-            
+
             return {
-                "status": "filled",
+                "status": db_status,
                 "order_id": order.id,
                 "t212_order_id": t212_order_id,
                 "ticker": ticker,

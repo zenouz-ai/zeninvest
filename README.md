@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 218 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
+**Status:** POC — 222 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
 
 ## Architecture
 
@@ -19,7 +19,7 @@ Orchestrator (configurable: 3 cycles at 08/12/16 UTC or 2 at 07/19 UTC)
   └── Journal & Reporting  → Per-trade journals, daily + weekly reports
 ```
 
-**State Machine:** ACTIVE → CAUTIOUS (>5% drawdown) → HALTED (>15% drawdown, liquidate all)
+**State Machine:** ACTIVE → CAUTIOUS (>30% drawdown, configurable) → HALTED (>40% drawdown, liquidate all)
 
 ## Setup
 
@@ -77,6 +77,7 @@ poetry run python -m src.orchestrator.main --performance  # Performance metrics 
 poetry run python -m src.orchestrator.main --dashboard   # Dashboard: portfolio, metrics, costs, positions
 poetry run python -m src.orchestrator.main --pause        # Pause trading
 poetry run python -m src.orchestrator.main --resume       # Resume trading
+poetry run python -m src.orchestrator.main --reset-peak   # Reset peak to current, clear CAUTIOUS if incorrect
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ  # Force sell
 poetry run python -m src.orchestrator.main --report       # Generate daily report
 poetry run python -m src.orchestrator.main --uov-diagnostic  # Run with UOV in shadow mode, emit scores for calibration
@@ -142,9 +143,9 @@ npm run dev    # Dev server on http://localhost:3000 (proxies API)
 npm run build  # Production build (outputs to dist/)
 ```
 
-**Pages:** Dashboard Home (system state badge, Dry Run/Live Run buttons, next run countdown, P&L, SSE activity feed), Stock Universe (searchable, sortable-by-column table with `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, `UOV (ewma)` columns plus expandable rows with committee reasoning and **full LLM outputs** — strategy reasoning, exit conditions, news/market/portfolio text, raw JSON; all moderators’ verdicts and reasoning; risk reasoning and triggered rules). The Universe `Sold` metric is computed from both executed and dry-run SELL orders (SELL quantities stored as negative; the dashboard reports `abs(sum(quantity))`), and the detail panel shows whether any live BUY/SELL executions exist in Trading 212 for the ticker. Additional pages: Run History (timeline, run diff view), Portfolio (positions, P&L chart, sector allocation), Opportunity Pipeline (UOV scores and queue; queue shows when/why queued, when action taken, action), Order Management (stop-loss levels and adjustment history), Costs (daily/monthly cost charts, degradation). UX: active nav state, mobile hamburger menu, loading spinner, error handling with retry. See `docs/DASHBOARD_DESIGN_REVIEW.md`. The Dashboard Home “Latest trades & LLM reasons” table shows the most recent orders (including `status='failed'` attempts) alongside the latest committee reasoning per ticker for full auditability.
+**Pages:** Dashboard Home (system state badge, Dry Run/Live Run buttons, next run countdown, P&L, SSE activity feed), Stock Universe (searchable, sortable-by-column table with `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, `UOV (ewma)` columns plus expandable rows with committee reasoning and **full LLM outputs** — strategy reasoning, exit conditions, news/market/portfolio text, raw JSON; all moderators’ verdicts and reasoning; risk reasoning and triggered rules). The Universe `Sold` metric is computed from both executed and dry-run SELL orders (SELL quantities stored as negative; the dashboard reports `abs(sum(quantity))`), and the detail panel shows whether any live BUY/SELL executions exist in Trading 212 for the ticker. Additional pages: Run History (timeline, run diff view), Portfolio (positions, P&L chart, sector allocation), Opportunity Pipeline (UOV scores and queue; queue shows when/why queued, when action taken, action), Order Management (stop-loss levels and adjustment history), Costs (daily/monthly cost charts, degradation), Roadmap (project evolution timeline from day 0, topic-grouped milestones, architecture diagram with component-to-US mapping). 8 pages total. UX: active nav state, mobile hamburger menu, loading spinner, error handling with retry. See `docs/DASHBOARD_DESIGN_REVIEW.md`. The Dashboard Home “Latest trades & LLM reasons” table shows the most recent orders (including `status='failed'` attempts) alongside the latest committee reasoning per ticker for full auditability.
 
-**Testing the dashboard:** Ensure `dashboard.enabled: true` in `config/settings.yaml`. Start the backend: `poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000`. Run the endpoint check: `poetry run python dashboard/backend/test_endpoints.py`. Then run the frontend (`npm run dev` in `dashboard/frontend` or open `http://localhost:8000` after `npm run build`). See `dashboard/backend/TESTING.md` for the full 7-page and API check.
+**Testing the dashboard:** Ensure `dashboard.enabled: true` in `config/settings.yaml`. Start the backend: `poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000`. Run the endpoint check: `poetry run python dashboard/backend/test_endpoints.py`. Then run the frontend (`npm run dev` in `dashboard/frontend` or open `http://localhost:8000` after `npm run build`). See `dashboard/backend/TESTING.md` for the full 8-page and API check.
 
 **Docker:** `docker compose up -d` runs both agent and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000). Activity feed (SSE) and Run History work when accessing via VPS IP — frontend uses relative API URLs. Use the **Dry Run** or **Live Run** buttons on Dashboard Home to trigger cycles, or: `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live); add `--dry-run` for dry-run.
 
@@ -303,6 +304,7 @@ docs/                   # Project documentation (16 files; archived plans in doc
 └── WALK_FORWARD_VALIDATION.md   # Walk-forward validation and promotion report
 notebooks/
 ├── diagnostics.ipynb       # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
+├── research_api_investigation.ipynb  # Phase 0: Brave vs Tavily API comparison, SEC EDGAR validation (see docs/AGENTIC_RESEARCH.md)
 ├── brave_api_smoke.py      # Manual smoke test for Brave Search + Answers APIs (requires API keys)
 ├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
 └── enrichment_benchmark.py # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
@@ -332,7 +334,7 @@ notebooks/
 - No single stock > 15% of portfolio
 - No single sector > 35%
 - Portfolio avg pairwise correlation < 0.7
-- 5% drawdown → CAUTIOUS mode; 15% → HALTED (liquidate all)
+- 30% drawdown → CAUTIOUS mode; 40% → HALTED (liquidate all); configurable in settings
 - VIX > 25: max 8% position; VIX > 35: max 5%
 - Daily loss > 2%: no new buys for 24 hours
 - Cash floor: always >= 10%

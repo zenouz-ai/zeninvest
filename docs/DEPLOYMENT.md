@@ -1203,7 +1203,53 @@ sqlite3 /home/deploy/investment-agent/data/investment_agent.db "DELETE FROM apsc
 docker compose restart investment-agent
 ```
 
-### 9.5 Database Locked Errors
+### 9.5 Runs stuck as RUNNING
+
+**Symptom**: Dashboard and Run History show runs with status "RUNNING" (blue) or "Running..." even after the cycle has completed.
+
+**Cause**: The scheduler or orchestrator failed to update the Run record to "completed" when the cycle finished (e.g. DB lock, exception in update block, process killed before commit). The update is fail-open, so the pipeline continues but the Run stays "running".
+
+**Fix (automatic)**: The dashboard backend now **reconciles** stale runs when fetching: any run that has been "running" for more than 15 minutes and has `strategy_decisions` for its cycle_id is marked "completed". Refresh the dashboard or Run History — the next fetch will reconcile and display correctly.
+
+**Fix (manual)** — if reconcile does not run (e.g. no strategy_decisions):
+
+```python
+# Mark specific run as completed (e.g. after verifying it finished)
+poetry run python -c "
+from src.data.database import get_session
+from dashboard.backend.app.database import Run
+from datetime import datetime, timezone
+session = get_session()
+run = session.query(Run).filter(Run.cycle_id == 'scheduled_20260313_120014').first()
+if run and run.status == 'running':
+    run.status = 'completed'
+    run.completed_at = datetime.now(timezone.utc)
+    session.commit()
+    print('Updated')
+session.close()
+"
+```
+
+**Diagnosis**: Check orchestrator/scheduler logs for `Failed to update Run record (fail-open)` — now logged at WARNING level.
+
+### 9.5a CAUTIOUS triggered incorrectly (few decisions, no real drawdown)
+
+**Symptom**: Runs produce only 2–3 decisions (positions only), state shows CAUTIOUS, but you have not had a real drawdown meeting cautious_drawdown_pct.
+
+**Cause**: Peak portfolio value may have been set incorrectly (e.g. from a data glitch, fallback calculation difference, or Practice account reset). Drawdown is measured from peak, so an inflated peak yields a false positive.
+
+**Fix** — reset peak to current value and return to ACTIVE:
+
+```bash
+# CLI
+poetry run python -m src.orchestrator.main --reset-peak
+```
+
+Or from the Dashboard: when state shows CAUTIOUS, a "Reset Peak" button appears next to the badge. Click it and confirm — peak is set to current portfolio value and state transitions to ACTIVE.
+
+**API**: `POST /api/system/reset-peak` (requires T212 connection to read current value).
+
+### 9.6 Database Locked Errors
 
 **Symptom**: `sqlite3.OperationalError: database is locked`.
 
@@ -1224,7 +1270,7 @@ sqlite3 -readonly /home/deploy/investment-agent/data/investment_agent.db
 sqlite3 /home/deploy/investment-agent/data/investment_agent.db "PRAGMA wal_checkpoint(RESTART);"
 ```
 
-### 9.6 Trading 212 API Issues
+### 9.7 Trading 212 API Issues
 
 **Symptom**: Orders fail with `Connection refused` or unexpected status codes.
 
@@ -1245,7 +1291,7 @@ LIMIT 10;
 - **API key rotation**: T212 keys expire. Generate a new key in the T212 dashboard and update `.env`.
 - **Order rejected**: Check `error_message` in the `orders` table for T212 rejection reasons (insufficient funds, instrument not tradeable, market closed).
 
-### 9.7 Container Will Not Start
+### 9.8 Container Will Not Start
 
 **Symptom**: `docker compose up -d` starts but the container exits immediately.
 
@@ -1268,7 +1314,27 @@ docker compose logs investment-agent 2>&1 | grep -i "alembic\|migration\|error"
 - **Import error**: A missing dependency. Rebuild with `docker compose build --no-cache`.
 - **Permission error**: Volume mount permissions. Ensure the `data/`, `journals/`, and `logs/` directories exist and are writable.
 
-### 9.8 SMTP TLS Mismatch (`STARTTLS extension not supported by server`)
+### 9.9 Run History polluted with test data (historical)
+
+**Symptom**: Run History shows many failed runs with `error_message: "boom"` or `FakeOrchestrator` — these are from tests that previously wrote to the production DB.
+
+**Note**: As of 2026-03, `conftest.py` sets `INVESTMENT_AGENT_USE_INMEMORY_DB=1` so pytest uses in-memory SQLite; new test runs no longer pollute production.
+
+**Cleanup** (removes test-artifact runs; keep real runs):
+
+```bash
+# Local
+poetry run python -c "
+import sqlite3
+conn = sqlite3.connect('data/investment_agent.db')
+cur = conn.execute(\"DELETE FROM runs WHERE summary_json LIKE '%boom%' OR summary_json LIKE '%FakeOrchestrator%'\")
+conn.commit()
+print(f'Deleted {cur.rowcount} test-pollution rows')
+conn.close()
+"
+```
+
+### 9.10 SMTP TLS Mismatch (`STARTTLS extension not supported by server`)
 
 **Symptom**: `notification_logs` contains repeated email failures with `error_message` like `STARTTLS extension not supported by server`.
 
@@ -1663,7 +1729,7 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 3. Build and run: `docker compose up -d --build`
 4. Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser
 
-**Outcome:** Dashboard is running on VPS. All 7 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs), activity feed (SSE), and API at `http://YOUR_VPS_IP:8000`.
+**Outcome:** Dashboard is running on VPS. All 8 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs, Roadmap), activity feed (SSE), and API at `http://YOUR_VPS_IP:8000`.
 
 **Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use the **Dry Run** or **Live Run** buttons on Dashboard Home (Live Run requires confirmation), or `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live) / `... --dry-run` (dry).
 

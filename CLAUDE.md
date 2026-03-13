@@ -44,6 +44,7 @@ poetry run python -m src.orchestrator.main --performance
 poetry run python -m src.orchestrator.main --dashboard
 poetry run python -m src.orchestrator.main --pause
 poetry run python -m src.orchestrator.main --resume
+poetry run python -m src.orchestrator.main --reset-peak   # Clear CAUTIOUS when peak was set incorrectly
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
 poetry run python -m src.orchestrator.main --report
 # Backtesting (real data: fetches yfinance if data/backtest/ empty, caches to CSV)
@@ -66,6 +67,7 @@ src/
 │   ├── moderation/        # ModerationPanel — GPT-4o (skeptic) + Gemini (risk assessor) consensus
 │   ├── risk/              # RiskManager — 9 hard rules with VETO power, no LLM involvement
 │   ├── opportunity/       # OpportunityScorer + OpportunityOptimizer — UOV ranking, queueing, swap suggestions
+│   ├── research/          # Agentic research (US-4.4): providers (Brave, Tavily), SEC EDGAR, cache, budget, executor
 │   ├── execution/         # OrderManager + T212Client + StopLossManager — market/limit/stop orders, trailing stops, dedup
 │   ├── notifications/     # NotificationService + Slack/Email providers + formatters + command gateway scaffold
 │   └── reporting/         # Trade journals, daily/weekly reports, performance tracker, trade outcome tracker
@@ -97,7 +99,7 @@ notebooks/
 ├── brave_api_smoke.py     # Manual smoke test for Brave Search + Answers APIs (requires API keys)
 ├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
 └── enrichment_benchmark.py    # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
-tests/                     # pytest — all use in-memory SQLite fixtures
+tests/                     # pytest — conftest sets INVESTMENT_AGENT_USE_INMEMORY_DB so all tests use in-memory SQLite; never touch production DB
 ```
 
 ## Key Patterns
@@ -137,10 +139,12 @@ finally:
 
 ### Test fixtures (in-memory SQLite)
 
+`conftest.py` sets `INVESTMENT_AGENT_USE_INMEMORY_DB=1` before any imports so `src.data.database` uses `sqlite:///:memory:` during pytest. Tests never write to `data/investment_agent.db`.
+
 ```python
 @pytest.fixture
 def db_session():
-    engine = create_engine("sqlite:///:memory:")
+ engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -172,23 +176,26 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 
 1. **Risk rules are deterministic Python** — never call an LLM from `RiskManager`. Its VETO is final.
 2. **Defense in depth** — every trade passes Strategy → Moderation → Risk → Execution. Any layer can block.
-3. **State machine** — ACTIVE → CAUTIOUS (>5% drawdown, no new positions) → HALTED (>15%, liquidate all). HALTED requires manual recovery. Drawdown uses `totalValue` from T212 account summary (includes reserved/pending orders); fallback: cash + invested + reservedForOrders.
-4. **Screening cooldown & mix** — `Instrument.last_screened_at` is stamped after each screen. Stocks within the cooldown window (configurable via `screening_cooldown_hours`, default 24h) are excluded from `get_screened_universe()` to ensure broad rotation. The screener uses time-based buckets: **review** = investigated 24–48h ago (last StrategyDecision in `review_window_hours`); **new** = never investigated or last >48h ago. Targets 50% from each pool via `uninvestigated_target_pct` (new share). When the pool is exhausted (all instruments in cooldown), the fallback orders by `last_screened_at ASC` (least recently screened first) to rotate through the pool instead of returning the same top 30 by market cap.
-5. **Curated seed universe & enrichment cascade** — `seed_universe.py` contains ~160 well-known US equities. Used as fallback when instruments table lacks enriched data. Batch enrichment (`enrich_instruments_batch`) cascades: yfinance → Finnhub → Alpha Vantage OVERVIEW → BRAVE_ANSWERS for sector/market_cap. Tickers that fail yfinance OHLCV fetch are flagged `data_available=False` and permanently excluded.
+3. **State machine** — ACTIVE → CAUTIOUS (config `cautious_drawdown_pct`, default 30%) → HALTED (config `halt_drawdown_pct`, default 40%). HALTED requires manual recovery. Drawdown uses `totalValue` from T212 account summary (includes reserved/pending orders); fallback: cash + invested + reservedForOrders. **Practice account** (`trading.account_type: practice`): state machine is relaxed — always stays ACTIVE; drawdown is logged but never triggers CAUTIOUS/HALTED. Use `account_type: live` for real money to enable full state machine.
+4. **Screening cooldown & mix** — Universe screening runs every cycle regardless of state (including CAUTIOUS); Risk blocks new BUYs in CAUTIOUS. `Instrument.last_screened_at` is stamped after each screen. Cooldown: `effective_screening_cooldown_hours` = for intraday `min(screening_cooldown_hours, cycle_hours)` (e.g. 4h), so each cycle gets a fresh pool of 20–35 candidates; for standard uses `screening_cooldown_hours` (24h). The screener uses time-based buckets: **review** = investigated 24–48h ago (last StrategyDecision in `review_window_hours`); **new** = never investigated or last >48h ago. Targets 50% from each pool via `uninvestigated_target_pct` (new share). When the pool is exhausted (all instruments in cooldown), the fallback orders by `last_screened_at ASC` (least recently screened first) to rotate. **Proactive seed**: when eligible pool &lt; 2×max_candidates, seed instruments are merged to ensure rotation headroom.
+5. **Curated seed universe & enrichment cascade** — `seed_universe.py` contains ~160 well-known US equities. Used as fallback when instruments table lacks enriched data; also proactively merged when pool drops below 2×max_candidates. Batch enrichment (`enrich_instruments_batch`) cascades: yfinance → Finnhub → Alpha Vantage OVERVIEW → BRAVE_ANSWERS for sector/market_cap. Tickers that fail yfinance OHLCV fetch are flagged `data_available=False` and permanently excluded.
 5a. **Deferred Finnhub/AV (intraday)** — When `cycle_frequency: intraday`, screening uses `get_stock_analysis_lite` (yfinance only). Finnhub and Alpha Vantage are fetched only for `positions ∪ top_tickers` (active-review tickers), with `NewsSentimentCache` lookup first.
 5b. **Web search fallback** — When Finnhub analyst data or Alpha Vantage ticker sentiment times out or fails, `get_news_sentiment_fallback` (Brave/Tavily) supplies analyst/news-like snippets for the strategy prompt. Controlled by `data_fallback_web_search_enabled`; respects search API monthly budget.
+5c. **Queued ticker re-evaluation** — When opportunity is enabled, Phase 3 in `_fetch_stocks_data` re-adds queued tickers (from OpportunityQueue) to stocks_data each cycle, bypassing screening cooldown, so they can reach 2nd cycle and promote before expiring.
 6. **Company profiles** — `longBusinessSummary` + `industry` from yfinance are persisted in the `Instrument` model and included in the Claude strategy prompt for qualitative reasoning.
-7. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap.
-8. **Order dedup** — 5-minute window prevents double-execution of the same order.
-9. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
-10. **UOV optimizer guardrail** — UOV may reorder/queue BUYs, but it never directly triggers SELL/REDUCE. Strategy remains sell authority; Risk remains final veto.
-11. **Notification fail-open** — alert delivery failures (Slack/Email) must never block trade execution.
-12. **Intelligent order management** — `StopLossManager` runs after execution each cycle. Three capabilities:
+7. **T212 order status** — Order status is derived from T212 API response `status`: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/UNCONFIRMED/LOCAL→pending, REJECTED/CANCELLED→failed. Do not assume filled on 200 OK.
+8. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap.
+9. **Order dedup** — 5-minute window prevents double-execution of the same order.
+10. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
+11. **UOV optimizer guardrail** — UOV may reorder/queue BUYs, but it never directly triggers SELL/REDUCE. Strategy remains sell authority; Risk remains final veto.
+12. **Notification fail-open** — alert delivery failures (Slack/Email) must never block trade execution.
+13. **Intelligent order management** — `StopLossManager` runs after execution each cycle. Three capabilities:
     - **ATR-based stop reassessment**: Recalculates stops using 14-day ATR × configurable multiplier, clamped to [min, max] distance. By default only tightens (never widens).
     - **Software trailing stops**: Tracks high-water mark per position. Ratchets stop up as price rises. Implemented by cancel + replace since T212 has no native trailing stop.
     - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
     - All adjustments logged to `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
-13. **Dashboard backend (Phase 1 + Phase 1.5 + full API)** — FastAPI REST API + SSE stream. Endpoints: runs, status (includes system state and paused), universe, portfolio, orders, events/stream; decisions (with pipeline waterfall), moderation, risk; opportunity (scores, queue, history); outcomes (list, stats); stop-loss (current, adjustments); performance (metrics, history); costs (daily, monthly, degradation); api-usage (daily); system (state, trigger-cycle, pause, resume); POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle). All query agent SQLite read-only; no duplicate tables. Event logger: non-blocking, fail-open. Frontend: 7 pages — Dashboard Home (state badge, Dry Run and Live Run buttons; Live Run requires confirmation), Universe (sortable columns, expandable rows with full LLM outputs: strategy reasoning + extra fields + raw JSON, all moderators’ verdicts/reasoning, risk reasoning and rules), Run History, Portfolio, Opportunity Pipeline, Order Management, Costs. Universe table includes `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` columns; `Sold` is the total number of shares sold based on executed and dry-run SELL orders only (orders store SELL quantities as negative, but the dashboard reports `abs(sum(quantity))`). For transparency, the backend also exposes a live vs dry-run breakdown per ticker so the UI can show cases where Sold > 0 comes entirely from hypothetical dry-run cycles with no live Trading 212 execution. Cycle summary includes rejected_by_action (breakdown by strategy action: BUY, HOLD, QUEUED). For HOLD/QUEUED, moderation_consensus and risk_verdict are "not invoked"; rejection stages: strategy_hold, strategy_queued. Design: dark charcoal #0d1117, gain #00ff88, loss #ff4444, neutral #58a6ff, accent #d4a017, subtle grid background. Config: `dashboard.enabled`, `dashboard.events_enabled`.
+13. **Agentic research (US-4.4)** — When `research.enabled`, Strategy/Skeptic/Risk can use tools: web_search, news_search, sector_search, sec_search (SEC EDGAR). Per-member caps 20/8/7, total 35/cycle. Brave primary, Tavily fallback. SEC EDGAR free. See `docs/AGENTIC_RESEARCH.md`.
+14. **Dashboard backend (Phase 1 + Phase 1.5 + full API)** — FastAPI REST API + SSE stream. Endpoints: runs, status (includes system state and paused), universe, portfolio, orders, events/stream; decisions (with pipeline waterfall), moderation, risk; opportunity (scores, queue, history); outcomes (list, stats); stop-loss (current, adjustments); performance (metrics, history); costs (daily, monthly, degradation); api-usage (daily); system (state, trigger-cycle, pause, resume); POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle). All query agent SQLite read-only; no duplicate tables. Event logger: non-blocking, fail-open. Frontend: 8 pages — Dashboard Home (state badge, Dry Run and Live Run buttons; Live Run requires confirmation), Universe (sortable columns, expandable rows with full LLM outputs: strategy reasoning + extra fields + raw JSON, all moderators’ verdicts/reasoning, risk reasoning and rules), Run History, Portfolio, Opportunity Pipeline, Order Management (Recent Orders + stop-loss levels + adjustments), Costs, Roadmap & Architecture (project timeline, architecture diagram). When CAUTIOUS, "Reset Peak" button clears false drawdown. Order status reflects T212 response (filled/pending/failed). Universe table includes `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` columns; `Sold` is the total number of shares sold based on executed and dry-run SELL orders only (orders store SELL quantities as negative, but the dashboard reports `abs(sum(quantity))`). For transparency, the backend also exposes a live vs dry-run breakdown per ticker so the UI can show cases where Sold > 0 comes entirely from hypothetical dry-run cycles with no live Trading 212 execution. Cycle summary includes rejected_by_action (breakdown by strategy action: BUY, HOLD, QUEUED). For HOLD/QUEUED, moderation_consensus and risk_verdict are "not invoked"; rejection stages: strategy_hold, strategy_queued. Design: dark charcoal #0d1117, gain #00ff88, loss #ff4444, neutral #58a6ff, accent #d4a017, subtle grid background. Research API: `GET /api/research/logs`, `GET /api/research/summary`. Config: `dashboard.enabled`, `dashboard.events_enabled`.
 
 ## Scheduling Architecture
 
@@ -310,9 +317,10 @@ Gathers macro-level market intelligence to inform trading decisions:
 | `RiskDecision` | `risk_decisions` | Risk checks with triggered rules |
 | `CostLog` | `cost_logs` | Per-LLM-call cost tracking |
 | `ApiLog` | `api_logs` | External API call audit trail (T212, Finnhub, Alpha Vantage, brave_search, brave_answers, tavily) |
+| `ResearchLog` | `research_logs` | Agentic research tool calls (member, ticker, tool, provider, cache_hit) — US-4.4 |
 | `NotificationLog` | `notification_logs` | Outbound alert audit trail (sent/failed/skipped/deduped attempts) |
 | `MarketDataCache` | `market_data_cache` | OHLCV + indicators + fundamentals (configurable TTL: lite_analysis 4h, full_analysis 4h) |
-| `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state |
+| `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state. `positions_json` stores normalised positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) converted from T212 `instrument.ticker` and `walletImpact` |
 | `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
 | `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities awaiting execution |
 | `PerformanceMetric` | `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy, alpha |
@@ -325,15 +333,16 @@ Gathers macro-level market intelligence to inform trading decisions:
 
 Key tuneable values:
 
-- **Trading**: `mode: practice`, `cycle_frequency: intraday|standard`, `cycle_times_utc`, `max_positions: 15`, `cash_floor_pct: 10`
-- **Risk**: `max_single_stock_pct: 15`, `max_sector_pct: 35`, `halt_drawdown_pct: 15`
+- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `max_positions: 15`, `cash_floor_pct: 10`
+- **Risk**: `max_single_stock_pct: 15`, `max_sector_pct: 35`, `cautious_drawdown_pct: 30`, `halt_drawdown_pct: 40`
 - **Strategy weights**: momentum `0.35`, mean_reversion `0.30`, factor `0.35`
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)
 - **Universe**: `max_candidates: 30`, cap tiers 70/20/10% (large/mid/small), `screening_cooldown_hours: 24`, `review_window_hours: [24, 48]`, `data_fallback_web_search_enabled`, `batch_enrichment_enabled`, `batch_enrichment_per_run`
 - **Strategy**: One decision per ticker (up to 35). Actions: BUY, SELL, HOLD, REDUCE, QUEUED. Targets 60+ decisions/day (3 cycles × 20+ through full pipeline).
 - **Data cache TTLs** (configurable): `ohlcv_indicators: 4h`, `fundamentals: 12h`, `finnhub_analyst: 6h`, `alpha_vantage_broad: 4h`, `macro_intelligence: 4h`
-- **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50; **search_api_limits**: 2,000 calls/month each for brave_search, brave_answer, tavily
-- **Opportunity**: `enabled`, `mode: shadow|active`, `immediate_threshold_z` (default 0.5), `queue_threshold_z` (default 0.0), `queue_ttl_cycles` (default 4), swap delta, EWMA half-life, weighted feature map, stage penalties. Rejection reasons are structured (`awaiting_promotion`, `capacity_gated`, `below_immediate`, `below_queue`, `queue_expired`, `no_longer_eligible`).
+- **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50; **search_api_limits**: 2,000 brave_search, 2,000 brave_answer, 1,000 tavily
+- **Research** (US-4.4): `enabled`, `strategy_research_enabled`, `skeptic_research_enabled`, `risk_research_enabled`; caps 20/8/7 per member, 35 total/cycle
+- **Opportunity**: `enabled`, `mode: shadow|active`, `immediate_threshold_z` (0.3), `queue_threshold_z` (0.0), `queue_ttl_cycles` (6), swap delta, EWMA half-life, weighted feature map, stage penalties. Rejection reasons are structured (`awaiting_promotion`, `capacity_gated`, `below_immediate`, `below_queue`, `queue_expired`, `no_longer_eligible`). Queued tickers re-evaluated each cycle (Phase 3 in _fetch_stocks_data) bypassing cooldown.
 - **Order management**: `enabled`, `reassess_stops`, `trailing_stops` (enabled, trail_pct), `limit_orders` (enabled, offset_pct, validity), ATR multiplier, min/max stop distance, only_tighten_stops
 - **Notifications**: `enabled`, channels/routes, retry/timeout/dedup config, dry-run alert policy, command gateway flag (disabled in v1)
 - **Dashboard**: `enabled`, `events_enabled` (Phase 1 backend: REST API + SSE stream)
@@ -395,9 +404,7 @@ Files to check on every feature:
 - **US-1.8** Dashboard VPS Deployment
 - **US-1.7** Dashboard full spec (full API + 7 pages)
 - **US-1.4** Deploy POC to VPS
-
-**Immediate (current focus):**
-- **US-4.4 Agentic Research** — Independent tool access for Strategy + Moderation (Brave + Tavily + SEC EDGAR). See `docs/AGENTIC_RESEARCH.md` for implementation plan (Phases A–D).
+- **US-4.4** Agentic Research — web search, news, sector, SEC EDGAR; Strategy + Skeptic tool-use; caps 20/8/7, total 35; Phase 0 notebook, ResearchLog, dashboard `/api/research/*`
 
 **Deferred (await data or later sprint):**
 - Calibration (US-2.1, US-2.2) — requires ~50 trades

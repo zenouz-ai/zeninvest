@@ -122,8 +122,8 @@ P/E, P/B, ROE, profit margins, D/E ratio, earnings growth, earnings momentum (Qo
 | Max single stock | 15% | Resize or reject |
 | Max sector | 35% | Resize or reject |
 | Max correlation | 0.7 avg | Reject |
-| Cautious drawdown | 5% | Reduce position sizes to 8% |
-| Halt drawdown | 15% | **Liquidate ALL positions** |
+| Cautious drawdown | 30% (config) | Reduce position sizes to 8% |
+| Halt drawdown | 40% (config) | **Liquidate ALL positions** |
 | VIX high/extreme | 25/35 | Cap positions at 8%/5% |
 | Daily loss halt | 2% | No new buys for 24h |
 | Cash floor | 10% | Reject if insufficient |
@@ -319,7 +319,7 @@ docker compose logs -f investment-agent
 - ~~Backtesting~~ → Engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); see docs/BACKTESTING.md and WALK_FORWARD_VALIDATION.md
 - ~~UOV ranking & queue~~ → Universal Opportunity Value scoring, ranked BUY execution, queue + swap suggestions (shadow/active mode)
 - ~~Intelligent order management~~ → ATR-based stop reassessment, software trailing stops, limit dip-buy orders; stop_loss_adjustments audit trail
-- ~~Dashboard Phase 1~~ → FastAPI backend (runs, universe, portfolio, orders, SSE events), React frontend (4 pages); stabilisation complete; US-1.8 delivered (Docker service, port 8000; SPA served by FastAPI; activity feed works from VPS IP)
+- ~~Dashboard Phase 1~~ → FastAPI backend (runs, universe, portfolio, orders, SSE events), React frontend (8 pages including Roadmap & Architecture); stabilisation complete; US-1.8 delivered (Docker service, port 8000; SPA served by FastAPI; activity feed works from VPS IP)
 
 **Phase 2 — Enhanced Intelligence:**
 - Portfolio optimization (Markowitz / risk parity)

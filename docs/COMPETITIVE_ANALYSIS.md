@@ -18,7 +18,7 @@ Inform the sophistication roadmap by mapping our strengths, gaps, and realistic 
 |------|-------------|----------------|
 | **Multi-LLM adversarial moderation** | Claude (strategy) + GPT-4o (skeptic) + Gemini (risk assessor) with consensus voting | Novel architecture. Even MarketSenseAI (leading academic LLM trading system) uses a single LLM. Our 3-way adversarial panel is a genuine innovation. |
 | **Deterministic risk layer** | 9 hard rules with absolute VETO power, no LLM can override | Aligns with institutional practice. Separating risk from alpha is a core principle at AQR, Two Sigma, and similar firms. |
-| **State machine (ACTIVE/CAUTIOUS/HALTED)** | Auto-reduction at 5% drawdown, auto-liquidation at 15% | Similar to institutional drawdown-triggered deleveraging. Simple but sound. |
+| **State machine (ACTIVE/CAUTIOUS/HALTED)** | Auto-reduction at cautious_drawdown_pct (30%), auto-liquidation at halt_drawdown_pct (40%) | Similar to institutional drawdown-triggered deleveraging. Simple but sound. |
 | **Cost-aware degradation** | FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED | Unique for retail. Professional firms have unlimited compute budgets; we've built graceful degradation for budget constraints. |
 | **Clean modular architecture** | Agent pipeline with clear separation of concerns | Professional-grade software design. Easy to extend, test, and reason about. |
 | **Comprehensive test suite** | 218 tests covering all critical components (including backtesting, performance/trade-outcome trackers, order management, notifications, dashboard) | Above average for retail algo projects. |

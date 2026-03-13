@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from queue import Empty, Queue
 from typing import Any
 
-from src.data.database import get_session
+from src.data.database import SessionLocal  # patched in tests to avoid sharing main session
 from src.utils.config import get_settings
 
 from ..database import EventsLog
@@ -39,7 +39,7 @@ def _logger_worker():
                 _event_queue.task_done()
                 continue
 
-            session = get_session()
+            session = SessionLocal()
             try:
                 event = EventsLog(
                     timestamp=event_data.get("timestamp", datetime.now(timezone.utc)),

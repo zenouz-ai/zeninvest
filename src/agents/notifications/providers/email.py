@@ -38,6 +38,8 @@ class EmailProvider(NotificationProvider):
     def send(self, message: NotificationMessage, timeout_seconds: float) -> None:
         if not self.is_configured:
             raise RuntimeError("SMTP settings not configured")
+        # Narrow types for mypy: is_configured guarantees these are set
+        assert self.host is not None and self.sender is not None and self.recipient is not None
 
         msg = EmailMessage()
         msg["Subject"] = message.subject

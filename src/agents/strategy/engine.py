@@ -1,11 +1,13 @@
 """Strategy engine — orchestrates sub-strategies and Claude synthesis."""
 
 import json
+import time
 from datetime import datetime, timezone
 from typing import Any
 
 import anthropic
 
+from src.agents.research import ResearchExecutor, get_research_tool_definitions
 from src.agents.strategy.factor import FactorScore, calculate_factor_score, rank_by_factor
 from src.agents.strategy.mean_reversion import MeanReversionSignal, evaluate_mean_reversion
 from src.agents.strategy.momentum import MomentumSignal, evaluate_momentum
@@ -17,6 +19,12 @@ from src.utils.cost_tracker import Provider, check_budget, log_cost
 from src.utils.logger import get_logger
 
 logger = get_logger("strategy_engine")
+
+RESEARCH_GUIDANCE = """
+
+## RESEARCH TOOLS (use sparingly — 1–2 high-value searches per ticker)
+You have web_search, news_search, sector_search, and sec_search. Use them to verify thesis before proposing BUY.
+When done researching, output your decisions as JSON in the schema below. Do not use tools after starting the JSON output."""
 
 
 class StrategyEngine:
@@ -127,6 +135,57 @@ class StrategyEngine:
             logger.warning("Anthropic budget exceeded, skipping synthesis")
             return {"error": "budget_exceeded", "decisions": []}
 
+        use_tools = (
+            self.settings.research_enabled
+            and self.settings.strategy_research_enabled
+        )
+        if use_tools:
+            return self._synthesize_with_tools(
+                sub_strategy_results=sub_strategy_results,
+                portfolio_state=portfolio_state,
+                market_regime=market_regime,
+                analyst_data=analyst_data,
+                news_sentiment=news_sentiment,
+                company_profiles=company_profiles,
+                system_state=system_state,
+                vix=vix,
+                cash_pct=cash_pct,
+                num_positions=num_positions,
+                cycle_id=cycle_id,
+                uov_swap_context=uov_swap_context,
+            )
+
+        return self._synthesize_single_turn(
+            sub_strategy_results=sub_strategy_results,
+            portfolio_state=portfolio_state,
+            market_regime=market_regime,
+            analyst_data=analyst_data,
+            news_sentiment=news_sentiment,
+            company_profiles=company_profiles,
+            system_state=system_state,
+            vix=vix,
+            cash_pct=cash_pct,
+            num_positions=num_positions,
+            cycle_id=cycle_id,
+            uov_swap_context=uov_swap_context,
+        )
+
+    def _synthesize_single_turn(
+        self,
+        sub_strategy_results: dict[str, Any],
+        portfolio_state: str,
+        market_regime: str,
+        analyst_data: str,
+        news_sentiment: str,
+        company_profiles: str,
+        system_state: str,
+        vix: float | None,
+        cash_pct: float,
+        num_positions: int,
+        cycle_id: str,
+        uov_swap_context: str,
+    ) -> dict[str, Any]:
+        """Original single-turn synthesis without tools."""
         max_pos_pct = self.settings.max_position_pct
         if system_state == "CAUTIOUS":
             max_pos_pct = 8.0
@@ -208,6 +267,146 @@ class StrategyEngine:
         except Exception as e:
             logger.error(f"Claude synthesis failed: {e}")
             return {"error": str(e), "decisions": []}
+
+    def _synthesize_with_tools(
+        self,
+        sub_strategy_results: dict[str, Any],
+        portfolio_state: str,
+        market_regime: str,
+        analyst_data: str,
+        news_sentiment: str,
+        company_profiles: str,
+        system_state: str,
+        vix: float | None,
+        cash_pct: float,
+        num_positions: int,
+        cycle_id: str,
+        uov_swap_context: str,
+    ) -> dict[str, Any]:
+        """Tool-use loop: Claude can call research tools, then output decisions JSON."""
+        max_pos_pct = self.settings.max_position_pct
+        if system_state == "CAUTIOUS":
+            max_pos_pct = 8.0
+
+        all_tickers = [s.ticker for s in sub_strategy_results["momentum"]]
+        tickers_list = ", ".join(all_tickers[:35])
+
+        prompt = build_strategy_prompt(
+            portfolio_state=portfolio_state,
+            market_regime=market_regime,
+            momentum_proposals=self._format_momentum_proposals(sub_strategy_results["momentum"]),
+            mean_reversion_proposals=self._format_mean_reversion_proposals(sub_strategy_results["mean_reversion"]),
+            factor_proposals=self._format_factor_proposals(sub_strategy_results.get("top_factor", [])),
+            analyst_data=analyst_data,
+            news_sentiment=news_sentiment,
+            company_profiles=company_profiles,
+            tickers_to_decide=tickers_list,
+            system_state=system_state,
+            vix=vix,
+            cash_pct=cash_pct,
+            max_position_pct=max_pos_pct,
+            num_positions=num_positions,
+            max_positions=self.settings.max_positions,
+            momentum_weight=self.settings.momentum_weight,
+            mean_reversion_weight=self.settings.mean_reversion_weight,
+            factor_weight=self.settings.factor_weight,
+            uov_swap_context=uov_swap_context,
+        )
+        prompt = prompt + RESEARCH_GUIDANCE
+
+        executor = ResearchExecutor(cycle_id=cycle_id)
+        tools = get_research_tool_definitions()
+        messages: list[dict] = [{"role": "user", "content": prompt}]
+        max_iterations = 8
+        timeout_sec = 30
+        start = time.perf_counter()
+
+        for iteration in range(max_iterations):
+            if time.perf_counter() - start > timeout_sec:
+                logger.warning("Strategy tool-use timeout")
+                return {"error": "research_timeout", "decisions": []}
+
+            try:
+                response = self.client.messages.create(
+                    model=self.settings.strategy_model,
+                    max_tokens=16384,
+                    tools=tools,
+                    system=STRATEGY_SYSTEM_PROMPT,
+                    messages=messages,
+                )
+            except Exception as e:
+                logger.error(f"Claude tool-use request failed: {e}")
+                return {"error": str(e), "decisions": []}
+
+            log_cost(
+                provider=Provider.ANTHROPIC.value,
+                model=self.settings.strategy_model,
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                cycle_id=cycle_id,
+                purpose="strategy",
+            )
+
+            tool_use_blocks = [b for b in response.content if getattr(b, "type", None) == "tool_use"]
+            text_blocks = [b for b in response.content if getattr(b, "type", None) == "text"]
+
+            if text_blocks and not tool_use_blocks:
+                content = "".join(b.text for b in text_blocks)
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0]
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0]
+                try:
+                    result = json.loads(content)
+                except json.JSONDecodeError:
+                    if response.stop_reason == "max_tokens":
+                        result = self._repair_truncated_json(content)
+                        if result is None:
+                            return {"error": "json_truncated", "decisions": []}
+                    else:
+                        return {"error": "json_parse_error", "decisions": [], "raw": content}
+                self._log_decisions(result, cycle_id, content)
+                return result
+
+            if not tool_use_blocks:
+                return {"error": "no_final_response", "decisions": []}
+
+            tool_results: list[dict] = []
+            for block in tool_use_blocks:
+                tool_id = block.id
+                name = block.name
+                inp = block.input if isinstance(block.input, dict) else {}
+                ticker = inp.get("ticker", "general")
+                num_results = inp.get("num_results", 5)
+
+                if name == "web_search":
+                    res = executor.web_search("strategy", ticker or "general", inp.get("query", ""), num_results)
+                elif name == "news_search":
+                    res = executor.news_search("strategy", ticker or "general", inp.get("query", ""), num_results)
+                elif name == "sector_search":
+                    res = executor.sector_search(
+                        "strategy", ticker or "general",
+                        inp.get("sector", ""), inp.get("query", ""), num_results,
+                    )
+                elif name == "sec_search":
+                    res = executor.sec_search_tool(
+                        "strategy", ticker or "general",
+                        inp.get("doc_type", "10-K"), num_results or 3,
+                    )
+                else:
+                    res = [{"error": f"Unknown tool: {name}"}]
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "content": json.dumps(res)[:8000] if res else "[]",
+                })
+
+            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "user", "content": tool_results})
+
+        logger.warning("Strategy tool-use hit max iterations without final JSON")
+        return {"error": "max_tool_iterations", "decisions": []}
 
     @staticmethod
     def _repair_truncated_json(content: str) -> dict[str, Any] | None:

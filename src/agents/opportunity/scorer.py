@@ -282,10 +282,11 @@ class OpportunityScorer:
 
             latest_by_ticker: dict[str, OpportunityScoreSnapshot] = {}
             for row in queued:
-                if row.ticker in existing_tickers:
+                ticker_str = str(row.ticker)
+                if ticker_str in existing_tickers:
                     continue
-                if row.ticker not in latest_by_ticker:
-                    latest_by_ticker[row.ticker] = row
+                if ticker_str not in latest_by_ticker:
+                    latest_by_ticker[ticker_str] = row
 
             ranked = sorted(
                 latest_by_ticker.values(),

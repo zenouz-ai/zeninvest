@@ -57,7 +57,7 @@ class StopLossManager:
         results: list[dict[str, Any]] = []
 
         for pos in positions:
-            ticker = pos.get("ticker", "")
+            ticker = (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
             quantity = float(pos.get("quantity", 0))
             current_price = float(pos.get("currentPrice", 0))
             if not ticker or quantity <= 0 or current_price <= 0:
@@ -121,7 +121,7 @@ class StopLossManager:
         results: list[dict[str, Any]] = []
 
         for pos in positions:
-            ticker = pos.get("ticker", "")
+            ticker = (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
             quantity = float(pos.get("quantity", 0))
             current_price = float(pos.get("currentPrice", 0))
             if not ticker or quantity <= 0 or current_price <= 0:
@@ -419,7 +419,7 @@ class StopLossManager:
             )
             stops: dict[str, dict[str, Any]] = {}
             for row in rows:
-                stops[row.ticker] = {
+                stops[str(row.ticker)] = {
                     "ticker": row.ticker,
                     "stopPrice": row.stop_price,
                     "id": row.t212_order_id,
@@ -443,7 +443,7 @@ class StopLossManager:
                 .order_by(StopLossAdjustment.timestamp.desc())
                 .first()
             )
-            return row.high_water_mark if row else None
+            return float(row.high_water_mark) if row and row.high_water_mark is not None else None
         finally:
             session.close()
 

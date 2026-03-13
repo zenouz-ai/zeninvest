@@ -48,7 +48,7 @@ The dashboard has a solid foundation: consistent dark terminal aesthetic, clear 
 
 #### 3. **Loading states** ✅
 
-**Fix applied:** Shared `LoadingSpinner` component (animated border spinner). Used on all 7 pages. Skeleton placeholders deferred.
+**Fix applied:** Shared `LoadingSpinner` component (animated border spinner). Used on all 8 pages. Skeleton placeholders deferred.
 ---
 
 #### 4. **Empty states** — Deferred
@@ -134,8 +134,9 @@ Add `prefers-reduced-motion: reduce` support for users who need it (e.g. disable
 | Loading spinner | New `components/LoadingSpinner.tsx` |
 | Empty state (stub) | New `components/EmptyState.tsx` |
 | Focus, buttons, card | `index.css` |
-| Error + retry | All 7 pages |
+| Error + retry | All 8 pages |
 | Sticky table headers | `Universe.tsx`, `Opportunity.tsx`, `OrderManagement.tsx` |
+| Page 8: Roadmap | New `Roadmap.tsx` — project timeline, topic filter, architecture diagram |
 
 ---
 
@@ -148,6 +149,17 @@ See [DASHBOARD.md § Design Tokens](DASHBOARD.md#design-tokens) for the full col
 ## Conclusion
 
 Phase 1–4 improvements are implemented. Remaining optional items: Empty states wiring, chart tooltip standardisation, breadcrumbs, last-updated timestamps, reduced motion. The dashboard now has active nav state, mobile hamburger menu, loading spinners, error handling with retry, consistent buttons, sticky table headers, and card depth.
+
+---
+
+## Portfolio Page Fixes (2026-03-13)
+
+Addresses empty positions table, blank sector allocation, and chart/value mismatch:
+
+- **Backend:** `_parse_position()` in portfolio router supports both T212 (`instrument.ticker`, `walletImpact`) and normalised formats for backward compatibility.
+- **Orchestrator:** `_normalize_position_for_snapshot()` converts T212 positions to `{ticker, quantity, value_gbp, pnl_gbp, pnl_pct}` before saving; `_ticker_from_position()` used in `existing_tickers`, `_fetch_stocks_data`, and stop-loss manager.
+- **Frontend:** Investments card added; Portfolio Value History chart reversed to chronological order; Positions card uses `num_positions`; sector pie filters zero-value sectors.
+- **Files:** `dashboard/backend/app/routers/portfolio.py`, `src/orchestrator/main.py`, `src/agents/execution/stop_loss_manager.py`, `dashboard/frontend/src/pages/Portfolio.tsx`.
 
 ---
 
