@@ -44,6 +44,7 @@ poetry run python -m src.orchestrator.main --performance
 poetry run python -m src.orchestrator.main --dashboard
 poetry run python -m src.orchestrator.main --pause
 poetry run python -m src.orchestrator.main --resume
+poetry run python -m src.orchestrator.main --reset-peak   # Clear CAUTIOUS when peak was set incorrectly
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
 poetry run python -m src.orchestrator.main --report
 # Backtesting (real data: fetches yfinance if data/backtest/ empty, caches to CSV)

@@ -94,9 +94,9 @@ research:
 opportunity:
   enabled: true
   mode: active  # shadow|active
-  immediate_threshold_z: 0.5   # lowered from 0.75 to allow top candidates to execute
+  immediate_threshold_z: 0.3  # lower to promote more queued tickers before expiry
   queue_threshold_z: 0.0     # relaxed from 0.1 to allow more candidates into queue
-  queue_ttl_cycles: 4        # extended from 3 to give queued tickers more cycles
+  queue_ttl_cycles: 6       # extended to give queued tickers more cycles to promote
   swap_delta_z: 1.0
   ewma_half_life_cycles: 6
   weights:

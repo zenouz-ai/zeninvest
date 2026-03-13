@@ -33,7 +33,7 @@ from src.agents.reporting.trade_outcome_tracker import update_trade_outcomes
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
-from src.data.models import Base, Instrument, PerformanceMetric, PortfolioSnapshot
+from src.data.models import Base, Instrument, OpportunityQueue, PerformanceMetric, PortfolioSnapshot
 from src.orchestrator.state_machine import StateMachine
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
@@ -1155,6 +1155,41 @@ class Orchestrator:
             except Exception as e:
                 logger.warning(f"Universe screening failed: {e}")
 
+        # Phase 3: Re-evaluate queued tickers (bypass cooldown so they can reach 2nd cycle)
+        if system_state != "CAUTIOUS" and self.settings.opportunity_enabled:
+            try:
+                session = get_session()
+                queued_rows = session.query(OpportunityQueue).all()
+                session.close()
+                queued_tickers = [r.ticker for r in queued_rows if r.ticker and r.ticker not in analyzed_tickers]
+                added_queued = 0
+                for ticker in queued_tickers:
+                    yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                    try:
+                        cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
+                        if cached:
+                            if cached.get("indicators", {}).get("error"):
+                                continue
+                            cached["ticker"] = ticker
+                            stocks_data.append(cached)
+                        else:
+                            data = fetch_fn(yf_ticker)
+                            data["ticker"] = ticker
+                            if data.get("indicators", {}).get("error"):
+                                continue
+                            stocks_data.append(data)
+                            self.data_fetcher.enrich_instrument_metadata(
+                                ticker, data.get("fundamentals", {}),
+                            )
+                        analyzed_tickers.add(ticker)
+                        added_queued += 1
+                    except Exception as e:
+                        logger.debug(f"Failed to fetch queued ticker {ticker}: {e}")
+                if added_queued:
+                    logger.info(f"Re-evaluating {added_queued} queued tickers for promotion")
+            except Exception as e:
+                logger.warning(f"Queued ticker re-evaluation failed: {e}")
+
         logger.info(f"Total stocks analyzed: {len(stocks_data)} "
                      f"(positions: {len(current_positions)}, "
                      f"candidates: {len(stocks_data) - len(current_positions)})")
@@ -1859,6 +1894,7 @@ def _get_dashboard_summary() -> dict[str, Any]:
 @click.option("--force-sell", "force_sell_ticker", default=None, help="Force sell a position")
 @click.option("--pause", is_flag=True, help="Pause the system")
 @click.option("--resume", "do_resume", is_flag=True, help="Resume the system")
+@click.option("--reset-peak", "do_reset_peak", is_flag=True, help="Reset peak to current portfolio value and clear CAUTIOUS")
 @click.option("--report", is_flag=True, help="Generate a status report")
 @click.option("--status", is_flag=True, help="Show system status")
 @click.option("--performance", is_flag=True, help="Show performance metrics summary")
@@ -1869,6 +1905,7 @@ def main(
     force_sell_ticker: str | None,
     pause: bool,
     do_resume: bool,
+    do_reset_peak: bool,
     report: bool,
     status: bool,
     performance: bool,
@@ -1899,6 +1936,19 @@ def main(
         if do_resume:
             orchestrator.state_machine.resume()
             click.echo("System RESUMED")
+            return
+
+        if do_reset_peak:
+            try:
+                portfolio_data = orchestrator._get_portfolio_state()
+                current = float(portfolio_data.get("total_value", 0))
+                if current <= 0:
+                    click.echo("Cannot reset peak: portfolio value is 0 or missing", err=True)
+                else:
+                    orchestrator.state_machine.reset_peak_to_current(current)
+                    click.echo(f"Peak reset to {current:.2f}, state -> ACTIVE")
+            except Exception as e:
+                click.echo(f"Reset peak failed: {e}", err=True)
             return
 
         if force_sell_ticker:

@@ -184,3 +184,25 @@ class StateMachine:
             logger.info("System RESUMED")
         finally:
             session.close()
+
+    def reset_peak_to_current(self, current_value: float) -> None:
+        """Reset peak to current value and transition to ACTIVE.
+        Use when CAUTIOUS was triggered incorrectly (e.g. peak inflated by data glitch).
+        """
+        session = get_session()
+        try:
+            state = session.query(SystemState).first()
+            if state is None:
+                return
+            old_peak = state.peak_portfolio_value
+            old_state = state.state
+            state.peak_portfolio_value = current_value
+            state.current_drawdown_pct = 0.0
+            state.state = "ACTIVE"
+            state.paused = False
+            state.notes = f"Peak reset from {old_peak} to current {current_value}"
+            state.updated_at = datetime.now(timezone.utc)
+            session.commit()
+            logger.info("Peak reset to %.2f, state %s -> ACTIVE", current_value, old_state)
+        finally:
+            session.close()

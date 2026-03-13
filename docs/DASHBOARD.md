@@ -98,7 +98,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 ### Page 1: Dashboard Home (Operations Hub)
 
 **Top metrics bar:**
-- System state badge: ACTIVE / CAUTIOUS / HALTED (from `system_state`)
+- System state badge: ACTIVE / CAUTIOUS / HALTED (from `system_state`). When CAUTIOUS, a "Reset Peak" button appears to clear false drawdown and return to ACTIVE.
 - Last cycle timestamp + next scheduled cycle countdown
 - Portfolio total value + daily P&L (from latest `portfolio_snapshots`)
 - Cost burn: today's LLM spend vs daily budget (from `cost_logs`)
@@ -384,6 +384,7 @@ GET /api/research/stats             # Aggregate research metrics
 GET /api/system/state               # Current system state (ACTIVE/CAUTIOUS/HALTED), paused flag
 POST /api/system/pause              # Pause trading
 POST /api/system/resume             # Resume trading
+POST /api/system/reset-peak         # Reset peak to current, clear CAUTIOUS if incorrect
 ```
 
 ### Documentation (served as Markdown)

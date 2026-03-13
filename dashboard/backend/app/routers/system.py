@@ -73,3 +73,51 @@ async def resume_system():
     sm = StateMachine()
     sm.resume()
     return {"message": "System resumed", "paused": False}
+
+
+@router.post("/reset-peak")
+async def reset_peak():
+    """Reset peak to current portfolio value and transition to ACTIVE.
+    Use when CAUTIOUS was triggered incorrectly (e.g. peak inflated by data glitch).
+    """
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    from src.agents.execution.order_manager import OrderManager
+    from src.orchestrator.state_machine import StateMachine
+
+    try:
+        om = OrderManager()
+        state = om.get_portfolio_state()
+        om.close()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to get portfolio: {e}") from e
+
+    if state.get("error"):
+        raise HTTPException(status_code=502, detail=f"Portfolio error: {state['error']}")
+
+    summary = state.get("account_summary") or {}
+    total_raw = summary.get("totalValue")
+    if total_raw is not None:
+        current = float(total_raw)
+    else:
+        cash_data = state.get("cash", {})
+        positions = state.get("positions", [])
+        if isinstance(cash_data, dict):
+            cash = float(cash_data.get("free", cash_data.get("availableToTrade", 0)))
+            reserved = float(cash_data.get("reservedForOrders", cash_data.get("reserved", 0)))
+        else:
+            cash = float(cash_data)
+            reserved = 0.0
+        invested = sum(
+            float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
+            for p in positions
+        )
+        current = cash + invested + reserved
+
+    if current <= 0:
+        raise HTTPException(status_code=400, detail="Portfolio value is 0 or missing")
+
+    sm = StateMachine()
+    sm.reset_peak_to_current(current)
+    return {"message": "Peak reset to current value", "state": "ACTIVE", "current_value": current}

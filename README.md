@@ -77,6 +77,7 @@ poetry run python -m src.orchestrator.main --performance  # Performance metrics 
 poetry run python -m src.orchestrator.main --dashboard   # Dashboard: portfolio, metrics, costs, positions
 poetry run python -m src.orchestrator.main --pause        # Pause trading
 poetry run python -m src.orchestrator.main --resume       # Resume trading
+poetry run python -m src.orchestrator.main --reset-peak   # Reset peak to current, clear CAUTIOUS if incorrect
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ  # Force sell
 poetry run python -m src.orchestrator.main --report       # Generate daily report
 poetry run python -m src.orchestrator.main --uov-diagnostic  # Run with UOV in shadow mode, emit scores for calibration

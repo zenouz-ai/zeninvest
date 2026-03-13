@@ -1232,6 +1232,23 @@ session.close()
 
 **Diagnosis**: Check orchestrator/scheduler logs for `Failed to update Run record (fail-open)` — now logged at WARNING level.
 
+### 9.5a CAUTIOUS triggered incorrectly (few decisions, no real drawdown)
+
+**Symptom**: Runs produce only 2–3 decisions (positions only), state shows CAUTIOUS, but you have not had a real 5% drawdown.
+
+**Cause**: Peak portfolio value may have been set incorrectly (e.g. from a data glitch, fallback calculation difference, or Practice account reset). Drawdown is measured from peak, so an inflated peak yields a false positive.
+
+**Fix** — reset peak to current value and return to ACTIVE:
+
+```bash
+# CLI
+poetry run python -m src.orchestrator.main --reset-peak
+```
+
+Or from the Dashboard: when state shows CAUTIOUS, a "Reset Peak" button appears next to the badge. Click it and confirm — peak is set to current portfolio value and state transitions to ACTIVE.
+
+**API**: `POST /api/system/reset-peak` (requires T212 connection to read current value).
+
 ### 9.6 Database Locked Errors
 
 **Symptom**: `sqlite3.OperationalError: database is locked`.

@@ -277,4 +277,12 @@ export const ordersApi = {
   },
 }
 
+// System API (state, pause, resume, reset-peak)
+export const systemApi = {
+  resetPeak: async (): Promise<{ message: string; state: string; current_value: number }> => {
+    const response = await api.post('/api/system/reset-peak')
+    return response.data
+  },
+}
+
 export default api
