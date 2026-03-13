@@ -118,7 +118,7 @@ curl http://localhost:8000/api/events/?limit=3
 
 Access from your machine: `http://YOUR_VPS_IP:8000`
 
-**Run History:** Shows `runs` table entries (one per cycle). Runs are created when `dashboard.enabled` and `dashboard.events_enabled` are true; scheduler and orchestrator both create/update Run records.
+**Run History:** Shows `runs` table entries (one per cycle). Scheduler creates a single Run per scheduled cycle and passes its cycle_id to the orchestrator, which updates that Run on completion (no duplicate cycle_ vs scheduled_ entries). Manual/dashboard-triggered runs create their own Run with a `cycle_*` id.
 
 **One-off live cycle (in addition to scheduler):**
 ```bash

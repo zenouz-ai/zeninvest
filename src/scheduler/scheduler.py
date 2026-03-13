@@ -69,7 +69,7 @@ def _run_analysis_cycle() -> None:
     notifications = NotificationService()
     
     try:
-        result = orchestrator.run_cycle()
+        result = orchestrator.run_cycle(scheduled_cycle_id=cycle_id)
         cycle_id = result.get("cycle_id", cycle_id)
         logger.info(f"Cycle completed: {result.get('status')} — {result.get('num_trades', 0)} trades")
         
@@ -151,8 +151,8 @@ def _run_analysis_cycle() -> None:
                     else:
                         logger.debug(f"Run record not found for failed cycle {cycle_id}")
                     session.close()
-                except Exception as e:
-                    logger.debug(f"Failed to update Run record (fail-open): {e}", exc_info=True)
+                except Exception as ex:
+                    logger.debug(f"Failed to update Run record (fail-open): {ex}", exc_info=True)
             except Exception:
                 pass  # Fail-open
         

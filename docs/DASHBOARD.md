@@ -117,6 +117,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 ### Page 2: Stock Universe Explorer
 
 **Main table (from `instruments`):**
+- Sortable columns: click any header to sort by that column (ticker, name, sector, industry, market cap, last screened, status, investigated, reviews, holding, sold, UOV ewma)
 - Columns: ticker, name, sector, industry, market_cap tier, last_screened_at, data_available
 - Colour-coded labels based on latest committee verdict (from most recent `strategy_decisions` + `risk_decisions`)
 - Screening cooldown indicator (greyed out if within 72h window)
@@ -138,6 +139,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 **Timeline view:**
 - Calendar/timeline of all cycles (from `runs`) — scheduled vs manual, duration, status
+- One Run per cycle: scheduled cycles use a single Run (scheduler creates with `scheduled_YYYYMMDD_HHMMSS`, orchestrator updates on completion; no duplicate cycle_ vs scheduled_ entries)
 - Visual indicator for cycles that triggered trades vs no-action cycles
 - Click to expand a run
 

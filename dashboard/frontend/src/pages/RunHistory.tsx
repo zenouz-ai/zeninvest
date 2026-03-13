@@ -86,7 +86,12 @@ export default function RunHistory() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Run History</h1>
+      <div>
+        <h1 className="text-2xl font-bold">Run History</h1>
+        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
+          Timeline of past analysis cycles (scheduled, manual, or dry-run). Use Compare Runs to diff two cycles and see position changes. Expand a run to view full decisions and orders. Data refreshes every 30s.
+        </p>
+      </div>
 
       {/* Run diff */}
       <div className="card">

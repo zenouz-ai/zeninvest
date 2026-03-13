@@ -210,12 +210,12 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
 React frontend (SPA, served by FastAPI when dist/ exists)
     |
     +-- 7 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
-    +-- Universe: expandable rows with committee reasoning
+    +-- Universe: sortable columns, expandable rows with committee reasoning
     +-- Run History: timeline, run diff (new/closed/position changes)
     +-- Portfolio: positions, P&L chart, sector allocation
 ```
 
-**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. **Run History** displays `runs` table (one row per cycle; created by scheduler and orchestrator when dashboard enabled). **Activity feed (SSE)** uses relative URL — works when accessing at `http://VPS_IP:8000`.
+**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL — works when accessing at `http://VPS_IP:8000`.
 
 ## Moderation Consensus Logic
 

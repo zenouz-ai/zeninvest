@@ -1,12 +1,13 @@
 """Stop-loss router — current levels and adjustment history."""
 
+import json
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import desc
 
 from src.data.database import get_session
-from src.data.models import Order, StopLossAdjustment
+from src.data.models import Order, PortfolioSnapshot, StopLossAdjustment
 from src.utils.config import get_settings
 
 from ..schemas import StopLossAdjustmentSchema, StopLossCurrentSchema
@@ -18,18 +19,19 @@ settings = get_settings()
 def _current_stops_from_orders(session) -> list[StopLossCurrentSchema]:
     """Current stop levels from open/pending stop orders (latest per ticker)."""
     orders = (
-        session.query(Order.ticker, Order.stop_price)
-        .filter(Order.order_type == "stop", Order.status.in_(["pending", "filled"]))
+        session.query(Order.ticker, Order.stop_price, Order.status)
+        .filter(Order.order_type == "stop", Order.status.in_(["pending", "filled", "dry_run"]))
         .order_by(desc(Order.timestamp))
         .all()
     )
     seen: set[str] = set()
     result: list[StopLossCurrentSchema] = []
-    for ticker, stop_price in orders:
+    for ticker, stop_price, status in orders:
         if ticker not in seen:
             seen.add(ticker)
+            source = "order (dry_run)" if status == "dry_run" else "order"
             result.append(
-                StopLossCurrentSchema(ticker=ticker, stop_price=stop_price, source="order")
+                StopLossCurrentSchema(ticker=ticker, stop_price=stop_price, source=source)
             )
     return result
 
@@ -56,18 +58,44 @@ def _current_stops_from_adjustments(session) -> list[StopLossCurrentSchema]:
     return result
 
 
+def _positions_without_stops(session, tickers_with_stops: set[str]) -> list[StopLossCurrentSchema]:
+    """Positions from latest portfolio snapshot that have no stop order or adjustment."""
+    snapshot = (
+        session.query(PortfolioSnapshot)
+        .order_by(desc(PortfolioSnapshot.timestamp))
+        .first()
+    )
+    if not snapshot or not snapshot.positions_json:
+        return []
+    try:
+        positions = json.loads(snapshot.positions_json)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    result: list[StopLossCurrentSchema] = []
+    for pos in positions:
+        ticker = pos.get("ticker") or pos.get("symbol", "")
+        if ticker and ticker not in tickers_with_stops:
+            result.append(
+                StopLossCurrentSchema(ticker=ticker, stop_price=None, source="position (no stop)")
+            )
+    return result
+
+
 @router.get("/current", response_model=list[StopLossCurrentSchema])
 async def get_current_stops():
-    """Current stop-loss levels for all positions (from orders, then adjustments)."""
+    """Current stop-loss levels for all positions (from orders, adjustments, then positions without stops)."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
     session = get_session()
     try:
         from_orders = _current_stops_from_orders(session)
-        if from_orders:
-            return from_orders
-        return _current_stops_from_adjustments(session)
+        from_adjustments = _current_stops_from_adjustments(session)
+        tickers_with_stops = {c.ticker for c in from_orders} | {c.ticker for c in from_adjustments}
+        result = from_orders if from_orders else from_adjustments
+        # Add positions that have no stop order or adjustment
+        missing = _positions_without_stops(session, tickers_with_stops)
+        return result + missing
     finally:
         session.close()
 

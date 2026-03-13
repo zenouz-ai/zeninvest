@@ -558,7 +558,7 @@ The system maintains a comprehensive audit trail across ten database tables:
 
 ### 7.2 Traceability
 
-Every cycle generates a unique `cycle_id` (format: `cycle_YYYYMMDD_HHMM_<6-hex>`). This ID links all decisions, costs, and orders from that cycle across all tables, enabling end-to-end traceability for any trade:
+Every cycle generates a unique `cycle_id`. Scheduled cycles use `scheduled_YYYYMMDD_HHMMSS` (scheduler creates Run; orchestrator receives and updates it—one Run per cycle). Manual/dashboard-triggered cycles use `cycle_YYYYMMDD_HHMM_<6-hex>`. The cycle_id links all decisions, costs, and orders from that cycle across all tables, enabling end-to-end traceability for any trade:
 
 ```
 cycle_20260225_0700_a1b2c3

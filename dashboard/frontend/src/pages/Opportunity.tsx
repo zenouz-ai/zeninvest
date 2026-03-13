@@ -20,7 +20,25 @@ export default function Opportunity() {
           opportunityApi.getQueue(),
         ])
         setScores(scoresData)
-        setQueue(queueData)
+        // Merge queue table with score-derived queued tickers (action=QUEUED or stage=opportunity_queue)
+        const queueByTicker = new Map<string, typeof queueData[0]>()
+        for (const q of queueData) {
+          queueByTicker.set(q.ticker, q)
+        }
+        const seenTickers = new Set(queueByTicker.keys())
+        for (const s of scoresData) {
+          const isQueued = s.action === 'QUEUED' || s.stage === 'opportunity_queue'
+          if (isQueued && !seenTickers.has(s.ticker)) {
+            seenTickers.add(s.ticker)
+            queueByTicker.set(s.ticker, {
+              ticker: s.ticker,
+              last_uov_z: s.uov_z ?? 0,
+              last_uov_ewma: s.uov_ewma ?? 0,
+              queued_cycles: 1,
+            } as typeof queueData[0])
+          }
+        }
+        setQueue(Array.from(queueByTicker.values()).sort((a, b) => (b.last_uov_ewma ?? 0) - (a.last_uov_ewma ?? 0)))
       } catch (e) {
         console.error('Failed to fetch opportunity data:', e)
       } finally {
@@ -57,7 +75,12 @@ export default function Opportunity() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Opportunity Pipeline</h1>
+      <div>
+        <h1 className="text-2xl font-bold">Opportunity Pipeline</h1>
+        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
+          UOV-ranked queue of tickers awaiting execution, and latest score snapshots. Tickers above the queue threshold but below immediate threshold sit in the queue. Click a row to see full LLM output (strategy, moderation, risk).
+        </p>
+      </div>
 
       {expandedTicker && (
         <div className="card">

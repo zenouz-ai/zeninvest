@@ -345,7 +345,7 @@ def test_scheduler_exception_emits_critical(monkeypatch) -> None:
         def __init__(self, dry_run=False):
             pass
 
-        def run_cycle(self):
+        def run_cycle(self, scheduled_cycle_id=None):
             raise RuntimeError("boom")
 
         def close(self):

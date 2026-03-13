@@ -92,12 +92,18 @@ class Orchestrator:
             )
         return self._stop_loss_manager
 
-    def run_cycle(self) -> dict[str, Any]:
+    def run_cycle(self, scheduled_cycle_id: str | None = None) -> dict[str, Any]:
         """Run a full investment cycle.
 
         Sequence: Data -> Strategy -> Moderation -> Risk -> Execution -> Journal
+
+        When invoked by the scheduler, pass scheduled_cycle_id so a single Run record
+        is used (scheduler creates it; orchestrator updates it on completion).
         """
-        cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
+        if scheduled_cycle_id:
+            cycle_id = scheduled_cycle_id
+        else:
+            cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
         logger.info(f"Starting cycle {cycle_id} (dry_run={self.dry_run})")
 
         # Ensure dashboard tables exist (fail-open; idempotent)
@@ -108,9 +114,10 @@ class Orchestrator:
             except Exception as e:
                 logger.debug(f"Dashboard table init skipped: {e}")
 
-        # Log run_started event (when called directly, not via scheduler)
+        # Log run_started and create Run record only when NOT invoked by scheduler
+        # (scheduler creates its own Run and passes scheduled_cycle_id)
         cycle_start_time = datetime.now(timezone.utc)
-        if DASHBOARD_AVAILABLE and log_event:
+        if DASHBOARD_AVAILABLE and log_event and not scheduled_cycle_id:
             try:
                 log_event(
                     event_type="run_started",
@@ -122,7 +129,7 @@ class Orchestrator:
                         "started_at": cycle_start_time.isoformat(),
                     },
                 )
-                # Create run record
+                # Create run record (manual/dashboard trigger only)
                 try:
                     from dashboard.backend.app.database import Run
                     session = get_session()
@@ -215,10 +222,10 @@ class Orchestrator:
                             logger.debug(f"Updated Run record for cycle {cycle_id}")
                         else:
                             logger.debug(f"Run record not found for cycle {cycle_id}, creating new one")
-                            # Create if missing (might have been created in scheduler)
+                            # Create if missing (scheduler Run creation may have failed)
                             run = Run(
                                 cycle_id=cycle_id,
-                                run_type="manual" if not self.dry_run else "dry_run",
+                                run_type="scheduled" if scheduled_cycle_id else ("manual" if not self.dry_run else "dry_run"),
                                 started_at=cycle_start_time,
                                 completed_at=cycle_end_time,
                                 status=status,
@@ -298,6 +305,7 @@ class Orchestrator:
                 if current_state == "HALTED":
                     logger.error("Drawdown triggered HALT. Liquidating.")
                     self.order_manager.liquidate_all()
+                    self._save_snapshot(portfolio_data, current_state)
                     return _finalize("halted_drawdown")
 
                 drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0
@@ -490,6 +498,7 @@ class Orchestrator:
                 result["errors"].append(f"strategy: {strategy_result['error']}")
                 if not self.dry_run:
                     self.state_machine.record_cycle()
+                self._save_snapshot(portfolio_data, current_state)
                 return _finalize("strategy_error")
 
             decisions = strategy_result.get("decisions", [])

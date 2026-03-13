@@ -35,7 +35,12 @@ export default function OrderManagement() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Order Management</h1>
+      <div>
+        <h1 className="text-2xl font-bold">Order Management</h1>
+        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
+          Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Source indicates whether the stop came from an order, an adjustment, or if the position has no stop yet.
+        </p>
+      </div>
 
       <div className="card">
         <h2 className="text-lg font-semibold mb-3">Current Stop-Loss Levels ({current.length})</h2>

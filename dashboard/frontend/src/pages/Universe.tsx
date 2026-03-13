@@ -356,6 +356,9 @@ export default function Universe() {
           {filteredData.length} of {instruments.length} stocks
         </div>
       </div>
+      <p className="text-terminal-text-dim text-sm max-w-2xl">
+        All instruments the agent screens for opportunities. Columns show screening history (Investigated, Reviews, Decisions), holdings, shares sold, and UOV scores. Use search and sector filters; click a row to expand full LLM reasoning (strategy, moderation, risk).
+      </p>
 
       {/* Filters */}
       <div className="card flex gap-4 items-center">

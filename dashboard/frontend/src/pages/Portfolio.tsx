@@ -71,19 +71,24 @@ export default function Portfolio() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Portfolio</h1>
-        {currentPortfolio && (
-          <div className="text-right">
-            <div className="text-sm text-terminal-text-dim">Total Value</div>
-            <div className="text-2xl font-mono font-bold">
-              £{currentPortfolio.total_value_gbp.toLocaleString(undefined, {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+      <div>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h1 className="text-2xl font-bold">Portfolio</h1>
+          {currentPortfolio && (
+            <div className="text-right">
+              <div className="text-sm text-terminal-text-dim">Total Value</div>
+              <div className="text-2xl font-mono font-bold">
+                £{currentPortfolio.total_value_gbp.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
+          Current positions, cash, and value history from the latest snapshot (updated each run). Charts show portfolio value over time and sector allocation. Positions table lists ticker, quantity, value, and P&L per position.
+        </p>
       </div>
 
       {/* Portfolio Summary Cards */}

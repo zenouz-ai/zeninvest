@@ -52,6 +52,15 @@ export default function Dashboard() {
   const [tickerForLLM, setTickerForLLM] = useState<string | null>(null)
   const [tickerDetail, setTickerDetail] = useState<InstrumentDetail | null>(null)
   const [expandedRunId, setExpandedRunId] = useState<number | null>(null)
+  const [dailyCostExpanded, setDailyCostExpanded] = useState(false)
+  const [latestTradesExpanded, setLatestTradesExpanded] = useState(false)
+  const [activityFeedExpanded, setActivityFeedExpanded] = useState(false)
+  const [runSummariesExpanded, setRunSummariesExpanded] = useState(false)
+  const [latestTradesFilters, setLatestTradesFilters] = useState({
+    ticker: '',
+    action: '',
+    status: '',
+  })
   const [triggerLoading, setTriggerLoading] = useState<'dry' | 'live' | null>(null)
   const [showLiveConfirm, setShowLiveConfirm] = useState(false)
   const { events: sseEvents, isConnected } = useSSE({ enabled: true })
@@ -59,6 +68,16 @@ export default function Dashboard() {
   const now = useMemo(() => new Date(), [])
   const currentYear = now.getUTCFullYear()
   const currentMonth = now.getUTCMonth() + 1
+
+  const filteredLatestOrders = useMemo(() => {
+    const { ticker, action, status } = latestTradesFilters
+    return latestOrders.filter((o) => {
+      if (ticker && !cleanTicker(o.ticker).toLowerCase().includes(ticker.toLowerCase())) return false
+      if (action && o.action !== action) return false
+      if (status && o.status !== status) return false
+      return true
+    })
+  }, [latestOrders, latestTradesFilters])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -209,6 +228,12 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
+          Overview of the agent&apos;s state, next run countdown, and recent activity. Use Dry Run to test a cycle without executing trades, or Live Run to run for real. Scroll for monthly summary, latest trades, run summaries, and the activity feed.
+        </p>
+      </div>
       {/* System state badge + Trigger buttons */}
       <div className="flex items-center gap-4 flex-wrap">
         <span
@@ -384,97 +409,211 @@ export default function Dashboard() {
           </div>
           {dailyCosts.length > 0 && (
             <div className="mt-4 pt-3 border-t border-terminal-border">
-              <div className="text-xs text-terminal-text-dim mb-2">Daily cost (API vs LLM, last 7 days)</div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-terminal-border text-left">
-                      <th className="py-1 font-mono text-xs">Date</th>
-                      <th className="py-1 font-mono text-xs">API</th>
-                      <th className="py-1 font-mono text-xs">LLM</th>
-                      <th className="py-1 font-mono text-xs">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dailyCosts.slice(0, 7).map((d) => (
-                      <tr key={d.date} className="border-b border-terminal-border/50">
-                        <td className="py-1 font-mono text-xs">{d.date}</td>
-                        <td className="py-1 font-mono">£{d.api_cost_gbp.toFixed(2)}</td>
-                        <td className="py-1 font-mono">£{d.llm_cost_gbp.toFixed(2)}</td>
-                        <td className="py-1 font-mono">£{d.total_gbp.toFixed(2)}</td>
+              <button
+                type="button"
+                onClick={() => setDailyCostExpanded(!dailyCostExpanded)}
+                className="flex items-center gap-2 text-xs text-terminal-text-dim hover:text-terminal-text transition-colors w-full text-left"
+              >
+                <span className={dailyCostExpanded ? 'rotate-90' : ''}>▶</span>
+                Daily cost (API vs LLM, last 7 days)
+              </button>
+              {dailyCostExpanded && (
+                <div className="overflow-x-auto mt-2">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-terminal-border text-left">
+                        <th className="py-1 font-mono text-xs">Date</th>
+                        <th className="py-1 font-mono text-xs">API</th>
+                        <th className="py-1 font-mono text-xs">LLM</th>
+                        <th className="py-1 font-mono text-xs">Total</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {dailyCosts.slice(0, 7).map((d) => (
+                        <tr key={d.date} className="border-b border-terminal-border/50">
+                          <td className="py-1 font-mono text-xs">{d.date}</td>
+                          <td className="py-1 font-mono">£{d.api_cost_gbp.toFixed(2)}</td>
+                          <td className="py-1 font-mono">£{d.llm_cost_gbp.toFixed(2)}</td>
+                          <td className="py-1 font-mono">£{d.total_gbp.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
 
+      {/* Activity Feed */}
+      <div className="card">
+        <button
+          type="button"
+          onClick={() => setActivityFeedExpanded(!activityFeedExpanded)}
+          className="flex items-center gap-2 text-xl font-semibold w-full text-left hover:opacity-90 transition-opacity mb-4"
+        >
+          <span className={activityFeedExpanded ? 'rotate-90' : ''}>▶</span>
+          Activity Feed
+        </button>
+        {activityFeedExpanded && (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {events.length === 0 ? (
+              <div className="text-terminal-text-dim text-center py-8">
+                No events yet. Waiting for activity...
+              </div>
+            ) : (
+              events.map((event) => (
+                <div
+                  key={event.id}
+                  className="flex items-start gap-3 py-2 border-b border-terminal-border last:border-0"
+                >
+                  <div className={`text-lg ${getEventColor(event.event_type)}`}>
+                    {getEventIcon(event.event_type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{event.event_type}</span>
+                      <span className="text-xs text-terminal-text-dim">
+                        {safeFormat(event.timestamp, 'HH:mm:ss')}
+                      </span>
+                      <span className="text-xs text-terminal-text-dim">
+                        [{event.source}]
+                      </span>
+                    </div>
+                    <div className="text-sm text-terminal-text mt-1">
+                      {event.message}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Latest trades + LLM reasons */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Latest trades & LLM reasons</h2>
-        {latestOrders.length === 0 ? (
-          <p className="text-terminal-text-dim text-sm">No orders yet.</p>
-        ) : (
-          <div className="space-y-2">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-terminal-border text-left">
-                    <th className="py-2 font-mono">Time</th>
-                    <th className="py-2 font-mono">Ticker</th>
-                    <th className="py-2 font-mono">Action</th>
-                    <th className="py-2 font-mono">Qty</th>
-                    <th className="py-2 font-mono">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {latestOrders.map((o) => (
-                    <React.Fragment key={o.id}>
-                      <tr
-                        onClick={() => setTickerForLLM(tickerForLLM === o.ticker ? null : o.ticker)}
-                        className="border-b border-terminal-border cursor-pointer hover:bg-terminal-surface/50"
-                      >
-                        <td className="py-1 font-mono text-xs">{safeFormat(o.timestamp, 'MMM dd HH:mm', '')}</td>
-                        <td className="py-1 font-mono">{cleanTicker(o.ticker)}</td>
-                        <td className="py-1">{o.action}</td>
-                        <td className="py-1 font-mono">{o.quantity}</td>
-                        <td className="py-1">{o.status}</td>
-                      </tr>
-                      {tickerForLLM === o.ticker && tickerDetail && (
-                        <tr>
-                          <td colSpan={5} className="py-3 bg-terminal-bg/80">
-                            <LLMOutputPanel
-                              key={tickerDetail.ticker}
-                              ticker={tickerDetail.ticker}
-                              lastDecision={tickerDetail.last_decision}
-                              label={tickerDetail.label}
-                            />
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); setTickerForLLM(null) }}
-                              className="mt-2 text-xs text-terminal-text-dim hover:text-terminal-text"
-                            >
-                              Close
-                            </button>
-                          </td>
+        <button
+          type="button"
+          onClick={() => setLatestTradesExpanded(!latestTradesExpanded)}
+          className="flex items-center gap-2 text-lg font-semibold mb-3 w-full text-left hover:opacity-90 transition-opacity"
+        >
+          <span className={latestTradesExpanded ? 'rotate-90' : ''}>▶</span>
+          Latest trades & LLM reasons
+        </button>
+        {latestTradesExpanded && (
+          latestOrders.length === 0 ? (
+            <p className="text-terminal-text-dim text-sm">No orders yet.</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-3 mb-2 text-sm">
+                <label className="flex items-center gap-1.5">
+                  <span className="text-terminal-text-dim text-xs">Ticker</span>
+                  <input
+                    type="text"
+                    placeholder="Filter..."
+                    value={latestTradesFilters.ticker}
+                    onChange={(e) => setLatestTradesFilters((f) => ({ ...f, ticker: e.target.value }))}
+                    className="px-2 py-0.5 rounded bg-terminal-bg border border-terminal-border text-terminal-text font-mono text-xs w-24"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <span className="text-terminal-text-dim text-xs">Action</span>
+                  <select
+                    value={latestTradesFilters.action}
+                    onChange={(e) => setLatestTradesFilters((f) => ({ ...f, action: e.target.value }))}
+                    className="px-2 py-0.5 rounded bg-terminal-bg border border-terminal-border text-terminal-text text-xs"
+                  >
+                    <option value="">All</option>
+                    <option value="BUY">BUY</option>
+                    <option value="SELL">SELL</option>
+                    <option value="REDUCE">REDUCE</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <span className="text-terminal-text-dim text-xs">Status</span>
+                  <select
+                    value={latestTradesFilters.status}
+                    onChange={(e) => setLatestTradesFilters((f) => ({ ...f, status: e.target.value }))}
+                    className="px-2 py-0.5 rounded bg-terminal-bg border border-terminal-border text-terminal-text text-xs"
+                  >
+                    <option value="">All</option>
+                    <option value="filled">filled</option>
+                    <option value="failed">failed</option>
+                    <option value="dry_run">dry_run</option>
+                  </select>
+                </label>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-terminal-border text-left">
+                      <th className="py-2 font-mono">Time</th>
+                      <th className="py-2 font-mono">Ticker</th>
+                      <th className="py-2 font-mono">Action</th>
+                      <th className="py-2 font-mono">Qty</th>
+                      <th className="py-2 font-mono">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredLatestOrders.map((o) => (
+                      <React.Fragment key={o.id}>
+                        <tr
+                          onClick={() => setTickerForLLM(tickerForLLM === o.ticker ? null : o.ticker)}
+                          className="border-b border-terminal-border cursor-pointer hover:bg-terminal-surface/50"
+                        >
+                          <td className="py-1 font-mono text-xs">{safeFormat(o.timestamp, 'MMM dd HH:mm', '')}</td>
+                          <td className="py-1 font-mono">{cleanTicker(o.ticker)}</td>
+                          <td className="py-1">{o.action}</td>
+                          <td className="py-1 font-mono">{o.quantity}</td>
+                          <td className="py-1">{o.status}</td>
                         </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
+                        {tickerForLLM === o.ticker && tickerDetail && (
+                          <tr>
+                            <td colSpan={5} className="py-3 bg-terminal-bg/80">
+                              <LLMOutputPanel
+                                key={tickerDetail.ticker}
+                                ticker={tickerDetail.ticker}
+                                lastDecision={tickerDetail.last_decision}
+                                label={tickerDetail.label}
+                              />
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setTickerForLLM(null) }}
+                                className="mt-2 text-xs text-terminal-text-dim hover:text-terminal-text"
+                              >
+                                Close
+                              </button>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {filteredLatestOrders.length === 0 && (
+                <p className="text-terminal-text-dim text-xs">No orders match the filters.</p>
+              )}
+              <p className="text-terminal-text-dim text-xs">Click a row to see full LLM output (strategy, moderation, risk).</p>
             </div>
-            <p className="text-terminal-text-dim text-xs">Click a row to see full LLM output (strategy, moderation, risk).</p>
-          </div>
+          )
         )}
       </div>
 
       {/* Run summaries (notification-style, untruncated, by runtime) */}
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Run summaries (notification-style)</h2>
+        <button
+          type="button"
+          onClick={() => setRunSummariesExpanded(!runSummariesExpanded)}
+          className="flex items-center gap-2 text-lg font-semibold w-full text-left hover:opacity-90 transition-opacity mb-3"
+        >
+          <span className={runSummariesExpanded ? 'rotate-90' : ''}>▶</span>
+          Run summaries (notification-style)
+        </button>
+        {runSummariesExpanded && (
+          <>
         <p className="text-terminal-text-dim text-xs mb-3">Full decisions and orders per run, organised by runtime. Same style as Slack/Email, untruncated.</p>
         {runFeed.length === 0 ? (
           <p className="text-terminal-text-dim text-sm">No runs yet.</p>
@@ -536,43 +675,8 @@ export default function Dashboard() {
             })}
           </div>
         )}
-      </div>
-
-      {/* Activity Feed */}
-      <div className="card">
-        <h2 className="text-xl font-semibold mb-4">Activity Feed</h2>
-        <div className="space-y-2 max-h-96 overflow-y-auto">
-          {events.length === 0 ? (
-            <div className="text-terminal-text-dim text-center py-8">
-              No events yet. Waiting for activity...
-            </div>
-          ) : (
-            events.map((event) => (
-              <div
-                key={event.id}
-                className="flex items-start gap-3 py-2 border-b border-terminal-border last:border-0"
-              >
-                <div className={`text-lg ${getEventColor(event.event_type)}`}>
-                  {getEventIcon(event.event_type)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{event.event_type}</span>
-                    <span className="text-xs text-terminal-text-dim">
-                      {safeFormat(event.timestamp, 'HH:mm:ss')}
-                    </span>
-                    <span className="text-xs text-terminal-text-dim">
-                      [{event.source}]
-                    </span>
-                  </div>
-                  <div className="text-sm text-terminal-text mt-1">
-                    {event.message}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+          </>
+        )}
       </div>
     </div>
   )
