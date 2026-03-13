@@ -79,8 +79,6 @@ async def get_research_summary(
 
         total = q_base.count()
         cache_hits = q_base.filter(ResearchLog.cache_hit == True).count()
-        if from_date:
-            query = query.filter(ResearchLog.created_at >= from_date)
         hits = cache_hits
 
         member_query = (

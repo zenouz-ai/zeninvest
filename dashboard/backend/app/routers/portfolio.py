@@ -26,7 +26,7 @@ def _parse_position(pos_data: dict, session: Session) -> PositionSchema:
     if not value_gbp and quantity and pos_data.get("currentPrice"):
         value_gbp = quantity * float(pos_data.get("currentPrice", 0))
     pnl_gbp = float(pos_data.get("pnl_gbp", 0)) or float(wallet.get("unrealizedProfitLoss", 0))
-    total_cost = float(wallet.get("totalCost", 1))
+    total_cost = float(wallet.get("totalCost", 0))
     pnl_pct = float(pos_data.get("pnl_pct", 0)) or ((pnl_gbp / total_cost * 100) if total_cost else 0)
     instrument = session.query(Instrument).filter(Instrument.ticker == ticker).first()
     sector = instrument.sector if instrument else None
