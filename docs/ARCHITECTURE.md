@@ -64,6 +64,7 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |        |      per-stock sentiment scores + headlines]
                    |        |
                    |        +-- UNIVERSE SCREENER (get_screened_universe)
+                   |              [Runs every cycle regardless of state; Risk blocks new BUYs in CAUTIOUS]
                    |              [Sector-balanced, cap-tiered sampling:
                    |               70% large, 20% mid, 10% small cap]
                    |              [Cooldown (24h) prevents re-screening within window]
@@ -144,7 +145,7 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
                     | budget |  Max 15% per position
                     +---+----+
                         |
-                        | Drawdown > 5%
+                        | Drawdown > cautious_drawdown_pct (30%)
                         v
                    +----------+
                    | CAUTIOUS |  Reduced risk
@@ -152,7 +153,7 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
                    | per pos. |  Only add to winners
                    +----+-----+
                         |
-                        | Drawdown > 15%
+                        | Drawdown > halt_drawdown_pct (40%)
                         v
                     +--------+
                     | HALTED |  Emergency stop
@@ -161,7 +162,10 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
                     +--------+
 
   Recovery: Manual intervention required to move from HALTED back to ACTIVE.
-  CAUTIOUS -> ACTIVE: Automatic when drawdown recovers below 5%; or `--reset-peak` / Dashboard "Reset Peak" when peak was set incorrectly.
+  CAUTIOUS -> ACTIVE: Automatic when drawdown recovers below cautious_drawdown_pct; or `--reset-peak` / Dashboard "Reset Peak" when peak was set incorrectly.
+
+  Practice mode: When `trading.account_type: practice`, the state machine is relaxed — drawdown is logged
+  but the system always stays ACTIVE. Use `account_type: live` for real money.
 ```
 
 ## Cost Degradation Chain
@@ -216,7 +220,7 @@ React frontend (SPA, served by FastAPI when dist/ exists)
     +-- Portfolio: positions, P&L chart, sector allocation
 ```
 
-**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL — works when accessing at `http://VPS_IP:8000`.
+**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. The orchestrator **normalises T212 positions** before saving to `portfolio_snapshots.positions_json` — converting `instrument.ticker` and `walletImpact` (currentValue, unrealizedProfitLoss, totalCost) into flat fields (ticker, value_gbp, pnl_gbp, pnl_pct) for dashboard display. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL — works when accessing at `http://VPS_IP:8000`.
 
 ## Moderation Consensus Logic
 
@@ -582,10 +586,10 @@ All rejection details are also persisted in the `strategy_decisions`, `moderatio
 stateDiagram-v2
     [*] --> ACTIVE
 
-    ACTIVE --> CAUTIOUS: Drawdown > 5%
-    CAUTIOUS --> ACTIVE: Drawdown < 5%
-    CAUTIOUS --> HALTED: Drawdown > 15%
-    ACTIVE --> HALTED: Drawdown > 15%
+    ACTIVE --> CAUTIOUS: Drawdown > cautious_drawdown_pct
+    CAUTIOUS --> ACTIVE: Drawdown < cautious_drawdown_pct
+    CAUTIOUS --> HALTED: Drawdown > halt_drawdown_pct
+    ACTIVE --> HALTED: Drawdown > halt_drawdown_pct
 
     HALTED --> ACTIVE: Manual reset
 
