@@ -210,7 +210,7 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     v
 React frontend (SPA, served by FastAPI when dist/ exists)
     |
-    +-- 7 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline (queue: when/why queued, when action taken), Order Management, Costs
+    +-- 8 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline (queue: when/why queued, when action taken), Order Management, Costs, Roadmap & Architecture (project timeline, architecture diagram with component-to-US mapping)
     +-- Universe: sortable columns, expandable rows with committee reasoning
     +-- Run History: timeline, run diff (new/closed/position changes)
     +-- Portfolio: positions, P&L chart, sector allocation
@@ -670,7 +670,7 @@ For the full prioritised backlog and detailed user story specifications, see [So
 
 - **Chat & Notifications (US-1.5)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. See [Chat & Commands](CHAT_AND_COMMANDS.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
-- **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (7 pages). See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
+- **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (8 pages). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
 - **Agentic Research (US-4.4)** — *Planned.* Independent tool access (web search, news, SEC) for Strategy + Moderation. Provider abstraction: Brave (primary) + Tavily (fallback, optionally additional for news). See [Agentic Research](AGENTIC_RESEARCH.md).
 
 ---

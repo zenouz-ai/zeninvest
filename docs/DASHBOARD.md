@@ -33,7 +33,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **7 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
+| **React Frontend** | Complete | **8 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -58,11 +58,11 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│              React Frontend (Vite) — 7 pages                                  │
-│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┐ │
-│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Costs  │ │
-│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │        │ │
-│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┘ │
+│              React Frontend (Vite) — 8 pages                                  │
+│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┬────────┐ │
+│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Costs  │ Roadmap│ │
+│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │        │ & Arch │ │
+│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┴────────┘ │
 │         Recharts / TanStack Table / dark terminal design (#0d1117, etc.)     │
 └──────────────────┬──────────────────────────────────────────────────────────┘
                     │ REST + Server-Sent Events (SSE)
@@ -228,7 +228,30 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Cache hit rate over time
 - Most-queried tickers and topics
 
-### Page 8: Research Explorer (Phase D — Agentic Research)
+### Page 8: Roadmap & Architecture
+
+**Tabbed layout:** `[Gantt | Roadmap | Architecture]` (default: Gantt)
+
+**Gantt tab:**
+- Mermaid Gantt chart: timeline of delivered work (green) and planned pipeline (grey)
+- Sections by topic; nominal dates for pipeline items based on effort
+
+**Roadmap tab:**
+- Project evolution from day 0 (2026-02-22) to now; days-in-development counter
+- Summary cards: 11 delivered · 14 pipeline · 44% complete
+- Topic filter: All, Foundation, Calibration, Portfolio & Risk, Signals, Validation, ML / Advanced
+- Vertical timeline grouped by topic; delivered (● green) vs pipeline (○ grey)
+- Expandable milestone details: description, effort, priority, architecture components
+
+**Architecture tab:**
+- Pipeline diagram (Mermaid) with component-to-US mapping
+- Links to `docs/ARCHITECTURE.md` and `docs/SOPHISTICATION_ROADMAP.md` served via `GET /api/docs/ARCHITECTURE` and `GET /api/docs/SOPHISTICATION_ROADMAP`
+
+**Docs links:** In-app modal fetches and displays ARCHITECTURE.md and SOPHISTICATION_ROADMAP.md (avoids new-tab issues).
+
+**URL:** `/roadmap`; optional `?tab=gantt`, `?tab=roadmap`, `?tab=architecture` for direct linking.
+
+### Page 9: Research Explorer (Phase D — Agentic Research)
 
 **Per-cycle research summary:**
 - Total searches by member, cache hit rate, total cost
@@ -249,6 +272,8 @@ Strategy (Claude) → conviction 0.8, action BUY
 The backend exposes the following endpoints. All query the agent's existing SQLite tables directly (no duplication).
 
 ### Activity & Runs
+
+Runs fetched via `GET /api/runs/` or run-feed are **auto-reconciled**: any run stuck in "running" for >15 min with `strategy_decisions` is marked "completed" before returning. See `docs/DEPLOYMENT.md` §9.5.
 
 ```
 GET /api/runs/                      # All runs, paginated, filterable by type/date
@@ -359,6 +384,13 @@ GET /api/research/stats             # Aggregate research metrics
 GET /api/system/state               # Current system state (ACTIVE/CAUTIOUS/HALTED), paused flag
 POST /api/system/pause              # Pause trading
 POST /api/system/resume             # Resume trading
+```
+
+### Documentation (served as Markdown)
+
+```
+GET /api/docs/ARCHITECTURE          # docs/ARCHITECTURE.md
+GET /api/docs/SOPHISTICATION_ROADMAP # docs/SOPHISTICATION_ROADMAP.md
 ```
 
 ### Real-time Events

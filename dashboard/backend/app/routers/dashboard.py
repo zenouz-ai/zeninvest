@@ -101,6 +101,8 @@ async def get_run_feed(
 
     session = get_session()
     try:
+        from ..routers.runs import _reconcile_stale_runs
+        _reconcile_stale_runs(session)
         runs = (
             session.query(Run)
             .order_by(desc(Run.started_at))

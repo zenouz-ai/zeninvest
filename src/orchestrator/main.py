@@ -241,7 +241,7 @@ class Orchestrator:
                             session.commit()
                         session.close()
                     except Exception as e:
-                        logger.debug(f"Failed to update Run record (fail-open): {e}", exc_info=True)
+                        logger.warning(f"Failed to update Run record (fail-open): {e}", exc_info=True)
                 except Exception:
                     pass  # Fail-open
             

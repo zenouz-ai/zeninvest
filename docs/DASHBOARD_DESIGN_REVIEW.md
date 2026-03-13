@@ -48,7 +48,7 @@ The dashboard has a solid foundation: consistent dark terminal aesthetic, clear 
 
 #### 3. **Loading states** ✅
 
-**Fix applied:** Shared `LoadingSpinner` component (animated border spinner). Used on all 7 pages. Skeleton placeholders deferred.
+**Fix applied:** Shared `LoadingSpinner` component (animated border spinner). Used on all 8 pages. Skeleton placeholders deferred.
 ---
 
 #### 4. **Empty states** — Deferred
@@ -134,8 +134,9 @@ Add `prefers-reduced-motion: reduce` support for users who need it (e.g. disable
 | Loading spinner | New `components/LoadingSpinner.tsx` |
 | Empty state (stub) | New `components/EmptyState.tsx` |
 | Focus, buttons, card | `index.css` |
-| Error + retry | All 7 pages |
+| Error + retry | All 8 pages |
 | Sticky table headers | `Universe.tsx`, `Opportunity.tsx`, `OrderManagement.tsx` |
+| Page 8: Roadmap | New `Roadmap.tsx` — project timeline, topic filter, architecture diagram |
 
 ---
 

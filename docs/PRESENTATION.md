@@ -319,7 +319,7 @@ docker compose logs -f investment-agent
 - ~~Backtesting~~ → Engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); see docs/BACKTESTING.md and WALK_FORWARD_VALIDATION.md
 - ~~UOV ranking & queue~~ → Universal Opportunity Value scoring, ranked BUY execution, queue + swap suggestions (shadow/active mode)
 - ~~Intelligent order management~~ → ATR-based stop reassessment, software trailing stops, limit dip-buy orders; stop_loss_adjustments audit trail
-- ~~Dashboard Phase 1~~ → FastAPI backend (runs, universe, portfolio, orders, SSE events), React frontend (4 pages); stabilisation complete; US-1.8 delivered (Docker service, port 8000; SPA served by FastAPI; activity feed works from VPS IP)
+- ~~Dashboard Phase 1~~ → FastAPI backend (runs, universe, portfolio, orders, SSE events), React frontend (8 pages including Roadmap & Architecture); stabilisation complete; US-1.8 delivered (Docker service, port 8000; SPA served by FastAPI; activity feed works from VPS IP)
 
 **Phase 2 — Enhanced Intelligence:**
 - Portfolio optimization (Markowitz / risk parity)

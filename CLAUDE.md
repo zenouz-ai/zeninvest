@@ -98,7 +98,7 @@ notebooks/
 ├── brave_api_smoke.py     # Manual smoke test for Brave Search + Answers APIs (requires API keys)
 ├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
 └── enrichment_benchmark.py    # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
-tests/                     # pytest — all use in-memory SQLite fixtures
+tests/                     # pytest — conftest sets INVESTMENT_AGENT_USE_INMEMORY_DB so all tests use in-memory SQLite; never touch production DB
 ```
 
 ## Key Patterns
@@ -138,10 +138,12 @@ finally:
 
 ### Test fixtures (in-memory SQLite)
 
+`conftest.py` sets `INVESTMENT_AGENT_USE_INMEMORY_DB=1` before any imports so `src.data.database` uses `sqlite:///:memory:` during pytest. Tests never write to `data/investment_agent.db`.
+
 ```python
 @pytest.fixture
 def db_session():
-    engine = create_engine("sqlite:///:memory:")
+ engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -190,7 +192,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
     - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
     - All adjustments logged to `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
 13. **Agentic research (US-4.4)** — When `research.enabled`, Strategy/Skeptic/Risk can use tools: web_search, news_search, sector_search, sec_search (SEC EDGAR). Per-member caps 20/8/7, total 35/cycle. Brave primary, Tavily fallback. SEC EDGAR free. See `docs/AGENTIC_RESEARCH.md`.
-14. **Dashboard backend (Phase 1 + Phase 1.5 + full API)** — FastAPI REST API + SSE stream. Endpoints: runs, status (includes system state and paused), universe, portfolio, orders, events/stream; decisions (with pipeline waterfall), moderation, risk; opportunity (scores, queue, history); outcomes (list, stats); stop-loss (current, adjustments); performance (metrics, history); costs (daily, monthly, degradation); api-usage (daily); system (state, trigger-cycle, pause, resume); POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle). All query agent SQLite read-only; no duplicate tables. Event logger: non-blocking, fail-open. Frontend: 7 pages — Dashboard Home (state badge, Dry Run and Live Run buttons; Live Run requires confirmation), Universe (sortable columns, expandable rows with full LLM outputs: strategy reasoning + extra fields + raw JSON, all moderators’ verdicts/reasoning, risk reasoning and rules), Run History, Portfolio, Opportunity Pipeline, Order Management, Costs. Universe table includes `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` columns; `Sold` is the total number of shares sold based on executed and dry-run SELL orders only (orders store SELL quantities as negative, but the dashboard reports `abs(sum(quantity))`). For transparency, the backend also exposes a live vs dry-run breakdown per ticker so the UI can show cases where Sold > 0 comes entirely from hypothetical dry-run cycles with no live Trading 212 execution. Cycle summary includes rejected_by_action (breakdown by strategy action: BUY, HOLD, QUEUED). For HOLD/QUEUED, moderation_consensus and risk_verdict are "not invoked"; rejection stages: strategy_hold, strategy_queued. Design: dark charcoal #0d1117, gain #00ff88, loss #ff4444, neutral #58a6ff, accent #d4a017, subtle grid background. Research API: `GET /api/research/logs`, `GET /api/research/summary`. Config: `dashboard.enabled`, `dashboard.events_enabled`.
+14. **Dashboard backend (Phase 1 + Phase 1.5 + full API)** — FastAPI REST API + SSE stream. Endpoints: runs, status (includes system state and paused), universe, portfolio, orders, events/stream; decisions (with pipeline waterfall), moderation, risk; opportunity (scores, queue, history); outcomes (list, stats); stop-loss (current, adjustments); performance (metrics, history); costs (daily, monthly, degradation); api-usage (daily); system (state, trigger-cycle, pause, resume); POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle). All query agent SQLite read-only; no duplicate tables. Event logger: non-blocking, fail-open. Frontend: 8 pages — Dashboard Home (state badge, Dry Run and Live Run buttons; Live Run requires confirmation), Universe (sortable columns, expandable rows with full LLM outputs: strategy reasoning + extra fields + raw JSON, all moderators’ verdicts/reasoning, risk reasoning and rules), Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture (project timeline, architecture diagram). Universe table includes `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` columns; `Sold` is the total number of shares sold based on executed and dry-run SELL orders only (orders store SELL quantities as negative, but the dashboard reports `abs(sum(quantity))`). For transparency, the backend also exposes a live vs dry-run breakdown per ticker so the UI can show cases where Sold > 0 comes entirely from hypothetical dry-run cycles with no live Trading 212 execution. Cycle summary includes rejected_by_action (breakdown by strategy action: BUY, HOLD, QUEUED). For HOLD/QUEUED, moderation_consensus and risk_verdict are "not invoked"; rejection stages: strategy_hold, strategy_queued. Design: dark charcoal #0d1117, gain #00ff88, loss #ff4444, neutral #58a6ff, accent #d4a017, subtle grid background. Research API: `GET /api/research/logs`, `GET /api/research/summary`. Config: `dashboard.enabled`, `dashboard.events_enabled`.
 
 ## Scheduling Architecture
 

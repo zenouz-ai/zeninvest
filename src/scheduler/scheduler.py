@@ -112,7 +112,7 @@ def _run_analysis_cycle() -> None:
                         logger.debug(f"Run record not found for cycle {cycle_id}")
                     session.close()
                 except Exception as e:
-                    logger.debug(f"Failed to update Run record (fail-open): {e}", exc_info=True)
+                    logger.warning(f"Failed to update Run record to completed (fail-open): {e}", exc_info=True)
             except Exception:
                 pass  # Fail-open
         
@@ -155,7 +155,7 @@ def _run_analysis_cycle() -> None:
                         logger.debug(f"Run record not found for failed cycle {cycle_id}")
                     session.close()
                 except Exception as ex:
-                    logger.debug(f"Failed to update Run record (fail-open): {ex}", exc_info=True)
+                    logger.warning(f"Failed to update Run record to failed (fail-open): {ex}", exc_info=True)
             except Exception:
                 pass  # Fail-open
         

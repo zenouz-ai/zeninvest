@@ -17,6 +17,7 @@ from .routers import (
     costs,
     dashboard,
     decisions,
+    docs,
     events,
     moderation,
     opportunity,
@@ -84,6 +85,7 @@ app.include_router(performance.router, prefix="/api/performance", tags=["perform
 app.include_router(costs.router, prefix="/api/costs", tags=["costs"])
 app.include_router(api_usage.router, prefix="/api/api-usage", tags=["api-usage"])
 app.include_router(system.router, prefix="/api/system", tags=["system"])
+app.include_router(docs.router, prefix="/api/docs", tags=["docs"])
 
 
 @app.get("/health")
