@@ -31,7 +31,7 @@ Leave it running. In another terminal:
 poetry run python dashboard/backend/test_endpoints.py
 ```
 
-This checks: health, status (with state/paused), runs, universe, portfolio, orders, events, **decisions** (list + waterfall), **moderation**, **risk**, **opportunity** (config, scores, queue), **outcomes** (list, stats), **stop-loss** (current, adjustments), **performance** (metrics, history), **costs** (daily, monthly, degradation), **api-usage/daily**, **system/state**. Expect 200 or 404/503; connection errors mean the server is not running.
+This checks: health, status (with state/paused), runs, universe, portfolio, orders, events, **decisions** (list + waterfall), **moderation**, **risk**, **opportunity** (config, scores, queue), **outcomes** (list, stats), **stop-loss** (current, adjustments), **research** (logs, summary), **performance** (metrics, history), **costs** (daily, monthly, degradation), **api-usage/daily**, **system/state**. Expect 200 or 404/503; connection errors mean the server is not running.
 
 ### 4. Open API docs (optional)
 

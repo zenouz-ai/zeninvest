@@ -10,7 +10,7 @@ BASE_URL = "http://localhost:8000"
 OK_STATUSES = {200, 404, 503}
 
 
-def test_endpoint(path: str, method: str = "GET", data: dict | None = None) -> bool:
+def check_endpoint(path: str, method: str = "GET", data: dict | None = None) -> bool:
     """Test an endpoint. Returns True if request reached the server (2xx/4xx/5xx)."""
     url = f"{BASE_URL}{path}"
     print(f"\n{method} {path}")
@@ -78,10 +78,12 @@ def main() -> int:
         ("/api/costs/degradation", "GET"),
         ("/api/api-usage/daily", "GET"),
         ("/api/system/state", "GET"),
+        ("/api/research/logs", "GET"),
+        ("/api/research/summary", "GET"),
     ]
     ok = 0
     for path, method in endpoints:
-        if test_endpoint(path, method):
+        if check_endpoint(path, method):
             ok += 1
 
     print("\n" + "=" * 50)

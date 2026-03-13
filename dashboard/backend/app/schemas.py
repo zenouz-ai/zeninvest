@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class EventSchema(BaseModel):
@@ -16,8 +16,7 @@ class EventSchema(BaseModel):
     message: str
     metadata_json: dict[str, Any] | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RunSchema(BaseModel):
@@ -31,8 +30,7 @@ class RunSchema(BaseModel):
     status: str
     summary_json: dict[str, Any] | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RunCreateSchema(BaseModel):
@@ -54,8 +52,7 @@ class InstrumentSchema(BaseModel):
     last_screened_at: datetime | None
     data_available: bool = True
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class InstrumentDetailSchema(InstrumentSchema):
@@ -100,8 +97,7 @@ class PositionSchema(BaseModel):
     pnl_pct: float
     sector: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PortfolioSnapshotSchema(BaseModel):
@@ -116,8 +112,7 @@ class PortfolioSnapshotSchema(BaseModel):
     num_positions: int
     positions: list[PositionSchema]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderSchema(BaseModel):
@@ -137,8 +132,7 @@ class OrderSchema(BaseModel):
     strategy: str | None
     conviction: int | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Decisions / Moderation / Risk ---
@@ -161,8 +155,7 @@ class StrategyDecisionSchema(BaseModel):
     stop_loss_pct: float | None
     expected_holding_period: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ModerationLogSchema(BaseModel):
@@ -180,8 +173,7 @@ class ModerationLogSchema(BaseModel):
     confidence_score: int | None
     consensus: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class RiskDecisionSchema(BaseModel):
@@ -198,8 +190,7 @@ class RiskDecisionSchema(BaseModel):
     triggered_rules_json: str | None
     reasoning: str | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PipelineWaterfallSchema(BaseModel):
@@ -231,8 +222,7 @@ class OpportunityScoreSchema(BaseModel):
     uov_ewma: float
     conviction: int | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OpportunityQueueSchema(BaseModel):
@@ -250,8 +240,7 @@ class OpportunityQueueSchema(BaseModel):
     reason: str | None
     metadata_json: str | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OpportunityConfigSchema(BaseModel):
@@ -278,8 +267,7 @@ class TradeOutcomeSchema(BaseModel):
     pnl_pct: float
     conviction: int | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OutcomesStatsSchema(BaseModel):
@@ -311,8 +299,7 @@ class StopLossAdjustmentSchema(BaseModel):
     trigger_reason: str | None
     status: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class StopLossCurrentSchema(BaseModel):
@@ -343,8 +330,7 @@ class PerformanceMetricSchema(BaseModel):
     alpha_vs_spy_pct: float | None
     num_trades: int | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Costs ---
