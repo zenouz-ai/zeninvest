@@ -17,6 +17,29 @@ router = APIRouter()
 settings = get_settings()
 
 
+def _parse_position(pos_data: dict, session: Session) -> PositionSchema:
+    """Parse position from stored JSON — supports both T212 (instrument.ticker, walletImpact) and normalized formats."""
+    ticker = (pos_data.get("instrument") or {}).get("ticker") or pos_data.get("ticker", "")
+    quantity = float(pos_data.get("quantity", 0))
+    wallet = pos_data.get("walletImpact") or {}
+    value_gbp = float(pos_data.get("value_gbp", 0)) or float(wallet.get("currentValue", 0))
+    if not value_gbp and quantity and pos_data.get("currentPrice"):
+        value_gbp = quantity * float(pos_data.get("currentPrice", 0))
+    pnl_gbp = float(pos_data.get("pnl_gbp", 0)) or float(wallet.get("unrealizedProfitLoss", 0))
+    total_cost = float(wallet.get("totalCost", 1))
+    pnl_pct = float(pos_data.get("pnl_pct", 0)) or ((pnl_gbp / total_cost * 100) if total_cost else 0)
+    instrument = session.query(Instrument).filter(Instrument.ticker == ticker).first()
+    sector = instrument.sector if instrument else None
+    return PositionSchema(
+        ticker=ticker,
+        quantity=quantity,
+        value_gbp=value_gbp,
+        pnl_gbp=pnl_gbp,
+        pnl_pct=pnl_pct,
+        sector=sector,
+    )
+
+
 @router.get("/", response_model=PortfolioSnapshotSchema)
 async def get_portfolio():
     """Get current portfolio snapshot (latest)."""
@@ -34,24 +57,9 @@ async def get_portfolio():
         if not snapshot:
             raise HTTPException(status_code=404, detail="No portfolio snapshot found")
 
-        # Parse positions JSON
+        # Parse positions JSON (T212 or normalized format)
         positions_data = json.loads(snapshot.positions_json) if snapshot.positions_json else []
-        positions = []
-        for pos_data in positions_data:
-            # Get sector from instrument if available
-            instrument = session.query(Instrument).filter(Instrument.ticker == pos_data.get("ticker")).first()
-            sector = instrument.sector if instrument else None
-
-            positions.append(
-                PositionSchema(
-                    ticker=pos_data.get("ticker", ""),
-                    quantity=pos_data.get("quantity", 0.0),
-                    value_gbp=pos_data.get("value_gbp", 0.0),
-                    pnl_gbp=pos_data.get("pnl_gbp", 0.0),
-                    pnl_pct=pos_data.get("pnl_pct", 0.0),
-                    sector=sector,
-                )
-            )
+        positions = [_parse_position(p, session) for p in positions_data]
 
         return PortfolioSnapshotSchema(
             timestamp=snapshot.timestamp,
@@ -93,21 +101,7 @@ async def get_portfolio_history(
         result = []
         for snapshot in snapshots:
             positions_data = json.loads(snapshot.positions_json) if snapshot.positions_json else []
-            positions = []
-            for pos_data in positions_data:
-                instrument = session.query(Instrument).filter(Instrument.ticker == pos_data.get("ticker")).first()
-                sector = instrument.sector if instrument else None
-
-                positions.append(
-                    PositionSchema(
-                        ticker=pos_data.get("ticker", ""),
-                        quantity=pos_data.get("quantity", 0.0),
-                        value_gbp=pos_data.get("value_gbp", 0.0),
-                        pnl_gbp=pos_data.get("pnl_gbp", 0.0),
-                        pnl_pct=pos_data.get("pnl_pct", 0.0),
-                        sector=sector,
-                    )
-                )
+            positions = [_parse_position(p, session) for p in positions_data]
 
             result.append(
                 PortfolioSnapshotSchema(

@@ -57,7 +57,7 @@ class StopLossManager:
         results: list[dict[str, Any]] = []
 
         for pos in positions:
-            ticker = pos.get("ticker", "")
+            ticker = (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
             quantity = float(pos.get("quantity", 0))
             current_price = float(pos.get("currentPrice", 0))
             if not ticker or quantity <= 0 or current_price <= 0:
@@ -121,7 +121,7 @@ class StopLossManager:
         results: list[dict[str, Any]] = []
 
         for pos in positions:
-            ticker = pos.get("ticker", "")
+            ticker = (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
             quantity = float(pos.get("quantity", 0))
             current_price = float(pos.get("currentPrice", 0))
             if not ticker or quantity <= 0 or current_price <= 0:

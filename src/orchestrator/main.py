@@ -339,7 +339,7 @@ class Orchestrator:
                 vix = None
                 market_regime = "SIDEWAYS"
 
-            existing_tickers = {p.get("ticker", "") for p in portfolio_data.get("positions", [])}
+            existing_tickers = {t for p in portfolio_data.get("positions", []) if (t := self._ticker_from_position(p))}
 
             # Get data for current positions AND screen universe for new candidates
             stocks_data = self._fetch_stocks_data(
@@ -1091,7 +1091,7 @@ class Orchestrator:
 
         # Phase 1: Analyze current positions
         for pos in current_positions:
-            ticker = pos.get("ticker", "")
+            ticker = self._ticker_from_position(pos)
             if not ticker:
                 continue
             yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
@@ -1747,6 +1747,24 @@ class Orchestrator:
 
         return ticker
 
+    @staticmethod
+    def _ticker_from_position(pos: dict) -> str:
+        """Resolve ticker from T212 (instrument.ticker) or normalized format."""
+        return (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
+
+    @staticmethod
+    def _normalize_position_for_snapshot(pos: dict) -> dict:
+        """Convert T212 position format to dashboard schema (ticker, quantity, value_gbp, pnl_gbp, pnl_pct)."""
+        ticker = Orchestrator._ticker_from_position(pos)
+        quantity = float(pos.get("quantity", 0))
+        current_price = float(pos.get("currentPrice", 0))
+        wallet = pos.get("walletImpact") or {}
+        value_gbp = float(wallet.get("currentValue", 0)) or (quantity * current_price if quantity and current_price else 0)
+        pnl_gbp = float(wallet.get("unrealizedProfitLoss", 0))
+        total_cost = float(wallet.get("totalCost", 0))
+        pnl_pct = (pnl_gbp / total_cost * 100) if total_cost else 0.0
+        return {"ticker": ticker, "quantity": quantity, "value_gbp": value_gbp, "pnl_gbp": pnl_gbp, "pnl_pct": pnl_pct}
+
     def _get_sector_allocations(self, portfolio_data: dict) -> dict[str, float]:
         # Simplified — would need instrument metadata for full implementation
         return {}
@@ -1757,16 +1775,24 @@ class Orchestrator:
             return {}
         result: dict[str, float] = {}
         for pos in portfolio_data.get("positions", []):
-            ticker = pos.get("ticker", "")
-            qty = float(pos.get("quantity", 0))
-            price = float(pos.get("currentPrice", 0))
-            result[ticker] = (qty * price / total) * 100
+            ticker = self._ticker_from_position(pos)
+            if not ticker:
+                continue
+            wallet = pos.get("walletImpact") or {}
+            value = float(pos.get("value_gbp", 0)) or float(wallet.get("currentValue", 0))
+            if not value:
+                qty = float(pos.get("quantity", 0))
+                price = float(pos.get("currentPrice", 0))
+                value = qty * price
+            result[ticker] = (value / total) * 100
         return result
 
     def _save_snapshot(self, portfolio_data: dict, state: str) -> None:
-        """Save a portfolio snapshot."""
+        """Save a portfolio snapshot. Positions are normalised from T212 format for dashboard display."""
         session = get_session()
         try:
+            raw_positions = portfolio_data.get("positions", [])
+            normalised = [self._normalize_position_for_snapshot(p) for p in raw_positions]
             session.add(PortfolioSnapshot(
                 timestamp=datetime.now(timezone.utc),
                 total_value_gbp=portfolio_data.get("total_value", 0),
@@ -1775,7 +1801,7 @@ class Orchestrator:
                 pnl_gbp=0.0,
                 pnl_pct=portfolio_data.get("total_return_pct", 0),
                 num_positions=portfolio_data.get("num_positions", 0),
-                positions_json=json.dumps(portfolio_data.get("positions", []), default=str),
+                positions_json=json.dumps(normalised, default=str),
                 state=state,
             ))
             session.commit()
@@ -1880,8 +1906,18 @@ def _get_dashboard_summary() -> dict[str, Any]:
         positions: list[dict[str, Any]] = []
         if latest and latest.positions_json:
             positions = json.loads(latest.positions_json)
+        def _pos_ticker(p: dict) -> str:
+            return (p.get("instrument") or {}).get("ticker") or p.get("ticker", "")
+
+        def _pos_value(p: dict) -> float:
+            v = p.get("value_gbp") or p.get("value")
+            if v is not None:
+                return float(v)
+            w = p.get("walletImpact") or {}
+            return float(w.get("currentValue", 0))
+
         summary["active_positions"] = [
-            {"ticker": p.get("ticker"), "quantity": p.get("quantity"), "value_gbp": p.get("value", 0)}
+            {"ticker": _pos_ticker(p), "quantity": p.get("quantity"), "value_gbp": _pos_value(p)}
             for p in positions[:20]
         ]
         return summary

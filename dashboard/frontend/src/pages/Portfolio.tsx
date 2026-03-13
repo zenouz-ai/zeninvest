@@ -54,15 +54,20 @@ export default function Portfolio() {
     return acc
   }, {} as Record<string, number>)
 
-  const pieData = Object.entries(sectorAllocation).map(([name, value]) => ({
-    name,
-    value: Number(value.toFixed(2)),
-  }))
+  const pieData = Object.entries(sectorAllocation)
+    .filter(([, value]) => value > 0)
+    .map(([name, value]) => ({
+      name,
+      value: Number(value.toFixed(2)),
+    }))
 
-  const chartData = history.map((snapshot) => ({
-    date: safeFormat(snapshot.timestamp, 'MMM dd', ''),
-    value: snapshot.total_value_gbp,
-  })).filter((d) => d.date)
+  const chartData = [...history]
+    .reverse()
+    .map((snapshot) => ({
+      date: safeFormat(snapshot.timestamp, 'MMM dd', ''),
+      value: snapshot.total_value_gbp,
+    }))
+    .filter((d) => d.date)
 
   const COLORS = ['#4a9eff', '#00ff88', '#ffd700', '#ff4444', '#ffaa00']
 
@@ -104,7 +109,7 @@ export default function Portfolio() {
       </div>
 
       {/* Portfolio Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="card">
           <div className="text-sm text-terminal-text-dim">Cash Balance</div>
           <div className="text-xl font-mono mt-1">
@@ -117,8 +122,21 @@ export default function Portfolio() {
           </div>
         </div>
         <div className="card">
+          <div className="text-sm text-terminal-text-dim">Investments</div>
+          <div className="text-xl font-mono mt-1">
+            {currentPortfolio
+              ? `£${currentPortfolio.invested_gbp.toLocaleString(undefined, {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              : 'N/A'}
+          </div>
+        </div>
+        <div className="card">
           <div className="text-sm text-terminal-text-dim">Positions</div>
-          <div className="text-xl font-mono mt-1">{positions.length}</div>
+          <div className="text-xl font-mono mt-1">
+            {currentPortfolio?.num_positions ?? positions.length}
+          </div>
         </div>
         <div className="card">
           <div className="text-sm text-terminal-text-dim">Last Updated</div>
