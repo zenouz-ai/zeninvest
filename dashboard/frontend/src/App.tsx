@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { useState } from 'react'
+import { BrowserRouter, Routes, Route, Link, NavLink } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Universe from './pages/Universe'
 import RunHistory from './pages/RunHistory'
@@ -7,7 +8,46 @@ import Opportunity from './pages/Opportunity'
 import OrderManagement from './pages/OrderManagement'
 import Costs from './pages/Costs'
 
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  `inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 transition-colors rounded focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface ${
+    isActive ? 'border-accent text-accent' : 'border-transparent text-terminal-text hover:text-accent hover:border-accent'
+  }`
+
+function NavLinks({ mobile = false }: { mobile?: boolean }) {
+  const base = 'block px-3 py-2 text-base font-medium'
+  const linkClass = ({ isActive }: { isActive: boolean }) =>
+    `${base} rounded-md focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-inset ${isActive ? 'bg-terminal-bg text-accent' : 'text-terminal-text hover:bg-terminal-bg hover:text-accent'}`
+
+  return (
+    <>
+      <NavLink to="/" className={mobile ? linkClass : navLinkClass}>
+        Dashboard
+      </NavLink>
+      <NavLink to="/universe" className={mobile ? linkClass : navLinkClass}>
+        Universe
+      </NavLink>
+      <NavLink to="/runs" className={mobile ? linkClass : navLinkClass}>
+        Run History
+      </NavLink>
+      <NavLink to="/portfolio" className={mobile ? linkClass : navLinkClass}>
+        Portfolio
+      </NavLink>
+      <NavLink to="/opportunity" className={mobile ? linkClass : navLinkClass}>
+        Opportunity
+      </NavLink>
+      <NavLink to="/orders" className={mobile ? linkClass : navLinkClass}>
+        Order Mgmt
+      </NavLink>
+      <NavLink to="/costs" className={mobile ? linkClass : navLinkClass}>
+        Costs
+      </NavLink>
+    </>
+  )
+}
+
 function App() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-terminal-bg">
@@ -15,56 +55,42 @@ function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
               <div className="flex">
-                <Link to="/" className="flex items-center px-2 py-2 text-xl font-bold text-accent">
+                <Link to="/" className="flex items-center px-2 py-2 text-xl font-bold text-accent focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface rounded">
                   Investment Agent
                 </Link>
                 <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                  <Link
-                    to="/"
-                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
-                  >
-                    Dashboard
-                  </Link>
-                  <Link
-                    to="/universe"
-                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
-                  >
-                    Universe
-                  </Link>
-                  <Link
-                    to="/runs"
-                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
-                  >
-                    Run History
-                  </Link>
-                  <Link
-                    to="/portfolio"
-                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
-                  >
-                    Portfolio
-                  </Link>
-                  <Link
-                    to="/opportunity"
-                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
-                  >
-                    Opportunity
-                  </Link>
-                  <Link
-                    to="/orders"
-                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
-                  >
-                    Order Mgmt
-                  </Link>
-                  <Link
-                    to="/costs"
-                    className="inline-flex items-center px-1 pt-1 text-sm font-medium text-terminal-text hover:text-accent border-b-2 border-transparent hover:border-accent"
-                  >
-                    Costs
-                  </Link>
+                  <NavLinks />
                 </div>
+              </div>
+              <div className="flex items-center sm:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="inline-flex items-center justify-center p-2 rounded-md text-terminal-text hover:text-accent hover:bg-terminal-bg focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-inset"
+                  aria-expanded={mobileMenuOpen}
+                  aria-label="Toggle navigation menu"
+                >
+                  <span className="sr-only">Open main menu</span>
+                  {mobileMenuOpen ? (
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  ) : (
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  )}
+                </button>
               </div>
             </div>
           </div>
+          {mobileMenuOpen && (
+            <div className="sm:hidden border-t border-terminal-border">
+              <div className="pt-2 pb-3 space-y-1">
+                <NavLinks mobile />
+              </div>
+            </div>
+          )}
         </nav>
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

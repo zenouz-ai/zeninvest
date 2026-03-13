@@ -156,6 +156,10 @@ export const opportunityApi = {
     const response = await api.get('/api/opportunity/queue/')
     return response.data
   },
+  getConfig: async (): Promise<{ queue_ttl_cycles: number; immediate_threshold_z: number }> => {
+    const response = await api.get('/api/opportunity/config/')
+    return response.data
+  },
   getHistoryByTicker: async (ticker: string, params?: { limit?: number; offset?: number }): Promise<any[]> => {
     const response = await api.get(`/api/opportunity/history/${ticker}`, { params })
     return response.data

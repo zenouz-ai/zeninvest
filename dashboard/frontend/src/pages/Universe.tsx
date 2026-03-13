@@ -9,6 +9,7 @@ import {
   type SortingState,
 } from '@tanstack/react-table'
 import { universeApi } from '../api/client'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { Instrument, InstrumentDetail, UniverseBubbleItem } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
@@ -44,6 +45,7 @@ export default function Universe() {
   const [soldMap, setSoldMap] = useState<Record<string, number>>({})
   const [uovMap, setUovMap] = useState<Record<string, number | null>>({})
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [sectorFilter, setSectorFilter] = useState<string>('')
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null)
@@ -51,46 +53,46 @@ export default function Universe() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
 
-  useEffect(() => {
-    const fetchUniverse = async () => {
-      try {
-        // Fetch base universe plus bubble metadata (for investigated flag)
-        const [listData, bubble]: [Instrument[], UniverseBubbleItem[]] = await Promise.all([
-          universeApi.list({ limit: 1000 }),
-          universeApi.getBubble({ limit: 1000 }),
-        ])
-        setInstruments(listData)
-        const investigated: Record<string, boolean> = {}
-        const stats: Record<string, { count: number; buy: number; sell: number; reduce: number; hold: number }> = {}
-        const holds: Record<string, number> = {}
-        const sold: Record<string, number> = {}
-        const uov: Record<string, number | null> = {}
-        bubble.forEach((b) => {
-          if (b.investigated) {
-            investigated[b.ticker] = true
-          }
-          stats[b.ticker] = {
-            count: b.decision_count ?? 0,
-            buy: b.buy_count ?? 0,
-            sell: b.sell_count ?? 0,
-            reduce: b.reduce_count ?? 0,
-            hold: b.hold_count ?? 0,
-          }
-          holds[b.ticker] = b.hold_qty ?? 0
-          sold[b.ticker] = b.sold_qty ?? 0
-          uov[b.ticker] = b.uov_ewma ?? null
-        })
-        setInvestigatedMap(investigated)
-        setDecisionStatsMap(stats)
-        setHoldingsMap(holds)
-        setSoldMap(sold)
-        setUovMap(uov)
-      } catch (error) {
-        console.error('Failed to fetch universe:', error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchUniverse = async () => {
+    setError(null)
+    try {
+      const [listData, bubble]: [Instrument[], UniverseBubbleItem[]] = await Promise.all([
+        universeApi.list({ limit: 1000 }),
+        universeApi.getBubble({ limit: 1000 }),
+      ])
+      setInstruments(listData)
+      const investigated: Record<string, boolean> = {}
+      const stats: Record<string, { count: number; buy: number; sell: number; reduce: number; hold: number }> = {}
+      const holds: Record<string, number> = {}
+      const sold: Record<string, number> = {}
+      const uov: Record<string, number | null> = {}
+      bubble.forEach((b) => {
+        if (b.investigated) investigated[b.ticker] = true
+        stats[b.ticker] = {
+          count: b.decision_count ?? 0,
+          buy: b.buy_count ?? 0,
+          sell: b.sell_count ?? 0,
+          reduce: b.reduce_count ?? 0,
+          hold: b.hold_count ?? 0,
+        }
+        holds[b.ticker] = b.hold_qty ?? 0
+        sold[b.ticker] = b.sold_qty ?? 0
+        uov[b.ticker] = b.uov_ewma ?? null
+      })
+      setInvestigatedMap(investigated)
+      setDecisionStatsMap(stats)
+      setHoldingsMap(holds)
+      setSoldMap(sold)
+      setUovMap(uov)
+    } catch (err) {
+      console.error('Failed to fetch universe:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load universe')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchUniverse()
   }, [])
 
@@ -341,9 +343,16 @@ export default function Universe() {
   })
 
   if (loading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-terminal-text-dim">Loading universe...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-loss text-sm">{error}</p>
+        <button type="button" onClick={() => { setLoading(true); fetchUniverse() }} className="btn-secondary">
+          Retry
+        </button>
       </div>
     )
   }
@@ -389,7 +398,7 @@ export default function Universe() {
 
       <div className="card overflow-x-auto">
         <table className="w-full">
-          <thead>
+          <thead className="sticky top-0 bg-terminal-surface z-10">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-terminal-border">
                 {headerGroup.headers.map((header) => {

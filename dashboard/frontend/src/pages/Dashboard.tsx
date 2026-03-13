@@ -5,6 +5,7 @@ import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail } from '../
 import { safeFormat } from '../utils/date'
 import { cleanTicker } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 
 function formatCountdown(isoString: string): string {
   const target = new Date(isoString)
@@ -63,6 +64,7 @@ export default function Dashboard() {
   })
   const [triggerLoading, setTriggerLoading] = useState<'dry' | 'live' | null>(null)
   const [showLiveConfirm, setShowLiveConfirm] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const { events: sseEvents, isConnected } = useSSE({ enabled: true })
 
   const now = useMemo(() => new Date(), [])
@@ -79,47 +81,49 @@ export default function Dashboard() {
     })
   }, [latestOrders, latestTradesFilters])
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [runs, portfolioData, eventsData, statusData, monthly, orders, feed, dailyCostData] = await Promise.all([
-          runsApi.list({ limit: 1 }),
-          portfolioApi.current(),
-          eventsApi.list({ limit: 50 }),
-          statusApi.get(),
-          dashboardApi.getMonthlySummary(currentYear, currentMonth),
-          ordersApi.list({ limit: 15 }),
-          dashboardApi.getRunFeed({ limit: 15 }),
-          costsApi.getDaily({ days: 31 }),
-        ])
-        setLatestRun(runs[0] || null)
-        setPortfolio(portfolioData)
-        setHistoricalEvents(eventsData)
-        setNextRunUtc(statusData.next_run_utc)
-        setSystemState(statusData.state ?? 'ACTIVE')
-        setPaused(statusData.paused ?? false)
-        setMonthlySummary(monthly)
-        setLatestOrders(orders)
-        setRunFeed(feed)
-        setDailyCosts(
-          (dailyCostData || []).map((d: { date: string; llm_cost_gbp?: number; api_cost_gbp?: number; total_gbp?: number }) => {
-            const llm = d.llm_cost_gbp ?? d.total_gbp ?? 0
-            const api = d.api_cost_gbp ?? 0
-            return {
-              date: d.date,
-              llm_cost_gbp: llm,
-              api_cost_gbp: api,
-              total_gbp: llm + api,
-            }
-          })
-        )
-      } catch (error) {
-        console.error('Failed to fetch dashboard data:', error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchData = async () => {
+    setError(null)
+    try {
+      const [runs, portfolioData, eventsData, statusData, monthly, orders, feed, dailyCostData] = await Promise.all([
+        runsApi.list({ limit: 1 }),
+        portfolioApi.current(),
+        eventsApi.list({ limit: 50 }),
+        statusApi.get(),
+        dashboardApi.getMonthlySummary(currentYear, currentMonth),
+        ordersApi.list({ limit: 15 }),
+        dashboardApi.getRunFeed({ limit: 15 }),
+        costsApi.getDaily({ days: 31 }),
+      ])
+      setLatestRun(runs[0] || null)
+      setPortfolio(portfolioData)
+      setHistoricalEvents(eventsData)
+      setNextRunUtc(statusData.next_run_utc)
+      setSystemState(statusData.state ?? 'ACTIVE')
+      setPaused(statusData.paused ?? false)
+      setMonthlySummary(monthly)
+      setLatestOrders(orders)
+      setRunFeed(feed)
+      setDailyCosts(
+        (dailyCostData || []).map((d: { date: string; llm_cost_gbp?: number; api_cost_gbp?: number; total_gbp?: number }) => {
+          const llm = d.llm_cost_gbp ?? d.total_gbp ?? 0
+          const api = d.api_cost_gbp ?? 0
+          return {
+            date: d.date,
+            llm_cost_gbp: llm,
+            api_cost_gbp: api,
+            total_gbp: llm + api,
+          }
+        })
+      )
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard')
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchData()
     const interval = setInterval(fetchData, 30000)
     return () => clearInterval(interval)
@@ -192,9 +196,16 @@ export default function Dashboard() {
   }
 
   if (loading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-terminal-text-dim">Loading...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-loss text-sm">{error}</p>
+        <button type="button" onClick={() => { setLoading(true); fetchData() }} className="btn-secondary">
+          Retry
+        </button>
       </div>
     )
   }
@@ -249,7 +260,7 @@ export default function Dashboard() {
             type="button"
             onClick={handleDryRun}
             disabled={triggerLoading != null}
-            className="px-3 py-1.5 rounded text-sm font-medium bg-neutral/20 hover:bg-neutral/30 text-terminal-text disabled:opacity-50 disabled:cursor-not-allowed border border-terminal-border"
+            className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {triggerLoading === 'dry' ? 'Starting…' : 'Dry Run'}
           </button>
@@ -257,7 +268,7 @@ export default function Dashboard() {
             type="button"
             onClick={() => setShowLiveConfirm(true)}
             disabled={triggerLoading != null || paused}
-            className="px-3 py-1.5 rounded text-sm font-medium bg-loss/20 hover:bg-loss/30 text-terminal-text border border-loss/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-danger text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {triggerLoading === 'live' ? 'Starting…' : 'Live Run'}
           </button>
@@ -271,18 +282,10 @@ export default function Dashboard() {
               This will run a full cycle and execute real trades on the Trading 212 Practice account.
             </p>
             <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => setShowLiveConfirm(false)}
-                className="px-3 py-1.5 rounded text-sm border border-terminal-border hover:bg-terminal-bg"
-              >
+              <button type="button" onClick={() => setShowLiveConfirm(false)} className="btn-secondary text-sm py-1.5">
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={handleLiveRun}
-                className="px-3 py-1.5 rounded text-sm bg-loss text-white hover:bg-loss/90"
-              >
+              <button type="button" onClick={handleLiveRun} className="btn-danger-solid text-sm py-1.5">
                 Run live
               </button>
             </div>

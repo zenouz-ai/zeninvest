@@ -6,6 +6,9 @@
   * {
     @apply border-terminal-border;
   }
+  input, select {
+    @apply focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg;
+  }
   body {
     @apply bg-terminal-bg text-terminal-text font-sans antialiased;
     /* Subtle grid texture for depth (Bloomberg terminal aesthetic) */
@@ -19,17 +22,33 @@
 @layer components {
   .card {
     @apply bg-terminal-surface border border-terminal-border rounded-lg p-4;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   }
   
   .btn-primary {
-    @apply bg-neutral hover:bg-neutral/80 text-white px-4 py-2 rounded font-medium transition-colors;
+    @apply bg-neutral hover:bg-neutral/80 text-white px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg;
   }
   
   .btn-secondary {
-    @apply bg-terminal-surface border border-terminal-border hover:bg-terminal-border text-terminal-text px-4 py-2 rounded font-medium transition-colors;
+    @apply bg-terminal-surface border border-terminal-border hover:bg-terminal-border text-terminal-text px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg;
+  }
+  
+  .btn-danger {
+    @apply bg-loss/20 hover:bg-loss/30 text-terminal-text border border-loss/50 px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-loss focus:ring-offset-2 focus:ring-offset-terminal-bg;
+  }
+  
+  .btn-danger-solid {
+    @apply bg-loss hover:bg-loss/90 text-white px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-loss focus:ring-offset-2 focus:ring-offset-terminal-bg;
   }
   
   .mono {
     @apply font-mono;
+  }
+}
+
+/* Focus styles for interactive elements */
+@layer utilities {
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg;
   }
 }

@@ -33,7 +33,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **7 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. |
+| **React Frontend** | Complete | **7 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -186,8 +186,8 @@ Strategy (Claude) → conviction 0.8, action BUY
 ### Page 5: UOV & Opportunity Pipeline
 
 **Current opportunity queue (from `opportunity_queue`):**
-- Queued BUY opportunities with UOV scores, queue entry date, TTL remaining
-- Swap suggestions: candidate UOV vs weakest held position UOV
+- Columns: Ticker, UOV (z), UOV (EWMA), Queued cycles, **When queued** (created_at), **Why queued** (awaiting promotion / capacity gated / below immediate), **Action** (BUY), **When action taken** (promotion/expiry logic)
+- Queue config (TTL, thresholds) from GET /api/opportunity/config/
 
 **UOV score evolution (from `opportunity_score_snapshots`):**
 - Per-ticker UOV components over time: raw, z-score, final, EWMA
@@ -305,6 +305,7 @@ GET /api/risk/{cycle_id}            # Risk decisions for a cycle
 ```
 GET /api/opportunity/scores/        # Latest UOV scores, paginated
 GET /api/opportunity/scores/{cycle_id} # Scores for a specific cycle
+GET /api/opportunity/config/        # Queue TTL, thresholds (for display)
 GET /api/opportunity/queue/         # Current opportunity queue
 GET /api/opportunity/history/{ticker} # UOV score history for a ticker
 ```

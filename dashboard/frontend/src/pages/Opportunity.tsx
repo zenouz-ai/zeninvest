@@ -1,50 +1,100 @@
 import { useEffect, useState } from 'react'
 import { opportunityApi, universeApi } from '../api/client'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { InstrumentDetail } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 import { cleanTicker } from '../types'
+import { safeFormat } from '../utils/date'
+
+type QueueConfig = { queue_ttl_cycles: number; immediate_threshold_z: number }
+type QueueMeta = { blocked_by_capacity?: boolean; final_allocation_pct?: number }
+
+function parseMetadata(metadataJson: string | null | undefined): QueueMeta {
+  if (!metadataJson) return {}
+  try {
+    return JSON.parse(metadataJson) as QueueMeta
+  } catch {
+    return {}
+  }
+}
+
+function getWhyReason(q: { queued_cycles: number; reason?: string | null; metadata_json?: string | null }): string {
+  const meta = parseMetadata(q.metadata_json)
+  if (meta.blocked_by_capacity) return 'Capacity gated (no slot or cash)'
+  if ((q.queued_cycles ?? 1) < 2) return 'Awaiting 2nd cycle for promotion'
+  return 'Below immediate threshold'
+}
+
+function getWhenAction(
+  q: { queued_cycles: number; metadata_json?: string | null },
+  config: QueueConfig
+): string {
+  const meta = parseMetadata(q.metadata_json)
+  const cycles = q.queued_cycles ?? 1
+  const ttl = config?.queue_ttl_cycles ?? 4
+  const expiresIn = Math.max(0, ttl - cycles)
+
+  const parts: string[] = []
+  if (cycles < 2) {
+    parts.push('Promotes next cycle if above threshold')
+  } else if (meta.blocked_by_capacity) {
+    parts.push('When slot/cash frees')
+  } else {
+    parts.push('Eligible for promotion next cycle')
+  }
+  if (expiresIn > 0) {
+    parts.push(`Expires in ${expiresIn} cycle${expiresIn !== 1 ? 's' : ''}`)
+  }
+  return parts.join(' · ')
+}
 
 export default function Opportunity() {
   const [scores, setScores] = useState<any[]>([])
   const [queue, setQueue] = useState<any[]>([])
+  const [config, setConfig] = useState<QueueConfig | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null)
   const [detail, setDetail] = useState<InstrumentDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [scoresData, queueData] = await Promise.all([
-          opportunityApi.listScores({ limit: 50 }),
-          opportunityApi.getQueue(),
-        ])
-        setScores(scoresData)
-        // Merge queue table with score-derived queued tickers (action=QUEUED or stage=opportunity_queue)
-        const queueByTicker = new Map<string, typeof queueData[0]>()
-        for (const q of queueData) {
-          queueByTicker.set(q.ticker, q)
-        }
-        const seenTickers = new Set(queueByTicker.keys())
-        for (const s of scoresData) {
-          const isQueued = s.action === 'QUEUED' || s.stage === 'opportunity_queue'
-          if (isQueued && !seenTickers.has(s.ticker)) {
-            seenTickers.add(s.ticker)
-            queueByTicker.set(s.ticker, {
-              ticker: s.ticker,
-              last_uov_z: s.uov_z ?? 0,
-              last_uov_ewma: s.uov_ewma ?? 0,
-              queued_cycles: 1,
-            } as typeof queueData[0])
-          }
-        }
-        setQueue(Array.from(queueByTicker.values()).sort((a, b) => (b.last_uov_ewma ?? 0) - (a.last_uov_ewma ?? 0)))
-      } catch (e) {
-        console.error('Failed to fetch opportunity data:', e)
-      } finally {
-        setLoading(false)
+  const fetchData = async () => {
+    setError(null)
+    try {
+      const [scoresData, queueData, configData] = await Promise.all([
+        opportunityApi.listScores({ limit: 50 }),
+        opportunityApi.getQueue(),
+        opportunityApi.getConfig().catch(() => null),
+      ])
+      setConfig(configData ?? null)
+      setScores(scoresData)
+      const queueByTicker = new Map<string, (typeof queueData)[0]>()
+      for (const q of queueData) {
+        queueByTicker.set(q.ticker, q)
       }
+      const seenTickers = new Set(queueByTicker.keys())
+      for (const s of scoresData) {
+        const isQueued = s.action === 'QUEUED' || s.stage === 'opportunity_queue'
+        if (isQueued && !seenTickers.has(s.ticker)) {
+          seenTickers.add(s.ticker)
+          queueByTicker.set(s.ticker, {
+            ticker: s.ticker,
+            last_uov_z: s.uov_z ?? 0,
+            last_uov_ewma: s.uov_ewma ?? 0,
+            queued_cycles: 1,
+          } as typeof queueData[0])
+        }
+      }
+      setQueue(Array.from(queueByTicker.values()).sort((a, b) => (b.last_uov_ewma ?? 0) - (a.last_uov_ewma ?? 0)))
+    } catch (e) {
+      console.error('Failed to fetch opportunity data:', e)
+      setError(e instanceof Error ? e.message : 'Failed to load opportunity data')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchData()
   }, [])
 
@@ -62,9 +112,16 @@ export default function Opportunity() {
   }, [expandedTicker])
 
   if (loading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-terminal-text-dim">Loading...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-loss text-sm">{error}</p>
+        <button type="button" onClick={() => { setLoading(true); fetchData() }} className="btn-secondary">
+          Retry
+        </button>
       </div>
     )
   }
@@ -113,17 +170,25 @@ export default function Opportunity() {
 
       <div className="card">
         <h2 className="text-lg font-semibold mb-3">Opportunity Queue ({queue.length})</h2>
+        <p className="text-terminal-text-dim text-sm mb-3">
+          Tickers above the queue threshold but deferred. Action: BUY. Promotes when queued ≥2 cycles and capacity available.
+          {config && ` Queue TTL: ${config.queue_ttl_cycles} cycles.`}
+        </p>
         {queue.length === 0 ? (
           <p className="text-terminal-text-dim">No queued opportunities.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 bg-terminal-surface z-10">
                 <tr className="border-b border-terminal-border text-left">
                   <th className="py-2 font-mono">Ticker</th>
                   <th className="py-2 font-mono">UOV (z)</th>
                   <th className="py-2 font-mono">UOV (EWMA)</th>
                   <th className="py-2 font-mono">Queued cycles</th>
+                  <th className="py-2">When queued</th>
+                  <th className="py-2">Why queued</th>
+                  <th className="py-2">Action</th>
+                  <th className="py-2">When action taken</th>
                 </tr>
               </thead>
               <tbody>
@@ -139,6 +204,16 @@ export default function Opportunity() {
                     <td className="py-2 font-mono">{q.last_uov_z?.toFixed(3)}</td>
                     <td className="py-2 font-mono">{q.last_uov_ewma?.toFixed(3)}</td>
                     <td className="py-2 font-mono">{q.queued_cycles}</td>
+                    <td className="py-2 text-terminal-text-dim text-xs">
+                      {q.created_at ? safeFormat(q.created_at, 'MMM d, HH:mm', '—') : '—'}
+                    </td>
+                    <td className="py-2 text-terminal-text-dim text-xs max-w-[140px] truncate" title={getWhyReason(q)}>
+                      {getWhyReason(q)}
+                    </td>
+                    <td className="py-2 font-mono text-gain">{q.action ?? 'BUY'}</td>
+                    <td className="py-2 text-terminal-text-dim text-xs max-w-[180px]" title={config ? getWhenAction(q, config) : ''}>
+                      {config ? getWhenAction(q, config) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -157,8 +232,8 @@ export default function Opportunity() {
         ) : (
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-terminal-border text-left sticky top-0 bg-terminal-surface">
+              <thead className="sticky top-0 bg-terminal-surface z-10">
+                <tr className="border-b border-terminal-border text-left">
                   <th className="py-2 font-mono">Cycle</th>
                   <th className="py-2 font-mono">Ticker</th>
                   <th className="py-2 font-mono">Action</th>

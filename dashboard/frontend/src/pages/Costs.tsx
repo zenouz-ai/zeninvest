@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 import {
   AreaChart,
   Area,
@@ -16,31 +17,42 @@ export default function Costs() {
   const [monthly, setMonthly] = useState<any[]>([])
   const [degradation, setDegradation] = useState<{ level: string; message?: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchData = async () => {
+    setError(null)
+    try {
+      const [dailyData, monthlyData, degData] = await Promise.all([
+        costsApi.getDaily({ days: 30 }),
+        costsApi.getMonthly({ months: 12 }),
+        costsApi.getDegradation(),
+      ])
+      setDaily(dailyData)
+      setMonthly(monthlyData)
+      setDegradation(degData)
+    } catch (e) {
+      console.error('Failed to fetch costs:', e)
+      setError(e instanceof Error ? e.message : 'Failed to load costs')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [dailyData, monthlyData, degData] = await Promise.all([
-          costsApi.getDaily({ days: 30 }),
-          costsApi.getMonthly({ months: 12 }),
-          costsApi.getDegradation(),
-        ])
-        setDaily(dailyData)
-        setMonthly(monthlyData)
-        setDegradation(degData)
-      } catch (e) {
-        console.error('Failed to fetch costs:', e)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchData()
   }, [])
 
   if (loading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-terminal-text-dim">Loading...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-loss text-sm">{error}</p>
+        <button type="button" onClick={() => { setLoading(true); fetchData() }} className="btn-secondary">
+          Retry
+        </button>
       </div>
     )
   }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { portfolioApi } from '../api/client'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { PortfolioSnapshot } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
@@ -20,22 +21,26 @@ export default function Portfolio() {
   const [currentPortfolio, setCurrentPortfolio] = useState<PortfolioSnapshot | null>(null)
   const [history, setHistory] = useState<PortfolioSnapshot[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchPortfolio = async () => {
+    setError(null)
+    try {
+      const [current, historyData] = await Promise.all([
+        portfolioApi.current(),
+        portfolioApi.history({ limit: 30 }),
+      ])
+      setCurrentPortfolio(current)
+      setHistory(historyData)
+    } catch (err) {
+      console.error('Failed to fetch portfolio:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load portfolio')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchPortfolio = async () => {
-      try {
-        const [current, historyData] = await Promise.all([
-          portfolioApi.current(),
-          portfolioApi.history({ limit: 30 }),
-        ])
-        setCurrentPortfolio(current)
-        setHistory(historyData)
-      } catch (error) {
-        console.error('Failed to fetch portfolio:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchPortfolio()
     const interval = setInterval(fetchPortfolio, 30000) // Refresh every 30s
     return () => clearInterval(interval)
@@ -62,9 +67,16 @@ export default function Portfolio() {
   const COLORS = ['#4a9eff', '#00ff88', '#ffd700', '#ff4444', '#ffaa00']
 
   if (loading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-terminal-text-dim">Loading portfolio...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-loss text-sm">{error}</p>
+        <button type="button" onClick={() => { setLoading(true); fetchPortfolio() }} className="btn-secondary">
+          Retry
+        </button>
       </div>
     )
   }

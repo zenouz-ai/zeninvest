@@ -1,34 +1,46 @@
 import { useEffect, useState } from 'react'
 import { stopLossApi } from '../api/client'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 import { safeFormat } from '../utils/date'
 
 export default function OrderManagement() {
   const [current, setCurrent] = useState<{ ticker: string; stop_price: number | null; source: string }[]>([])
   const [adjustments, setAdjustments] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchData = async () => {
+    setError(null)
+    try {
+      const [currentData, adjData] = await Promise.all([
+        stopLossApi.getCurrent(),
+        stopLossApi.getAdjustments({ limit: 50 }),
+      ])
+      setCurrent(currentData)
+      setAdjustments(adjData)
+    } catch (e) {
+      console.error('Failed to fetch stop-loss data:', e)
+      setError(e instanceof Error ? e.message : 'Failed to load stop-loss data')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [currentData, adjData] = await Promise.all([
-          stopLossApi.getCurrent(),
-          stopLossApi.getAdjustments({ limit: 50 }),
-        ])
-        setCurrent(currentData)
-        setAdjustments(adjData)
-      } catch (e) {
-        console.error('Failed to fetch stop-loss data:', e)
-      } finally {
-        setLoading(false)
-      }
-    }
     fetchData()
   }, [])
 
   if (loading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-terminal-text-dim">Loading...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-loss text-sm">{error}</p>
+        <button type="button" onClick={() => { setLoading(true); fetchData() }} className="btn-secondary">
+          Retry
+        </button>
       </div>
     )
   }
@@ -49,7 +61,7 @@ export default function OrderManagement() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 bg-terminal-surface z-10">
                 <tr className="border-b border-terminal-border text-left">
                   <th className="py-2 font-mono">Ticker</th>
                   <th className="py-2 font-mono">Stop price</th>
@@ -77,8 +89,8 @@ export default function OrderManagement() {
         ) : (
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-terminal-border text-left sticky top-0 bg-terminal-surface">
+              <thead className="sticky top-0 bg-terminal-surface z-10">
+                <tr className="border-b border-terminal-border text-left">
                   <th className="py-2 font-mono">Time</th>
                   <th className="py-2 font-mono">Ticker</th>
                   <th className="py-2 font-mono">Type</th>

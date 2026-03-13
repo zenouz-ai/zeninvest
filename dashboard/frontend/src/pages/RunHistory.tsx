@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { runsApi } from '../api/client'
+import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { Run } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
@@ -15,23 +16,27 @@ type RunDiff = {
 export default function RunHistory() {
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedRun, setSelectedRun] = useState<Run | null>(null)
   const [diffFrom, setDiffFrom] = useState<Run | null>(null)
   const [diffTo, setDiffTo] = useState<Run | null>(null)
   const [diff, setDiff] = useState<RunDiff | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
 
-  useEffect(() => {
-    const fetchRuns = async () => {
-      try {
-        const data = await runsApi.list({ limit: 50 })
-        setRuns(data)
-      } catch (error) {
-        console.error('Failed to fetch runs:', error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchRuns = async () => {
+    setError(null)
+    try {
+      const data = await runsApi.list({ limit: 50 })
+      setRuns(data)
+    } catch (err) {
+      console.error('Failed to fetch runs:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load runs')
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchRuns()
     const interval = setInterval(fetchRuns, 30000) // Refresh every 30s
     return () => clearInterval(interval)
@@ -77,9 +82,16 @@ export default function RunHistory() {
   }
 
   if (loading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-terminal-text-dim">Loading run history...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <p className="text-loss text-sm">{error}</p>
+        <button type="button" onClick={() => { setLoading(true); fetchRuns() }} className="btn-secondary">
+          Retry
+        </button>
       </div>
     )
   }

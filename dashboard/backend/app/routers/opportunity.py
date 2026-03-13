@@ -9,7 +9,7 @@ from src.data.database import get_session
 from src.data.models import OpportunityQueue, OpportunityScoreSnapshot
 from src.utils.config import get_settings
 
-from ..schemas import OpportunityQueueSchema, OpportunityScoreSchema
+from ..schemas import OpportunityConfigSchema, OpportunityQueueSchema, OpportunityScoreSchema
 
 router = APIRouter()
 settings = get_settings()
@@ -62,6 +62,18 @@ async def get_scores_by_cycle(cycle_id: str):
         return rows
     finally:
         session.close()
+
+
+@router.get("/config/", response_model=OpportunityConfigSchema)
+async def get_config():
+    """Opportunity pipeline config for dashboard display (TTL, thresholds)."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    return OpportunityConfigSchema(
+        queue_ttl_cycles=settings.opportunity_queue_ttl_cycles,
+        immediate_threshold_z=settings.opportunity_immediate_threshold_z,
+    )
 
 
 @router.get("/queue/", response_model=list[OpportunityQueueSchema])

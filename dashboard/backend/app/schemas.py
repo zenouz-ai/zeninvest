@@ -248,9 +248,17 @@ class OpportunityQueueSchema(BaseModel):
     last_uov_ewma: float
     action: str
     reason: str | None
+    metadata_json: str | None = None
 
     class Config:
         from_attributes = True
+
+
+class OpportunityConfigSchema(BaseModel):
+    """Opportunity pipeline config (thresholds, TTL) for dashboard display."""
+
+    queue_ttl_cycles: int
+    immediate_threshold_z: float
 
 
 # --- Trade outcomes ---
