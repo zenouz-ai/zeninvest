@@ -196,7 +196,12 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 ### Page 6: Order Management & Stop Loss Audit
 
-**Active orders and adjustments (from `orders` + `stop_loss_adjustments`):**
+**Recent orders (from `orders`):**
+- Table of all recent orders: time, ticker, action, quantity, order type, status (filled/pending/dry_run/failed)
+- Market orders (BUY/SELL/REDUCE) and stop orders in one view
+- Status reflects T212 API response when live (FILLED→filled, NEW→pending, REJECTED→failed)
+
+**Current stop-loss levels (from `orders` + `stop_loss_adjustments`):**
 - Current stop-loss levels for all positions with distance from current price
 - Trailing stop tracking: high-water mark, current trail level, visualised on a mini price chart
 - Limit dip-buy orders: pending limits with entry target vs current price

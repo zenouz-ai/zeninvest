@@ -161,7 +161,7 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
                     +--------+
 
   Recovery: Manual intervention required to move from HALTED back to ACTIVE.
-  CAUTIOUS -> ACTIVE: Automatic when drawdown recovers below 5%.
+  CAUTIOUS -> ACTIVE: Automatic when drawdown recovers below 5%; or `--reset-peak` / Dashboard "Reset Peak" when peak was set incorrectly.
 ```
 
 ## Cost Degradation Chain

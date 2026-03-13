@@ -183,6 +183,7 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 
 - The `OrderManager._is_duplicate()` method checks for matching orders (same ticker, direction, and quantity) placed within the last 5 minutes.
 - Duplicate orders are logged and skipped with `"status": "skipped", "reason": "duplicate"`.
+- **Order status from T212**: The T212 API response `status` is mapped: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/etc→pending, REJECTED/CANCELLED→failed. Do not assume a 200 OK implies execution; pending orders may not appear in T212 order history until filled.
 - After successful BUY executions, the system automatically places a GTC stop-loss order via `OrderManager.place_stop_loss()` using the `stop_loss_pct` from Claude's decision. This protects against downside risk without requiring manual intervention.
 - The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation.
 

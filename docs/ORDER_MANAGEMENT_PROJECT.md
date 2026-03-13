@@ -117,6 +117,10 @@ These are **not** yet committed user stories; they are candidate enhancements fo
 
 When a future user story is adopted, add it to `docs/SOPHISTICATION_ROADMAP.md` with acceptance criteria and link back to this doc.
 
+## Dashboard
+
+The Order Management page shows: **Recent Orders** (all market/stop orders with status: filled/pending/dry_run/failed), **Current Stop-Loss Levels** (per position, source: order or adjustment), and **Adjustment History** (ATR reassessment, trailing, limit orders). Order status reflects T212 API response (see rule 7 in CLAUDE.md).
+
 ## Related Notes
 
 - [Architecture](ARCHITECTURE.md) — Order Manager and Stop-Loss Manager in pipeline

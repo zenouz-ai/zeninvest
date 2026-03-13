@@ -587,6 +587,7 @@ export default function Dashboard() {
                   >
                     <option value="">All</option>
                     <option value="filled">filled</option>
+                    <option value="pending">pending</option>
                     <option value="failed">failed</option>
                     <option value="dry_run">dry_run</option>
                   </select>

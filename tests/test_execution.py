@@ -183,7 +183,7 @@ class TestOrderManager:
 
     def test_live_order_success(self, db_session):
         mock_client = MagicMock()
-        mock_client.place_market_order.return_value = {"id": "t212-order-123"}
+        mock_client.place_market_order.return_value = {"id": "t212-order-123", "status": "FILLED"}
 
         manager = OrderManager(client=mock_client, dry_run=False)
 

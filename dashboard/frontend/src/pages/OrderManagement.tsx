@@ -1,23 +1,30 @@
 import { useEffect, useState } from 'react'
-import { stopLossApi } from '../api/client'
+import { ordersApi, stopLossApi } from '../api/client'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { safeFormat } from '../utils/date'
+
+function cleanTicker(t: string) {
+  return t.replace(/_US_EQ$/, '').replace(/_UK_EQ$/, '')
+}
 
 export default function OrderManagement() {
   const [current, setCurrent] = useState<{ ticker: string; stop_price: number | null; source: string }[]>([])
   const [adjustments, setAdjustments] = useState<any[]>([])
+  const [recentOrders, setRecentOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = async () => {
     setError(null)
     try {
-      const [currentData, adjData] = await Promise.all([
+      const [currentData, adjData, ordersData] = await Promise.all([
         stopLossApi.getCurrent(),
         stopLossApi.getAdjustments({ limit: 50 }),
+        ordersApi.list({ limit: 30 }),
       ])
       setCurrent(currentData)
       setAdjustments(adjData)
+      setRecentOrders(ordersData)
     } catch (e) {
       console.error('Failed to fetch stop-loss data:', e)
       setError(e instanceof Error ? e.message : 'Failed to load stop-loss data')
@@ -50,8 +57,42 @@ export default function OrderManagement() {
       <div>
         <h1 className="text-2xl font-bold">Order Management</h1>
         <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
-          Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Source indicates whether the stop came from an order, an adjustment, or if the position has no stop yet.
+          Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent market orders (BUY/SELL/REDUCE) are listed below.
         </p>
+      </div>
+
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-3">Recent Orders ({recentOrders.length})</h2>
+        {recentOrders.length === 0 ? (
+          <p className="text-terminal-text-dim">No orders yet.</p>
+        ) : (
+          <div className="overflow-x-auto max-h-64 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-terminal-surface z-10">
+                <tr className="border-b border-terminal-border text-left">
+                  <th className="py-2 font-mono">Time</th>
+                  <th className="py-2 font-mono">Ticker</th>
+                  <th className="py-2 font-mono">Action</th>
+                  <th className="py-2 font-mono">Qty</th>
+                  <th className="py-2 font-mono">Type</th>
+                  <th className="py-2 font-mono">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentOrders.map((o) => (
+                  <tr key={o.id} className="border-b border-terminal-border">
+                    <td className="py-1 font-mono text-xs">{safeFormat(o.timestamp, 'MMM dd HH:mm', '')}</td>
+                    <td className="py-1 font-mono">{cleanTicker(o.ticker)}</td>
+                    <td className="py-1">{o.action}</td>
+                    <td className="py-1 font-mono">{o.quantity}</td>
+                    <td className="py-1 text-terminal-text-dim">{o.order_type}</td>
+                    <td className="py-1">{o.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="card">
