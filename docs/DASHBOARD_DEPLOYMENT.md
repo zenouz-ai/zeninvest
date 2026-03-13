@@ -137,7 +137,7 @@ When the operator has run the steps above on a VPS:
 - [x] Build & run: `docker compose up -d --build`
 - [x] Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser
 
-**Outcome:** Dashboard is running on VPS. All 8 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs, Roadmap), activity feed (SSE), and API are available at `http://YOUR_VPS_IP:8000`.
+**Outcome:** Dashboard is running on VPS. All 8 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs, Roadmap), activity feed (SSE), and API are available at `http://YOUR_VPS_IP:8000`. Portfolio page includes Cash, Investments, Positions (T212 positions normalised for display), sector allocation, and chronological value history chart.
 
 ---
 
