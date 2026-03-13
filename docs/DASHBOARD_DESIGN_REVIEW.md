@@ -152,6 +152,17 @@ Phase 1–4 improvements are implemented. Remaining optional items: Empty states
 
 ---
 
+## Portfolio Page Fixes (2026-03-13)
+
+Addresses empty positions table, blank sector allocation, and chart/value mismatch:
+
+- **Backend:** `_parse_position()` in portfolio router supports both T212 (`instrument.ticker`, `walletImpact`) and normalised formats for backward compatibility.
+- **Orchestrator:** `_normalize_position_for_snapshot()` converts T212 positions to `{ticker, quantity, value_gbp, pnl_gbp, pnl_pct}` before saving; `_ticker_from_position()` used in `existing_tickers`, `_fetch_stocks_data`, and stop-loss manager.
+- **Frontend:** Investments card added; Portfolio Value History chart reversed to chronological order; Positions card uses `num_positions`; sector pie filters zero-value sectors.
+- **Files:** `dashboard/backend/app/routers/portfolio.py`, `src/orchestrator/main.py`, `src/agents/execution/stop_loss_manager.py`, `dashboard/frontend/src/pages/Portfolio.tsx`.
+
+---
+
 ## Related Notes
 
 - [Dashboard](DASHBOARD.md) — architecture, API, pages, design tokens

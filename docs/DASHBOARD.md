@@ -166,10 +166,12 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 ### Page 4: Portfolio & Performance
 
-**Current positions (from `portfolio_snapshots` + live T212 data if available):**
-- Table: ticker, quantity, avg entry, current price, unrealised P&L, stop-loss level, trailing stop status
-- Sector allocation donut chart
-- Position sizing vs risk limits visualisation (are any positions near the 15% cap?)
+**Summary cards:** Cash Balance, Investments (`invested_gbp`), Positions count, Last Updated.
+
+**Current positions (from `portfolio_snapshots.positions_json`; normalised from T212 `instrument.ticker` / `walletImpact`):**
+- Table: ticker, sector, quantity, value (GBP), P&L (GBP), P&L %
+- Sector allocation pie chart (from position values; zero-value sectors filtered)
+- Portfolio value history line chart (chronological: oldest left, newest right; rightmost point = latest snapshot)
 
 **Historical performance (from `performance_metrics`):**
 - Portfolio value over time (line chart, daily)
