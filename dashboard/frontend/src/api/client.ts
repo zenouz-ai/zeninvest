@@ -235,6 +235,9 @@ export const dashboardApi = {
     portfolio_start_gbp: number | null
     portfolio_end_gbp: number | null
     pnl_gbp: number | null
+    cumul_screened: number
+    cumul_reviewed: number
+    cumul_orders: number
   }> => {
     const response = await api.get('/api/dashboard/monthly-summary', { params: { year, month } })
     return response.data

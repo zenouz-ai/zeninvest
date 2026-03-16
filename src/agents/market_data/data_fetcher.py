@@ -21,9 +21,10 @@ from src.agents.market_data.brave_enrichment import (
     extract_sector_market_cap_brave_answers,
 )
 from src.data.database import get_session
-from src.data.models import Instrument, MarketDataCache, NewsSentimentCache, StrategyDecision
+from src.data.models import Instrument, MarketDataCache, NewsSentimentCache, Order, StrategyDecision
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
+from src.utils.ticker_utils import t212_to_yf
 
 logger = get_logger("data_fetcher")
 
@@ -460,6 +461,7 @@ class DataFetcher:
         self,
         exclude_tickers: set[str] | None = None,
         max_candidates: int | None = None,
+        positions_count: int | None = None,
     ) -> list[dict[str, Any]]:
         """Screen the instrument universe for diverse candidates.
 
@@ -470,6 +472,7 @@ class DataFetcher:
         Args:
             exclude_tickers: Tickers to skip (e.g. current positions).
             max_candidates: Override for settings.max_candidates.
+            positions_count: Number of portfolio holdings re-evaluated this cycle (for event metadata).
 
         Returns:
             List of candidate dicts with keys: ticker, name, sector,
@@ -606,6 +609,9 @@ class DataFetcher:
             selected.extend(_sample_tier(mid_new, mid_review, n_mid))
             selected.extend(_sample_tier(small_new, small_review, n_small))
 
+            review_count = sum(1 for i in selected if _is_review(i.ticker))
+            new_count = len(selected) - review_count
+
             logger.info(
                 "Screened universe: %s candidates (large=%s, mid=%s, small=%s, cooldown=%sh, new_share=%.2f)",
                 len(selected),
@@ -639,19 +645,43 @@ class DataFetcher:
                     large_count = len(large_new) + len(large_review)
                     mid_count = len(mid_new) + len(mid_review)
                     small_count = len(small_new) + len(small_review)
+                    total_available = large_count + mid_count + small_count
+                    screened_large = min(n_large, large_count)
+                    screened_mid = min(n_mid, mid_count)
+                    screened_small = min(n_small, small_count)
+                    msg = f"Screened {len(candidates)}/{total_available} candidates (large={screened_large}/{large_count}, mid={screened_mid}/{mid_count}, small={screened_small}/{small_count}) — reviews: {review_count}, new: {new_count}"
+                    if positions_count is not None:
+                        msg += f" | {positions_count} in portfolio"
+                    # Cumulative stats (lifetime)
+                    cumul_screened = session.query(Instrument).filter(Instrument.last_screened_at.isnot(None)).count()
+                    cumul_reviewed = session.query(func.count(func.distinct(StrategyDecision.ticker))).scalar() or 0
+                    cumul_orders = session.query(Order).count()
+                    msg += f" | cumul: {cumul_screened} screened, {cumul_reviewed} reviewed, {cumul_orders} orders"
+                    meta: dict[str, Any] = {
+                        "num_candidates": len(candidates),
+                        "total_available": total_available,
+                        "tickers": tickers_list[:50],  # Limit to first 50 for storage
+                        "sector_distribution": dict(sector_counts),
+                        "large_cap_count": screened_large,
+                        "mid_cap_count": screened_mid,
+                        "small_cap_count": screened_small,
+                        "large_pool": large_count,
+                        "mid_pool": mid_count,
+                        "small_pool": small_count,
+                        "cooldown_hours": cooldown_hours,
+                        "review_count": review_count,
+                        "new_count": new_count,
+                    }
+                    if positions_count is not None:
+                        meta["positions_count"] = positions_count
+                    meta["cumul_screened"] = cumul_screened
+                    meta["cumul_reviewed"] = cumul_reviewed
+                    meta["cumul_orders"] = cumul_orders
                     log_event(
                         event_type="universe_updated",
                         source="screener",
-                        message=f"Screened {len(candidates)} candidates (large={min(n_large, large_count)}, mid={min(n_mid, mid_count)}, small={min(n_small, small_count)})",
-                        metadata={
-                            "num_candidates": len(candidates),
-                            "tickers": tickers_list[:50],  # Limit to first 50 for storage
-                            "sector_distribution": dict(sector_counts),
-                            "large_cap_count": min(n_large, large_count),
-                            "mid_cap_count": min(n_mid, mid_count),
-                            "small_cap_count": min(n_small, small_count),
-                            "cooldown_hours": cooldown_hours,
-                        },
+                        message=msg,
+                        metadata=meta,
                     )
                 except Exception:
                     pass  # Fail-open
@@ -733,13 +763,13 @@ class DataFetcher:
 
         if eligible_count < min_pool_threshold:
             seed_stocks = get_seed_instruments()
-            logger.info(
-                "Pool below threshold (%d < %d): bootstrapping with %d seed instruments",
-                eligible_count,
-                min_pool_threshold,
-                len(seed_stocks),
-            )
+            # Only merge seed instruments that exist in the instruments table (i.e. from T212).
+            # Never add new instruments from seed — ensures all screened tickers are tradeable on T212.
+            db_tickers = {r[0] for r in session.query(Instrument.ticker).all()}
+            matched = 0
             for seed in seed_stocks:
+                if seed["ticker"] not in db_tickers:
+                    continue
                 existing = session.query(Instrument).filter_by(ticker=seed["ticker"]).first()
                 if existing:
                     if not existing.sector or existing.sector == "Unknown":
@@ -748,14 +778,16 @@ class DataFetcher:
                         existing.market_cap = seed["market_cap"]
                     if not existing.name:
                         existing.name = seed["name"]
-                else:
-                    session.add(Instrument(
-                        ticker=seed["ticker"],
-                        name=seed["name"],
-                        sector=seed["sector"],
-                        market_cap=seed["market_cap"],
-                    ))
-            session.commit()
+                    matched += 1
+            if matched > 0:
+                session.commit()
+            logger.info(
+                "Pool below threshold (%d < %d): enriched %d of %d seed instruments (only T212-available)",
+                eligible_count,
+                min_pool_threshold,
+                matched,
+                len(seed_stocks),
+            )
 
         # Reuse settings for filters below
         settings = self.settings
@@ -902,10 +934,6 @@ class DataFetcher:
         finally:
             session.close()
 
-    def _ticker_to_yf(self, ticker: str) -> str:
-        """Convert T212 ticker to yfinance-style (e.g. AAPL_US_EQ -> AAPL)."""
-        return ticker.replace("_US_EQ", "").replace("_UK_EQ", "").strip()
-
     def _normalize_sector(self, raw: str | None) -> str | None:
         """Map raw sector/industry string to standard sector name."""
         if not raw or not str(raw).strip():
@@ -947,9 +975,11 @@ class DataFetcher:
 
             enriched = 0
             for inst in candidates:
-                yf_symbol = self._ticker_to_yf(inst.ticker)
+                yf_symbol = t212_to_yf(inst.ticker)
                 sector = None
                 market_cap = None
+                industry = None
+                business_summary = None
 
                 # 1. yfinance (fastest, free, high accuracy for US)
                 try:
@@ -961,6 +991,12 @@ class DataFetcher:
                         mc = fund.get("market_cap")
                         if mc and float(mc or 0) > 0:
                             market_cap = int(float(mc))
+                        ind = fund.get("industry")
+                        if ind and str(ind).strip():
+                            industry = str(ind).strip()
+                        bs = fund.get("business_summary")
+                        if bs and str(bs).strip():
+                            business_summary = str(bs).strip()
                 except Exception as e:
                     logger.debug(f"yfinance fundamentals failed for {inst.ticker}: {e}")
 
@@ -999,14 +1035,20 @@ class DataFetcher:
                     except Exception as e:
                         logger.debug(f"Brave Answers enrichment failed for {inst.ticker}: {e}")
 
-                if sector or market_cap:
+                if sector or market_cap or industry or business_summary:
                     if sector and (not inst.sector or inst.sector == "Unknown"):
                         inst.sector = sector
                     if market_cap and (not inst.market_cap or inst.market_cap == 0):
                         inst.market_cap = market_cap
+                    if industry and not inst.industry:
+                        inst.industry = industry
+                    if business_summary and not inst.business_summary:
+                        inst.business_summary = business_summary
                     inst.updated_at = datetime.now(timezone.utc)
                     enriched += 1
-                    logger.debug(f"Enriched {inst.ticker}: sector={sector}, market_cap={market_cap}")
+                    logger.debug(
+                        f"Enriched {inst.ticker}: sector={sector}, market_cap={market_cap}, industry={bool(industry)}, summary={bool(business_summary)}"
+                    )
 
             session.commit()
             logger.info(f"Batch enrichment: {enriched}/{len(candidates)} instruments updated")

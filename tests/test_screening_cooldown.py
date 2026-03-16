@@ -172,11 +172,18 @@ class TestDataAvailableFiltering:
         assert inst.data_available is False
 
     def test_fallback_uses_seed_universe(self, db_session, fetcher):
-        """When no enriched instruments exist, fallback should seed from curated list."""
-        # No instruments in DB at all — fallback should populate from seeds
+        """When no enriched instruments exist, fallback enriches T212 instruments from seed.
+
+        Seed merge only updates instruments that exist in DB (from T212 refresh).
+        Pre-populate with seed tickers to simulate T212 instrument refresh.
+        """
+        # Simulate T212 refresh: add instruments that exist in seed (sector=None, market_cap=None)
+        for ticker in ["AAPL_US_EQ", "MSFT_US_EQ", "GOOGL_US_EQ", "AMZN_US_EQ", "JPM_US_EQ"]:
+            db_session.add(Instrument(ticker=ticker, name=ticker, sector=None, market_cap=None))
+        db_session.commit()
+
         candidates = fetcher.get_screened_universe()
         assert len(candidates) > 0
-        # Should contain stocks from the seed list (sector-balanced sample may vary)
         tickers = {c["ticker"] for c in candidates}
         assert all(t.endswith("_US_EQ") or t.endswith("_UK_EQ") for t in tickers), f"Expected seed-format tickers, got {tickers}"
 
@@ -200,16 +207,17 @@ class TestDataAvailableFiltering:
 
     def test_fallback_excludes_unavailable_seeds(self, db_session, fetcher):
         """Seed instruments marked unavailable should not appear in fallback."""
-        # Pre-insert an instrument that's flagged unavailable
+        # Simulate T212: AAPL (unavailable) + MSFT, GOOGL (available)
         db_session.add(Instrument(
             ticker="AAPL_US_EQ", name="Apple", sector=None,
             market_cap=None, data_available=False,
         ))
+        for ticker in ["MSFT_US_EQ", "GOOGL_US_EQ"]:
+            db_session.add(Instrument(ticker=ticker, name=ticker, sector=None, market_cap=None))
         db_session.commit()
 
         candidates = fetcher.get_screened_universe()
         tickers = {c["ticker"] for c in candidates}
-        # AAPL should not appear because it's flagged unavailable
         assert "AAPL_US_EQ" not in tickers
 
 
@@ -305,6 +313,6 @@ class TestEffectiveCooldownAndProactiveSeed:
         db_session.commit()
 
         candidates = fetcher.get_screened_universe()
-        # Proactive seed merges ~160; fallback returns up to max_candidates (10)
+        # Proactive seed merges S&P 1500 (~1506); fallback returns up to max_candidates (10)
         assert len(candidates) >= 1, "Should get candidates after proactive seed bootstrap"
         assert len(candidates) <= 10, "Should cap at max_candidates"

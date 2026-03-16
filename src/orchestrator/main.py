@@ -38,6 +38,7 @@ from src.orchestrator.state_machine import StateMachine
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
 from src.utils.logger import get_logger
+from src.utils.ticker_utils import t212_to_yf
 
 logger = get_logger("orchestrator")
 
@@ -292,6 +293,13 @@ class Orchestrator:
             cash_gbp = portfolio_data["cash"]
             cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
 
+            # Sync order status from T212 (pending -> filled)
+            if not self.dry_run:
+                try:
+                    self.order_manager.sync_order_status_from_t212()
+                except Exception as sync_err:
+                    logger.warning(f"Order status sync skipped: {sync_err}")
+
             # Update peak and check drawdown
             practice_skips_state_machine = self.settings.is_practice_account
             if not self.dry_run and not practice_skips_state_machine:
@@ -382,7 +390,7 @@ class Orchestrator:
             analyst_data_map: dict[str, dict] = {}
             for ticker in active_review_tickers:
                 try:
-                    yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                    yf_ticker = t212_to_yf(ticker)
                     analyst_data_map[ticker] = self.data_fetcher.get_analyst_data_cached(yf_ticker)
                 except Exception as e:
                     logger.warning(f"Finnhub analyst data error for {ticker}: {e}")
@@ -402,7 +410,7 @@ class Orchestrator:
             av_all_articles: list[dict[str, Any]] = []
             if active_review_tickers:
                 try:
-                    yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in active_review_tickers]
+                    yf_tickers = [t212_to_yf(t) for t in active_review_tickers]
                     tickers_str = ",".join(yf_tickers)
                     # Single API call — returns both aggregate stats and raw articles
                     raw_data = self.data_fetcher.alpha_vantage.get_market_news_sentiment(
@@ -426,7 +434,7 @@ class Orchestrator:
 
             # Extract per-ticker news from Alpha Vantage articles
             if av_all_articles:
-                all_yf_tickers = [t.replace("_US_EQ", "").replace("_UK_EQ", "") for t in active_review_tickers]
+                all_yf_tickers = [t212_to_yf(t) for t in active_review_tickers]
                 per_ticker_news = DataFetcher.extract_per_ticker_news(av_all_articles, all_yf_tickers)
 
             # Build per-ticker news sections for Claude (structured by ticker)
@@ -576,7 +584,7 @@ class Orchestrator:
 
                 # Moderation — build rich market context for moderators
                 logger.info(f"Moderating {action} {ticker}...")
-                yf_ticker_for_news = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                yf_ticker_for_news = t212_to_yf(ticker)
                 ticker_news = per_ticker_news.get(yf_ticker_for_news, "")
                 sector = self._get_sector(ticker, stocks_data)
                 market_context = self._build_market_context(
@@ -781,6 +789,7 @@ class Orchestrator:
                     av_broad_sentiment=av_broad_sentiment,
                     mod_result=mod_result,
                     risk_verdict=risk_verdict,
+                    portfolio_data=portfolio_data,
                 )
                 if trade_entry:
                     result["trades"].append(trade_entry)
@@ -859,6 +868,11 @@ class Orchestrator:
                 ):
                     final_alloc = float(pending.get("final_allocation_pct", 0.0))
                     trade_value = current_value * final_alloc / 100
+                    if trade_value < self.settings.min_order_value_gbp:
+                        logger.info(
+                            f"Limit BUY skipped: trade value £{trade_value:.2f} below minimum"
+                        )
+                        continue
                     price = self._get_current_price(ticker, stocks_data)
                     if price > 0:
                         limit_result = self.stop_loss_manager.place_limit_buy(
@@ -912,6 +926,7 @@ class Orchestrator:
                     av_broad_sentiment=av_broad_sentiment,
                     mod_result=pending["moderation"],
                     risk_verdict=pending["risk_verdict"],
+                    portfolio_data=portfolio_data,
                 )
                 if trade_entry:
                     result["trades"].append(trade_entry)
@@ -921,6 +936,14 @@ class Orchestrator:
                 try:
                     current_positions = portfolio_data.get("positions", [])
                     all_adjustments: list[dict[str, Any]] = []
+
+                    # Place missing stops for positions without one
+                    missing_results = self.stop_loss_manager.place_missing_stops(
+                        positions=current_positions,
+                        stocks_data=stocks_data,
+                        cycle_id=cycle_id,
+                    )
+                    all_adjustments.extend(missing_results)
 
                     # Reassess stops using ATR-based volatility
                     if self.settings.reassess_stops_enabled:
@@ -1094,7 +1117,7 @@ class Orchestrator:
             ticker = self._ticker_from_position(pos)
             if not ticker:
                 continue
-            yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+            yf_ticker = t212_to_yf(ticker)
             try:
                 cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
                 if cached:
@@ -1117,6 +1140,7 @@ class Orchestrator:
         try:
             candidates = self.data_fetcher.get_screened_universe(
                 exclude_tickers=all_exclude,
+                positions_count=len(current_positions),
             )
             self.data_fetcher.mark_instruments_screened(
                 [c["ticker"] for c in candidates],
@@ -1125,7 +1149,7 @@ class Orchestrator:
             skipped_no_data = 0
             for candidate in candidates:
                 c_ticker = candidate["ticker"]
-                yf_ticker = c_ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                yf_ticker = t212_to_yf(c_ticker)
                 if c_ticker in analyzed_tickers:
                     continue
                 try:
@@ -1165,7 +1189,7 @@ class Orchestrator:
                 queued_tickers = [r.ticker for r in queued_rows if r.ticker and r.ticker not in analyzed_tickers]
                 added_queued = 0
                 for ticker in queued_tickers:
-                    yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                    yf_ticker = t212_to_yf(ticker)
                     try:
                         cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
                         if cached:
@@ -1216,9 +1240,9 @@ class Orchestrator:
         av_broad_sentiment: dict[str, Any],
         mod_result: Any,
         risk_verdict: Any,
+        portfolio_data: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """Execute an approved trade and generate journal + stop-loss where relevant."""
-        trade_value = current_value * final_alloc / 100
         current_price = self._get_current_price(ticker, stocks_data)
 
         if current_price <= 0:
@@ -1243,6 +1267,111 @@ class Orchestrator:
                 },
             )
             return None
+
+        min_order = self.settings.min_order_value_gbp
+        trade_value: float
+
+        if action == "BUY":
+            trade_value = current_value * final_alloc / 100
+            if trade_value < min_order:
+                logger.info(f"BUY skipped: trade value £{trade_value:.2f} below minimum £{min_order}")
+                self.notification_service.emit_trade_execution_result(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": self.dry_run,
+                        "ticker": ticker,
+                        "action": action,
+                        "execution_status": "skipped",
+                        "quantity": 0,
+                        "price": current_price,
+                        "value_gbp": trade_value,
+                        "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                        "stop_loss_status": None,
+                        "error_message": "below_min_order_value",
+                        "reasoning_summary": decision.get("reasoning", ""),
+                        "target_allocation_pct": final_alloc,
+                        "occurred_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                return None
+        else:
+            # REDUCE or SELL: compute reduction amount and apply tiers
+            portfolio = portfolio_data or {}
+            allocs = self._get_position_allocations(portfolio)
+            current_position_pct = allocs.get(ticker, 0.0)
+            current_position_value = (current_position_pct / 100) * current_value
+            target_position_value = current_value * final_alloc / 100
+            reduction_amount = current_position_value - target_position_value
+
+            if action == "SELL":
+                reduction_pct = 100.0
+                reduction_amount = current_position_value
+            else:
+                reduction_pct = (
+                    (reduction_amount / current_position_value * 100)
+                    if current_position_value > 0
+                    else 0.0
+                )
+
+            if reduction_amount < min_order:
+                logger.info(
+                    f"REDUCE skipped: reduction £{reduction_amount:.2f} below minimum £{min_order}"
+                )
+                self.notification_service.emit_trade_execution_result(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": self.dry_run,
+                        "ticker": ticker,
+                        "action": action,
+                        "execution_status": "skipped",
+                        "quantity": 0,
+                        "price": current_price,
+                        "value_gbp": reduction_amount,
+                        "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                        "stop_loss_status": None,
+                        "error_message": "below_min_order_value",
+                        "reasoning_summary": decision.get("reasoning", ""),
+                        "target_allocation_pct": final_alloc,
+                        "occurred_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                return None
+
+            min_reduce_pct = self.settings.min_reduce_pct_of_position
+            if reduction_pct < min_reduce_pct:
+                logger.info(
+                    f"REDUCE skipped: {reduction_pct:.1f}% below minimum {min_reduce_pct}%"
+                )
+                self.notification_service.emit_trade_execution_result(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": self.dry_run,
+                        "ticker": ticker,
+                        "action": action,
+                        "execution_status": "skipped",
+                        "quantity": 0,
+                        "price": current_price,
+                        "value_gbp": reduction_amount,
+                        "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                        "stop_loss_status": None,
+                        "error_message": "below_min_reduce_pct",
+                        "reasoning_summary": decision.get("reasoning", ""),
+                        "target_allocation_pct": final_alloc,
+                        "occurred_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                return None
+
+            tiers = self.settings.reduce_tiers_pct
+            if action == "REDUCE" and tiers:
+                nearest = min(tiers, key=lambda t: abs(t - reduction_pct))
+                trade_value = current_position_value * (nearest / 100)
+                logger.info(f"REDUCE rounded {reduction_pct:.1f}% -> {nearest}% tier")
+            else:
+                trade_value = reduction_amount
 
         conviction = decision.get("conviction", 0)
         logger.info(f"Executing {action} {ticker} at {final_alloc:.1f}%...")
@@ -1310,7 +1439,7 @@ class Orchestrator:
         stop_loss_pct = decision.get("stop_loss_pct", 0)
         if (
             action == "BUY"
-            and exec_result.get("status") in ("filled", "dry_run")
+            and exec_result.get("status") in ("filled", "dry_run", "pending")
             and stop_loss_pct
             and stop_loss_pct < 0
         ):
@@ -1389,25 +1518,52 @@ class Orchestrator:
         Extracts business_summary, industry, and sector for each top candidate
         so Claude can reason about qualitative factors like competitive moats,
         regulatory risk, and how macro news impacts the business.
+
+        Fallback: when yfinance fundamentals lack industry/business_summary,
+        uses Instrument table (enriched by bulk/backfill scripts).
         """
         profiles: list[str] = []
-        # Build lookup from stocks_data
         data_by_ticker: dict[str, dict] = {}
         for stock in stocks_data:
             data_by_ticker[stock.get("ticker", "")] = stock
 
+        # Fallback: load Instrument industry/summary for tickers missing from fundamentals
+        t212_tickers = [t for t in (top_tickers[:35] or []) if t]
+        inst_by_ticker: dict[str, Instrument] = {}
+        if t212_tickers:
+            session = get_session()
+            try:
+                rows = session.query(Instrument).filter(
+                    Instrument.ticker.in_(t212_tickers),
+                    (Instrument.industry.isnot(None)) | (Instrument.business_summary.isnot(None)),
+                ).all()
+                inst_by_ticker = {r.ticker: r for r in rows}
+            finally:
+                session.close()
+
         for ticker in top_tickers[:35]:
             stock = data_by_ticker.get(ticker, {})
             fundamentals = stock.get("fundamentals", {})
-            summary = fundamentals.get("business_summary", "")
-            industry = fundamentals.get("industry", "")
-            sector = fundamentals.get("sector", "")
-            name = stock.get("name", ticker)
+            summary = (fundamentals.get("business_summary") or "").strip()
+            industry = (fundamentals.get("industry") or "").strip()
+            sector = (fundamentals.get("sector") or "").strip()
+            name = stock.get("name") or ticker
+
+            # Fallback to Instrument when yfinance returns sparse data
+            inst = inst_by_ticker.get(ticker)
+            if inst:
+                if not summary and inst.business_summary:
+                    summary = (inst.business_summary or "").strip()
+                if not industry and inst.industry:
+                    industry = (inst.industry or "").strip()
+                if not sector and inst.sector:
+                    sector = (inst.sector or "").strip()
+                if not name and inst.name:
+                    name = inst.name or ticker
 
             if not summary:
                 continue
 
-            # Truncate long summaries to ~300 chars to keep prompt compact
             if len(summary) > 300:
                 summary = summary[:297] + "..."
 
@@ -1627,7 +1783,7 @@ class Orchestrator:
             stop_loss = trade.get("stop_loss", {}) or {}
             metadata = self._get_stock_metadata(ticker, stocks_data)
             fundamentals = self._get_stock_fundamentals(ticker, stocks_data)
-            yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+            yf_ticker = t212_to_yf(ticker)
             news_excerpt = per_ticker_news.get(yf_ticker, decision.get("news_sentiment_summary", ""))
 
             stage = (

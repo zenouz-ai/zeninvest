@@ -67,10 +67,10 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |              [Runs every cycle regardless of state; Risk blocks new BUYs in CAUTIOUS]
                    |              [Sector-balanced, cap-tiered sampling:
                    |               70% large, 20% mid, 10% small cap]
-                   |              [Cooldown: intraday=4h effective, standard=24h; prevents re-screening within window]
+                   |              [Cooldown: effective_screening_cooldown_override if set (e.g. 12h); else intraday=min(base, cycle_hours), standard=base; prevents re-screening within window]
                    |              [When pool exhausted: order by last_screened_at ASC to rotate; proactive seed when pool < 2×max_candidates]
                    |              [Review (24-48h ago) vs new (never or >48h) buckets, 50% each via uninvestigated_target_pct]
-                   |              [Batch enrichment job (daily 06:00): cascade yfinance → Finnhub → AV OVERVIEW → BRAVE_ANSWERS for sector/market_cap]
+                   |              [Batch enrichment job (daily 06:00): cascade yfinance → Finnhub → AV OVERVIEW → BRAVE_ANSWERS for sector/market_cap/industry/business_summary; ticker conversion via ticker_utils.t212_to_yf]
                    |
                    |        +-- WEB SEARCH FALLBACK (get_news_sentiment_fallback)
                    |              [When Finnhub analyst or AV ticker sentiment fails:
@@ -434,10 +434,15 @@ sequenceDiagram
     T-->>D: totalValue (drawdown) + cash + positions
     D-->>O: Portfolio state
 
+    O->>E: Sync order status from T212 (pending -> filled)
+    E->>T: GET /equity/history/orders
+    T-->>E: Order history
+    E->>E: Update Order.status for filled orders
+
     O->>D: Fetch market data (positions + universe candidates)
     D->>D: yfinance: OHLCV + fundamentals
     D->>D: Macro: VIX, S&P, sector performance, economic headlines
-    D->>D: Universe screener: sector-balanced, cap-tiered (24h cooldown, review/new buckets)
+    D->>D: Universe screener: sector-balanced, cap-tiered (12h cooldown override or min(base, cycle_hours), review/new buckets)
     D->>D: Mark screened instruments (cooldown stamp)
     D->>D: Enrich instruments: back-fill sector/market_cap
     D-->>O: Stocks data + macro

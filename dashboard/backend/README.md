@@ -121,6 +121,8 @@ Both settings default to `true` if not specified.
 - `message`
 - `metadata_json` (JSON)
 
+**universe_updated** metadata includes: `num_candidates`, `total_available`, `large_pool`, `mid_pool`, `small_pool`, `large_cap_count`, `mid_cap_count`, `small_cap_count`, `sector_distribution`, `tickers`, `cooldown_hours`, `review_count`, `new_count`, `positions_count`, `cumul_screened`, `cumul_reviewed`, `cumul_orders`
+
 ### runs
 - `id` (PK)
 - `cycle_id` (unique, indexed)

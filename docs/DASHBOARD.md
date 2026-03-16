@@ -107,6 +107,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 **Activity feed (real-time via SSE):**
 - Scrolling feed from `events_log` — run_started, universe_updated, decision_made, order_placed, order_executed, notification_sent, order_adjustment, research_completed
 - Each event shows: timestamp, type icon, source, message, expandable metadata
+- `universe_updated` message format: `Screened X/Y candidates (large=a/b, mid=c/d, small=e/f) — reviews: R, new: N | P in portfolio | cumul: S screened, V reviewed, O orders` where X=selected, Y=total available, a/c/e=per-tier selected, b/d/f=per-tier pool size, R=review count (investigated 24–48h ago), N=new investigations, P=positions re-evaluated; cumul = lifetime: S=instruments ever screened, V=distinct tickers ever reviewed by strategy, O=total orders placed
 - Filter by event type, ticker, source
 
 **Quick actions:**
@@ -202,6 +203,10 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Table of all recent orders: time, ticker, action, quantity, order type, status (filled/pending/dry_run/failed)
 - Market orders (BUY/SELL/REDUCE) and stop orders in one view
 - Status reflects T212 API response when live (FILLED→filled, NEW→pending, REJECTED→failed)
+- `pending` has two common meanings in this table:
+  - market order accepted but not yet executed (`type=MARKET`, typically `status=NEW`, common outside market hours)
+  - working protective stop (`type=STOP`, remains `NEW` until stop price is hit or order is cancelled/replaced)
+- Local DB statuses are reconciled at the start of each non-dry-run cycle via `sync_order_status_from_t212()` (pending -> filled when T212 reports FILLED/PARTIALLY_FILLED).
 
 **Current stop-loss levels (from `orders` + `stop_loss_adjustments`):**
 - Current stop-loss levels for all positions with distance from current price
@@ -215,7 +220,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 ### Page 7: Cost & API Monitoring
 
 **Cost split: API vs LLM (daily and monthly):**
-- Dashboard Home "This month" card shows total cost with API and LLM split; daily breakdown table for last 7 days
+- Dashboard Home "This month" card shows total cost with API and LLM split; daily breakdown table for last 7 days; cumulative lifetime stats (screened, reviewed, orders)
 - Costs page: daily chart stacks API (Brave/Tavily) + LLM (Anthropic, OpenAI, Google); monthly table has API, LLM, and per-provider columns
 - API cost is estimated from `api_logs` call counts × published rates (Brave, Tavily); LLM cost from `cost_logs`
 

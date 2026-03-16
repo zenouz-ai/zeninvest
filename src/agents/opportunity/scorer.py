@@ -10,6 +10,7 @@ from src.data.database import get_session
 from src.data.models import OpportunityScoreSnapshot
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
+from src.utils.ticker_utils import t212_to_yf
 
 logger = get_logger("opportunity_scorer")
 
@@ -117,7 +118,7 @@ class OpportunityScorer:
                 gemini_risk = self._safe_float(gemini.get("risk_score"))
                 gemini_conf = self._safe_float(gemini.get("confidence_score"))
 
-                yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+                yf_ticker = t212_to_yf(ticker)
                 news_sentiment_score = self._extract_news_sentiment(
                     per_ticker_news.get(yf_ticker, ""),
                     str(decision.get("news_sentiment_summary", "")),

@@ -39,6 +39,17 @@ def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
         ticker = yf.Ticker(ticker_symbol)
         info = ticker.info
 
+        # yfinance returns empty/minimal data for 404 or sparse tickers (no raise)
+        symbol = info.get("symbol")
+        sector = info.get("sector")
+        market_cap = info.get("marketCap")
+        if not info:
+            return {"error": "Quote not found", "sector": "Unknown"}
+        if symbol is None and market_cap is None and sector is None:
+            return {"error": "Quote not found", "sector": "Unknown"}
+        if sector is None and market_cap is None:
+            return {"error": "No fundamental data", "sector": "Unknown"}
+
         trailing_pe = info.get("trailingPE")
         pb_ratio = info.get("priceToBook")
         roe = info.get("returnOnEquity")

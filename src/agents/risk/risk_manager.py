@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from src.data.database import get_session
-from src.data.models import RiskDecision
+from src.data.models import Order, RiskDecision
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -288,6 +288,73 @@ class RiskManager:
             message=f"Post-trade cash {projected_cash:.1f}% above floor ({min_cash}%)",
         )
 
+    def check_min_holding_period(
+        self,
+        ticker: str,
+        action: str,
+        current_portfolio: dict[str, float],
+        sector: str,
+        sector_allocations: dict[str, float],
+    ) -> RuleResult:
+        """Block REDUCE/SELL on positions held less than min_holding_hours unless risk limit exceeded."""
+        if action not in ("SELL", "REDUCE"):
+            return RuleResult(
+                rule_name="min_holding_period",
+                passed=True,
+                message="Not a reduce/sell action",
+            )
+
+        min_hours = self.settings.min_holding_hours_before_reduce
+        current_pct = current_portfolio.get(ticker, 0.0)
+        sector_pct = sector_allocations.get(sector, 0.0)
+
+        # Exempt: reducing because over max_single_stock or max_sector
+        if current_pct > self.settings.max_single_stock_pct:
+            return RuleResult(
+                rule_name="min_holding_period",
+                passed=True,
+                message=f"Exempt: {ticker} at {current_pct:.1f}% exceeds max ({self.settings.max_single_stock_pct}%)",
+            )
+        if sector_pct > self.settings.max_sector_pct:
+            return RuleResult(
+                rule_name="min_holding_period",
+                passed=True,
+                message=f"Exempt: sector {sector} at {sector_pct:.1f}% exceeds max ({self.settings.max_sector_pct}%)",
+            )
+
+        session = get_session()
+        try:
+            last_buy = (
+                session.query(Order)
+                .filter(
+                    Order.ticker == ticker,
+                    Order.action == "BUY",
+                    Order.status.in_(["filled", "dry_run"]),
+                )
+                .order_by(Order.timestamp.desc())
+                .first()
+            )
+            if not last_buy:
+                return RuleResult(
+                    rule_name="min_holding_period",
+                    passed=True,
+                    message=f"No BUY history for {ticker}, allowing REDUCE/SELL",
+                )
+            elapsed = (datetime.now(timezone.utc) - last_buy.timestamp).total_seconds() / 3600
+            if elapsed >= min_hours:
+                return RuleResult(
+                    rule_name="min_holding_period",
+                    passed=True,
+                    message=f"Holding period {elapsed:.1f}h >= {min_hours}h for {ticker}",
+                )
+            return RuleResult(
+                rule_name="min_holding_period",
+                passed=False,
+                message=f"min_holding_period: {ticker} held {elapsed:.1f}h < {min_hours}h",
+            )
+        finally:
+            session.close()
+
     def check_min_positions(
         self,
         num_positions: int,
@@ -402,6 +469,15 @@ class RiskManager:
 
         if action in ("SELL", "REDUCE"):
             results.append(self.check_min_positions(num_positions, action))
+            results.append(
+                self.check_min_holding_period(
+                    ticker=ticker,
+                    action=action,
+                    current_portfolio=current_portfolio,
+                    sector=sector,
+                    sector_allocations=sector_allocations,
+                )
+            )
 
         # Evaluate results
         rules_checked = [r.rule_name for r in results]

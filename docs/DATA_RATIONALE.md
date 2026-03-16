@@ -110,8 +110,8 @@ fully cover the three active strategies (momentum, mean reversion, factor via re
 | `earnings_momentum_qoq` | Factor | QoQ momentum >10% = +15 momentum component. |
 | `sector` | Risk Mgr | Sector allocation cap (35%). Used for diversification checks. |
 | `market_cap` | Universe + UOV | Used for universe cap-tiering and as a low-weight UOV size/liquidity proxy. |
-| `industry` | Path 2 | Company profiles: industry label in Claude prompt header. More granular than sector for qualitative reasoning. |
-| `business_summary` | Path 2 | Company profiles: yfinance longBusinessSummary (~300 chars) for Claude. Enables reasoning about moats, regulatory risk, how macro news impacts revenue. |
+| `industry` | Path 2 | Company profiles: industry label in Claude prompt header. More granular than sector for qualitative reasoning. Persisted in Instrument; bulk/backfill scripts populate when missing. |
+| `business_summary` | Path 2 | Company profiles: yfinance longBusinessSummary (~300 chars) for Claude. Enables reasoning about moats, regulatory risk, how macro news impacts revenue. Persisted in Instrument; bulk/backfill scripts populate when missing. |
 
 ### REMOVED — Never consumed by any strategy or rule
 
@@ -480,9 +480,12 @@ Used for batch universe enrichment and Agentic Research. Limits: Brave Search 2,
 | 2026-03-12 | Search API pricing (Section 12.1) | Documented Brave Search ($5/1k, 50 RPS), Brave Answers ($4/1k + tokens, 2 RPS), Tavily ($0.008/credit; $30 for 4k). |
 | 2026-03-12 | Review/new screening buckets | Replaced binary "investigated" with time-based buckets: review = last StrategyDecision in 24–48h ago; new = never or >48h ago. Targets 50% each via `review_window_hours`, `uninvestigated_target_pct`. |
 | 2026-03-12 | Screening cooldown 24h | Reduced from 48h to enable 60–90 decisions/day with 3 intraday cycles. |
-| 2026-03-12 | Enrichment cascade (yf → Finnhub → AV → BRAVE_ANSWERS) | `enrich_instruments_batch` tries yfinance first (fast, free), then Finnhub, Alpha Vantage OVERVIEW, BRAVE_ANSWERS. Expands ticker pool beyond 160. |
+| 2026-03-12 | Enrichment cascade (yf → Finnhub → AV → BRAVE_ANSWERS) | `enrich_instruments_batch` tries yfinance first (fast, free), then Finnhub, Alpha Vantage OVERVIEW, BRAVE_ANSWERS. Enriches S&P 1500 seed universe. |
 | 2026-03-12 | Web search fallback for analyst/news | When Finnhub analyst or Alpha Vantage ticker sentiment times out/fails, `get_news_sentiment_fallback` (Brave/Tavily) supplies analyst/news snippets. Config: `data_fallback_web_search_enabled`. |
 | 2026-03-13 | Effective cooldown for intraday + proactive seed | `effective_screening_cooldown_hours` = min(base, cycle_hours) when intraday so each cycle gets 20–35 candidates. Fallback seeds when pool < 2×max_candidates. Pool-size diagnostic logging. Fixes low decision count (2 vs 20–35 per cycle). |
+| 2026-03-13 | Universe expansion + 12h cooldown override | Seed universe expanded from ~160 to ~220 US equities. `effective_screening_cooldown_override: 12` allows 12h cooldown for intraday (overrides min with cycle_hours). `screening_cooldown_hours: 12`, `max_candidates: 35`. |
+| 2026-03-13 | S&P 1500 seed universe | Seed universe expanded to S&P 1500 composite (~1506 stocks): S&P 500 (large cap) + S&P 400 (mid cap) + S&P 600 (small cap), parsed from Wikipedia. |
+| 2026-03-13 | T212-derived seed + bulk enrichment | Seed generated from T212 instruments (~6900). `scripts/bulk_enrich_instruments.py` one-off parallel yfinance to populate sector/market_cap for Unknown instruments. |
 
 ---
 

@@ -159,7 +159,7 @@ def mock_get_session(db_session):
 
 ## Ticker Format Gotcha
 
-Trading 212 and yfinance use different ticker formats. **Always convert when crossing boundaries.**
+Trading 212 and yfinance use different ticker formats. **Always convert when crossing boundaries.** Use `ticker_utils.t212_to_yf()` (single source of truth; handles `_US_EQ`/`_UK_EQ`, class A `TAP/A`→`TAP-A`, class B `BRK_B`→`BRK.B`).
 
 | Context | Format | Example |
 |---------|--------|---------|
@@ -167,7 +167,8 @@ Trading 212 and yfinance use different ticker formats. **Always convert when cro
 | yfinance / indicators / fundamentals | Clean symbol | `AAPL`, `BP.L` |
 
 ```python
-yf_ticker = ticker.replace("_US_EQ", "").replace("_UK_EQ", "")
+from src.utils.ticker_utils import t212_to_yf
+yf_ticker = t212_to_yf(ticker)
 ```
 
 Execution guardrail: strategy output may occasionally return plain symbols (`AAPL`, `NEM`, etc.). The orchestrator normalizes these to T212 instrument IDs (`AAPL_US_EQ`, `NEM_US_EQ`) via `stocks_data` and an instruments-table fallback before order placement.
@@ -177,19 +178,19 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 1. **Risk rules are deterministic Python** — never call an LLM from `RiskManager`. Its VETO is final.
 2. **Defense in depth** — every trade passes Strategy → Moderation → Risk → Execution. Any layer can block.
 3. **State machine** — ACTIVE → CAUTIOUS (config `cautious_drawdown_pct`, default 30%) → HALTED (config `halt_drawdown_pct`, default 40%). HALTED requires manual recovery. Drawdown uses `totalValue` from T212 account summary (includes reserved/pending orders); fallback: cash + invested + reservedForOrders. **Practice account** (`trading.account_type: practice`): state machine is relaxed — always stays ACTIVE; drawdown is logged but never triggers CAUTIOUS/HALTED. Use `account_type: live` for real money to enable full state machine.
-4. **Screening cooldown & mix** — Universe screening runs every cycle regardless of state (including CAUTIOUS); Risk blocks new BUYs in CAUTIOUS. `Instrument.last_screened_at` is stamped after each screen. Cooldown: `effective_screening_cooldown_hours` = for intraday `min(screening_cooldown_hours, cycle_hours)` (e.g. 4h), so each cycle gets a fresh pool of 20–35 candidates; for standard uses `screening_cooldown_hours` (24h). The screener uses time-based buckets: **review** = investigated 24–48h ago (last StrategyDecision in `review_window_hours`); **new** = never investigated or last >48h ago. Targets 50% from each pool via `uninvestigated_target_pct` (new share). When the pool is exhausted (all instruments in cooldown), the fallback orders by `last_screened_at ASC` (least recently screened first) to rotate. **Proactive seed**: when eligible pool &lt; 2×max_candidates, seed instruments are merged to ensure rotation headroom.
-5. **Curated seed universe & enrichment cascade** — `seed_universe.py` contains ~160 well-known US equities. Used as fallback when instruments table lacks enriched data; also proactively merged when pool drops below 2×max_candidates. Batch enrichment (`enrich_instruments_batch`) cascades: yfinance → Finnhub → Alpha Vantage OVERVIEW → BRAVE_ANSWERS for sector/market_cap. Tickers that fail yfinance OHLCV fetch are flagged `data_available=False` and permanently excluded.
+4. **Screening cooldown & mix** — Universe screening runs every cycle regardless of state (including CAUTIOUS); Risk blocks new BUYs in CAUTIOUS. `Instrument.last_screened_at` is stamped after each screen. Cooldown: `effective_screening_cooldown_hours` = `effective_screening_cooldown_override` if set (e.g. 12h); else for intraday `min(screening_cooldown_hours, cycle_hours)` (e.g. 4h); for standard uses `screening_cooldown_hours` (12h). The screener uses time-based buckets: **review** = investigated 24–48h ago (last StrategyDecision in `review_window_hours`); **new** = never investigated or last >48h ago. Targets 50% from each pool via `uninvestigated_target_pct` (new share). When the pool is exhausted (all instruments in cooldown), the fallback orders by `last_screened_at ASC` (least recently screened first) to rotate. **Proactive seed**: when eligible pool &lt; 2×max_candidates, seed instruments are merged to ensure rotation headroom.
+5. **Curated seed universe & enrichment cascade** — `seed_universe.py` is derived from T212's instrument list (~6900 US equities, 100% tradeable). Regenerate with `poetry run python scripts/generate_seed_from_t212.py --from-db`. **Bulk enrichment:** one-off `poetry run python scripts/bulk_enrich_instruments.py` (parallel yfinance) to populate sector, market_cap, industry, business_summary, exchange, currency, name. **Backfill:** `poetry run python scripts/backfill_industry_summary.py` for instruments that already have sector+market_cap but lack industry/summary/name. Used as fallback when instruments table lacks enriched data; only enriches instruments present in DB (T212-available). Scheduled batch enrichment (`enrich_instruments_batch`) cascades: yfinance → Finnhub → Alpha Vantage OVERVIEW → BRAVE_ANSWERS; saves industry and business_summary when available. Tickers that fail yfinance OHLCV fetch are flagged `data_available=False` and permanently excluded.
 5a. **Deferred Finnhub/AV (intraday)** — When `cycle_frequency: intraday`, screening uses `get_stock_analysis_lite` (yfinance only). Finnhub and Alpha Vantage are fetched only for `positions ∪ top_tickers` (active-review tickers), with `NewsSentimentCache` lookup first.
 5b. **Web search fallback** — When Finnhub analyst data or Alpha Vantage ticker sentiment times out or fails, `get_news_sentiment_fallback` (Brave/Tavily) supplies analyst/news-like snippets for the strategy prompt. Controlled by `data_fallback_web_search_enabled`; respects search API monthly budget.
 5c. **Queued ticker re-evaluation** — When opportunity is enabled, Phase 3 in `_fetch_stocks_data` re-adds queued tickers (from OpportunityQueue) to stocks_data each cycle, bypassing screening cooldown, so they can reach 2nd cycle and promote before expiring.
-6. **Company profiles** — `longBusinessSummary` + `industry` from yfinance are persisted in the `Instrument` model and included in the Claude strategy prompt for qualitative reasoning.
-7. **T212 order status** — Order status is derived from T212 API response `status`: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/UNCONFIRMED/LOCAL→pending, REJECTED/CANCELLED→failed. Do not assume filled on 200 OK.
+6. **Company profiles** — `longBusinessSummary` + `industry` from yfinance are persisted in the `Instrument` model and included in the Claude strategy prompt for qualitative reasoning. When yfinance returns sparse data, the orchestrator falls back to Instrument.industry and Instrument.business_summary (enriched by bulk/backfill scripts; ~5,477 instruments deployed).
+7. **T212 order status** — Order status is derived from T212 API response `status`: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/UNCONFIRMED/LOCAL→pending, REJECTED/CANCELLED→failed. Do not assume filled on 200 OK. **Order sync**: At the start of each cycle (non–dry-run), `OrderManager.sync_order_status_from_t212()` fetches T212 order history and updates local `Order.status` from pending to filled when T212 reports FILLED.
 8. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap.
 9. **Order dedup** — 5-minute window prevents double-execution of the same order.
 10. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
 11. **UOV optimizer guardrail** — UOV may reorder/queue BUYs, but it never directly triggers SELL/REDUCE. Strategy remains sell authority; Risk remains final veto.
 12. **Notification fail-open** — alert delivery failures (Slack/Email) must never block trade execution.
-13. **Intelligent order management** — `StopLossManager` runs after execution each cycle. Three capabilities:
+13. **Intelligent order management** — `StopLossManager` runs after execution each cycle. Stop-loss is placed for BUY when `exec_result.status` in (filled, dry_run, **pending**) — optimistic placement for market BUYs that may fill shortly. **Place missing stops**: `place_missing_stops()` runs before reassessment; positions without a pending stop get one using `default_stop_loss_pct` (or ATR-based when available). Three capabilities:
     - **ATR-based stop reassessment**: Recalculates stops using 14-day ATR × configurable multiplier, clamped to [min, max] distance. By default only tightens (never widens).
     - **Software trailing stops**: Tracks high-water mark per position. Ratchets stop up as price rises. Implemented by cancel + replace since T212 has no native trailing stop.
     - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
@@ -333,17 +334,17 @@ Gathers macro-level market intelligence to inform trading decisions:
 
 Key tuneable values:
 
-- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `max_positions: 15`, `cash_floor_pct: 10`
-- **Risk**: `max_single_stock_pct: 15`, `max_sector_pct: 35`, `cautious_drawdown_pct: 30`, `halt_drawdown_pct: 40`
+- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `max_positions: 15`, `cash_floor_pct: 10`, `min_order_value_gbp: 500`, `min_reduce_pct_of_position: 25`, `reduce_tiers_pct: [25, 50, 70, 100]`
+- **Risk**: `min_holding_hours_before_reduce: 24`, `max_single_stock_pct: 15`, `max_sector_pct: 35`, `cautious_drawdown_pct: 30`, `halt_drawdown_pct: 40`
 - **Strategy weights**: momentum `0.35`, mean_reversion `0.30`, factor `0.35`
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)
-- **Universe**: `max_candidates: 30`, cap tiers 70/20/10% (large/mid/small), `screening_cooldown_hours: 24`, `review_window_hours: [24, 48]`, `data_fallback_web_search_enabled`, `batch_enrichment_enabled`, `batch_enrichment_per_run`
+- **Universe**: `max_candidates: 35`, cap tiers 70/20/10% (large/mid/small), `screening_cooldown_hours: 12`, `effective_screening_cooldown_override: 12`, `review_window_hours: [24, 48]`, `data_fallback_web_search_enabled`, `batch_enrichment_enabled`, `batch_enrichment_per_run`
 - **Strategy**: One decision per ticker (up to 35). Actions: BUY, SELL, HOLD, REDUCE, QUEUED. Targets 60+ decisions/day (3 cycles × 20+ through full pipeline).
 - **Data cache TTLs** (configurable): `ohlcv_indicators: 4h`, `fundamentals: 12h`, `finnhub_analyst: 6h`, `alpha_vantage_broad: 4h`, `macro_intelligence: 4h`
 - **Cost**: Anthropic £1/day, OpenAI £0.75/day, Google £0.50/day, monthly cap £50; **search_api_limits**: 2,000 brave_search, 2,000 brave_answer, 1,000 tavily
 - **Research** (US-4.4): `enabled`, `strategy_research_enabled`, `skeptic_research_enabled`, `risk_research_enabled`; caps 20/8/7 per member, 35 total/cycle
 - **Opportunity**: `enabled`, `mode: shadow|active`, `immediate_threshold_z` (0.3), `queue_threshold_z` (0.0), `queue_ttl_cycles` (6), swap delta, EWMA half-life, weighted feature map, stage penalties. Rejection reasons are structured (`awaiting_promotion`, `capacity_gated`, `below_immediate`, `below_queue`, `queue_expired`, `no_longer_eligible`). Queued tickers re-evaluated each cycle (Phase 3 in _fetch_stocks_data) bypassing cooldown.
-- **Order management**: `enabled`, `reassess_stops`, `trailing_stops` (enabled, trail_pct), `limit_orders` (enabled, offset_pct, validity), ATR multiplier, min/max stop distance, only_tighten_stops
+- **Order management**: `enabled`, `default_stop_loss_pct: -8`, `reassess_stops`, `trailing_stops` (enabled, trail_pct), `limit_orders` (enabled, offset_pct, validity), ATR multiplier, min/max stop distance, only_tighten_stops
 - **Notifications**: `enabled`, channels/routes, retry/timeout/dedup config, dry-run alert policy, command gateway flag (disabled in v1)
 - **Dashboard**: `enabled`, `events_enabled` (Phase 1 backend: REST API + SSE stream)
 

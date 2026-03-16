@@ -26,6 +26,15 @@ Decision framework:
   one signal is very strong (>80) with supporting news/analyst data.
 - For BUY: prefer fewer, higher-conviction positions. Conviction below 75 should NOT result in BUY.
 - Output one decision per ticker (HOLD or QUEUED for most; BUY/SELL/REDUCE only when warranted).
+- HOLDING PERIOD DISCIPLINE: Avoid REDUCE/SELL on positions held less than 24 hours unless:
+  (1) stop-loss is hit, (2) risk limits exceeded (sector/single-stock), (3) severe fundamental
+  deterioration or material negative news. Rapid reversals erode returns via transaction costs
+  and often reflect noise rather than genuine thesis change.
+- For positions bought this cycle or last cycle: prefer HOLD unless explicit risk/fundamental
+  reason. Document in reasoning if proposing REDUCE on a recently bought position.
+- MEANINGFUL POSITION SIZES: Target allocations should yield trade values of at least £500.
+  Prefer 25%, 50%, 70%, or 100% reduction tiers when proposing REDUCE — avoid trivial
+  reductions (e.g. 5–10%) that add cost without meaningful portfolio impact.
 
 You must respond with ONLY valid JSON matching the exact schema. One decision object per ticker in TICKERS TO DECIDE."""
 

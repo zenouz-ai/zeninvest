@@ -302,6 +302,70 @@ class OrderManager:
             )
             return {"status": "failed", "error": error_msg}
 
+    def sync_order_status_from_t212(self) -> int:
+        """Sync pending orders with T212 order history. Updates local Order.status to filled when T212 reports FILLED.
+
+        Returns:
+            Number of orders updated.
+        """
+        if self.dry_run:
+            return 0
+        try:
+            updated = 0
+            cursor: str | None = None
+            t212_ids_seen: set[str] = set()
+
+            while True:
+                resp = self.client.get_order_history(cursor=cursor, limit=50)
+                items = resp.get("items") or []
+                next_page = resp.get("nextPagePath")
+
+                for item in items:
+                    order_obj = item.get("order") if isinstance(item, dict) else None
+                    if not order_obj:
+                        continue
+                    t212_id = str(order_obj.get("id") or order_obj.get("orderId") or "")
+                    if not t212_id or t212_id in t212_ids_seen:
+                        continue
+                    t212_ids_seen.add(t212_id)
+                    t212_status = (order_obj.get("status") or "").upper()
+
+                    if t212_status not in ("FILLED", "PARTIALLY_FILLED"):
+                        continue
+
+                    session = get_session()
+                    try:
+                        row = (
+                            session.query(Order)
+                            .filter(Order.t212_order_id == t212_id, Order.status == "pending")
+                            .first()
+                        )
+                        if row:
+                            row.status = "filled"
+                            filled_qty = order_obj.get("filledQuantity")
+                            filled_val = order_obj.get("filledValue")
+                            if filled_qty is not None and filled_qty > 0 and row.price is None:
+                                row.price = (filled_val or 0) / filled_qty if filled_val else None
+                            session.commit()
+                            updated += 1
+                            logger.info(f"Order {t212_id} synced to filled")
+                    except Exception as e:
+                        logger.warning(f"Failed to sync order {t212_id}: {e}")
+                        session.rollback()
+                    finally:
+                        session.close()
+
+                if not next_page or len(items) < 50:
+                    break
+                cursor = next_page
+
+            if updated:
+                logger.info(f"Order sync: {updated} pending orders updated to filled")
+            return updated
+        except Exception as e:
+            logger.warning(f"Order status sync failed: {e}")
+            return 0
+
     def get_portfolio_state(self) -> dict[str, Any]:
         """Get current portfolio positions and cash.
 

@@ -16,6 +16,7 @@ from google.genai import types
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, calculate_cost, check_budget, log_cost
 from src.utils.logger import get_logger
+from src.utils.ticker_utils import t212_to_yf
 from src.utils.search_api_tracker import (
     SERVICE_BRAVE_ANSWERS,
     SERVICE_BRAVE_SEARCH,
@@ -56,11 +57,6 @@ Reply with ONLY this JSON, nothing else: {"sector": "StandardSectorName", "marke
 Sector must be one of: Technology, Healthcare, Financial Services, Consumer Cyclical, Consumer Defensive, Basic Materials, Industrials, Energy, Utilities, Real Estate, Communication Services.
 Market cap: numeric value in US dollars, or null if unknown. Example: 3830000000000 for $3.83 trillion.
 """
-
-
-def _ticker_to_yf(ticker: str) -> str:
-    """Convert T212 ticker to yfinance-style (e.g. AAPL_US_EQ -> AAPL)."""
-    return ticker.replace("_US_EQ", "").replace("_UK_EQ", "").strip()
 
 
 def _brave_search(symbol: str, count: int = 5) -> str:
@@ -113,7 +109,7 @@ def get_news_sentiment_fallback(ticker: str) -> str:
     blob suitable for strategy prompt. Uses search API budget; only call when free APIs
     timeout or fail. Returns empty string if no key, budget exceeded, or search fails.
     """
-    symbol = _ticker_to_yf(ticker)
+    symbol = t212_to_yf(ticker)
     query = f"{symbol} stock analyst recommendation news sentiment"
     text = ""
 
@@ -207,7 +203,7 @@ def get_news_sentiment_fallback_batch(tickers: list[str]) -> str:
     """
     if not tickers:
         return ""
-    symbols = " ".join(_ticker_to_yf(t) for t in tickers[:10])
+    symbols = " ".join(t212_to_yf(t) for t in tickers[:10])
     query = f"{symbols} stock analyst recommendation news sentiment"
     text = ""
 
@@ -525,7 +521,7 @@ def extract_sector_market_cap_brave_search(
     metrics_out: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Extract using Brave Web Search only + Gemini."""
-    symbol = _ticker_to_yf(ticker)
+    symbol = t212_to_yf(ticker)
     text = _brave_search(symbol)
     if not text.strip():
         return {"sector": None, "market_cap": None, "error": "no_data"}
@@ -538,7 +534,7 @@ def extract_sector_market_cap_brave_answers(
     metrics_out: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Extract using Brave Answers only + Gemini."""
-    symbol = _ticker_to_yf(ticker)
+    symbol = t212_to_yf(ticker)
     text = _brave_answers(symbol)
     if not text.strip():
         return {"sector": None, "market_cap": None, "error": "no_data"}
@@ -563,7 +559,7 @@ def extract_sector_market_cap(
     Returns:
         Dict with keys: sector (str|None), market_cap (float|None), error (str|None).
     """
-    symbol = _ticker_to_yf(ticker)
+    symbol = t212_to_yf(ticker)
     parts: list[str] = []
 
     if use_answers:
@@ -602,7 +598,7 @@ def extract_sector_market_cap_tavily(
     Returns:
         Dict with keys: sector (str|None), market_cap (float|None), error (str|None).
     """
-    symbol = _ticker_to_yf(ticker)
+    symbol = t212_to_yf(ticker)
     combined = _tavily_search(symbol)
     if not combined.strip():
         return {"sector": None, "market_cap": None, "error": "no_tavily_data"}

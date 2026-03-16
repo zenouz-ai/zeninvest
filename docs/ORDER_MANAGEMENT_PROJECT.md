@@ -29,9 +29,11 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 
 ### Pipeline integration
 
-- **After BUY execution:** Orchestrator calls `OrderManager.place_stop_loss(ticker, quantity, current_price, stop_loss_pct)` → T212 `POST /equity/orders/stop` (GTC). Stop price = `current_price × (1 + stop_loss_pct/100)` (e.g. -8% → 92% of price). The T212 API expects `timeValidity: "GOOD_TILL_CANCEL"` (not `"GTC"`); `T212Client` maps config/caller values accordingly.
+- **After BUY execution:** Orchestrator calls `OrderManager.place_stop_loss(ticker, quantity, current_price, stop_loss_pct)` when `exec_result.status` in (filled, dry_run, **pending**) — optimistic placement for market BUYs. → T212 `POST /equity/orders/stop` (GTC). Stop price = `current_price × (1 + stop_loss_pct/100)` (e.g. -8% → 92% of price). The T212 API expects `timeValidity: "GOOD_TILL_CANCEL"` (not `"GTC"`); `T212Client` maps config/caller values accordingly.
+- **Place missing stops:** Before reassessment each cycle, `StopLossManager.place_missing_stops(positions, stocks_data)` places stops for positions without one, using `default_stop_loss_pct` (or ATR-based when available).
 - **BUY path (market vs limit):** For each approved BUY, orchestrator reads `decision.entry_type` (default `"market"`). If `"limit_dip"`, it calls `StopLossManager.place_limit_buy(...)` with `target_amount_gbp`, `current_price`, and optional `offset_pct`; otherwise executes market order as today.
 - **Post-execution (same cycle):** After all trades, orchestrator calls:
+  - `StopLossManager.place_missing_stops(positions, stocks_data, cycle_id)` — Place stops for positions without one.
   - `StopLossManager.reassess_stops(positions, stocks_data, cycle_id)` — ATR-based stop levels for all positions; only tighten if `only_tighten_stops` is true.
   - `StopLossManager.apply_trailing_stops(positions, cycle_id)` — HWM-based ratchet; cancel existing stop, place new one at trail distance below HWM.
 
@@ -66,6 +68,7 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 ```yaml
 order_management:
   enabled: true
+  default_stop_loss_pct: -8   # Used when placing missing stops (no ATR or no decision)
   reassess_stops: true
   trailing_stops:
     enabled: false
@@ -120,6 +123,11 @@ When a future user story is adopted, add it to `docs/SOPHISTICATION_ROADMAP.md` 
 ## Dashboard
 
 The Order Management page shows: **Recent Orders** (all market/stop orders with status: filled/pending/dry_run/failed), **Current Stop-Loss Levels** (per position, source: order or adjustment), and **Adjustment History** (ATR reassessment, trailing, limit orders). Order status reflects T212 API response (see rule 7 in CLAUDE.md).
+
+Clarification on `pending`:
+- `MARKET` + `pending` usually means the order is accepted (`NEW`) but not yet executed; this is common outside market hours.
+- `STOP` + `pending` is expected for working protective stops; these remain open until the stop price is triggered, cancelled, or replaced.
+- Local `orders.status` is reconciled at the start of each non-dry-run cycle by `OrderManager.sync_order_status_from_t212()` (pending -> filled when T212 history reports FILLED/PARTIALLY_FILLED).
 
 ## Related Notes
 

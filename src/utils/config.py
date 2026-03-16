@@ -89,6 +89,22 @@ class Settings:
     def benchmark_ticker(self) -> str:
         return self.trading["benchmark_ticker"]
 
+    @property
+    def min_order_value_gbp(self) -> float:
+        """Skip BUY/REDUCE when trade value below this (avoid tiny trades)."""
+        return float(self.trading.get("min_order_value_gbp", 500))
+
+    @property
+    def min_reduce_pct_of_position(self) -> float:
+        """Skip REDUCE when reduction is below this % of position."""
+        return float(self.trading.get("min_reduce_pct_of_position", 25))
+
+    @property
+    def reduce_tiers_pct(self) -> list[float]:
+        """Round REDUCE to nearest tier (25, 50, 70, 100)."""
+        val = self.trading.get("reduce_tiers_pct", [25, 50, 70, 100])
+        return [float(x) for x in val] if isinstance(val, list) else [25.0, 50.0, 70.0, 100.0]
+
     # --- Risk ---
     @property
     def risk(self) -> dict[str, Any]:
@@ -129,6 +145,11 @@ class Settings:
     @property
     def min_positions(self) -> int:
         return int(self.risk.get("min_positions", 5))
+
+    @property
+    def min_holding_hours_before_reduce(self) -> int:
+        """Block REDUCE/SELL on positions held less than this many hours unless risk limit exceeded."""
+        return int(self.risk.get("min_holding_hours_before_reduce", 24))
 
     # --- Strategy ---
     @property
@@ -257,8 +278,12 @@ class Settings:
 
     @property
     def effective_screening_cooldown_hours(self) -> int:
-        """For intraday, cap cooldown at cycle_hours so each cycle gets fresh pool.
+        """Screening cooldown in hours. If effective_screening_cooldown_override is set, use it.
+        Otherwise: for intraday, cap at cycle_hours so each cycle gets fresh pool.
         With 3 cycles at 08/12/16, 4h cooldown ensures cycle 2 and 3 see instruments from cycle 1 as eligible."""
+        override = self.universe.get("effective_screening_cooldown_override")
+        if override is not None:
+            return int(override)
         base = self.screening_cooldown_hours
         if self.cycle_frequency == "intraday":
             return min(base, self.cycle_hours)
@@ -441,6 +466,11 @@ class Settings:
     @property
     def order_management_enabled(self) -> bool:
         return bool(self.order_management.get("enabled", False))
+
+    @property
+    def default_stop_loss_pct(self) -> float:
+        """Default stop-loss % when placing missing stops (no ATR or no decision)."""
+        return float(self.order_management.get("default_stop_loss_pct", -8.0))
 
     @property
     def reassess_stops_enabled(self) -> bool:

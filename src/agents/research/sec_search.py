@@ -8,6 +8,7 @@ import httpx
 from src.agents.research.types import SECResult
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
+from src.utils.ticker_utils import t212_to_yf
 
 logger = get_logger("research.sec")
 
@@ -27,8 +28,8 @@ DOC_TYPE_MAP = {
 
 
 def _ticker_to_clean(ticker: str) -> str:
-    """T212 ticker to plain symbol (e.g. AAPL_US_EQ -> AAPL)."""
-    return ticker.replace("_US_EQ", "").replace("_UK_EQ", "").strip().upper()
+    """T212 ticker to plain symbol for SEC EDGAR lookup (uppercase)."""
+    return t212_to_yf(ticker).upper()
 
 
 def _get_tickers_map() -> dict[str, dict[str, Any]]:

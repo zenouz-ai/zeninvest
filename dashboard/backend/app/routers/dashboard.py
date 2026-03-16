@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import desc, func
 
 from src.data.database import get_session
-from src.data.models import CostLog, Order, PortfolioSnapshot, StrategyDecision
+from src.data.models import CostLog, Instrument, Order, PortfolioSnapshot, StrategyDecision
 
 from ..services.api_cost_estimator import estimate_api_cost_gbp
 from src.utils.config import get_settings
@@ -75,6 +75,11 @@ async def get_monthly_summary(
         if portfolio_start_gbp is not None and portfolio_end_gbp is not None and portfolio_start_gbp != 0:
             pnl_gbp = round(portfolio_end_gbp - portfolio_start_gbp, 2)
 
+        # Cumulative (lifetime) stats
+        cumul_screened = session.query(Instrument).filter(Instrument.last_screened_at.isnot(None)).count()
+        cumul_reviewed = session.query(func.count(func.distinct(StrategyDecision.ticker))).scalar() or 0
+        cumul_orders = session.query(Order).count()
+
         return {
             "year": year,
             "month": month,
@@ -86,6 +91,9 @@ async def get_monthly_summary(
             "portfolio_start_gbp": portfolio_start_gbp,
             "portfolio_end_gbp": portfolio_end_gbp,
             "pnl_gbp": pnl_gbp,
+            "cumul_screened": cumul_screened,
+            "cumul_reviewed": cumul_reviewed,
+            "cumul_orders": cumul_orders,
         }
     finally:
         session.close()

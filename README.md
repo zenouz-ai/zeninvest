@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 225 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
+**Status:** POC — 228 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
 
 ## Architecture
 
@@ -375,12 +375,12 @@ Execution behavior:
 ## Universe Screening
 
 Each cycle discovers new candidates beyond existing positions:
-- **Curated seed universe** — ~160 well-known US equities across all 11 GICS sectors, used as fallback when instruments table hasn't been enriched yet. Eliminates delisted/unfetchable ticker noise from raw T212 data
+- **Curated seed universe** — Derived from T212 instrument list (~6900 US equities, 100% tradeable). Regenerate with `poetry run python scripts/generate_seed_from_t212.py --from-db`. Bulk enrich sector/market_cap/industry/summary: `poetry run python scripts/bulk_enrich_instruments.py`. Backfill industry/summary for already-enriched: `poetry run python scripts/backfill_industry_summary.py`. Used as fallback when instruments table lacks enriched data.
 - **Sector-balanced sampling** — minimum 3 candidates per sector to avoid concentration
 - **Market-cap tiers** — 70% large cap ($10B+), 20% mid cap ($2B-$10B), 10% small cap ($300M-$2B)
 - **Screening cooldown & mix** — stocks are stamped with `last_screened_at` after each screen and excluded for a cooldown window (configurable via `screening_cooldown_hours`), ensuring broader universe coverage across cycles. Within the eligible pool, `get_screened_universe()` targets a configurable share of fresh (never-investigated) tickers via `uninvestigated_target_pct` (default ~50%).
 - **Data availability filtering** — tickers that fail yfinance OHLCV fetch are permanently flagged `data_available=False` and excluded from all future screens
-- **Metadata enrichment** — sector, market_cap, industry, and business summary back-filled from yfinance into instruments table over time
+- **Metadata enrichment** — sector, market_cap, industry, and business summary back-filled from yfinance into instruments table (~5,477 deployed). Strategy prompt falls back to Instrument when yfinance returns sparse data.
 - **Company profiles** — `longBusinessSummary` from yfinance is included in the Claude strategy prompt so it can reason about competitive moats, regulatory exposure, and news impact
 - Skipped in CAUTIOUS mode (no new positions allowed)
 

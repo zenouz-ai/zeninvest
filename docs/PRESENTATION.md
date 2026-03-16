@@ -310,7 +310,7 @@ docker compose logs -f investment-agent
 - ~~Stop-loss orders~~ → Auto-placed after BUY using Claude's stop_loss_pct
 - ~~REDUCE action~~ → Partial sell support in order manager and risk agent
 - ~~Strategy assessment to moderators~~ → GPT-4o and Gemini can challenge Claude's thesis
-- ~~Curated seed universe~~ → ~160 well-known US equities, eliminates delisted noise
+- ~~Curated seed universe~~ → S&P 1500 (~1506 constituents), eliminates delisted noise
 - ~~Company profiles~~ → Business summaries + industry from yfinance fed to Claude for qualitative reasoning
 - ~~Enriched cycle output~~ → Trades include industry, market cap, description, reasoning
 - ~~Rejected stock tracking~~ → Every non-traded stock recorded with stage, reason, and company metadata

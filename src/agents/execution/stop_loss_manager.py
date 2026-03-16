@@ -103,6 +103,62 @@ class StopLossManager:
 
         return results
 
+    def place_missing_stops(
+        self,
+        positions: list[dict[str, Any]],
+        stocks_data: list[dict[str, Any]],
+        cycle_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Place stop-loss for positions that have none.
+
+        For each position without a pending stop, place one using default_stop_loss_pct
+        (or ATR-based if available and reassess_stops would use it).
+        """
+        if not self.settings.order_management_enabled:
+            return []
+
+        pending_stops = self._get_pending_stops()
+        data_by_ticker = {s.get("ticker", ""): s for s in stocks_data}
+        results: list[dict[str, Any]] = []
+
+        for pos in positions:
+            ticker = (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
+            quantity = float(pos.get("quantity", 0))
+            current_price = float(pos.get("currentPrice", 0))
+            if not ticker or quantity <= 0 or current_price <= 0:
+                continue
+            if ticker in pending_stops:
+                continue
+
+            stock = data_by_ticker.get(ticker, {})
+            atr = self._extract_atr(stock)
+            if atr is not None and atr > 0 and self.settings.reassess_stops_enabled:
+                new_stop = self._compute_volatility_stop(current_price, atr)
+                stop_loss_pct = -((current_price - new_stop) / current_price * 100)
+            else:
+                stop_loss_pct = self.settings.default_stop_loss_pct
+                new_stop = round(current_price * (1 + stop_loss_pct / 100), 2)
+
+            if stop_loss_pct >= 0:
+                logger.debug(f"{ticker}: invalid stop_loss_pct {stop_loss_pct}, skipping")
+                continue
+
+            result = self._replace_stop(
+                ticker=ticker,
+                quantity=quantity,
+                new_stop_price=new_stop,
+                current_price=current_price,
+                old_stop_info=None,
+                adjustment_type="place_missing",
+                trigger_reason="no_stop",
+                atr_value=atr,
+                cycle_id=cycle_id,
+            )
+            results.append(result)
+            logger.info(f"Placed missing stop for {ticker} @ {new_stop}")
+
+        return results
+
     def apply_trailing_stops(
         self,
         positions: list[dict[str, Any]],

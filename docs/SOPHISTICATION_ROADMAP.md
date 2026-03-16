@@ -672,6 +672,12 @@ The POC runs continuously and accumulates data while we add features in priority
 
 ---
 
+## Data Enrichment
+
+**Instrument enrichment (delivered):** ~5,477 US equities have sector, market_cap, industry, and business_summary from bulk/backfill. The strategy prompt uses Instrument as fallback when yfinance returns sparse data. For future updates (new tickers, additional fields, UK expansion, stale-data refresh), see [SEED_ENRICHMENT_PLAN.md](SEED_ENRICHMENT_PLAN.md#future-enrichment-and-expansion).
+
+---
+
 ## Related Notes
 
 - [Architecture](ARCHITECTURE.md) — pipeline flow, state machine, database schema

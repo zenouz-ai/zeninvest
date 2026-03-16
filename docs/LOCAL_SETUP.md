@@ -370,7 +370,7 @@ If you are testing email locally with Mailpit/MailHog (or another local SMTP sin
 
 ### How the Universe Works
 
-On first run, the instruments table is empty. The screener automatically seeds it with **~160 curated well-known US equities** (AAPL, MSFT, GOOGL, JPM, JNJ, XOM, etc.) across all 11 GICS sectors, sorted by market cap. This eliminates the "possibly delisted" noise from random T212 tickers.
+On first run, the instruments table is empty. The screener automatically seeds it with **S&P 1500 (~1506 constituents)** (AAPL, MSFT, GOOGL, JPM, JNJ, XOM, etc.) across all 11 GICS sectors, sorted by market cap. This eliminates the "possibly delisted" noise from random T212 tickers.
 
 As cycles run:
 
@@ -390,7 +390,7 @@ poetry run python -m src.orchestrator.main --dry-run
 
 **What this does:**
 
-- Seeds the universe with ~160 curated stocks (first run only, then uses enriched data)
+- Seeds the universe with S&P 1500 (~1506 stocks, first run only, then uses enriched data)
 - Fetches real market data (yfinance, Finnhub, Alpha Vantage, macro intelligence: sector performance + economic headlines)
 - Fetches company business summaries from yfinance for qualitative analysis
 - Runs strategy synthesis with Claude (real API call, ~£0.01)

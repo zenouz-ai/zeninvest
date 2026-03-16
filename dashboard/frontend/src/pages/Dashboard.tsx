@@ -41,6 +41,9 @@ export default function Dashboard() {
     portfolio_start_gbp: number | null
     portfolio_end_gbp: number | null
     pnl_gbp: number | null
+    cumul_screened?: number
+    cumul_reviewed?: number
+    cumul_orders?: number
   } | null>(null)
   const [dailyCosts, setDailyCosts] = useState<Array<{
     date: string
@@ -454,6 +457,22 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+          {(monthlySummary.cumul_screened != null || monthlySummary.cumul_reviewed != null || monthlySummary.cumul_orders != null) && (
+            <div className="mt-3 pt-3 border-t border-terminal-border grid grid-cols-3 gap-4">
+              <div>
+                <div className="text-xs text-terminal-text-dim">Screened (cumul)</div>
+                <div className="font-mono">{monthlySummary.cumul_screened ?? '—'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-terminal-text-dim">Reviewed (cumul)</div>
+                <div className="font-mono">{monthlySummary.cumul_reviewed ?? '—'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-terminal-text-dim">Orders (cumul)</div>
+                <div className="font-mono">{monthlySummary.cumul_orders ?? '—'}</div>
+              </div>
+            </div>
+          )}
           {dailyCosts.length > 0 && (
             <div className="mt-4 pt-3 border-t border-terminal-border">
               <button

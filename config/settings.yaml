@@ -1,6 +1,9 @@
 trading:
   mode: active
   account_type: practice  # practice = relaxed state machine (always ACTIVE); live = full CAUTIOUS/HALTED
+  min_order_value_gbp: 500       # Skip BUY/REDUCE below this (avoid tiny trades)
+  min_reduce_pct_of_position: 25  # Skip REDUCE below this % of position
+  reduce_tiers_pct: [25, 50, 70, 100]  # Round REDUCE to nearest tier
   base_url: https://demo.trading212.com/api/v0
   cycle_frequency: intraday  # standard = 2 cycles (07:00, 19:00), intraday = 3 cycles (08:00, 12:00, 16:00)
   cycle_hours: 4
@@ -13,6 +16,7 @@ trading:
   benchmark_ticker: "^GSPC"
 
 risk:
+  min_holding_hours_before_reduce: 24  # Block REDUCE/SELL on positions held < 24h unless risk limit exceeded
   max_single_stock_pct: 15
   max_sector_pct: 35
   max_correlation: 0.7
@@ -54,7 +58,7 @@ data_providers:
     macro_intelligence: 4
 
 universe:
-  max_candidates: 30          # Max new stocks to screen per cycle
+  max_candidates: 35          # Max new stocks to screen per cycle (increased from 30)
   candidates_per_sector: 3    # Min candidates sampled from each sector
   large_cap_pct: 0.70         # 70% of candidates from large cap ($10B+)
   mid_cap_pct: 0.20           # 20% from mid cap ($2B-$10B)
@@ -62,7 +66,8 @@ universe:
   large_cap_min: 10000000000  # $10B
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
-  screening_cooldown_hours: 24  # Base hours; for intraday, effective = min(24, cycle_hours)=4 so each cycle gets fresh pool
+  screening_cooldown_hours: 12  # Base hours before re-screening
+  effective_screening_cooldown_override: 12  # Use 12h for intraday (overrides min with cycle_hours)
   uninvestigated_target_pct: 0.5  # Target share of per-cycle candidates that have never been investigated (approx)
   batch_enrichment_enabled: true   # Scheduled job to enrich instruments missing sector/market_cap
   batch_enrichment_per_run: 50     # Max instruments to enrich per scheduler run
@@ -123,6 +128,7 @@ opportunity:
 
 order_management:
   enabled: true
+  default_stop_loss_pct: -8       # Default stop-loss % when placing missing stops (no ATR or no decision)
   reassess_stops: true            # Reassess stop-losses each cycle based on ATR
   trailing_stops:
     enabled: false                # Software-based trailing stops (cancel + replace)
