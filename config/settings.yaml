@@ -1,7 +1,7 @@
 trading:
   mode: active
   account_type: practice  # practice = relaxed state machine (always ACTIVE); live = full CAUTIOUS/HALTED
-  min_order_value_gbp: 500       # Skip BUY/REDUCE below this (avoid tiny trades)
+  min_order_value_gbp: 500       # Minimum order-value floor; full market SELLs are allowed below this
   min_reduce_pct_of_position: 25  # Skip REDUCE below this % of position
   reduce_tiers_pct: [25, 50, 70, 100]  # Round REDUCE to nearest tier
   base_url: https://demo.trading212.com/api/v0

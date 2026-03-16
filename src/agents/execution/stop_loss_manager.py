@@ -256,6 +256,19 @@ class StopLossManager:
         quantity = calculate_quantity(target_amount_gbp, limit_price)
         if quantity <= 0:
             return {"status": "skipped", "reason": "zero_quantity"}
+        order_value = quantity * limit_price
+        can_place, reject_reason = self.order_manager._passes_min_order_value(
+            action="BUY",
+            order_type="limit",
+            value_gbp=order_value,
+            allow_below_min_full_sell=False,
+        )
+        if not can_place:
+            logger.info(
+                f"Limit BUY skipped: {ticker} value £{order_value:.2f} below minimum "
+                f"£{self.settings.min_order_value_gbp:.2f}"
+            )
+            return {"status": "skipped", "order_type": "limit", "reason": reject_reason}
 
         if self.dry_run:
             logger.info(
@@ -269,6 +282,7 @@ class StopLossManager:
                 quantity=quantity,
                 limit_price=limit_price,
                 price=current_price,
+                value_gbp=order_value,
                 status="dry_run",
                 strategy=strategy,
                 conviction=conviction,
@@ -307,6 +321,7 @@ class StopLossManager:
                 quantity=quantity,
                 limit_price=limit_price,
                 price=current_price,
+                value_gbp=order_value,
                 t212_order_id=str(t212_order_id) if t212_order_id else None,
                 status="pending",
                 strategy=strategy,
@@ -344,6 +359,7 @@ class StopLossManager:
                 order_type="limit",
                 quantity=quantity,
                 limit_price=limit_price,
+                value_gbp=order_value,
                 status="failed",
                 strategy=strategy,
                 error_message=error_msg,

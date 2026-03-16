@@ -42,6 +42,7 @@ def mock_settings():
     settings.limit_orders_enabled = True
     settings.limit_order_default_offset_pct = 2.0
     settings.limit_order_time_validity = "GTC"
+    settings.min_order_value_gbp = 500.0
     settings.atr_multiplier = 2.0
     settings.min_stop_distance_pct = 3.0
     settings.max_stop_distance_pct = 15.0
@@ -249,7 +250,7 @@ class TestLimitBuy:
     def test_dry_run_limit_buy(self, manager, db_session):
         result = manager.place_limit_buy(
             ticker="AAPL_US_EQ",
-            target_amount_gbp=500.0,
+            target_amount_gbp=510.0,
             current_price=100.0,
             offset_pct=2.0,
             strategy="momentum",
@@ -289,6 +290,16 @@ class TestLimitBuy:
         )
         assert result["status"] == "skipped"
         assert result["reason"] == "zero_quantity"
+
+    def test_below_min_order_value_skipped_and_not_logged(self, manager, db_session):
+        result = manager.place_limit_buy(
+            ticker="AAPL_US_EQ",
+            target_amount_gbp=100.0,
+            current_price=100.0,
+        )
+        assert result["status"] == "skipped"
+        assert result["reason"] == "below_min_order_value"
+        assert db_session.query(Order).filter(Order.order_type == "limit").count() == 0
 
 
 class TestExtractAtr:

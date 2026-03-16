@@ -1269,6 +1269,7 @@ class Orchestrator:
             return None
 
         min_order = self.settings.min_order_value_gbp
+        execution_note: str | None = None
         trade_value: float
 
         if action == "BUY":
@@ -1307,71 +1308,83 @@ class Orchestrator:
             if action == "SELL":
                 reduction_pct = 100.0
                 reduction_amount = current_position_value
+                trade_value = current_position_value
             else:
                 reduction_pct = (
                     (reduction_amount / current_position_value * 100)
                     if current_position_value > 0
                     else 0.0
                 )
+                tiers = self.settings.reduce_tiers_pct
+                if tiers:
+                    nearest = min(tiers, key=lambda t: abs(t - reduction_pct))
+                    trade_value = current_position_value * (nearest / 100)
+                    logger.info(f"REDUCE rounded {reduction_pct:.1f}% -> {nearest}% tier")
+                else:
+                    trade_value = reduction_amount
 
-            if reduction_amount < min_order:
-                logger.info(
-                    f"REDUCE skipped: reduction £{reduction_amount:.2f} below minimum £{min_order}"
-                )
-                self.notification_service.emit_trade_execution_result(
-                    cycle_id=cycle_id,
-                    payload={
-                        "cycle_id": cycle_id,
-                        "dry_run": self.dry_run,
-                        "ticker": ticker,
-                        "action": action,
-                        "execution_status": "skipped",
-                        "quantity": 0,
-                        "price": current_price,
-                        "value_gbp": reduction_amount,
-                        "stop_loss_pct": decision.get("stop_loss_pct", 0),
-                        "stop_loss_status": None,
-                        "error_message": "below_min_order_value",
-                        "reasoning_summary": decision.get("reasoning", ""),
-                        "target_allocation_pct": final_alloc,
-                        "occurred_at": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-                return None
+                projected_residual = max(current_position_value - trade_value, 0.0)
+                if projected_residual < min_order:
+                    logger.info(
+                        f"REDUCE converted to SELL for {ticker}: residual £{projected_residual:.2f} "
+                        f"below minimum £{min_order}"
+                    )
+                    execution_note = (
+                        f"reduce_converted_to_sell_below_floor: residual £{projected_residual:.2f} < £{min_order:.2f}"
+                    )
+                    action = "SELL"
+                    trade_value = current_position_value
+                else:
+                    if trade_value < min_order:
+                        logger.info(
+                            f"REDUCE skipped: reduction £{trade_value:.2f} below minimum £{min_order}"
+                        )
+                        self.notification_service.emit_trade_execution_result(
+                            cycle_id=cycle_id,
+                            payload={
+                                "cycle_id": cycle_id,
+                                "dry_run": self.dry_run,
+                                "ticker": ticker,
+                                "action": action,
+                                "execution_status": "skipped",
+                                "quantity": 0,
+                                "price": current_price,
+                                "value_gbp": trade_value,
+                                "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                                "stop_loss_status": None,
+                                "error_message": "below_min_order_value",
+                                "reasoning_summary": decision.get("reasoning", ""),
+                                "target_allocation_pct": final_alloc,
+                                "occurred_at": datetime.now(timezone.utc).isoformat(),
+                            },
+                        )
+                        return None
 
-            min_reduce_pct = self.settings.min_reduce_pct_of_position
-            if reduction_pct < min_reduce_pct:
-                logger.info(
-                    f"REDUCE skipped: {reduction_pct:.1f}% below minimum {min_reduce_pct}%"
-                )
-                self.notification_service.emit_trade_execution_result(
-                    cycle_id=cycle_id,
-                    payload={
-                        "cycle_id": cycle_id,
-                        "dry_run": self.dry_run,
-                        "ticker": ticker,
-                        "action": action,
-                        "execution_status": "skipped",
-                        "quantity": 0,
-                        "price": current_price,
-                        "value_gbp": reduction_amount,
-                        "stop_loss_pct": decision.get("stop_loss_pct", 0),
-                        "stop_loss_status": None,
-                        "error_message": "below_min_reduce_pct",
-                        "reasoning_summary": decision.get("reasoning", ""),
-                        "target_allocation_pct": final_alloc,
-                        "occurred_at": datetime.now(timezone.utc).isoformat(),
-                    },
-                )
-                return None
-
-            tiers = self.settings.reduce_tiers_pct
-            if action == "REDUCE" and tiers:
-                nearest = min(tiers, key=lambda t: abs(t - reduction_pct))
-                trade_value = current_position_value * (nearest / 100)
-                logger.info(f"REDUCE rounded {reduction_pct:.1f}% -> {nearest}% tier")
-            else:
-                trade_value = reduction_amount
+                    min_reduce_pct = self.settings.min_reduce_pct_of_position
+                    if reduction_pct < min_reduce_pct:
+                        logger.info(
+                            f"REDUCE skipped: {reduction_pct:.1f}% below minimum {min_reduce_pct}%"
+                        )
+                        self.notification_service.emit_trade_execution_result(
+                            cycle_id=cycle_id,
+                            payload={
+                                "cycle_id": cycle_id,
+                                "dry_run": self.dry_run,
+                                "ticker": ticker,
+                                "action": action,
+                                "execution_status": "skipped",
+                                "quantity": 0,
+                                "price": current_price,
+                                "value_gbp": trade_value,
+                                "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                                "stop_loss_status": None,
+                                "error_message": "below_min_reduce_pct",
+                                "reasoning_summary": decision.get("reasoning", ""),
+                                "target_allocation_pct": final_alloc,
+                                "occurred_at": datetime.now(timezone.utc).isoformat(),
+                            },
+                        )
+                        return None
 
         conviction = decision.get("conviction", 0)
         logger.info(f"Executing {action} {ticker} at {final_alloc:.1f}%...")
@@ -1479,6 +1492,7 @@ class Orchestrator:
                 "reasoning_summary": decision.get("reasoning", ""),
                 "moderation_consensus": mod_result.consensus,
                 "risk_verdict": risk_verdict.verdict,
+                "execution_note": execution_note,
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -1493,6 +1507,7 @@ class Orchestrator:
             "moderation": mod_result.consensus,
             "risk": risk_verdict.verdict,
             "stop_loss": stop_loss_result,
+            "execution_note": execution_note,
         }
 
     def _get_top_tickers(self, sub_results: dict[str, Any]) -> list[str]:

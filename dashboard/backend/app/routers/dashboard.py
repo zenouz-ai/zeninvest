@@ -4,7 +4,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import desc, exists, func
+from sqlalchemy import desc, exists, func, or_
 
 from src.data.database import get_session
 from src.data.models import CostLog, Instrument, Order, PortfolioSnapshot, StrategyDecision
@@ -79,13 +79,42 @@ async def get_monthly_summary(
         cumul_screened = session.query(Instrument).filter(Instrument.last_screened_at.isnot(None)).count()
         cumul_investigated = session.query(func.count(func.distinct(StrategyDecision.ticker))).scalar() or 0
         cumul_orders = session.query(Order).count()
-        # Uninvestigated: eligible instruments (data_available) with no StrategyDecision ever
-        cumul_uninvestigated = (
+        # Uninvestigated base: eligible instruments (data_available) with no StrategyDecision ever
+        uninvestigated_base = (
             session.query(Instrument)
             .filter(Instrument.data_available.is_(True))
             .filter(~exists().where(StrategyDecision.ticker == Instrument.ticker))
-            .count()
         )
+        # Enriched = has sector, industry, market_cap, or business_summary
+        has_enriched = or_(
+            Instrument.sector.isnot(None),
+            Instrument.industry.isnot(None),
+            Instrument.market_cap.isnot(None),
+            Instrument.business_summary.isnot(None),
+        )
+        cumul_uninvestigated = uninvestigated_base.count()
+        cumul_uninvestigated_enriched = uninvestigated_base.filter(has_enriched).count()
+        cumul_uninvestigated_not_enriched = cumul_uninvestigated - cumul_uninvestigated_enriched
+
+        # Investigated by review count (1, 2, 3+ strategy decisions)
+        review_counts_subq = (
+            session.query(
+                StrategyDecision.ticker,
+                func.count(StrategyDecision.id).label("review_count"),
+            )
+            .group_by(StrategyDecision.ticker)
+            .subquery()
+        )
+        rc = review_counts_subq.c
+        investigated_1_review = (
+            session.query(func.count()).select_from(review_counts_subq).filter(rc.review_count == 1).scalar()
+        ) or 0
+        investigated_2_reviews = (
+            session.query(func.count()).select_from(review_counts_subq).filter(rc.review_count == 2).scalar()
+        ) or 0
+        investigated_3plus_reviews = (
+            session.query(func.count()).select_from(review_counts_subq).filter(rc.review_count >= 3).scalar()
+        ) or 0
         # New this month: tickers whose first StrategyDecision occurred this month
         first_decision_subq = (
             session.query(StrategyDecision.ticker, func.min(StrategyDecision.timestamp).label("first_ts"))
@@ -116,6 +145,11 @@ async def get_monthly_summary(
             "cumul_screened": cumul_screened,
             "cumul_investigated": cumul_investigated,
             "cumul_uninvestigated": cumul_uninvestigated,
+            "cumul_uninvestigated_enriched": cumul_uninvestigated_enriched,
+            "cumul_uninvestigated_not_enriched": cumul_uninvestigated_not_enriched,
+            "investigated_1_review": investigated_1_review,
+            "investigated_2_reviews": investigated_2_reviews,
+            "investigated_3plus_reviews": investigated_3plus_reviews,
             "cumul_orders": cumul_orders,
             "new_investigated_this_month": new_investigated_this_month,
         }

@@ -187,8 +187,9 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 7. **T212 order status** — Order status is derived from T212 API response `status`: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/UNCONFIRMED/LOCAL→pending, REJECTED/CANCELLED→failed. Do not assume filled on 200 OK. **Order sync**: At the start of each cycle (non–dry-run), `OrderManager.sync_order_status_from_t212()` fetches T212 order history and updates local `Order.status` from pending to filled when T212 reports FILLED.
 8. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap.
 9. **Order dedup** — 5-minute window prevents double-execution of the same order.
-10. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
-11. **UOV optimizer guardrail** — UOV may reorder/queue BUYs, but it never directly triggers SELL/REDUCE. Strategy remains sell authority; Risk remains final veto.
+10. **Order value floor** — `min_order_value_gbp` applies to BUY/REDUCE/limit/stop paths; explicit market SELL decisions may execute below the floor so small positions can be fully exited. REDUCE that would leave a sub-£500 residual is auto-converted to full SELL.
+11. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
+12. **UOV optimizer guardrail** — UOV may reorder/queue BUYs, but it never directly triggers SELL/REDUCE. Strategy remains sell authority; Risk remains final veto.
 12. **Notification fail-open** — alert delivery failures (Slack/Email) must never block trade execution.
 13. **Intelligent order management** — `StopLossManager` runs after execution each cycle. Stop-loss is placed for BUY when `exec_result.status` in (filled, dry_run, **pending**) — optimistic placement for market BUYs that may fill shortly. **Place missing stops**: `place_missing_stops()` runs before reassessment; positions without a pending stop get one using `default_stop_loss_pct` (or ATR-based when available). Three capabilities:
     - **ATR-based stop reassessment**: Recalculates stops using 14-day ATR × configurable multiplier, clamped to [min, max] distance. By default only tightens (never widens).
@@ -334,7 +335,7 @@ Gathers macro-level market intelligence to inform trading decisions:
 
 Key tuneable values:
 
-- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `max_positions: 15`, `cash_floor_pct: 10`, `min_order_value_gbp: 500`, `min_reduce_pct_of_position: 25`, `reduce_tiers_pct: [25, 50, 70, 100]`
+- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `max_positions: 15`, `cash_floor_pct: 10`, `min_order_value_gbp: 500` (BUY/REDUCE/limit/stop floor; explicit market SELL exempt), `min_reduce_pct_of_position: 25`, `reduce_tiers_pct: [25, 50, 70, 100]`
 - **Risk**: `min_holding_hours_before_reduce: 24`, `max_single_stock_pct: 15`, `max_sector_pct: 35`, `cautious_drawdown_pct: 30`, `halt_drawdown_pct: 40`
 - **Strategy weights**: momentum `0.35`, mean_reversion `0.30`, factor `0.35`
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)

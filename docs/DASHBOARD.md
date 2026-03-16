@@ -202,6 +202,8 @@ Strategy (Claude) → conviction 0.8, action BUY
 **Recent orders (from `orders`):**
 - Table of all recent orders: time, ticker, action, quantity, order type, status (filled/pending/dry_run/failed)
 - Market orders (BUY/SELL/REDUCE) and stop orders in one view
+- Order-value floor behavior is visible in execution outcomes: BUY/REDUCE/limit/stop below £500 are skipped, while explicit market SELL can still execute for full exits
+- REDUCE decisions that would leave a residual position below £500 appear as executed SELL actions in the orders stream
 - Status reflects T212 API response when live (FILLED→filled, NEW→pending, REJECTED→failed)
 - `pending` has two common meanings in this table:
   - market order accepted but not yet executed (`type=MARKET`, typically `status=NEW`, common outside market hours)
@@ -221,7 +223,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 **Cost split: API vs LLM (daily and monthly):**
 - Dashboard Home "This month" card: Runs, Cost (API/LLM split), Portfolio (start→end), P&L, New tickers investigated; collapsible daily cost table for last 7 days.
-- Dashboard Home "Cumulative" card (separate): Screened, Investigated, Uninvestigated, Orders — lifetime stats. Uninvestigated = eligible instruments never reviewed by strategy.
+- Dashboard Home "Cumulative" card (separate): Screened, Investigated (with breakdown: 1×, 2×, 3+ reviews), Uninvestigated (with breakdown: enriched vs not enriched), Orders — lifetime stats.
 - Costs page: daily chart stacks API (Brave/Tavily) + LLM (Anthropic, OpenAI, Google); monthly table has API, LLM, and per-provider columns
 - API cost is estimated from `api_logs` call counts × published rates (Brave, Tavily); LLM cost from `cost_logs`
 

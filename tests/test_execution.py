@@ -113,7 +113,7 @@ class TestOrderManager:
         result = manager.execute_market_order(
             ticker="AAPL_US_EQ",
             action="BUY",
-            target_amount_gbp=500.0,
+            target_amount_gbp=525.0,
             current_price=175.0,
             strategy="momentum",
             conviction=80,
@@ -143,6 +143,39 @@ class TestOrderManager:
 
         assert result["status"] == "dry_run"
         assert result["action"] == "SELL"
+        orders = db_session.query(Order).all()
+        assert len(orders) == 1
+        assert orders[0].status == "dry_run"
+
+    def test_buy_below_min_order_value_skipped_and_not_logged(self, db_session):
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=100.0,
+            current_price=100.0,
+        )
+
+        assert result["status"] == "skipped"
+        assert result["reason"] == "below_min_order_value"
+        assert db_session.query(Order).count() == 0
+
+    def test_reduce_below_min_order_value_skipped_and_not_logged(self, db_session):
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="REDUCE",
+            target_amount_gbp=100.0,
+            current_price=100.0,
+        )
+
+        assert result["status"] == "skipped"
+        assert result["reason"] == "below_min_order_value"
+        assert db_session.query(Order).count() == 0
 
     def test_duplicate_detection(self, db_session):
         mock_client = MagicMock()
@@ -152,7 +185,7 @@ class TestOrderManager:
         result1 = manager.execute_market_order(
             ticker="AAPL_US_EQ",
             action="BUY",
-            target_amount_gbp=500.0,
+            target_amount_gbp=525.0,
             current_price=175.0,
         )
         assert result1["status"] == "dry_run"
@@ -161,7 +194,7 @@ class TestOrderManager:
         result2 = manager.execute_market_order(
             ticker="AAPL_US_EQ",
             action="BUY",
-            target_amount_gbp=500.0,
+            target_amount_gbp=525.0,
             current_price=175.0,
         )
         assert result2["status"] == "skipped"
@@ -207,7 +240,7 @@ class TestOrderManager:
         result = manager.execute_market_order(
             ticker="GOOG_US_EQ",
             action="BUY",
-            target_amount_gbp=500.0,
+            target_amount_gbp=600.0,
             current_price=150.0,
         )
 
@@ -306,6 +339,22 @@ class TestOrderManager:
         orders = db_session.query(Order).filter(Order.order_type == "stop").all()
         assert len(orders) == 1
         assert orders[0].status == "failed"
+
+    def test_place_stop_loss_below_min_order_value_skipped(self, db_session):
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+
+        result = manager.place_stop_loss(
+            ticker="AAPL_US_EQ",
+            quantity=1.0,
+            current_price=100.0,
+            stop_loss_pct=-8.0,
+        )
+
+        assert result["status"] == "skipped"
+        assert result["order_type"] == "stop"
+        assert result["reason"] == "below_min_order_value"
+        assert db_session.query(Order).count() == 0
 
 
 class TestT212TimeValidityMapping:

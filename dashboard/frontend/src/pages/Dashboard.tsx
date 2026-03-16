@@ -45,6 +45,11 @@ export default function Dashboard() {
     cumul_screened?: number
     cumul_investigated?: number
     cumul_uninvestigated?: number
+    cumul_uninvestigated_enriched?: number
+    cumul_uninvestigated_not_enriched?: number
+    investigated_1_review?: number
+    investigated_2_reviews?: number
+    investigated_3plus_reviews?: number
     cumul_orders?: number
   } | null>(null)
   const [dailyCosts, setDailyCosts] = useState<Array<{
@@ -516,10 +521,20 @@ export default function Dashboard() {
             <div>
               <div className="text-xs text-terminal-text-dim">Investigated</div>
               <div className="font-mono">{monthlySummary.cumul_investigated ?? '—'}</div>
+              {(monthlySummary.investigated_1_review != null || monthlySummary.investigated_2_reviews != null || monthlySummary.investigated_3plus_reviews != null) && (
+                <div className="text-xs text-terminal-text-dim mt-0.5">
+                  (1×: {monthlySummary.investigated_1_review ?? 0}, 2×: {monthlySummary.investigated_2_reviews ?? 0}, 3+: {monthlySummary.investigated_3plus_reviews ?? 0})
+                </div>
+              )}
             </div>
             <div>
               <div className="text-xs text-terminal-text-dim">Uninvestigated</div>
               <div className="font-mono">{monthlySummary.cumul_uninvestigated ?? '—'}</div>
+              {(monthlySummary.cumul_uninvestigated_enriched != null || monthlySummary.cumul_uninvestigated_not_enriched != null) && (
+                <div className="text-xs text-terminal-text-dim mt-0.5">
+                  enriched: {monthlySummary.cumul_uninvestigated_enriched ?? 0} · not: {monthlySummary.cumul_uninvestigated_not_enriched ?? 0}
+                </div>
+              )}
             </div>
             <div>
               <div className="text-xs text-terminal-text-dim">Orders</div>

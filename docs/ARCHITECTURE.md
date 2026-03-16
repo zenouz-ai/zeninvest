@@ -512,6 +512,11 @@ sequenceDiagram
     O->>O: Return trades + rejected_stocks + opportunity_ranking + queued_candidates + swap_candidates + cost_summary
 ```
 
+Execution floor guardrails:
+- `min_order_value_gbp` is enforced for BUY, REDUCE, limit BUY, and stop-loss order paths.
+- Explicit market SELL decisions are exempt from the floor so small positions can be fully exited.
+- If a REDUCE would leave a residual position below the floor, the orchestrator converts it to full SELL before execution.
+
 ### Cycle Output Structure
 
 Each `run_cycle()` call returns a JSON result with:

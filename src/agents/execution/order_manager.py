@@ -7,6 +7,7 @@ from typing import Any, Callable
 from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.data.database import get_session
 from src.data.models import Order
+from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
 logger = get_logger("order_manager")
@@ -30,6 +31,23 @@ class OrderManager:
     def __init__(self, client: T212Client | None = None, dry_run: bool = False) -> None:
         self.client = client or T212Client()
         self.dry_run = dry_run
+        self.settings = get_settings()
+
+    def _passes_min_order_value(
+        self,
+        *,
+        action: str,
+        order_type: str,
+        value_gbp: float,
+        allow_below_min_full_sell: bool = False,
+    ) -> tuple[bool, str | None]:
+        """Validate minimum order value policy before executing/logging."""
+        min_order = float(self.settings.min_order_value_gbp)
+        if value_gbp >= min_order:
+            return True, None
+        if allow_below_min_full_sell and action == "SELL" and order_type == "market":
+            return True, None
+        return False, "below_min_order_value"
 
     def _make_dedup_key(self, ticker: str, quantity: float) -> str:
         """Create a deduplication key: ticker_direction_absqty."""
@@ -143,6 +161,18 @@ class OrderManager:
             return {"status": "skipped", "reason": "duplicate"}
 
         value_gbp = abs(quantity) * current_price
+        can_place, reject_reason = self._passes_min_order_value(
+            action=action,
+            order_type="market",
+            value_gbp=value_gbp,
+            allow_below_min_full_sell=True,
+        )
+        if not can_place:
+            logger.info(
+                f"Order skipped: {action} {ticker} value £{value_gbp:.2f} below minimum "
+                f"£{self.settings.min_order_value_gbp:.2f}"
+            )
+            return {"status": "skipped", "reason": reject_reason}
 
         if self.dry_run:
             logger.info(f"[DRY RUN] Would execute: {action} {abs(quantity)} x {ticker} @ {current_price}")
@@ -415,6 +445,19 @@ class OrderManager:
 
         stop_price = round(current_price * (1 + stop_loss_pct / 100), 2)
         sell_quantity = -quantity  # Negative for sell
+        stop_order_value = abs(sell_quantity) * current_price
+        can_place, reject_reason = self._passes_min_order_value(
+            action="SELL",
+            order_type="stop",
+            value_gbp=stop_order_value,
+            allow_below_min_full_sell=False,
+        )
+        if not can_place:
+            logger.info(
+                f"Stop-loss skipped: {ticker} value £{stop_order_value:.2f} below minimum "
+                f"£{self.settings.min_order_value_gbp:.2f}"
+            )
+            return {"status": "skipped", "order_type": "stop", "reason": reject_reason}
 
         if self.dry_run:
             logger.info(
@@ -428,6 +471,7 @@ class OrderManager:
                 quantity=sell_quantity,
                 stop_price=stop_price,
                 price=current_price,
+                value_gbp=stop_order_value,
                 status="dry_run",
                 strategy=strategy,
             )
@@ -456,6 +500,7 @@ class OrderManager:
                 quantity=sell_quantity,
                 stop_price=stop_price,
                 price=current_price,
+                value_gbp=stop_order_value,
                 t212_order_id=str(t212_order_id) if t212_order_id else None,
                 status="pending",
                 strategy=strategy,
@@ -483,6 +528,7 @@ class OrderManager:
                 order_type="stop",
                 quantity=sell_quantity,
                 stop_price=stop_price,
+                value_gbp=stop_order_value,
                 status="failed",
                 strategy=strategy,
                 error_message=error_msg,

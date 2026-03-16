@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 228 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
+**Status:** POC — 232 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
 
 ## Architecture
 
@@ -260,13 +260,13 @@ s.close()
 ```bash
 poetry run pytest -v                          # All tests
 poetry run pytest tests/test_risk_manager.py  # Risk agent (43 tests)
-poetry run pytest tests/test_execution.py     # Execution (14 tests)
+poetry run pytest tests/test_execution.py     # Execution (22 tests)
 poetry run pytest tests/test_strategy.py      # Strategy (17 tests)
 poetry run pytest tests/test_moderation.py    # Moderation (21 tests)
 poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)
 poetry run pytest tests/test_screening_cooldown.py  # Screening + seed universe (10 tests)
 poetry run pytest tests/test_opportunity_scorer.py tests/test_opportunity_optimizer.py  # UOV scoring + optimizer (5 tests)
-poetry run pytest tests/test_notifications_service.py tests/test_notifications_providers.py tests/test_notifications_formatters.py tests/test_notifications_integration.py  # Notifications (19 tests)
+poetry run pytest tests/test_notifications_service.py tests/test_notifications_providers.py tests/test_notifications_formatters.py tests/test_notifications_integration.py  # Notifications (20 tests)
 ```
 
 ## Project Structure
@@ -372,6 +372,8 @@ Execution behavior:
 
 - **Market orders** — BUY, SELL, REDUCE (partial sell) via T212 market order API
 - **Stop-loss orders** — Automatically placed after BUY executions using Claude's `stop_loss_pct` (GTC validity)
+- **£500 order floor** — Orders below `min_order_value_gbp` are skipped for BUY/REDUCE/limit/stop paths; explicit market SELL decisions are allowed below the floor so small holdings can be fully exited
+- **REDUCE floor safeguard** — If a REDUCE would leave a position below £500, execution is automatically converted to a full SELL
 - **Order deduplication** — 5-minute window prevents double-execution
 - **Ticker normalization** — plain symbols returned by strategy (e.g. `AAPL`) are normalized to T212 instrument IDs (e.g. `AAPL_US_EQ`) before execution when an unambiguous mapping exists
 

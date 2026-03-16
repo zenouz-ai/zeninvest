@@ -307,6 +307,80 @@ def test_execute_trade_emits_execution_notification(monkeypatch) -> None:
     assert notifications.execution_payloads[0]["execution_status"] == "dry_run"
 
 
+def test_execute_trade_reduce_converts_to_full_sell_below_floor(monkeypatch) -> None:
+    orchestrator = Orchestrator(dry_run=True)
+    notifications = CaptureNotifications()
+    orchestrator.notification_service = notifications
+
+    class DummyOrderManager:
+        last_kwargs: dict | None = None
+
+        @classmethod
+        def execute_market_order(cls, **kwargs):
+            cls.last_kwargs = kwargs
+            return {
+                "status": "dry_run",
+                "quantity": 60,
+                "value_gbp": kwargs["target_amount_gbp"],
+            }
+
+        @staticmethod
+        def place_stop_loss(**kwargs):
+            return {"status": "skipped"}
+
+    class DummyMod:
+        consensus = "APPROVED"
+
+        @staticmethod
+        def to_dict() -> dict:
+            return {"consensus": "APPROVED"}
+
+    class DummyRisk:
+        verdict = "APPROVE"
+        rules_checked = []
+        triggered_rules = []
+        reasoning = "ok"
+
+    orchestrator._order_manager = DummyOrderManager()
+    monkeypatch.setattr("src.orchestrator.main.generate_trade_journal", lambda **kwargs: "journals/test.md")
+
+    trade = orchestrator._execute_trade(
+        cycle_id="cycle_reduce_floor",
+        decision={"conviction": 80, "primary_strategy": "momentum", "stop_loss_pct": -8.0, "reasoning": "trim"},
+        action="REDUCE",
+        ticker="AAPL_US_EQ",
+        final_alloc=20.0,
+        current_value=1_000.0,
+        cash_gbp=400.0,
+        total_return_pct=0.0,
+        alpha_pct=0.0,
+        existing_tickers={"AAPL_US_EQ"},
+        market_regime="BULL",
+        vix=18,
+        macro={"sp500_pct_above_200ma": 5.0},
+        stocks_data=[{"ticker": "AAPL_US_EQ", "indicators": {"current_price": 10}, "fundamentals": {}}],
+        analyst_data_map={},
+        av_broad_sentiment={},
+        mod_result=DummyMod(),
+        risk_verdict=DummyRisk(),
+        portfolio_data={
+            "total_value": 1_000.0,
+            "positions": [
+                {"ticker": "AAPL_US_EQ", "value_gbp": 600.0},
+            ],
+        },
+    )
+
+    assert trade is not None
+    assert trade["action"] == "SELL"
+    assert DummyOrderManager.last_kwargs is not None
+    assert DummyOrderManager.last_kwargs["action"] == "SELL"
+    assert DummyOrderManager.last_kwargs["target_amount_gbp"] == pytest.approx(600.0)
+    assert len(notifications.execution_payloads) == 1
+    assert notifications.execution_payloads[0]["action"] == "SELL"
+    assert "reduce_converted_to_sell_below_floor" in notifications.execution_payloads[0]["execution_note"]
+
+
 def test_state_machine_transition_emits_notification(monkeypatch) -> None:
     engine = create_engine(
         "sqlite:///:memory:",

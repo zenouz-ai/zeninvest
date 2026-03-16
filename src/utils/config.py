@@ -91,7 +91,7 @@ class Settings:
 
     @property
     def min_order_value_gbp(self) -> float:
-        """Skip BUY/REDUCE when trade value below this (avoid tiny trades)."""
+        """Minimum order value floor; full market SELLs are exempt."""
         return float(self.trading.get("min_order_value_gbp", 500))
 
     @property

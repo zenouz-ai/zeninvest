@@ -238,6 +238,11 @@ export const dashboardApi = {
     cumul_screened: number
     cumul_investigated: number
     cumul_uninvestigated: number
+    cumul_uninvestigated_enriched: number
+    cumul_uninvestigated_not_enriched: number
+    investigated_1_review: number
+    investigated_2_reviews: number
+    investigated_3plus_reviews: number
     cumul_orders: number
     new_investigated_this_month: number
   }> => {
