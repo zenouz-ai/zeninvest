@@ -587,3 +587,4 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 - [Architecture](ARCHITECTURE.md)
 - [Governance](GOVERNANCE.md) (audit trail)
 - [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) (US-1.5, US-1.6)
+- [Conversational Trading Workflow](CONVERSATIONAL_TRADING_WORKFLOW.md) (US-1.9 unified multi-turn design)

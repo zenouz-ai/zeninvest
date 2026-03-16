@@ -422,7 +422,7 @@ and reliability tradeoff of local deployment.
 
 ---
 
-## 12. Agentic Research Data Sources (US-4.4 — Delivered)
+## 12. Agentic Research Data Sources (US-4.4 — In Progress)
 
 Committee members have on-demand search tools backed by:
 

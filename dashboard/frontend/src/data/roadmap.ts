@@ -37,9 +37,9 @@ export interface Milestone {
   architectureComponents?: string[]
 }
 
-/** All 25 milestones from SOPHISTICATION_ROADMAP (11 delivered, 14 pipeline) */
+/** All 28 milestones from SOPHISTICATION_ROADMAP (10 delivered, 18 pipeline) */
 export const MILESTONES: Milestone[] = [
-  // --- Delivered (11) ---
+  // --- Delivered (10) ---
   {
     id: 'US-1.1',
     name: 'Performance Tracking',
@@ -158,19 +158,6 @@ export const MILESTONES: Milestone[] = [
     architectureComponents: ['Order Manager', 'Stop-Loss Manager'],
   },
   {
-    id: 'US-4.4',
-    name: 'Agentic Research',
-    topic: 'Signals',
-    status: 'delivered',
-    start: '2026-03-10',
-    end: '2026-03-13',
-    effort: 'L',
-    priority: 'P1',
-    description:
-      'Web search, news, sector, SEC EDGAR for Strategy + Skeptic; Brave primary, Tavily fallback; caps 20/8/7',
-    architectureComponents: ['Strategy Engine', 'Data Fetcher'],
-  },
-  {
     id: 'US-5.1',
     name: 'Backtesting Engine',
     topic: 'Validation',
@@ -183,7 +170,29 @@ export const MILESTONES: Milestone[] = [
       'Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache',
     architectureComponents: ['Backtesting module'],
   },
-  // --- Pipeline (14) ---
+  // --- Pipeline (18) ---
+  {
+    id: 'US-4.4',
+    name: 'Agentic Research',
+    topic: 'Signals',
+    status: 'pipeline',
+    effort: 'L',
+    priority: 'P1',
+    description:
+      'Partially implemented: Strategy + Skeptic tool-use loops available, Risk loop pending; Brave primary, Tavily fallback; caps 20/8/7 (total 35)',
+    architectureComponents: ['Strategy Engine', 'Data Fetcher'],
+  },
+  {
+    id: 'US-4.5',
+    name: 'Proactive Macro News Intelligence',
+    topic: 'Signals',
+    status: 'pipeline',
+    effort: 'L',
+    priority: 'P1',
+    description:
+      'Scheduled macro/geopolitical scans, second-order impact reasoning, persistent macro state, confidence-scored signals, and auditable macro action planning',
+    architectureComponents: ['Data Fetcher', 'Scheduler', 'Strategy Engine', 'Risk Agent'],
+  },
   {
     id: 'US-1.6',
     name: 'Slack NL Trade Commands',
@@ -194,6 +203,28 @@ export const MILESTONES: Milestone[] = [
     description:
       'Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto',
     architectureComponents: ['Notifications', 'Orchestrator'],
+  },
+  {
+    id: 'US-1.9',
+    name: 'Conversational Trading Workflow',
+    topic: 'Foundation',
+    status: 'pipeline',
+    effort: 'L',
+    priority: 'P1',
+    description:
+      'Multi-turn Slack + dashboard chat sessions with shared context, explicit action confirmation, and full conversation/research/action audit trail',
+    architectureComponents: ['Notifications', 'Dashboard', 'Orchestrator'],
+  },
+  {
+    id: 'US-2.4',
+    name: 'Nemotron Integration Investigation',
+    topic: 'Calibration',
+    status: 'pipeline',
+    effort: 'S',
+    priority: 'P2',
+    description:
+      'Investigate Nemotron 3 Super as candidate moderator/risk model with smoke tests, shadow comparison, and promotion gates',
+    architectureComponents: ['Moderation Panel', 'Risk Agent'],
   },
   {
     id: 'US-2.1',

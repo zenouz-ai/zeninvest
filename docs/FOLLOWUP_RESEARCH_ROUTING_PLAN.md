@@ -1,124 +1,110 @@
 ---
 name: Follow-up Research Routing
-overview: Design and validate a follow-up question routing framework (easy/medium/hard) that chooses no-call vs single API call vs mini-research, benchmarks Brave/Brave Answers/Tavily, and defines production architecture, settings, costs, and E2E validation.
+overview: Implement and validate follow-up routing (skip vs single-call vs mini-research) with 12-question benchmark, provider comparisons, and production policy guidance.
 todos:
   - id: create-followup-dataset
     content: Create 12-question labeled dataset (4 easy, 4 medium, 4 hard) with ticker-stage-ground-truth structure
-    status: pending
+    status: completed
   - id: build-routing-eval-notebook
     content: Create new notebook to evaluate materiality gate, complexity classification, and routing modes/providers
-    status: pending
+    status: completed
   - id: define-policy-thresholds
     content: Select production default thresholds and route map using cost/latency/quality metrics
-    status: pending
+    status: in_progress
   - id: design-architecture-settings
     content: Draft config and module-level architecture changes for follow-up routing integration
-    status: pending
+    status: in_progress
   - id: add-e2e-routing-tests
     content: Design end-to-end ticker test coverage for skip/one-call/mini-research and fallback behavior
-    status: pending
+    status: in_progress
   - id: publish-final-recommendation
     content: Produce implementation recommendation and required doc updates for rollout
-    status: pending
+    status: in_progress
 isProject: false
 ---
 
 # Follow-up Research Routing Plan
 
-## Scope and Deliverable Choice
+This document is the **routing-policy source of truth** for follow-up research decisions.
 
-- Create a **new notebook** instead of rewriting the old one to preserve historical Phase-0 results and reduce regression risk.
-- Keep existing investigation notebook as baseline: [notebooks/research_api_investigation.ipynb](notebooks/research_api_investigation.ipynb).
-- Add a new evaluation notebook focused on moderation/strategy follow-up routing: [notebooks/research_followup_routing_eval.ipynb](notebooks/research_followup_routing_eval.ipynb).
+- Architecture/tool schema source: [AGENTIC_RESEARCH.md](AGENTIC_RESEARCH.md)
+- Execution checklist source: [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md)
 
-## Workstream 1: 12-Question Benchmark Dataset
+## Implemented So Far
 
-- Build a structured dataset with 12 follow-up questions + ground truth, split evenly:
-  - 4 easy (single factual verification)
-  - 4 medium (requires synthesis across 2+ snippets)
-  - 4 hard (ambiguity/contradiction or multi-hop evidence)
-- Store dataset in versioned file for repeatability: [notebooks/data/followup_questions_v1.json](notebooks/data/followup_questions_v1.json).
-- Include context fields tied to real pipeline usage: `ticker`, `stage` (`strategy|skeptic|risk`), `candidate_decision_before_web`, `materiality_target`, `ground_truth_evidence`.
+Completed artifacts:
+- Baseline notebook retained: [notebooks/research_api_investigation.ipynb](notebooks/research_api_investigation.ipynb)
+- New routing notebook: [notebooks/research_api_decision_framework.ipynb](notebooks/research_api_decision_framework.ipynb)
+- Benchmark dataset: [data/research_eval_questions_12.json](data/research_eval_questions_12.json)
+- Benchmark outputs:
+  - [data/research_eval_results_12.json](data/research_eval_results_12.json)
+  - [data/research_eval_scores_12.json](data/research_eval_scores_12.json)
+  - [data/research_policy_recommendation.json](data/research_policy_recommendation.json)
 
-## Workstream 2: Decision-to-Research Gating Logic
+Implemented capabilities:
+- 12-question benchmark with 4 easy / 4 medium / 4 hard follow-up questions.
+- Provider benchmarking across Brave Search, Brave Answers, Tavily.
+- Static-first gating logic for deciding whether web follow-up is needed.
+- Action mode selection (skip / single-call / mini-research).
+- Initial architecture and policy recommendation output.
+- CB ticker end-to-end walkthrough (static vs web-enriched decision flow).
 
-- Define a two-gate policy before any web call:
-  - **Gate A (Materiality):** estimate whether web evidence could materially change decision (position size, approve/block, confidence bucket).
-  - **Gate B (Complexity):** classify question as easy/medium/hard.
-- Implement notebook experiment comparing three classifiers:
-  - heuristic-only baseline
-  - LLM-only classifier
-  - hybrid (LLM + deterministic checks) — expected production default
-- Output confusion matrix vs labeled difficulty and materiality labels.
+## Current Production Draft Policy
 
-## Workstream 3: Route Policy (One Call vs Mini-Research)
+- **Default posture:** static-first, call web only when materiality gate triggers.
+- **Materiality trigger:** disagreement, low confidence, or elevated risk context.
+- **Routing by complexity:**
+  - easy: no-call or single API call
+  - medium: single call (+ fallback provider)
+  - hard: bounded mini-research loop
+- **Provider policy (default):** Brave Search primary + Tavily fallback.
+- **Provider policy (experiment):** difficulty-based provider routing can be evaluated in shadow mode and promoted only after stable weekly benchmark runs.
 
-- Evaluate and codify route policy:
-  - **Easy + low materiality:** skip web call
-  - **Easy + material:** one-shot `web_search`/`news_search`
-  - **Medium + material:** one-shot + optional fallback provider
-  - **Hard + material:** mini-research loop (bounded multi-call, citation merge, contradiction check)
-- Compare provider routing alternatives for each level using current stack:
-  - Brave Search
-  - Brave Answers
-  - Tavily
-- Record policy outputs per query: selected mode, provider, calls used, latency, estimated cost, and decision delta.
+Committee constraints from current implementation:
+- Strategy (Claude): tool loop exists (max iteration guard), can use research tools.
+- Skeptic (GPT-4o): tool loop exists; prompt guidance is sparse use (typically 1-2 searches).
+- Risk (Gemini): currently single-turn in code path (no active tool-use loop).
 
-## Workstream 4: Performance, Cost, and Latency Evaluation
+## What Still Needs Implementation
 
-- Extend benchmark scoring from existing scripts (quality + truth alignment + latency):
-  - [notebooks/enrichment_benchmark.py](notebooks/enrichment_benchmark.py)
-  - [notebooks/brave_tavily_comparison.py](notebooks/brave_tavily_comparison.py)
-- Add routing-centric metrics:
-  - `decision_change_rate`
-  - `material_change_precision/recall`
-  - `cost_per_material_change`
-  - `p95_latency_by_mode`
-- Produce a final per-difficulty recommendation matrix: best default provider/mode and fallback behavior.
+### 1) Config and Integration
 
-## Workstream 5: Target Architecture + Settings Blueprint
+Add explicit routing config under `research` in [config/settings.yaml](config/settings.yaml):
+- `research.followup_routing_enabled`
+- materiality thresholds
+- easy/medium/hard classifier thresholds/mode
+- mini-research max calls and timeout
+- optional provider preferences by difficulty (shadow mode first)
 
-- Produce an implementation blueprint aligned with current research modules:
-  - [src/agents/research/executor.py](src/agents/research/executor.py)
-  - [src/agents/research/providers/router.py](src/agents/research/providers/router.py)
-  - [src/agents/research/budget.py](src/agents/research/budget.py)
-  - [src/agents/research/tools.py](src/agents/research/tools.py)
-  - [config/settings.yaml](config/settings.yaml)
-- Proposed additions:
-  - `research.followup_routing_enabled`
-  - difficulty thresholds / classifier mode
-  - materiality thresholds
-  - mini-research max calls/time budget
-  - provider preference by difficulty
-- Ensure logging captures real latency/cost at research-log level (currently zeros in `ResearchLog` path) and includes routing decision metadata.
+### 2) Observability and Logging
 
-## Workstream 6: End-to-End Ticker Validation
+Improve research logging path:
+- Persist real latency and cost estimates per call in `ResearchLog`.
+- Persist routing metadata (`gate_result`, `difficulty`, `mode_selected`, `provider_selected`).
 
-- Add a deterministic E2E-style integration test for one ticker with mocked external APIs and real internal routing logic.
-- Suggested tests:
-  - [tests/test_research_followup_routing.py](tests/test_research_followup_routing.py)
-  - [tests/test_research_ticker_e2e.py](tests/test_research_ticker_e2e.py)
-- Assertions:
-  - gate behavior (skip vs one-call vs mini-research)
-  - provider selection under success/fallback
-  - budget/cap enforcement
-  - decision materially changes only when expected
+### 3) Tests
 
-## Workstream 7: Final Recommendation Package
+Add focused tests for routing behavior:
+- skip vs single-call vs mini-research
+- fallback provider behavior under failures
+- budget and cap enforcement
+- expected decision-delta behavior
 
-- Produce final recommendation artifact with:
-  - default route policy per difficulty/materiality
-  - provider ranking by difficulty
-  - latency/cost envelope and monthly call impact
-  - rollout plan (`shadow` → `active`) and guardrails
-- Update docs impacted by this feature:
-  - [docs/AGENTIC_RESEARCH.md](docs/AGENTIC_RESEARCH.md)
-  - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-  - [docs/DATA_RATIONALE.md](docs/DATA_RATIONALE.md)
-  - [docs/GOVERNANCE.md](docs/GOVERNANCE.md)
-  - [README.md](README.md)
+### 4) Rollout
 
-## Target Architecture Sketch
+Use staged rollout:
+- shadow mode comparison first
+- active mode after threshold tuning and stability checks
+
+## Removed/De-scoped Items
+
+Removed stale path/name assumptions not used in implementation:
+- `notebooks/research_followup_routing_eval.ipynb`
+- `notebooks/data/followup_questions_v1.json`
+
+Deferred broad expansions until core routing integration and tests are complete.
+
+## Target Architecture (Retained)
 
 ```mermaid
 flowchart TD
@@ -136,11 +122,8 @@ flowchart TD
     finalDecision --> auditLogs[ResearchAndApiLogs]
 ```
 
-
-
 ## Assumptions
 
-- Use current provider stack (Brave Search / Brave Answers / Tavily) with no new external vendor.
-- Keep RiskManager deterministic; routing only influences LLM research inputs.
-- Start with notebook-first validation, then productionize selected policy in code.
-
+- RiskManager remains deterministic; routing only affects LLM research inputs.
+- Existing provider stack (Brave primary, Tavily fallback) is sufficient for first production rollout.
+- Notebook-first validation continues until config integration + tests land in code.

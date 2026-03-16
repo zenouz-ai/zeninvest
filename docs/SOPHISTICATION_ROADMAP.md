@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **11** · Pipeline **15** (order by priority and feasibility below)
+**At a glance:** Delivered **10** · Pipeline **18** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -34,9 +34,11 @@ timeline
         US-1.8 : Dashboard VPS Deployment
         US-1.7 : Dashboard & Visualisation
         US-1.4 : Deploy POC to VPS
-        US-4.4 : Agentic Research
     section Pipeline (priority order)
+        US-4.4 : Agentic Research
+        US-4.5 : Proactive Macro News Intelligence
         US-1.6 : Slack NL Trade Commands
+        US-1.9 : Conversational Trading Workflow
         US-2.1 : Conviction Calibration
         US-2.2 : Dynamic Strategy Weighting
         US-3.1 : Risk-Parity Sizing
@@ -67,22 +69,24 @@ timeline
 | | 8 | US-1.8 | Dashboard VPS Deployment |
 | | 9 | US-1.7 | Dashboard & Visualisation (full API + 7 pages) |
 | | 10 | US-1.4 | Deploy POC to VPS |
-| | 11 | US-4.4 | Agentic Research (web search, SEC EDGAR, Strategy/Skeptic tool-use; caps 20/8/7, total 35) |
-| **Pipeline** | 1 | US-1.6 | Slack NL Trade Commands |
-| | 2 | US-2.1 | Conviction Calibration |
-| | 3 | US-2.2 | Dynamic Strategy Weighting |
-| | 4 | US-3.1 | Risk-Parity Sizing |
-| | 5 | US-2.3 | Moderator Effectiveness |
-| | 6 | US-2.4 | Nemotron Integration Investigation |
-| | 7 | US-4.1 | Volume Signals |
-| | 8 | US-5.2 | Parameter Sensitivity |
-| | 9 | US-3.2 | Regime Detection |
-| | 10 | US-3.3 | Correlation Screening |
-| | 11 | US-4.2 | Earnings Calendar |
-| | 12 | US-4.3 | Sector Rotation |
-| | 13 | US-6.1 | ML Trade Scoring (investigation) |
-| | 14 | US-6.2 | Journal Embeddings |
-| | 15 | US-6.3 | RL Investigation |
+| **Pipeline** | 1 | US-4.4 | Agentic Research (partially implemented: Strategy/Skeptic loops available, Risk loop pending) |
+| | 2 | US-4.5 | Proactive Macro News Intelligence |
+| | 3 | US-1.6 | Slack NL Trade Commands |
+| | 4 | US-1.9 | Conversational Trading Workflow |
+| | 5 | US-2.1 | Conviction Calibration |
+| | 6 | US-2.2 | Dynamic Strategy Weighting |
+| | 7 | US-3.1 | Risk-Parity Sizing |
+| | 8 | US-2.3 | Moderator Effectiveness |
+| | 9 | US-2.4 | Nemotron Integration Investigation |
+| | 10 | US-4.1 | Volume Signals |
+| | 11 | US-5.2 | Parameter Sensitivity |
+| | 12 | US-3.2 | Regime Detection |
+| | 13 | US-3.3 | Correlation Screening |
+| | 14 | US-4.2 | Earnings Calendar |
+| | 15 | US-4.3 | Sector Rotation |
+| | 16 | US-6.1 | ML Trade Scoring (investigation) |
+| | 17 | US-6.2 | Journal Embeddings |
+| | 18 | US-6.3 | RL Investigation |
 
 ---
 
@@ -98,6 +102,7 @@ timeline
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
 | **US-1.7** | Dashboard & Visualisation | Web dashboard: 7 pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs); full API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system). | Full operational visibility; personal quant experience | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_DEPLOYMENT.md` | Operational visibility on live VPS | **Delivered** |
+| **US-1.9** | Conversational Trading Workflow | Multi-turn, session-based Slack + dashboard chat workflow with shared session backend, explicit confirmation gate, deterministic risk veto, and full conversation/research/action audit trail; see `docs/CONVERSATIONAL_TRADING_WORKFLOW.md` | Human-in-the-loop collaborative trading with traceable decisions and safer execution control | **Planned** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
@@ -110,7 +115,8 @@ timeline
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
-| **US-4.4** | Agentic Research | Independent tool access (web search, news, sector, SEC EDGAR) for Strategy + Skeptic + Risk; Brave primary, Tavily fallback; caps 20/8/7 per member, 35 total/cycle; Phase 0 notebook, ResearchLog, dashboard API | Stale context mitigation, follow-up ability, broader coverage | **Delivered** |
+| **US-4.4** | Agentic Research | Independent tool access (web search, news, sector, SEC EDGAR) architecture and caps (20/8/7, total 35). Strategy + Skeptic tool-use loops are available; Risk loop remains pending. Brave primary, Tavily fallback. Phase 0/0.2 notebooks and routing-policy artifacts documented. | Stale context mitigation, follow-up ability, broader coverage | **In Progress** |
+| **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Planned** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
@@ -166,6 +172,8 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 | 2.1 | Conviction calibration | High | Medium | M | ~50 trades | **P1** |
 | 2.2 | Dynamic strategy weighting | High | Medium | M | ~50 trades | **P1** |
 | 1.6 | Slack NL trade commands | High | Medium | M–L | Full pipeline | **P1** |
+| 1.9 | Conversational trading workflow | High | Medium | L | US-1.6 + US-1.7 (+US-4.4 for deep research) | **P1** |
+| 4.5 | Proactive macro news intelligence | High | Medium | L | Existing macro + scheduler (+US-4.4 for deeper research) | **P1** |
 | 1.7 | Dashboard & Visualisation (Phase 1) | High | Medium | L | Existing DB + events_log | **P1** |
 | 1.8 | Dashboard VPS Deployment | High | Easy | S | US-1.7 complete | **P1** |
 | 2.3 | Moderator effectiveness | Medium | Easy | S | ~100 trades | **P2** |
@@ -395,6 +403,54 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [ ] `slack_command_log`; CLI `slack_trade_listener`
 
 **Integration:** Long-running process; reuses Strategy/Moderation/Risk/Execution stack.
+
+---
+
+**US-1.9: Conversational Trading Workflow**
+**Value:** Multi-turn collaborative trading across Slack and dashboard with persistent context and explicit action confirmation  
+**Effort:** Large (8–12 days, phased delivery)  
+**Data Sources:** Existing pipeline + new chat session/turn/action tables + optional agentic research tools  
+**Stage:** Planned  
+
+**Detailed plan:** `docs/CONVERSATIONAL_TRADING_WORKFLOW.md`.
+
+**Acceptance Criteria:**
+- [ ] Session management supports start/resume/end/timeout with persistent multi-turn context
+- [ ] Shared backend supports Slack thread and dashboard chat continuity
+- [ ] Agent provides structured research summaries and follow-up refinements by turn
+- [ ] Every trade action requires explicit confirmation; no execution on ambiguous intent
+- [ ] RiskManager remains final deterministic veto with clear rejection reasons
+- [ ] Full audit trail for turns, research calls, recommendations, confirmations, and executions
+- [ ] Dashboard chat APIs and SSE events support real-time conversational updates
+
+**Dependencies:**
+- Requires US-1.6 for robust inbound Slack handling baseline
+- Requires US-1.7 backend/frontend extension for chat panel and APIs
+- Uses US-4.4 research tooling when enabled; core session + confirmation flow can ship without deep tool-use
+
+---
+
+**US-4.5: Proactive Macro News Intelligence**
+**Value:** Portfolio-level anticipation of macro shocks/tailwinds via proactive scanning and second-order reasoning  
+**Effort:** Large (8–12 days, phased delivery)  
+**Data Sources:** Existing macro module + Finnhub/AV/yfinance + scheduled scans + optional Brave/Tavily/Browser research  
+**Stage:** Planned  
+
+**Detailed plan:** `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`.
+
+**Acceptance Criteria:**
+- [ ] Independent macro scan schedule runs multiple times daily with persisted scan history
+- [ ] Macro events are classified into taxonomy and transformed into confidence-scored signals
+- [ ] Persistent macro state is maintained across scans (regime memory)
+- [ ] Committee receives macro state/signals as explicit context in decision flow
+- [ ] Macro action planner outputs review-first positioning recommendations with audit links
+- [ ] Optional auto-actions are gated by confidence thresholds, daily swing caps, and deterministic risk veto
+- [ ] Full signal-to-action audit trail exists (news -> reasoning -> signal -> recommendation -> outcome)
+
+**Dependencies:**
+- Can start now using existing macro intelligence and scheduler primitives
+- Benefits from US-4.4 tooling for deeper source coverage and richer reasoning traces
+- Integrates with existing RiskManager veto path; no bypass allowed
 
 ---
 
@@ -665,6 +721,8 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (requires ~50 trades)
 - **US-5.2 prep** — Parameter sensitivity harness
 - **US-1.6** — Slack NL trade commands (Phase 2 chat)
+- **US-1.9** — Conversational trading workflow (multi-turn Slack + dashboard chat)
+- **US-4.5** — Proactive macro news intelligence (stateful macro layer + action planner)
 
 **Delivery references:**
 - `docs/ORDER_MANAGEMENT_PROJECT.md`
@@ -704,6 +762,8 @@ The POC runs continuously and accumulates data while we add features in priority
 
 - [Architecture](ARCHITECTURE.md) — pipeline flow, state machine, database schema
 - [Agentic Research](AGENTIC_RESEARCH.md) — US-4.4 tool access plan (Brave + Tavily)
+- [Conversational Trading Workflow](CONVERSATIONAL_TRADING_WORKFLOW.md) — US-1.9 unified multi-turn Slack/dashboard chat plan
+- [Proactive Macro News Intelligence](PROACTIVE_MACRO_NEWS_INTELLIGENCE.md) — US-4.5 proactive macro scanning/state/signal plan
 - [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md) — candidate model evaluation plan and promotion gates
 - [Governance](GOVERNANCE.md) — risk rules, cost controls, audit trail
 - [Competitive Analysis](COMPETITIVE_ANALYSIS.md) — positioning vs alternatives

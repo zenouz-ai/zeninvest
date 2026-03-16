@@ -685,7 +685,7 @@ For the full prioritised backlog and detailed user story specifications, see [So
 - **Chat & Notifications (US-1.5)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. See [Chat & Commands](CHAT_AND_COMMANDS.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
 - **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (8 pages). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
-- **Agentic Research (US-4.4)** — *Delivered.* Independent tool access (web search, news, SEC) for Strategy + Moderation. Provider abstraction: Brave (primary) + Tavily (fallback, optionally additional for news). See [Agentic Research](AGENTIC_RESEARCH.md).
+- **Agentic Research (US-4.4)** — *Partially delivered.* Strategy + Skeptic tool-use loops are available behind feature flags; Risk remains single-turn in current code path. Provider abstraction uses Brave (primary) + Tavily (fallback). Routing validation is documented in notebooks (`research_api_investigation.ipynb`, `research_api_decision_framework.ipynb`) with static-first gating and complexity-based action modes (skip/single-call/mini-research). See [Agentic Research](AGENTIC_RESEARCH.md) and [Follow-up Routing Plan](FOLLOWUP_RESEARCH_ROUTING_PLAN.md).
 - **Nemotron Integration Investigation (US-2.4)** — *Investigation only.* Candidate risk/moderation model evaluated via smoke testing and shadow-mode comparison before any promotion to live committee roles. See [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md).
 
 ---
@@ -698,5 +698,6 @@ For the full prioritised backlog and detailed user story specifications, see [So
 - [Dashboard](DASHBOARD.md) — web dashboard design and implementation
 - [Chat & Commands](CHAT_AND_COMMANDS.md) — notifications and planned inbound commands
 - [Backtesting](BACKTESTING.md) — engine, walk-forward validation, promotion report
-- [Agentic Research](AGENTIC_RESEARCH.md) — planned tool access for committee (Brave + Tavily)
+- [Agentic Research](AGENTIC_RESEARCH.md) — canonical architecture, conventions, and implementation state
+- [Follow-up Routing Plan](FOLLOWUP_RESEARCH_ROUTING_PLAN.md) — routing policy (materiality + complexity gates)
 - [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md) — investigation plan, provider options, and promotion gates

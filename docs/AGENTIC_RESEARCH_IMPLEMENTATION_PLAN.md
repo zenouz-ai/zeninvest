@@ -1,16 +1,23 @@
 ---
 tags: [agentic-research, implementation, us-4.4]
 status: current
-last_updated: 2026-03-13
+last_updated: 2026-03-16
 ---
 
 # US-4.4 Agentic Research — Implementation Plan
 
-> Step-by-step implementation guide. See [AGENTIC_RESEARCH.md](AGENTIC_RESEARCH.md) for full design.
+> Step-by-step execution checklist. Architecture and canonical naming live in [AGENTIC_RESEARCH.md](AGENTIC_RESEARCH.md). Routing policy details live in [FOLLOWUP_RESEARCH_ROUTING_PLAN.md](FOLLOWUP_RESEARCH_ROUTING_PLAN.md).
+
+## Canonical Identifiers Used In This Plan
+
+- Members: `strategy`, `skeptic`, `risk`
+- Tool names: `web_search`, `news_search`, `sector_search`, `sec_search`, `macro_search`
+- Feature flags: `research.strategy_research_enabled`, `research.skeptic_research_enabled`, `research.risk_research_enabled`
+- Caps: `20/8/7` with `max_total_research_calls_per_cycle=35`
 
 ## Context
 
-- **Status:** US-1.7 (Dashboard) and US-1.4 (VPS deployment) are delivered. US-4.4 is the current focus.
+- **Status:** US-4.4 is active and partially implemented.
 - **Deferred:** US-2.1/2.2 (calibration), US-5.2 (parameter sensitivity), US-1.6 (Slack commands) — await data or later sprint.
 
 ## Todo List (Execution Order)
@@ -32,7 +39,7 @@ last_updated: 2026-03-13
 ### Phase 0 Context
 
 - **SEC EDGAR:** Free; no API key. Use `company_tickers.json` for ticker→CIK, then `data.sec.gov/submissions/CIK{cik}.json` for filing metadata. User-Agent header required.
-- **Config caps:** `max_calls_per_member_per_cycle: {strategy: 20, skeptic: 8, risk: 7}`, `max_total_research_calls_per_cycle: 35`, `tavily_monthly_calls: 1000`.
+- **Config caps:** `max_calls_per_member_per_cycle: {strategy: 20, skeptic: 8, risk: 7}`, `max_total_research_calls_per_cycle: 35`.
 
 ## Phase 0 Checklist (Complete)
 
@@ -66,7 +73,7 @@ last_updated: 2026-03-13
 ## Phase C Checklist
 
 - [ ] GPT-4o and Gemini tool-use loops
-- [ ] Feature flags per moderator
+- [ ] Feature flags per moderator (`skeptic_research_enabled`, `risk_research_enabled`)
 
 ## Phase D Checklist
 
@@ -84,4 +91,4 @@ last_updated: 2026-03-13
 | GOVERNANCE.md | ResearchLog audit, budget monitoring |
 | DATA_RATIONALE.md | Research tools as data sources |
 | DASHBOARD.md | Research panel |
-| SOPHISTICATION_ROADMAP.md | US-4.4 → Delivered |
+| SOPHISTICATION_ROADMAP.md | US-4.4 status reflects partial implementation (In Progress) |

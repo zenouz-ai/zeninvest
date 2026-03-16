@@ -1,7 +1,7 @@
 ---
 tags: [agentic-research, tool-use, committee]
-status: in-progress
-last_updated: 2026-03-13
+status: current
+last_updated: 2026-03-16
 ---
 
 # Agentic Research
@@ -16,7 +16,13 @@ Transform the investment agent's committee pipeline from a **fixed data payload*
 
 ### Current Status
 
-This project is **US-4.4** in the sophistication roadmap. Status: **In Progress** — US-1.8 Dashboard VPS Deployment is complete. Implementation can proceed. See [Implementation Plan](#implementation-plan) below and [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) for the step-by-step checklist.
+This project is **US-4.4** in the sophistication roadmap. Status: **Partially Implemented**.
+
+- Strategy (Claude): tool-use loop available behind feature flag.
+- Skeptic (GPT-4o): tool-use loop available behind feature flag.
+- Risk (Gemini): still single-turn in current code path (no active tool-use loop yet).
+
+Implementation checklist and rollout steps are maintained in [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md).
 
 ### Benefits
 
@@ -45,23 +51,31 @@ This project is **US-4.4** in the sophistication roadmap. Status: **In Progress*
 
 ### Phase 0 — API Investigation (Pre-Build)
 
-Before any `src/` code, a Phase 0 notebook validates APIs and establishes baselines:
+Before `src/` integration, a baseline notebook validates provider behavior and latency:
 
 - **Location:** `notebooks/research_api_investigation.ipynb`
-- **Sections:** 0.1 Environment, 0.2 Brave Search, 0.3 Tavily Search, 0.4 A/B Comparison, 0.5 SEC EDGAR, 0.6 Cost/Latency Summary, 0.7 Mock Tool Execution
-- **Output:** Brave vs Tavily recommendation, suggested caps, SEC EDGAR parsing approach
+- **Coverage:** Brave Search, Brave Answers, Tavily, SEC EDGAR, quality scoring
+- **Output:** Provider quality/latency snapshots and SEC anchor checks
 
-**Phase 0 Recommendation (Brave vs Tavily):**
+### Phase 0.2 — Follow-up Routing Validation (Static-First)
 
-| Factor | Brave Search | Tavily |
-|--------|--------------|--------|
-| Latency | ~300–500 ms | ~800–1200 ms |
-| Snippet quality | Good; raw snippets | LLM-optimised `content` field |
-| Finance relevance | General web; no native filter | Native `topic: finance` filter |
-| **Primary** | ✓ Use as primary | Fallback on timeout/5xx |
-| **Fallback** | — | ✓ Use when Brave fails |
+A second notebook validates follow-up routing decisions for committee prompts:
 
-**Recommendation:** Brave as primary (lower latency, existing integration), Tavily as fallback. For `news_search`, Tavily's `topic: finance` is valuable — consider Tavily for news-heavy queries when Brave returns thin results.
+- **Location:** `notebooks/research_api_decision_framework.ipynb`
+- **Dataset:** 12 labeled follow-up questions (4 easy / 4 medium / 4 hard) with ground truth
+- **Artifacts:**
+  - `data/research_eval_questions_12.json`
+  - `data/research_eval_results_12.json`
+  - `data/research_eval_scores_12.json`
+  - `data/research_policy_recommendation.json`
+
+Key finding: use **static-first gating** and route by materiality + complexity:
+
+- easy: skip or single-call
+- medium: single-call + fallback
+- hard: bounded mini-research
+
+Provider behavior can vary by question type and run conditions. Current production default remains **Brave Search primary + Tavily fallback**; difficulty-specific provider routing is evaluated in shadow mode before enabling as default.
 
 ### Existing Infrastructure (Reuse)
 
@@ -77,6 +91,18 @@ Before any `src/` code, a Phase 0 notebook validates APIs and establishes baseli
 - **Per-member caps per cycle:** Strategy 20, Skeptic 8, Risk 7. **Total per cycle:** 35 (hard limit).
 - **Strategy typical usage:** 10–15 calls/cycle; focus on 5–10 high-conviction tickers, 2–3 searches each.
 - **Cost cap:** £50/month — tracked in `CostLog`/`ResearchLog`. If any limit is hit, research is disabled (graceful degradation).
+
+### Canonical Conventions (Single Source of Truth)
+
+Use the following identifiers consistently across docs and code:
+
+- **Members:** `strategy`, `skeptic`, `risk`
+- **Tool names:** `web_search`, `news_search`, `sector_search`, `sec_search`, `macro_search`
+- **Feature flags:** `research.strategy_research_enabled`, `research.skeptic_research_enabled`, `research.risk_research_enabled`
+- **Core caps:** `strategy=20`, `skeptic=8`, `risk=7`, `max_total_research_calls_per_cycle=35`
+- **Default provider policy:** `primary=brave`, `fallback=tavily`, optional `additional_for_news=false` unless explicitly enabled
+
+Routing policy details (materiality and complexity gates) are maintained in [FOLLOWUP_RESEARCH_ROUTING_PLAN.md](FOLLOWUP_RESEARCH_ROUTING_PLAN.md).
 
 ## The Problem
 
@@ -490,266 +516,25 @@ Remember: Focus on tail risks and second-order effects, not first-order thesis c
 
 ## Implementation Plan
 
-### Overview
+The detailed execution checklist is intentionally maintained in a single location:
 
-| Phase | Focus | Deliverables | Depends On |
-|-------|-------|--------------|------------|
-| **A** | Research tool layer | Providers, cache, budget, executor, ResearchLog | None |
-| **B** | Strategy engine tool-use | Claude tool-use loop, research in synthesis | Phase A |
-| **C** | Moderation tool-use | GPT-4o + Gemini tool-use | Phase A |
-| **D** | Observability | Dashboard panel, Slack, API, events | Phase A, B, C |
+- [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md)
 
-### Execution Order
+High-level phases remain:
+
+| Phase | Focus | Depends On |
+|-------|-------|------------|
+| **A** | Research tool layer (providers, cache, budget, executor, logs) | None |
+| **B** | Strategy tool-use integration | Phase A |
+| **C** | Moderation tool-use integration | Phase A |
+| **D** | Observability (dashboard/API/events/alerts) | Phase A, B, C |
 
 ```mermaid
 flowchart TD
-    A[Phase A: Research Tool Layer] --> B[Phase B: Strategy Engine]
-    A --> C[Phase C: Moderation Panel]
-    B --> D[Phase D: Observability]
-    C --> D
-```
-
-### Key Technical Decisions
-
-1. **Provider layer:** Build `src/agents/research/providers/` with `BraveSearchClient`, `TavilySearchClient`, `ProviderRouter`. Reuse HTTP patterns from `brave_enrichment.py` but keep research modules independent (avoid circular imports). Call `search_api_tracker.check_search_api_budget()` before each search.
-2. **SEC EDGAR:** Use direct SEC HTTP APIs (`data.sec.gov`, `www.sec.gov/cgi-bin/browse-edgar`). No LangChain. Optional `SEC_EDGAR_EMAIL` for User-Agent politeness.
-3. **Budget enforcement:** `ResearchBudget` checks (a) per-member per-cycle (£0.30/0.20/0.20), (b) monthly £50 cap, (c) `check_search_api_budget(service)` before each Brave/Tavily call.
-4. **Tool-use formats:** Claude uses `tool_use` blocks; OpenAI uses `function_calls`; Gemini uses `function_declarations`. Executor normalises tool names and parameters; each LLM client handles its own format.
-5. **Config:** Add `research` block to `settings.yaml`; add `research_*` properties to `Settings` in `config.py`.
-
-### File Structure
-
-```
-src/agents/research/
-├── __init__.py
-├── providers/
-│   ├── __init__.py
-│   ├── base.py      # SearchProviderProtocol, SearchResult
-│   ├── brave.py     # BraveSearchClient
-│   ├── tavily.py    # TavilySearchClient
-│   └── router.py    # ProviderRouter
-├── tools.py         # Tool definitions (name, description, input_schema)
-├── cache.py         # ResearchCache
-├── budget.py        # ResearchBudget
-├── executor.py      # ResearchExecutor (orchestrates tools, cache, budget, logging)
-├── sec_search.py    # SEC EDGAR client
-└── prompts.py       # Research-specific prompt fragments (optional)
-```
-
-### Acceptance Criteria (All Phases)
-
-- [ ] Phase A: Providers, cache, budget, executor, ResearchLog; tests pass; `research.enabled: false` default
-- [ ] Phase B: Claude tool-use loop; max 8 iterations; ResearchLog entries; `research.strategy_research_enabled: false` default
-- [ ] Phase C: GPT-4o and Gemini tool-use; skeptic/risk research; feature flags
-- [ ] Phase D: Dashboard research panel, GET /api/research/*, Slack insights, EventsLog
-- [ ] All research disabled when `research.enabled: false` or search/monthly cap hit
-- [ ] Documentation updated: CLAUDE.md, ARCHITECTURE.md, GOVERNANCE.md, DATA_RATIONALE.md, DASHBOARD.md
-
----
-
-## Implementation Phases
-
-### Phase A — Research Tool Layer (1 session)
-
-**Deliverables:**
-- `src/agents/research/providers/base.py` — `SearchProviderProtocol`, `SearchResult` dataclass
-- `src/agents/research/providers/brave.py` — Brave Search client (implements protocol)
-- `src/agents/research/providers/tavily.py` — Tavily Search client (implements protocol)
-- `src/agents/research/providers/router.py` — ProviderRouter (primary/fallback/additional logic)
-- `src/agents/research/tools.py` — tool definitions
-- `src/agents/research/web_search.py` — uses ProviderRouter (not direct Brave call)
-- `src/agents/research/sec_search.py` — SEC EDGAR integration
-- `src/agents/research/cache.py` — research cache (4h TTL)
-- `src/agents/research/budget.py` — per-member budget enforcement
-- `src/agents/research/executor.py` — tool execution + logging
-- `ResearchLog` model + Alembic migration (includes `provider` column)
-- Tests: budget enforcement, cache hits, tool execution, provider fallback
-
-**Feature flag:** `research.enabled: false` (default)
-
-**Integration:** Call `search_api_tracker.check_search_api_budget(SERVICE_BRAVE_SEARCH)` (or `SERVICE_TAVILY`) before each Brave/Tavily request. Log via `log_search_api_call()`. Research shares the 2,000 calls/month limit with enrichment.
-
-**Claude Code Prompt:**
-
-```
-You are implementing the research tool layer for agentic research. Your job is to build the infrastructure that committee members will use to search for information.
-
-Create:
-1. Provider abstraction (providers/base.py, brave.py, tavily.py, router.py):
-   - SearchProviderProtocol: search(query, num_results, topic, time_range) → list[SearchResult]
-   - BraveSearchClient: wrapper around Brave Search API
-   - TavilySearchClient: wrapper around Tavily Search API (topic: general|news|finance, search_depth)
-   - ProviderRouter: primary → fallback on failure; optional additional merge for news_search
-   - Normalise both providers to SearchResult(url, title, snippet/content)
-
-2. SEC EDGAR client (sec_search.py):
-   - Fetch and parse SEC filings for a ticker (10-K, 10-Q, 8-K)
-   - Use direct SEC EDGAR API (https://www.sec.gov/cgi-bin/browse-edgar, data.sec.gov); no LangChain dependency
-   - Extract key sections (MD&A, Risk Factors, Financial Statements) via HTML parsing or SEC JSON API
-   - Returns: filing summary with key excerpts
-
-3. Cache layer (cache.py):
-   - Key: (ticker, tool_name, normalized_query)
-   - TTL: 4 hours
-   - Deduplicate across committee members
-   - Implement: get(), set(), clear_expired()
-
-4. Budget layer (budget.py):
-   - Per-member per-cycle budget (strategy £0.30, skeptic £0.20, risk £0.20)
-   - Monthly cap: £50
-   - Methods: can_afford(), record_call()
-   - Graceful degradation: if cap hit, all research disabled
-
-5. Executor (executor.py):
-   - Orchestrates tool execution, caching, budgeting, logging
-   - Async tool call with timeout (20 seconds)
-   - Audit trail to ResearchLog
-   - Error handling and fallback
-
-6. ResearchLog model:
-   - columns: cycle_id, member, ticker, tool_name, query, results_json, provider (brave|tavily), cost_usd, latency_ms, cache_hit, error
-   - indexes: (cycle_id), (member, ticker)
-
-Test with in-memory SQLite fixtures. No real API keys needed for basic tests (mock Brave and Tavily responses).
-```
-
-### Phase B — Wire Into Strategy Engine (1 session)
-
-**Deliverables:**
-- `src/agents/strategy/engine.py` — refactor `synthesize_with_claude()` to use tool-use loop
-- Tool-use loop: call Claude with tools, handle `tool_use` stop reason, execute, append results, iterate
-- Error handling: max 8 iterations, timeout enforcement
-- Feature flag: `research.strategy_research_enabled: false`
-- Tests: tool-use loop, max iterations, decision parsing
-
-**Claude Code Prompt:**
-
-```
-You are wiring research tool access into the strategy engine. The strategy now has a tool-use loop 
-where Claude can call research tools during evaluation.
-
-Refactor synthesize_with_claude() to:
-1. Define research tools for Claude:
-   - web_search, news_search, sec_search, sector_search
-   - Each tool has name, description, input_schema
-
-2. System prompt that instructs Claude to:
-   - Research high-conviction candidates
-   - Verify thesis validity with recent news
-   - Cite sources for each research insight
-   - Output structured decision with conviction, research summary, reasoning
-
-3. Implement tool-use loop:
-   - Call Claude with tools
-   - If stop_reason == "tool_use": collect tool_use blocks, execute them
-   - If stop_reason == "end_turn": parse decision and return
-   - Max iterations: 8 (prevent infinite loops)
-   - Timeout: 30 seconds total (enforce on each iteration)
-
-4. Tool execution:
-   - Call executor.execute_research_tool(member="strategy", tool_name, input)
-   - Executor handles budget, cache, logging
-   - Return results to Claude as tool_result
-
-5. Error handling:
-   - Budget exhausted: return error message, Claude adapts
-   - Tool timeout: return partial result or "timeout" message
-   - API error: return error message with fallback advice
-
-6. Testing:
-   - Mock Claude responses with tool_use blocks
-   - Test loop termination (end_turn, max iterations, timeout)
-   - Test decision parsing with various Claude outputs
-   - Verify ResearchLog entries are created
-```
-
-### Phase C — Wire Into Moderation Panel (1 session)
-
-**Deliverables:**
-- `src/agents/moderation/panel.py` — refactor skeptic (GPT-4o) and risk (Gemini) to use tool-use/function-calling
-- Feature flags: `research.skeptic_research_enabled`, `research.risk_research_enabled` (both false)
-- Tests: tool-use loops for each member, decision parsing
-
-**Claude Code Prompt:**
-
-```
-You are wiring research tool access into the moderation panel. The skeptic (GPT-4o) and risk assessor (Gemini) 
-now have their own research tools to evaluate theses.
-
-Refactor moderation calls:
-1. Skeptic (GPT-4o) with function calling:
-   - Tools: web_search, news_search, sector_search
-   - System prompt: falsify thesis; find bear cases, downgrades, insider selling, sector risks
-   - Function-calling loop: call GPT-4o, handle tool_calls, execute, continue
-   - Max iterations: 6, timeout: 25 seconds
-   - Output: skeptic_score (1-5), concerns, recommendation
-
-2. Risk Assessor (Gemini) with tool use:
-   - Tools: web_search, macro_search, sector_search
-   - System prompt: evaluate tail risks; macro policy, geopolitical, sector rotation
-   - Tool-use loop: call Gemini, handle tool_use, execute, continue
-   - Max iterations: 6, timeout: 25 seconds
-   - Output: risk_score (1-5), macro_context, recommendation
-
-3. Executor integration:
-   - Both call executor.execute_research_tool(member=member_name, ...)
-   - Executor deduplicates with cache
-   - Log all research calls with member name
-
-4. Testing:
-   - Mock GPT-4o and Gemini responses with tool_call/tool_use blocks
-   - Test loop termination
-   - Test deduplication across members
-   - Verify vote parsing and decision integration
-
-Feature flags allow gradual rollout:
-- Enable research for strategy only first
-- Then enable skeptic
-- Finally enable risk
-- Or run A/B test (research vs non-research cohorts)
-```
-
-### Phase D — Observability & Dashboard Integration (1 session)
-
-**Deliverables:**
-- Dashboard "Research Activity" panel (Phase 1.5)
-- Slack research insights (formatted notifications)
-- `/api/research/` endpoints for dashboard
-- Event logger integration (EventsLog)
-- Tests: dashboard data format, API response structure
-
-**Claude Code Prompt:**
-
-```
-You are building observability for agentic research. The dashboard and notifications need to show 
-what research the committee members conducted and what they found.
-
-Deliverables:
-1. Dashboard "Research Activity" panel:
-   - Table of research calls (member, ticker, tool, query, provider, results_json, cost, latency, cache_hit)
-   - Filters: by member, by cycle, by ticker
-   - Expandable rows: show full results and tool response
-   - Summary stats: total calls, total cost, cache hit rate (%)
-
-2. Slack research insights:
-   - Format: "[Research] Claude researched AAPL (web_search): found 3 bullish articles, 1 downgrade"
-   - Include citations (URLs, sources)
-   - Cost breakdown if cycle_cost > £0.50
-
-3. API endpoints:
-   - GET /api/research/logs?cycle_id=... — list research calls
-   - GET /api/research/logs/{id} — full research call details
-   - GET /api/research/summary?from=...&to=... — aggregated stats
-
-4. Event logger:
-   - Emit "research_call" events for each tool execution
-   - Metadata: member, ticker, tool, cost, cache_hit, results summary
-   - Used by dashboard SSE stream
-
-5. Testing:
-   - Verify event format matches EventsLog schema
-   - Test API response structure (pagination, filters)
-   - Test Slack message formatting
+    phaseA[PhaseA_ResearchToolLayer] --> phaseB[PhaseB_Strategy]
+    phaseA --> phaseC[PhaseC_Moderation]
+    phaseB --> phaseD[PhaseD_Observability]
+    phaseC --> phaseD
 ```
 
 ---

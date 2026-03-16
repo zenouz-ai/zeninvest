@@ -253,7 +253,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 **Roadmap tab:**
 - Project evolution from day 0 (2026-02-22) to now; days-in-development counter
-- Summary cards: 11 delivered · 14 pipeline · 44% complete
+- Summary cards: 10 delivered · 15 pipeline · 40% complete
 - Topic filter: All, Foundation, Calibration, Portfolio & Risk, Signals, Validation, ML / Advanced
 - Vertical timeline grouped by topic; delivered (● green) vs pipeline (○ grey)
 - Expandable milestone details: description, effort, priority, architecture components
@@ -638,9 +638,9 @@ Update Claude.md and README.md with deployment instructions. Ensure the dashboar
 
 ### Phase D — Research Activity (Agentic Research, US-4.4)
 
-When [Agentic Research](AGENTIC_RESEARCH.md) is implemented: **Research Activity** panel showing per-cycle research summary (searches, cache hit rate, cost), per-ticker research trail, and research influence tracking. See `docs/AGENTIC_RESEARCH.md`.
+When [Agentic Research](AGENTIC_RESEARCH.md) reaches full rollout: **Research Activity** panel showing per-cycle research summary (searches, cache hit rate, cost), per-ticker research trail, and research influence tracking. See `docs/AGENTIC_RESEARCH.md`.
 
-**Status:** ⏳ Awaiting Agentic Research Phases A-C
+**Status:** 🔄 In Progress (US-4.4 partially implemented; Strategy + Skeptic tool-use available, Risk loop pending)
 
 ---
 
