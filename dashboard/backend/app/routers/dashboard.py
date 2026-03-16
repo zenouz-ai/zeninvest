@@ -4,7 +4,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import desc, func
+from sqlalchemy import desc, exists, func
 
 from src.data.database import get_session
 from src.data.models import CostLog, Instrument, Order, PortfolioSnapshot, StrategyDecision
@@ -77,8 +77,30 @@ async def get_monthly_summary(
 
         # Cumulative (lifetime) stats
         cumul_screened = session.query(Instrument).filter(Instrument.last_screened_at.isnot(None)).count()
-        cumul_reviewed = session.query(func.count(func.distinct(StrategyDecision.ticker))).scalar() or 0
+        cumul_investigated = session.query(func.count(func.distinct(StrategyDecision.ticker))).scalar() or 0
         cumul_orders = session.query(Order).count()
+        # Uninvestigated: eligible instruments (data_available) with no StrategyDecision ever
+        cumul_uninvestigated = (
+            session.query(Instrument)
+            .filter(Instrument.data_available.is_(True))
+            .filter(~exists().where(StrategyDecision.ticker == Instrument.ticker))
+            .count()
+        )
+        # New this month: tickers whose first StrategyDecision occurred this month
+        first_decision_subq = (
+            session.query(StrategyDecision.ticker, func.min(StrategyDecision.timestamp).label("first_ts"))
+            .group_by(StrategyDecision.ticker)
+            .subquery()
+        )
+        new_investigated_this_month = (
+            session.query(func.count())
+            .select_from(first_decision_subq)
+            .filter(
+                first_decision_subq.c.first_ts >= start,
+                first_decision_subq.c.first_ts <= end,
+            )
+            .scalar()
+        ) or 0
 
         return {
             "year": year,
@@ -92,8 +114,10 @@ async def get_monthly_summary(
             "portfolio_end_gbp": portfolio_end_gbp,
             "pnl_gbp": pnl_gbp,
             "cumul_screened": cumul_screened,
-            "cumul_reviewed": cumul_reviewed,
+            "cumul_investigated": cumul_investigated,
+            "cumul_uninvestigated": cumul_uninvestigated,
             "cumul_orders": cumul_orders,
+            "new_investigated_this_month": new_investigated_this_month,
         }
     finally:
         session.close()

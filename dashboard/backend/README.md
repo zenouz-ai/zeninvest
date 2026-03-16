@@ -123,6 +123,8 @@ Both settings default to `true` if not specified.
 
 **universe_updated** metadata includes: `num_candidates`, `total_available`, `large_pool`, `mid_pool`, `small_pool`, `large_cap_count`, `mid_cap_count`, `small_cap_count`, `sector_distribution`, `tickers`, `cooldown_hours`, `review_count`, `new_count`, `positions_count`, `cumul_screened`, `cumul_reviewed`, `cumul_orders`
 
+**GET /api/dashboard/monthly-summary** returns: `runs_count`, `cost_gbp`, `llm_cost_gbp`, `api_cost_gbp`, `portfolio_start_gbp`, `portfolio_end_gbp`, `pnl_gbp`, `new_investigated_this_month`, `cumul_screened`, `cumul_investigated`, `cumul_uninvestigated`, `cumul_orders`
+
 ### runs
 - `id` (PK)
 - `cycle_id` (unique, indexed)

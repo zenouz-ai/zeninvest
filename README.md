@@ -166,6 +166,9 @@ Set `cycle_frequency: intraday` in `config/settings.yaml` for 3 cycles during ma
 # Build and run (agent + dashboard)
 docker compose up -d --build
 
+# Rebuild after code changes (e.g. dashboard updates)
+docker compose up -d --build   # or: docker compose up -d --build dashboard
+
 # View logs
 docker compose logs -f investment-agent
 docker compose logs -f dashboard

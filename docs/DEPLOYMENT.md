@@ -1729,6 +1729,8 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 3. Build and run: `docker compose up -d --build`
 4. Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser
 
+**To rebuild after updates:** `git pull origin main` then `docker compose up -d --build` (or `docker compose up -d --build dashboard` for dashboard only). See [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md#updating--rebuilding-the-dashboard).
+
 **Outcome:** Dashboard is running on VPS. All 8 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs, Roadmap), activity feed (SSE), and API at `http://YOUR_VPS_IP:8000`.
 
 **Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use the **Dry Run** or **Live Run** buttons on Dashboard Home (Live Run requires confirmation), or `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live) / `... --dry-run` (dry).

@@ -41,8 +41,10 @@ export default function Dashboard() {
     portfolio_start_gbp: number | null
     portfolio_end_gbp: number | null
     pnl_gbp: number | null
+    new_investigated_this_month?: number
     cumul_screened?: number
-    cumul_reviewed?: number
+    cumul_investigated?: number
+    cumul_uninvestigated?: number
     cumul_orders?: number
   } | null>(null)
   const [dailyCosts, setDailyCosts] = useState<Array<{
@@ -456,23 +458,13 @@ export default function Dashboard() {
                 {monthlySummary.pnl_gbp != null ? `£${monthlySummary.pnl_gbp.toFixed(2)}` : '—'}
               </div>
             </div>
+            {monthlySummary.new_investigated_this_month != null && (
+              <div>
+                <div className="text-xs text-terminal-text-dim">New tickers investigated</div>
+                <div className="font-mono">{monthlySummary.new_investigated_this_month}</div>
+              </div>
+            )}
           </div>
-          {(monthlySummary.cumul_screened != null || monthlySummary.cumul_reviewed != null || monthlySummary.cumul_orders != null) && (
-            <div className="mt-3 pt-3 border-t border-terminal-border grid grid-cols-3 gap-4">
-              <div>
-                <div className="text-xs text-terminal-text-dim">Screened (cumul)</div>
-                <div className="font-mono">{monthlySummary.cumul_screened ?? '—'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-terminal-text-dim">Reviewed (cumul)</div>
-                <div className="font-mono">{monthlySummary.cumul_reviewed ?? '—'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-terminal-text-dim">Orders (cumul)</div>
-                <div className="font-mono">{monthlySummary.cumul_orders ?? '—'}</div>
-              </div>
-            </div>
-          )}
           {dailyCosts.length > 0 && (
             <div className="mt-4 pt-3 border-t border-terminal-border">
               <button
@@ -509,6 +501,31 @@ export default function Dashboard() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Cumulative (lifetime) */}
+      {monthlySummary && (monthlySummary.cumul_screened != null || monthlySummary.cumul_investigated != null || monthlySummary.cumul_uninvestigated != null || monthlySummary.cumul_orders != null) && (
+        <div className="card">
+          <h2 className="text-lg font-semibold mb-3">Cumulative</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <div className="text-xs text-terminal-text-dim">Screened</div>
+              <div className="font-mono">{monthlySummary.cumul_screened ?? '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-terminal-text-dim">Investigated</div>
+              <div className="font-mono">{monthlySummary.cumul_investigated ?? '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-terminal-text-dim">Uninvestigated</div>
+              <div className="font-mono">{monthlySummary.cumul_uninvestigated ?? '—'}</div>
+            </div>
+            <div>
+              <div className="text-xs text-terminal-text-dim">Orders</div>
+              <div className="font-mono">{monthlySummary.cumul_orders ?? '—'}</div>
+            </div>
+          </div>
         </div>
       )}
 

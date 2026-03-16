@@ -118,6 +118,28 @@ curl http://localhost:8000/api/events/?limit=3
 
 Access from your machine: `http://YOUR_VPS_IP:8000`
 
+### Updating / Rebuilding the dashboard
+
+After code changes (frontend or backend), rebuild and restart:
+
+```bash
+cd /home/deploy/investment-agent   # or your project path
+git pull origin main
+docker compose up -d --build
+```
+
+To rebuild only the dashboard service (keeps agent running):
+
+```bash
+docker compose up -d --build dashboard
+```
+
+Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser.
+
+**Local development:** Build the frontend with `cd dashboard/frontend && npm run build`. The Docker image runs a multi-stage build (Node → Python) that includes the built SPA.
+
+---
+
 **Run History:** Shows `runs` table entries (one per cycle). Scheduler creates a single Run per scheduled cycle and passes its cycle_id to the orchestrator, which updates that Run on completion (no duplicate cycle_ vs scheduled_ entries). Manual/dashboard-triggered runs create their own Run with a `cycle_*` id.
 
 **One-off live cycle (in addition to scheduler):**

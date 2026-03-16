@@ -220,7 +220,8 @@ Strategy (Claude) → conviction 0.8, action BUY
 ### Page 7: Cost & API Monitoring
 
 **Cost split: API vs LLM (daily and monthly):**
-- Dashboard Home "This month" card shows total cost with API and LLM split; daily breakdown table for last 7 days; cumulative lifetime stats (screened, reviewed, orders)
+- Dashboard Home "This month" card: Runs, Cost (API/LLM split), Portfolio (start→end), P&L, New tickers investigated; collapsible daily cost table for last 7 days.
+- Dashboard Home "Cumulative" card (separate): Screened, Investigated, Uninvestigated, Orders — lifetime stats. Uninvestigated = eligible instruments never reviewed by strategy.
 - Costs page: daily chart stacks API (Brave/Tavily) + LLM (Anthropic, OpenAI, Google); monthly table has API, LLM, and per-provider columns
 - API cost is estimated from `api_logs` call counts × published rates (Brave, Tavily); LLM cost from `cost_logs`
 
