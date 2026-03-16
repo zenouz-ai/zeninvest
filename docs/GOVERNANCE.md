@@ -1,7 +1,7 @@
 ---
 tags: [governance, security, risk, cost-controls, audit]
 status: current
-last_updated: 2026-03-11
+last_updated: 2026-03-16
 ---
 
 # Governance, Security & Cost Controls
@@ -111,6 +111,15 @@ All API keys are loaded from environment variables via `src/utils/config.py`:
 | `GOOGLE_AI_API_KEY` | Google AI | Gemini Flash risk assessment |
 | `FINNHUB_API_KEY` | Finnhub | Market data + sentiment |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage | News sentiment + fundamentals |
+
+**Investigation-only provider keys (not active in production):**
+
+| Environment Variable | Service | Purpose |
+|---------------------|---------|---------|
+| `OPENROUTER_API_KEY` | OpenRouter | Nemotron investigation endpoint (optional) |
+| `NVIDIA_API_KEY` | NVIDIA NIM | Nemotron investigation endpoint (optional) |
+
+These keys are optional and only needed for investigation workflows in `docs/Nemotron_3_Super_Integration_Investigation.md`. They are not required for the current live committee pipeline.
 
 Keys are loaded via `python-dotenv` from a `.env` file at the project root. The `.env` file must be listed in `.gitignore` and never committed.
 
@@ -843,3 +852,4 @@ All data is stored in a SQLite database managed via SQLAlchemy + Alembic migrati
 - [Order Management](ORDER_MANAGEMENT_PROJECT.md) — stop-loss, trailing stops, limit orders
 - [Data Rationale](DATA_RATIONALE.md) — data sources, indicators, fundamental metrics
 - [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — planned enhancements and prioritisation
+- [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md) — candidate-model evaluation gates before any promotion

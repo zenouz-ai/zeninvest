@@ -1,7 +1,7 @@
 ---
 tags: [setup, local, macos, testing]
 status: current
-last_updated: 2026-03-10
+last_updated: 2026-03-16
 ---
 
 # Local Setup and Live Run Guide
@@ -172,6 +172,15 @@ Fill in these 7 required keys in `.env`. Optional notification keys (Slack, SMTP
 | `GOOGLE_AI_API_KEY` | Gemini Flash | Moderation (risk assessor) | [aistudio.google.com](https://aistudio.google.com/) |
 | `FINNHUB_API_KEY` | Finnhub | Analyst recs, insider sentiment | [finnhub.io](https://finnhub.io/) |
 | `ALPHA_VANTAGE_API_KEY` | Alpha Vantage | News sentiment, sector performance | [alphavantage.co/support](https://www.alphavantage.co/support/#api-key) |
+
+Optional investigation-only keys (not required for normal setup):
+
+| Variable | Service | Purpose |
+|----------|---------|---------|
+| `OPENROUTER_API_KEY` | OpenRouter | Nemotron integration investigation |
+| `NVIDIA_API_KEY` | NVIDIA NIM | Nemotron integration investigation |
+
+Use these only if running investigation steps in `docs/Nemotron_3_Super_Integration_Investigation.md`. Leave unset for standard local development and current production-equivalent behavior.
 
 **Note:** The agent runs in **Practice/Demo mode** by default. No real money is at risk. See [Switching to Live Mode](#switching-to-live-mode) before trading with real capital.
 
@@ -654,3 +663,4 @@ poetry run alembic upgrade head
 - [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md)
 - [Data Export Runbook](DATA_EXPORT_RUNBOOK.md)
 - [Architecture](ARCHITECTURE.md)
+- [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md)

@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-13
+last_updated: 2026-03-16
 ---
 
 # Sophistication Roadmap
@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **11** · Pipeline **14** (order by priority and feasibility below)
+**At a glance:** Delivered **11** · Pipeline **15** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -41,6 +41,7 @@ timeline
         US-2.2 : Dynamic Strategy Weighting
         US-3.1 : Risk-Parity Sizing
         US-2.3 : Moderator Effectiveness
+        US-2.4 : Nemotron Integration Investigation
         US-4.1 : Volume Signals
         US-5.2 : Parameter Sensitivity
         US-3.2 : Regime Detection
@@ -72,15 +73,16 @@ timeline
 | | 3 | US-2.2 | Dynamic Strategy Weighting |
 | | 4 | US-3.1 | Risk-Parity Sizing |
 | | 5 | US-2.3 | Moderator Effectiveness |
-| | 6 | US-4.1 | Volume Signals |
-| | 7 | US-5.2 | Parameter Sensitivity |
-| | 8 | US-3.2 | Regime Detection |
-| | 9 | US-3.3 | Correlation Screening |
-| | 10 | US-4.2 | Earnings Calendar |
-| | 11 | US-4.3 | Sector Rotation |
-| | 12 | US-6.1 | ML Trade Scoring (investigation) |
-| | 13 | US-6.2 | Journal Embeddings |
-| | 14 | US-6.3 | RL Investigation |
+| | 6 | US-2.4 | Nemotron Integration Investigation |
+| | 7 | US-4.1 | Volume Signals |
+| | 8 | US-5.2 | Parameter Sensitivity |
+| | 9 | US-3.2 | Regime Detection |
+| | 10 | US-3.3 | Correlation Screening |
+| | 11 | US-4.2 | Earnings Calendar |
+| | 12 | US-4.3 | Sector Rotation |
+| | 13 | US-6.1 | ML Trade Scoring (investigation) |
+| | 14 | US-6.2 | Journal Embeddings |
+| | 15 | US-6.3 | RL Investigation |
 
 ---
 
@@ -99,6 +101,7 @@ timeline
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
+| **US-2.4** | Nemotron Integration Investigation | Investigate NVIDIA Nemotron 3 Super as candidate risk scorer using shadow-mode evaluation, provider/cost comparison, and promotion gates | Potential cost/latency gains, provider diversification, and stronger long-context risk analysis if validated | **Planned (investigation)** |
 | **US-3.1** | Risk-Parity Position Sizing | Size positions inversely to trailing volatility; equal risk contribution | Reduces volatility without reducing returns; strong academic evidence | **Planned** |
 | **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Regime-aware strategy selection improves hit rate | **Planned** |
 | **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; soft signal to committee | **Planned** |
@@ -395,6 +398,23 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
+**US-2.4: Nemotron Integration Investigation**
+**Value:** Potential moderation/risk model cost reduction, faster inference, and provider diversification if quality is maintained
+**Effort:** Investigation (2-4 days for smoke + shadow setup planning)
+**Data Sources:** Existing committee inputs, moderation logs, risk decisions, cost logs
+**Stage:** Planned (investigation)
+
+**Detailed plan:** `docs/Nemotron_3_Super_Integration_Investigation.md`.
+
+**Investigation Criteria:**
+- [ ] API smoke test passes for at least one provider path (OpenRouter or NVIDIA NIM)
+- [ ] Shadow comparison vs Gemini risk role across minimum 5 full cycles
+- [ ] No material quality regression in risk assessments
+- [ ] Cost and latency profile documented against current moderator stack
+- [ ] Promotion decision documented: promote, hold as optional 4th voice, or archive
+
+---
+
 **US-1.7: Dashboard & Visualisation System (Phase 1 MVP + full API)**
 **Value:** Full operational visibility — activity feed, universe, run history, portfolio, opportunity, order management, costs
 **Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)
@@ -639,6 +659,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 **Immediate (current focus):**
 - **US-4.4** — Agentic Research: independent tool access for Strategy + Moderation (Brave + Tavily + SEC EDGAR). See `docs/AGENTIC_RESEARCH.md` (design) and `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md` (checklist).
+- **US-2.4** — Nemotron integration investigation (evaluation only; no production switch). See `docs/Nemotron_3_Super_Integration_Investigation.md`.
 
 **Deferred (await data or later sprint):**
 - **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (requires ~50 trades)
@@ -654,6 +675,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - `docs/archived/BACKTESTING_PROJECT_PLAN.md`
 - `docs/archived/DASHBOARD_VISUALISATION_PROJECT.md`
 - `docs/archived/AGENTIC_RESEARCH_PROJECT.md`, `docs/archived/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md`
+- `docs/Nemotron_3_Super_Integration_Investigation.md`
 
 ---
 
@@ -682,6 +704,7 @@ The POC runs continuously and accumulates data while we add features in priority
 
 - [Architecture](ARCHITECTURE.md) — pipeline flow, state machine, database schema
 - [Agentic Research](AGENTIC_RESEARCH.md) — US-4.4 tool access plan (Brave + Tavily)
+- [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md) — candidate model evaluation plan and promotion gates
 - [Governance](GOVERNANCE.md) — risk rules, cost controls, audit trail
 - [Competitive Analysis](COMPETITIVE_ANALYSIS.md) — positioning vs alternatives
 - [Presentation](PRESENTATION.md) — stakeholder deck overview

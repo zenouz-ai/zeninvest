@@ -1,7 +1,7 @@
 ---
 tags: [architecture, pipeline, database, diagrams]
 status: current
-last_updated: 2026-03-13
+last_updated: 2026-03-16
 ---
 
 # Solution Architecture
@@ -685,7 +685,8 @@ For the full prioritised backlog and detailed user story specifications, see [So
 - **Chat & Notifications (US-1.5)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. See [Chat & Commands](CHAT_AND_COMMANDS.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
 - **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (8 pages). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
-- **Agentic Research (US-4.4)** — *Planned.* Independent tool access (web search, news, SEC) for Strategy + Moderation. Provider abstraction: Brave (primary) + Tavily (fallback, optionally additional for news). See [Agentic Research](AGENTIC_RESEARCH.md).
+- **Agentic Research (US-4.4)** — *Delivered.* Independent tool access (web search, news, SEC) for Strategy + Moderation. Provider abstraction: Brave (primary) + Tavily (fallback, optionally additional for news). See [Agentic Research](AGENTIC_RESEARCH.md).
+- **Nemotron Integration Investigation (US-2.4)** — *Investigation only.* Candidate risk/moderation model evaluated via smoke testing and shadow-mode comparison before any promotion to live committee roles. See [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md).
 
 ---
 
@@ -698,3 +699,4 @@ For the full prioritised backlog and detailed user story specifications, see [So
 - [Chat & Commands](CHAT_AND_COMMANDS.md) — notifications and planned inbound commands
 - [Backtesting](BACKTESTING.md) — engine, walk-forward validation, promotion report
 - [Agentic Research](AGENTIC_RESEARCH.md) — planned tool access for committee (Brave + Tavily)
+- [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md) — investigation plan, provider options, and promotion gates
