@@ -237,8 +237,11 @@ def get_degradation_level() -> DegradationLevel:
         return DegradationLevel.NO_GEMINI
 
     if not openai_ok:
-        logger.info("OpenAI budget exceeded — skipping GPT-4o moderator")
-        return DegradationLevel.NO_GPT4O
+        # Only GPT-4o is over budget; Gemini still available.
+        # Return NO_GEMINI (less severe) since one moderator remains operational.
+        # Individual moderators self-check their own budgets before each call.
+        logger.info("OpenAI budget exceeded — skipping GPT-4o moderator (Gemini still available)")
+        return DegradationLevel.NO_GEMINI
 
     return DegradationLevel.FULL
 

@@ -1188,9 +1188,11 @@ class Orchestrator:
         # Phase 3: Re-evaluate queued tickers (bypass cooldown so they can reach 2nd cycle)
         if self.settings.opportunity_enabled:
             try:
-                session = get_session()
-                queued_rows = session.query(OpportunityQueue).all()
-                session.close()
+                q_session = get_session()
+                try:
+                    queued_rows = q_session.query(OpportunityQueue).all()
+                finally:
+                    q_session.close()
                 queued_tickers = [r.ticker for r in queued_rows if r.ticker and r.ticker not in analyzed_tickers]
                 added_queued = 0
                 for ticker in queued_tickers:
