@@ -346,7 +346,7 @@ class TestOrderManager:
         assert len(orders) == 1
         assert orders[0].status == "failed"
 
-    def test_place_stop_loss_below_min_order_value_skipped(self, db_session):
+    def test_place_stop_loss_below_min_order_value_still_places_protective_stop(self, db_session):
         mock_client = MagicMock()
         manager = OrderManager(client=mock_client, dry_run=True)
 
@@ -357,10 +357,9 @@ class TestOrderManager:
             stop_loss_pct=-8.0,
         )
 
-        assert result["status"] == "skipped"
+        assert result["status"] == "dry_run"
         assert result["order_type"] == "stop"
-        assert result["reason"] == "below_min_order_value"
-        assert db_session.query(Order).count() == 0
+        assert db_session.query(Order).count() == 1
 
 
 class TestCancelConflictingStops:

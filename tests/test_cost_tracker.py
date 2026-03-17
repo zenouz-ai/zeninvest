@@ -158,6 +158,19 @@ class TestDegradation:
         level = get_degradation_level()
         assert level == DegradationLevel.NO_STRATEGY
 
+    def test_no_gpt4o_when_openai_over(self, db_session):
+        db_session.add(CostLog(
+            timestamp=datetime.now(timezone.utc),
+            provider="openai",
+            model="test",
+            input_tokens=0,
+            output_tokens=0,
+            cost_gbp=0.80,
+        ))
+        db_session.commit()
+        level = get_degradation_level()
+        assert level == DegradationLevel.NO_GPT4O
+
 
 class TestCostSummary:
     def test_empty_summary(self):

@@ -717,7 +717,7 @@ def db_session():
 
 ### Verification Results
 
-- `poetry run pytest -v` — all 207 tests pass ✅
+- `poetry run pytest -v` — all 326 tests pass ✅
 - `cd dashboard/frontend && npm run build` — no TypeScript errors ✅
 - `poetry run python -m src.orchestrator.main --dry-run` — produces stocks ✅
 - Dashboard backend starts and endpoints return correct shapes ✅

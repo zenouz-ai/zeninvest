@@ -6,7 +6,7 @@ last_updated: 2026-03-10
 
 # Dashboard Deployment
 
-> VPS deployment plan for the 7-page monitoring dashboard (US-1.8).
+> VPS deployment plan for the 8-page monitoring dashboard (US-1.8).
 
 ## Purpose
 

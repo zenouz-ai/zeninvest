@@ -195,7 +195,7 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 - **Order status from T212**: The T212 API response `status` is mapped: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/etc→pending, REJECTED/CANCELLED→failed. Do not assume a 200 OK implies execution; pending orders may not appear in T212 order history until filled. **Order sync**: At the start of each cycle (non–dry-run), `OrderManager.sync_order_status_from_t212()` fetches T212 order history and updates local `Order.status` from pending to filled.
 - **Pending semantics**: `pending` is not always an issue. For `MARKET` orders it means accepted but not yet executed (`NEW`, often outside market hours). For `STOP` orders it usually means a live protective order waiting for trigger price; this can remain pending for multiple days.
 - After successful BUY executions (or when status is pending — optimistic placement), the system automatically places a GTC stop-loss order via `OrderManager.place_stop_loss()` using the `stop_loss_pct` from Claude's decision. `StopLossManager.place_missing_stops()` runs each cycle to place stops for positions without one (using `default_stop_loss_pct` when no ATR). This protects against downside risk without requiring manual intervention.
-- The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation. **Min holding period**: Risk blocks REDUCE/SELL on positions held &lt; 24h unless over max_single_stock or max_sector (config: `min_holding_hours_before_reduce`). **Min order value**: BUY/REDUCE/limit/stop paths are skipped when trade value &lt; £500 (config: `min_order_value_gbp`), while explicit market SELL decisions are allowed below the floor to fully exit small holdings. **Residual floor safeguard**: if a REDUCE would leave a position below £500, execution is converted to a full SELL. **Reduction tiers**: REDUCE is rounded to nearest tier (25%, 50%, 70%, 100%); reductions below 25% are skipped unless the residual-floor safeguard triggers (config: `min_reduce_pct_of_position`, `reduce_tiers_pct`).
+- The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation. **Min holding period**: Risk blocks REDUCE/SELL on positions held &lt; 24h unless over max_single_stock or max_sector (config: `min_holding_hours_before_reduce`). **Min order value**: BUY/REDUCE/limit paths are skipped when trade value &lt; £500 (config: `min_order_value_gbp`), while explicit market SELL decisions and protective stop-loss SELL orders are allowed below the floor to fully exit/protect small holdings. **Residual floor safeguard**: if a REDUCE would leave a position below £500, execution is converted to a full SELL. **Reduction tiers**: REDUCE is rounded to nearest tier (25%, 50%, 70%, 100%); reductions below 25% are skipped unless the residual-floor safeguard triggers (config: `min_reduce_pct_of_position`, `reduce_tiers_pct`).
 
 **Intelligent Order Management**
 
@@ -380,8 +380,8 @@ FULL -> NO_GEMINI -> NO_GPT4O -> NO_STRATEGY -> HALTED
 | Level | Condition | Behaviour |
 |-------|-----------|-----------|
 | **FULL** | All budgets within limits | All 3 LLMs active. Full pipeline. |
-| **NO_GEMINI** | One moderator daily budget exceeded (Google OR OpenAI) | One moderator still runs. Claude strategy synthesis still active. Individual moderators self-check their own budgets before each call. |
-| **NO_GPT4O** | Both moderator budgets exceeded (Google AND OpenAI) | No moderation available. Claude strategy synthesis still active. |
+| **NO_GEMINI** | Google daily budget exceeded | GPT-4o moderator still runs. Claude strategy synthesis still active. Individual moderators self-check their own budgets before each call. |
+| **NO_GPT4O** | OpenAI daily budget exceeded (Gemini still available) OR both moderator budgets exceeded | GPT-4o is skipped; Gemini continues when available. If both are over budget, moderation is unavailable. Claude strategy synthesis still active. |
 | **NO_STRATEGY** | Anthropic daily budget exceeded | Skip entire strategy cycle. No new trades proposed. |
 | **HALTED** | Monthly cap exceeded | All LLM calls halted. System waits for next month. |
 
@@ -400,7 +400,7 @@ def get_degradation_level() -> DegradationLevel:
     if not google_ok:
         return DegradationLevel.NO_GEMINI       # Only Google over budget
     if not openai_ok:
-        return DegradationLevel.NO_GEMINI       # Only OpenAI over budget (Gemini still available)
+        return DegradationLevel.NO_GPT4O        # Only OpenAI over budget (Gemini still available)
     return DegradationLevel.FULL
 ```
 

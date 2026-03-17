@@ -186,8 +186,9 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
        +--------+                   +---------------+
 
   Note: Individual moderators self-check their own budgets before each call.
-  NO_GEMINI is returned when either one moderator is over budget (Gemini still
-  available when only OpenAI is exceeded, and vice versa). NO_GPT4O only when both.
+  NO_GEMINI is returned when Google is over budget (GPT-4o still available).
+  NO_GPT4O is returned when OpenAI is over budget (Gemini still available) and
+  also when both moderator budgets are exceeded.
 ```
 
 ## Dashboard (Phase 1 + Phase 1.5 Analytics Lite)
@@ -521,8 +522,9 @@ sequenceDiagram
 ```
 
 Execution floor guardrails:
-- `min_order_value_gbp` is enforced for BUY, REDUCE, limit BUY, and stop-loss order paths.
+- `min_order_value_gbp` is enforced for BUY, REDUCE, and limit BUY order paths.
 - Explicit market SELL decisions are exempt from the floor so small positions can be fully exited.
+- Protective stop-loss SELL orders are also exempt so small positions remain risk-protected.
 - If a REDUCE would leave a residual position below the floor, the orchestrator converts it to full SELL before execution.
 
 ### Cycle Output Structure

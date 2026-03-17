@@ -41,12 +41,15 @@ class OrderManager:
         order_type: str,
         value_gbp: float,
         allow_below_min_full_sell: bool = False,
+        allow_below_min_protective_stop: bool = False,
     ) -> tuple[bool, str | None]:
         """Validate minimum order value policy before executing/logging."""
         min_order = float(self.settings.min_order_value_gbp)
         if value_gbp >= min_order:
             return True, None
         if allow_below_min_full_sell and action == "SELL" and order_type == "market":
+            return True, None
+        if allow_below_min_protective_stop and action == "SELL" and order_type == "stop":
             return True, None
         return False, "below_min_order_value"
 
@@ -630,6 +633,7 @@ class OrderManager:
             order_type="stop",
             value_gbp=stop_order_value,
             allow_below_min_full_sell=False,
+            allow_below_min_protective_stop=True,
         )
         if not can_place:
             logger.info(

@@ -192,7 +192,7 @@ Use these only if running investigation steps in `docs/Nemotron_3_Super_Integrat
 poetry run pytest -v
 ```
 
-This runs all 301 tests using in-memory SQLite fixtures.
+This runs all 326 tests using in-memory SQLite fixtures.
 
 ### Individual Test Files
 

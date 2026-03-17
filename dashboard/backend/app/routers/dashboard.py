@@ -9,7 +9,7 @@ from sqlalchemy import desc, exists, func, or_
 from src.data.database import get_session
 from src.data.models import CostLog, Instrument, Order, PortfolioSnapshot, StrategyDecision
 
-from ..services.api_cost_estimator import estimate_api_cost_gbp
+from ..services.api_cost_estimator import estimate_api_cost_gbp, get_research_cost_by_month
 from src.utils.config import get_settings
 
 from ..database import Run
@@ -55,7 +55,8 @@ async def get_monthly_summary(
         )
         llm_cost_gbp = round(float(cost_rows or 0), 4)
         api_cost_gbp = estimate_api_cost_gbp(start, end)
-        cost_gbp = round(llm_cost_gbp + api_cost_gbp, 4)
+        research_cost_gbp = get_research_cost_by_month(start, end).get(ym, 0.0)
+        cost_gbp = round(llm_cost_gbp + api_cost_gbp + research_cost_gbp, 4)
 
         snap_first = (
             session.query(PortfolioSnapshot)
@@ -139,6 +140,7 @@ async def get_monthly_summary(
             "cost_gbp": cost_gbp,
             "llm_cost_gbp": llm_cost_gbp,
             "api_cost_gbp": api_cost_gbp,
+            "research_cost_gbp": research_cost_gbp,
             "portfolio_start_gbp": portfolio_start_gbp,
             "portfolio_end_gbp": portfolio_end_gbp,
             "pnl_gbp": pnl_gbp,
