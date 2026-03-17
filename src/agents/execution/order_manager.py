@@ -1,6 +1,7 @@
 """Order management with deduplication and execution logic."""
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
@@ -71,6 +72,29 @@ class OrderManager:
             return exists is not None
         finally:
             session.close()
+
+    def _place_with_retry(
+        self,
+        ticker: str,
+        quantity: float,
+        max_retries: int = 2,
+        backoff_sec: float = 5.0,
+    ) -> dict[str, Any]:
+        """Place order via T212 with retry for transient failures (timeouts, 429s)."""
+        last_error: Exception | None = None
+        for attempt in range(1 + max_retries):
+            try:
+                return self.client.place_market_order(ticker, quantity)
+            except Exception as e:
+                last_error = e
+                err_str = str(e).lower()
+                is_transient = any(kw in err_str for kw in ("timeout", "429", "rate", "connection", "502", "503"))
+                if not is_transient or attempt >= max_retries:
+                    raise
+                wait = backoff_sec * (attempt + 1)
+                logger.warning(f"T212 transient error (attempt {attempt + 1}/{1 + max_retries}): {e}. Retrying in {wait}s")
+                time.sleep(wait)
+        raise last_error  # type: ignore[misc]
 
     def _log_order(
         self,
@@ -244,7 +268,7 @@ class OrderManager:
                 except Exception:
                     pass  # Fail-open
             
-            result = self.client.place_market_order(ticker, quantity)
+            result = self._place_with_retry(ticker, quantity)
             t212_order_id = result.get("id") or result.get("orderId")
             t212_status = (result.get("status") or "").upper()
 

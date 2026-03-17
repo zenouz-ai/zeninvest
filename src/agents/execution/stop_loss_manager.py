@@ -176,12 +176,27 @@ class StopLossManager:
         pending_stops = self._get_pending_stops()
         results: list[dict[str, Any]] = []
 
+        min_profit_pct = float(
+            self.settings._config.get("order_management", {})
+            .get("trailing_stops", {})
+            .get("min_profit_pct", 0)
+        )
+
         for pos in positions:
             ticker = (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
             quantity = float(pos.get("quantity", 0))
             current_price = float(pos.get("currentPrice", 0))
             if not ticker or quantity <= 0 or current_price <= 0:
                 continue
+
+            if min_profit_pct > 0:
+                wallet = pos.get("walletImpact") or {}
+                total_cost = float(wallet.get("totalCost", 0))
+                if total_cost > 0:
+                    unrealised = float(wallet.get("unrealizedProfitLoss", 0))
+                    pnl_pct = (unrealised / total_cost) * 100
+                    if pnl_pct < min_profit_pct:
+                        continue
 
             # Get last known HWM from DB
             prev_hwm = self._get_last_hwm(ticker)

@@ -36,6 +36,7 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
   - `StopLossManager.place_missing_stops(positions, stocks_data, cycle_id)` — Place stops for positions without one.
   - `StopLossManager.reassess_stops(positions, stocks_data, cycle_id)` — ATR-based stop levels for all positions; only tighten if `only_tighten_stops` is true.
   - `StopLossManager.apply_trailing_stops(positions, cycle_id)` — HWM-based ratchet; cancel existing stop, place new one at trail distance below HWM.
+- **Execution retry:** T212 order placement and stop operations use 2 retries with 5-second backoff for transient T212 API failures.
 
 ### ATR-based reassessment
 
@@ -49,6 +50,7 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 
 - HWM per ticker from latest `StopLossAdjustment` with `adjustment_type="trailing"` or from current price if first time.
 - When current price &gt; HWM, update HWM and set new stop = `HWM × (1 - trail_pct/100)`; cancel old stop, place new one.
+- **Min profit gate:** Trailing stops are gated by `min_profit_pct: 10` — trailing only activates when the position is in profit by at least 10%. When enabled (`trailing_stops.enabled: true`), positions below this threshold do not get trailing adjustments.
 
 ### Limit dip-buy
 
@@ -71,8 +73,9 @@ order_management:
   default_stop_loss_pct: -8   # Used when placing missing stops (no ATR or no decision)
   reassess_stops: true
   trailing_stops:
-    enabled: false
+    enabled: true
     default_trail_pct: 5.0
+    min_profit_pct: 10   # Trailing only activates when position is in profit by at least 10%
   limit_orders:
     enabled: true
     default_offset_pct: 2.0
@@ -87,8 +90,9 @@ order_management:
 |-----|---------|
 | `enabled` | Master switch for order management (reassess, trailing, limit). |
 | `reassess_stops` | ATR-based stop reassessment each cycle. |
-| `trailing_stops.enabled` | Software trailing stops (HWM ratchet). |
+| `trailing_stops.enabled` | Software trailing stops (HWM ratchet). Now enabled by default. |
 | `trailing_stops.default_trail_pct` | Trail distance % below HWM. |
+| `trailing_stops.min_profit_pct` | Gate: trailing only activates when position profit ≥ this % (default 10). |
 | `limit_orders.enabled` | Allow limit BUYs when strategy outputs `entry_type: "limit_dip"`. |
 | `limit_orders.default_offset_pct` | Default % below current price for limit. |
 | `limit_orders.time_validity` | DAY or GTC. |
@@ -104,7 +108,7 @@ order_management:
 |--------|-------------|---------|--------|
 | GTC stop after BUY | Yes | On | Claude's `stop_loss_pct`; no switch (always on when BUY executes). |
 | ATR reassessment | Yes | On | `reassess_stops: true`. |
-| Trailing stops | Yes | Off | `trailing_stops.enabled: false` — enable when desired. |
+| Trailing stops | Yes | On | `trailing_stops.enabled: true`; gated by `min_profit_pct: 10`. |
 | Limit dip-buy | Yes | On | `limit_orders.enabled: true`; strategy must output `entry_type: "limit_dip"` to use. |
 
 ---

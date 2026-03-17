@@ -488,6 +488,16 @@ class Orchestrator:
             company_profiles = self._build_company_profiles(stocks_data, all_stock_tickers)
             uov_swap_context = self.opportunity_scorer.build_swap_context(existing_tickers)
 
+            # Shared research executor for strategy + moderation (pipeline-wide budget)
+            research_executor = None
+            if self.settings.research_enabled:
+                from src.agents.research import ResearchExecutor
+                research_executor = ResearchExecutor(cycle_id=cycle_id)
+
+            # Build position P&L summary and strategy performance for the prompt
+            position_pnl = self._build_position_pnl_summary(portfolio_data)
+            strategy_performance = self._build_strategy_performance_summary()
+
             # Claude synthesis
             portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
             strategy_result = self.strategy_engine.synthesize_with_claude(
@@ -503,6 +513,9 @@ class Orchestrator:
                 num_positions=len(existing_tickers),
                 cycle_id=cycle_id,
                 uov_swap_context=uov_swap_context,
+                research_executor=research_executor,
+                position_pnl=position_pnl,
+                strategy_performance=strategy_performance,
             )
 
             if "error" in strategy_result and not strategy_result.get("decisions"):
@@ -516,14 +529,6 @@ class Orchestrator:
             decisions = strategy_result.get("decisions", [])
             strategy_decisions = decisions
             logger.info(f"Strategy produced {len(decisions)} decisions")
-
-            # Research executor for moderation tool-use (shared budget per cycle)
-            research_executor = None
-            if self.settings.research_enabled and (
-                self.settings.skeptic_research_enabled or self.settings.risk_research_enabled
-            ):
-                from src.agents.research import ResearchExecutor
-                research_executor = ResearchExecutor(cycle_id=cycle_id)
             
             # Log strategy decisions
             if DASHBOARD_AVAILABLE and log_event is not None:
@@ -1937,8 +1942,36 @@ class Orchestrator:
         return {"ticker": ticker, "quantity": quantity, "value_gbp": value_gbp, "pnl_gbp": pnl_gbp, "pnl_pct": pnl_pct}
 
     def _get_sector_allocations(self, portfolio_data: dict) -> dict[str, float]:
-        # Simplified — would need instrument metadata for full implementation
-        return {}
+        """Compute sector allocation percentages from positions + Instrument metadata."""
+        total = portfolio_data.get("total_value", 1)
+        if total <= 0:
+            return {}
+        positions = portfolio_data.get("positions", [])
+        if not positions:
+            return {}
+
+        sector_values: dict[str, float] = {}
+        session = get_session()
+        try:
+            for pos in positions:
+                ticker = self._ticker_from_position(pos)
+                if not ticker:
+                    continue
+                wallet = pos.get("walletImpact") or {}
+                value = float(pos.get("value_gbp", 0)) or float(wallet.get("currentValue", 0))
+                if not value:
+                    qty = float(pos.get("quantity", 0))
+                    price = float(pos.get("currentPrice", 0))
+                    value = qty * price
+                if value <= 0:
+                    continue
+                inst = session.query(Instrument).filter(Instrument.ticker == ticker).first()
+                sector = inst.sector if inst and inst.sector else "Unknown"
+                sector_values[sector] = sector_values.get(sector, 0) + value
+        finally:
+            session.close()
+
+        return {sector: (val / total) * 100 for sector, val in sector_values.items()}
 
     def _get_position_allocations(self, portfolio_data: dict) -> dict[str, float]:
         total = portfolio_data.get("total_value", 1)
@@ -1958,12 +1991,84 @@ class Orchestrator:
             result[ticker] = (value / total) * 100
         return result
 
+    @staticmethod
+    def _build_position_pnl_summary(portfolio_data: dict) -> str:
+        """Build a tabular position P&L summary for the strategy prompt."""
+        positions = portfolio_data.get("positions", [])
+        if not positions:
+            return ""
+        lines = ["Ticker | Value (GBP) | P&L (GBP) | P&L (%) | Qty"]
+        lines.append("--- | --- | --- | --- | ---")
+        for pos in positions:
+            ticker = Orchestrator._ticker_from_position(pos)
+            if not ticker:
+                continue
+            norm = Orchestrator._normalize_position_for_snapshot(pos)
+            lines.append(
+                f"{ticker} | {norm['value_gbp']:.0f} | {norm['pnl_gbp']:.2f} | {norm['pnl_pct']:.1f}% | {norm['quantity']:.2f}"
+            )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_strategy_performance_summary() -> str:
+        """Query PerformanceMetric for latest win rates by strategy."""
+        session = get_session()
+        try:
+            metrics = (
+                session.query(PerformanceMetric)
+                .filter(PerformanceMetric.metric_name.in_([
+                    "win_rate_momentum", "win_rate_mean_reversion", "win_rate_factor",
+                    "total_trades", "sharpe_ratio_30d", "sortino_ratio_30d",
+                    "max_drawdown_pct",
+                ]))
+                .order_by(PerformanceMetric.calculated_at.desc())
+                .limit(20)
+                .all()
+            )
+            if not metrics:
+                return ""
+            latest: dict[str, float] = {}
+            for m in metrics:
+                if m.metric_name not in latest and m.metric_value is not None:
+                    latest[m.metric_name] = m.metric_value
+            if not latest:
+                return ""
+            lines = []
+            if "win_rate_momentum" in latest:
+                lines.append(f"- Momentum win rate: {latest['win_rate_momentum']:.0f}%")
+            if "win_rate_mean_reversion" in latest:
+                lines.append(f"- Mean Reversion win rate: {latest['win_rate_mean_reversion']:.0f}%")
+            if "win_rate_factor" in latest:
+                lines.append(f"- Factor win rate: {latest['win_rate_factor']:.0f}%")
+            if "total_trades" in latest:
+                lines.append(f"- Total completed trades: {latest['total_trades']:.0f}")
+            if "sharpe_ratio_30d" in latest:
+                lines.append(f"- Sharpe ratio (30d): {latest['sharpe_ratio_30d']:.2f}")
+            if "sortino_ratio_30d" in latest:
+                lines.append(f"- Sortino ratio (30d): {latest['sortino_ratio_30d']:.2f}")
+            if "max_drawdown_pct" in latest:
+                lines.append(f"- Max drawdown: {latest['max_drawdown_pct']:.1f}%")
+            return "\n".join(lines) if lines else ""
+        except Exception:
+            return ""
+        finally:
+            session.close()
+
     def _save_snapshot(self, portfolio_data: dict, state: str) -> None:
         """Save a portfolio snapshot. Positions are normalised from T212 format for dashboard display."""
         session = get_session()
         try:
             raw_positions = portfolio_data.get("positions", [])
             normalised = [self._normalize_position_for_snapshot(p) for p in raw_positions]
+
+            benchmark_value, benchmark_pnl_pct, alpha_pct = None, None, None
+            try:
+                benchmark_value, benchmark_pnl_pct, alpha_pct = self._compute_benchmark_alpha(
+                    session, portfolio_data.get("total_return_pct", 0)
+                )
+            except Exception as e:
+                logger.debug(f"Benchmark alpha computation skipped: {e}")
+
             session.add(PortfolioSnapshot(
                 timestamp=datetime.now(timezone.utc),
                 total_value_gbp=portfolio_data.get("total_value", 0),
@@ -1971,6 +2076,9 @@ class Orchestrator:
                 invested_gbp=portfolio_data.get("invested", 0),
                 pnl_gbp=0.0,
                 pnl_pct=portfolio_data.get("total_return_pct", 0),
+                benchmark_value=benchmark_value,
+                benchmark_pnl_pct=benchmark_pnl_pct,
+                alpha_pct=alpha_pct,
                 num_positions=portfolio_data.get("num_positions", 0),
                 positions_json=json.dumps(normalised, default=str),
                 state=state,
@@ -1981,6 +2089,36 @@ class Orchestrator:
             session.rollback()
         finally:
             session.close()
+
+    @staticmethod
+    def _compute_benchmark_alpha(
+        session: Any, portfolio_return_pct: float
+    ) -> tuple[float | None, float | None, float | None]:
+        """Compute SPY benchmark return since first snapshot for alpha calculation."""
+        first_snap = (
+            session.query(PortfolioSnapshot)
+            .order_by(PortfolioSnapshot.timestamp.asc())
+            .first()
+        )
+        if not first_snap:
+            return None, None, None
+
+        inception_date = first_snap.timestamp
+        try:
+            import yfinance as yf
+
+            spy = yf.Ticker("SPY")
+            hist = spy.history(start=inception_date.strftime("%Y-%m-%d"), period="1d")
+            if hist.empty or len(hist) < 2:
+                return None, None, None
+
+            spy_start = float(hist["Close"].iloc[0])
+            spy_now = float(hist["Close"].iloc[-1])
+            benchmark_pnl_pct = ((spy_now - spy_start) / spy_start) * 100
+            alpha_pct = portfolio_return_pct - benchmark_pnl_pct
+            return spy_now, benchmark_pnl_pct, alpha_pct
+        except Exception:
+            return None, None, None
 
     def get_status(self) -> dict[str, Any]:
         """Get current system status summary."""

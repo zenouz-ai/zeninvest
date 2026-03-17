@@ -131,8 +131,9 @@ order_management:
   default_stop_loss_pct: -8       # Default stop-loss % when placing missing stops (no ATR or no decision)
   reassess_stops: true            # Reassess stop-losses each cycle based on ATR
   trailing_stops:
-    enabled: false                # Software-based trailing stops (cancel + replace)
+    enabled: true                 # Software-based trailing stops (cancel + replace)
     default_trail_pct: 5.0        # Trail distance as % below high-water mark
+    min_profit_pct: 10.0          # Only trail positions with unrealised P&L > this %
   limit_orders:
     enabled: true                 # Allow limit orders for dip-buy entries
     default_offset_pct: 2.0       # Default % below current price for limit buys

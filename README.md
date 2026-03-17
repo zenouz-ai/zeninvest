@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 232 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
+**Status:** POC — 270 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md).
 
 ## Architecture
 
@@ -195,6 +195,7 @@ Outbound chat interface v1 is live with persistent audit logging.
   - `cycle_run_summary`
   - `state_transition`
   - `critical_cycle_failure`
+  - `order_adjustment`
 - Audit table: `notification_logs` (`sent|failed|skipped|deduped`)
 
 Default low-noise routing profile:
@@ -203,6 +204,7 @@ Default low-noise routing profile:
 - `cycle_run_summary` -> Slack
 - `state_transition` -> Slack + Email
 - `critical_cycle_failure` -> Slack + Email
+- `order_adjustment` -> Slack
 - `include_dry_run_alerts: false`
 
 ### Slack + Email hookup (VPS)

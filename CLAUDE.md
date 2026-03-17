@@ -96,6 +96,8 @@ config/
 └── .env.example           # Environment variables template (required core API keys + optional notification keys)
 notebooks/
 ├── diagnostics.ipynb      # 24-section Jupyter notebook testing every pipeline component (Config → Backtesting → Walk-Forward)
+├── research_api_investigation.ipynb  # Phase 0: Brave/Tavily/SEC EDGAR API validation
+├── research_api_decision_framework.ipynb  # Phase 0.2: Follow-up routing policy validation
 ├── brave_api_smoke.py     # Manual smoke test for Brave Search + Answers APIs (requires API keys)
 ├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
 └── enrichment_benchmark.py    # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
@@ -196,7 +198,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
     - **Software trailing stops**: Tracks high-water mark per position. Ratchets stop up as price rises. Implemented by cancel + replace since T212 has no native trailing stop.
     - **Limit dip-buy orders**: When strategy outputs `entry_type: "limit_dip"`, places limit BUY below current price instead of market order. Offset % configurable globally or per-decision.
     - All adjustments logged to `stop_loss_adjustments` table and emitted as `order_adjustment` Slack notifications.
-13. **Agentic research (US-4.4)** — Research tool framework supports `web_search`, `news_search`, `sector_search`, `sec_search` (SEC EDGAR) with caps 20/8/7 (total 35/cycle), Brave primary, Tavily fallback, SEC EDGAR free. Current implementation state: Strategy + Skeptic tool-use loops available behind feature flags; Risk remains single-turn in current code path. See `docs/AGENTIC_RESEARCH.md`.
+13. **Agentic research (US-4.4)** — When `research.enabled`, Strategy/Skeptic/Risk can use tools: `web_search`, `news_search`, `sector_search`, `sec_search` (SEC EDGAR), `macro_search` (macro-economic). Per-member caps 20/8/7, total 35/cycle. Brave primary, Tavily fallback. SEC EDGAR free. Pipeline shares a single `ResearchExecutor`/`ResearchBudget` across Strategy and Moderation for pipeline-wide cap enforcement. All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have full tool-use loops. Latency and cost recorded per call. 37 unit tests. See `docs/AGENTIC_RESEARCH.md`.
 14. **Dashboard backend (Phase 1 + Phase 1.5 + full API)** — FastAPI REST API + SSE stream. Endpoints: runs, status (includes system state and paused), universe, portfolio, orders, events/stream; decisions (with pipeline waterfall), moderation, risk; opportunity (scores, queue, history); outcomes (list, stats); stop-loss (current, adjustments); performance (metrics, history); costs (daily, monthly, degradation); api-usage (daily); system (state, trigger-cycle, pause, resume); POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle). All query agent SQLite read-only; no duplicate tables. Event logger: non-blocking, fail-open. Frontend: 8 pages — Dashboard Home (state badge, Dry Run and Live Run buttons; Live Run requires confirmation), Universe (sortable columns, expandable rows with full LLM outputs: strategy reasoning + extra fields + raw JSON, all moderators’ verdicts/reasoning, risk reasoning and rules), Run History, Portfolio, Opportunity Pipeline, Order Management (Recent Orders + stop-loss levels + adjustments), Costs, Roadmap & Architecture (project timeline, architecture diagram). When CAUTIOUS, "Reset Peak" button clears false drawdown. Order status reflects T212 response (filled/pending/failed). Universe table includes `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` columns; `Sold` is the total number of shares sold based on executed and dry-run SELL orders only (orders store SELL quantities as negative, but the dashboard reports `abs(sum(quantity))`). For transparency, the backend also exposes a live vs dry-run breakdown per ticker so the UI can show cases where Sold > 0 comes entirely from hypothetical dry-run cycles with no live Trading 212 execution. Cycle summary includes rejected_by_action (breakdown by strategy action: BUY, HOLD, QUEUED). For HOLD/QUEUED, moderation_consensus and risk_verdict are "not invoked"; rejection stages: strategy_hold, strategy_queued. Design: dark charcoal #0d1117, gain #00ff88, loss #ff4444, neutral #58a6ff, accent #d4a017, subtle grid background. Research API: `GET /api/research/logs`, `GET /api/research/summary`. Config: `dashboard.enabled`, `dashboard.events_enabled`.
 
 ## Scheduling Architecture
@@ -404,11 +406,9 @@ Files to check on every feature:
 - **US-1.5** Chat Interface & Real-Time Trade Alerts
 - **US-5.1** Backtesting Engine (engine, walk-forward, promotion report)
 - **US-1.8** Dashboard VPS Deployment
-- **US-1.7** Dashboard full spec (full API + 7 pages)
+- **US-1.7** Dashboard full spec (full API + 8 pages)
 - **US-1.4** Deploy POC to VPS
-
-**In progress:**
-- **US-4.4** Agentic Research — canonical docs consolidated; Strategy + Skeptic tool-use in place; Risk tool-use loop still pending; routing policy tracked separately in `docs/FOLLOWUP_RESEARCH_ROUTING_PLAN.md`
+- **US-4.4** Agentic Research — 5 tools, all 3 members have tool-use loops, shared pipeline-wide budget, 37 tests
 
 **Deferred (await data or later sprint):**
 - Calibration (US-2.1, US-2.2) — requires ~50 trades

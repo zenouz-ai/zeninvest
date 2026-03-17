@@ -69,7 +69,7 @@ timeline
 | | 8 | US-1.8 | Dashboard VPS Deployment |
 | | 9 | US-1.7 | Dashboard & Visualisation (full API + 7 pages) |
 | | 10 | US-1.4 | Deploy POC to VPS |
-| **Pipeline** | 1 | US-4.4 | Agentic Research (partially implemented: Strategy/Skeptic loops available, Risk loop pending) |
+| **Pipeline** | 1 | US-4.4 | Agentic Research (complete: Strategy, Skeptic, and Risk tool-use loops; 5 tools; shared budget; 37 tests) |
 | | 2 | US-4.5 | Proactive Macro News Intelligence |
 | | 3 | US-1.6 | Slack NL Trade Commands |
 | | 4 | US-1.9 | Conversational Trading Workflow |
@@ -115,7 +115,7 @@ timeline
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
-| **US-4.4** | Agentic Research | Independent tool access (web search, news, sector, SEC EDGAR) architecture and caps (20/8/7, total 35). Strategy + Skeptic tool-use loops are available; Risk loop remains pending. Brave primary, Tavily fallback. Phase 0/0.2 notebooks and routing-policy artifacts documented. | Stale context mitigation, follow-up ability, broader coverage | **In Progress** |
+| **US-4.4** | Agentic Research | 5 tools (web_search, news_search, sector_search, sec_search, macro_search) with caps 20/8/7 (total 35/cycle). All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have full tool-use loops. Pipeline-wide shared budget enforcement. Brave primary, Tavily fallback. SEC EDGAR free. Latency/cost recorded. 37 unit tests. Phase 0/0.2 notebooks validated. | Stale context mitigation, follow-up ability, broader coverage | **Delivered** |
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Planned** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
@@ -714,7 +714,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - **US-1.4** — POC deployed to VPS (Docker, first cycle logged, health/backup confirmed)
 
 **Immediate (current focus):**
-- **US-4.4** — Agentic Research: independent tool access for Strategy + Moderation (Brave + Tavily + SEC EDGAR). See `docs/AGENTIC_RESEARCH.md` (design) and `docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md` (checklist).
+- **US-4.4** — Agentic Research: **Delivered**. All 3 members (Strategy, Skeptic, Risk) have tool-use loops; 5 tools; shared budget; 37 tests. See `docs/AGENTIC_RESEARCH.md`.
 - **US-2.4** — Nemotron integration investigation (evaluation only; no production switch). See `docs/Nemotron_3_Super_Integration_Investigation.md`.
 
 **Deferred (await data or later sprint):**

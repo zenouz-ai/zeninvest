@@ -72,15 +72,15 @@ last_updated: 2026-03-16
 
 ## Phase C Checklist
 
-- [ ] GPT-4o and Gemini tool-use loops
-- [ ] Feature flags per moderator (`skeptic_research_enabled`, `risk_research_enabled`)
+- [x] GPT-4o and Gemini tool-use loops
+- [x] Feature flags per moderator (`skeptic_research_enabled`, `risk_research_enabled`)
 
 ## Phase D Checklist
 
-- [ ] Dashboard Research Activity panel
-- [ ] `GET /api/research/logs`, `/api/research/summary`
-- [ ] Slack research insights
-- [ ] EventsLog integration
+- [x] Dashboard Research Activity panel
+- [x] `GET /api/research/logs`, `/api/research/summary`
+- [x] Slack research insights
+- [x] EventsLog integration
 
 ## Doc Updates on Completion
 

@@ -10,7 +10,7 @@ last_updated: 2026-03-16
 
 ## Purpose
 
-This document defines the governance framework that ensures the investment agent operates safely, transparently, and within acceptable boundaries. It covers human oversight, defense in depth, security guardrails (API keys, prompt injection, rate limiting), the 9 hard risk rules, cost controls with graceful degradation, operational procedures, and the comprehensive audit trail.
+This document defines the governance framework that ensures the investment agent operates safely, transparently, and within acceptable boundaries. It covers human oversight, defense in depth, security guardrails (API keys, prompt injection, rate limiting), the 11 hard risk rules, cost controls with graceful degradation, operational procedures, and the comprehensive audit trail.
 
 ---
 
@@ -37,7 +37,7 @@ The Investment Agent is an autonomous trading system that uses a multi-LLM pipel
 **Architecture at a glance:**
 
 ```
-Orchestrator (every 12h, Mon-Fri)
+Orchestrator (configurable: cycle_frequency intraday = 3 cycles at 08:00, 12:00, 16:00 UTC; standard = 2 cycles at 07:00, 19:00 UTC; Mon-Fri)
   +-- Market Data Agent    -> yfinance + Finnhub + Alpha Vantage (per-ticker news, macro intelligence)
   +-- Universe Screener    -> Sector-balanced, cap-tiered candidate discovery
   +-- Strategy Agent       -> Momentum + Mean Reversion + Factor -> Claude Sonnet synthesis
@@ -255,7 +255,7 @@ No personally identifiable information (names, account numbers, addresses, etc.)
 
 ## 4. Risk Guardrails
 
-### 4.1 The 9 Hard Rules
+### 4.1 The 11 Hard Rules
 
 The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules. These are implemented as deterministic Python functions with no LLM involvement. **No LLM output can override, modify, or bypass these rules.**
 
@@ -269,7 +269,9 @@ The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules
 | 6 | **Daily Loss Halt** | Daily loss >2%: no new buys for 24 hours | REJECT | `check_daily_loss_halt()` |
 | 7 | **Cash Floor** | Always maintain >= 10% cash | REJECT or RESIZE | `check_cash_floor()` |
 | 8 | **Min Positions** | Minimum 5 positions once invested (prevents over-concentration) | REJECT (on SELL or REDUCE) | `check_min_positions()` |
-| 9 | **Cautious State Guard** | In CAUTIOUS mode: no new BUYs, only SELL/REDUCE/HOLD | REJECT (on BUY) | `check_cautious_state()` |
+| 9 | **Min Holding Period** | No REDUCE/SELL on positions held &lt; 24h unless over max_single_stock or max_sector | REJECT | `check_min_holding_period()` |
+| 10 | **Cautious State Guard** | In CAUTIOUS mode: no new BUYs, only SELL/REDUCE/HOLD | REJECT (on BUY) | `check_cautious_state()` |
+| 11 | **System Halted** | When state is HALTED: all trading suspended | REJECT | (evaluated at start of `evaluate_trade`) |
 
 In addition to these risk rules, the Opportunity Agent enforces deterministic execution-capacity limits for BUY ordering (`max_positions` and investable cash above the configured cash floor) before order submission.
 
@@ -553,7 +555,7 @@ Risk thresholds are configured in `config/settings.yaml`. To adjust:
 
 ### 7.1 What Is Logged
 
-The system maintains a comprehensive audit trail across ten database tables:
+The system maintains a comprehensive audit trail across at least 14 database tables, including `events_log`, `runs`, `stop_loss_adjustments`, and `research_logs` (ResearchLog model — agentic research tool calls):
 
 | Table | What Is Logged | Key Fields |
 |-------|---------------|------------|
@@ -569,6 +571,9 @@ The system maintains a comprehensive audit trail across ten database tables:
 | `instruments` | Company profiles and screening state | `ticker`, `sector`, `industry`, `market_cap`, `business_summary`, `data_available`, `last_screened_at` |
 | `opportunity_score_snapshots` | Per-cycle UOV scores/components for every evaluated ticker | `cycle_id`, `ticker`, `stage`, `uov_raw`, `uov_z`, `uov_final`, `uov_ewma`, `moderation_consensus`, `risk_verdict`; for HOLD/QUEUED (stage `strategy_hold`/`strategy_queued`), moderation_consensus and risk_verdict are "not invoked" |
 | `opportunity_queue` | Active queued BUY opportunities awaiting execution | `ticker`, `queued_cycles`, `last_uov_ewma`, `last_seen_cycle_id`, `metadata_json` |
+| `events_log` | Real-time activity stream for dashboard SSE | `event_type`, `source`, `message`, `metadata_json` |
+| `runs` | Run metadata per cycle | `cycle_id`, `run_type`, `started_at`, `completed_at`, `status`, `summary_json` |
+| `stop_loss_adjustments` | Audit trail for stop-loss reassessments, trailing ratchets, limit orders | `order_id`, `adjustment_type`, `old_price`, `new_price`, `reason` |
 
 ### 7.2 Traceability
 
@@ -578,7 +583,7 @@ Every cycle generates a unique `cycle_id`. Scheduled cycles use `scheduled_YYYYM
 cycle_20260225_0700_a1b2c3
   +-- strategy_decisions: Claude proposed BUY AAPL_US_EQ at 8% allocation
   +-- moderation_logs: GPT-4o AGREE, Gemini AGREE -> consensus APPROVED
-  +-- risk_decisions: APPROVE (all 9 rules passed)
+  +-- risk_decisions: APPROVE (all 11 rules passed)
   +-- cost_logs: Anthropic £0.042, OpenAI £0.018, Google £0.003
   +-- orders: BUY 5 x AAPL_US_EQ @ $187.50 = £750.00 -> filled
 ```
@@ -645,7 +650,7 @@ The SEC's Regulation SCI requires entities with automated trading systems to:
 
 The UK Financial Conduct Authority (FCA), under MiFID II implementation, requires firms using algorithmic trading to:
 
-- **Have effective systems and risk controls** to ensure trading systems are resilient and have sufficient capacity. The 9 hard risk rules, state machine, and circuit breakers address this.
+- **Have effective systems and risk controls** to ensure trading systems are resilient and have sufficient capacity. The 11 hard risk rules, state machine, and circuit breakers address this.
 - **Have appropriate thresholds and limits** to prevent erroneous orders. Position limits, sector caps, and cash floors prevent outsized or erroneous exposures.
 - **Prevent the system from creating or contributing to disorderly trading conditions.** The daily loss halt, VIX-based limits, and drawdown state machine prevent the system from trading aggressively during market stress.
 - **Ensure the system cannot be used for market abuse.** The system trades only on the basis of quantitative signals and publicly available data.
@@ -657,7 +662,7 @@ Key MiFID II requirements for algorithmic trading and their mapping to this syst
 | MiFID II Requirement | System Implementation |
 |---------------------|----------------------|
 | Kill functionality to urgently cancel orders | `--pause` command, `--force-sell`, `liquidate_all()` |
-| Pre-trade risk controls | 9 hard rules in Risk Agent, checked before every order |
+| Pre-trade risk controls | 11 hard rules in Risk Agent, checked before every order |
 | Post-trade monitoring | Portfolio snapshots, daily/weekly reports, order history |
 | Real-time monitoring | Cycle-level logging, cost tracking, state machine |
 | Annual self-assessment | This governance document; to be reviewed annually |

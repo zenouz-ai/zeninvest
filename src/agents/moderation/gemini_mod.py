@@ -64,20 +64,24 @@ def review_trade(
                        sub-strategy scores, analyst data, and news sentiment.
         cycle_id: Optional cycle identifier for cost tracking.
         research_executor: Optional ResearchExecutor for tool-use (risk research).
-                         When provided, uses single-turn for now; tool-use loop TBD.
     Returns:
         Moderator verdict with scores and reasoning.
     """
-    # Tool-use loop for Gemini Risk can be added when Gemini SDK supports it
     settings = get_settings()
+    use_tools = (
+        research_executor is not None
+        and settings.research_enabled
+        and settings.risk_research_enabled
+    )
 
-    if not check_budget(Provider.GOOGLE.value):
-        logger.warning("Google budget exceeded, skipping Gemini moderation")
-        return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
+    if use_tools:
+        return _review_with_tools(trade_proposal, portfolio_context, market_context, cycle_id, research_executor)
+    return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
 
+
+def _build_user_prompt(trade_proposal: dict, portfolio_context: str, market_context: dict) -> str:
     context_text = format_market_context(market_context)
-
-    user_prompt = f"""Independently assess this proposed trade:
+    return f"""Independently assess this proposed trade:
 
 ## Trade Proposal
 {json.dumps(trade_proposal, indent=2)}
@@ -90,9 +94,48 @@ def review_trade(
 Score growth potential, risk level, and confidence using the data above.
 Flag if risk > growth. Respond with JSON only."""
 
+
+def _log_gemini_cost(response: Any, cycle_id: str | None, settings: Any) -> None:
+    input_tokens = 0
+    output_tokens = 0
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        input_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+        output_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
+    log_cost(
+        provider=Provider.GOOGLE.value,
+        model=settings.moderator_2_model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cycle_id=cycle_id,
+        purpose="moderation_gemini",
+    )
+
+
+def _extract_json_from_text(content: str) -> str:
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0]
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0]
+    return content.strip()
+
+
+def _review_single_turn(
+    trade_proposal: dict[str, Any],
+    portfolio_context: str,
+    market_context: dict[str, Any],
+    cycle_id: str | None,
+) -> dict[str, Any]:
+    """Single-turn Gemini moderation (no research tools)."""
+    settings = get_settings()
+
+    if not check_budget(Provider.GOOGLE.value):
+        logger.warning("Google budget exceeded, skipping Gemini moderation")
+        return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
+
+    user_prompt = _build_user_prompt(trade_proposal, portfolio_context, market_context)
+
     try:
         client = genai.Client(api_key=settings.google_ai_api_key)
-
         response = client.models.generate_content(
             model=settings.moderator_2_model,
             contents=user_prompt,
@@ -102,31 +145,9 @@ Flag if risk > growth. Respond with JSON only."""
                 temperature=0.4,
             ),
         )
+        _log_gemini_cost(response, cycle_id, settings)
 
-        # Log cost
-        input_tokens = 0
-        output_tokens = 0
-        if hasattr(response, "usage_metadata") and response.usage_metadata:
-            input_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
-            output_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
-
-        log_cost(
-            provider=Provider.GOOGLE.value,
-            model=settings.moderator_2_model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cycle_id=cycle_id,
-            purpose="moderation_gemini",
-        )
-
-        content = response.text or ""
-        # Extract JSON
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0]
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0]
-
-        content = content.strip()
+        content = _extract_json_from_text(response.text or "")
         result = _parse_json_with_repair(content)
         result["moderator"] = settings.moderator_2_model
         result["available"] = True
@@ -149,6 +170,155 @@ Flag if risk > growth. Respond with JSON only."""
             "moderator": settings.moderator_2_model,
             "available": False,
         }
+
+
+def _gemini_tool_declarations() -> list[types.Tool]:
+    """Build Gemini function declarations for research tools."""
+    return [types.Tool(function_declarations=[
+        types.FunctionDeclaration(
+            name="web_search",
+            description="General web search for news, analysis, or company info.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "query": types.Schema(type=types.Type.STRING, description="Search query"),
+                    "ticker": types.Schema(type=types.Type.STRING, description="Ticker symbol"),
+                },
+                required=["query"],
+            ),
+        ),
+        types.FunctionDeclaration(
+            name="news_search",
+            description="Financial news search for recent events, earnings, upgrades.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "ticker": types.Schema(type=types.Type.STRING, description="Ticker symbol"),
+                    "query": types.Schema(type=types.Type.STRING, description="News search query"),
+                },
+                required=["ticker", "query"],
+            ),
+        ),
+        types.FunctionDeclaration(
+            name="macro_search",
+            description="Search macro-economic topics: Fed policy, rates, GDP, inflation.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "query": types.Schema(type=types.Type.STRING, description="Macro search query"),
+                },
+                required=["query"],
+            ),
+        ),
+        types.FunctionDeclaration(
+            name="sec_search",
+            description="Search SEC filings (10-K, 10-Q, 8-K, proxy). Free and institutional-grade.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "ticker": types.Schema(type=types.Type.STRING, description="Ticker symbol"),
+                    "doc_type": types.Schema(type=types.Type.STRING, description="Filing type: 10-K, 10-Q, 8-K, proxy, all"),
+                },
+                required=["ticker"],
+            ),
+        ),
+    ])]
+
+
+def _dispatch_tool_call(name: str, args: dict, ticker_hint: str, research_executor: Any) -> list[dict]:
+    """Route a Gemini function call to the research executor."""
+    t = args.get("ticker", ticker_hint) or "general"
+    n = args.get("num_results", 5)
+
+    if name == "web_search":
+        return research_executor.web_search("risk", t, args.get("query", ""), n)
+    elif name == "news_search":
+        return research_executor.news_search("risk", t, args.get("query", ""), n)
+    elif name == "macro_search":
+        return research_executor.macro_search("risk", args.get("query", ""), n)
+    elif name == "sec_search":
+        return research_executor.sec_search_tool("risk", t, args.get("doc_type", "10-K"), n or 3)
+    else:
+        return [{"error": f"Unknown tool: {name}"}]
+
+
+def _review_with_tools(
+    trade_proposal: dict[str, Any],
+    portfolio_context: str,
+    market_context: dict[str, Any],
+    cycle_id: str | None,
+    research_executor: Any,
+) -> dict[str, Any]:
+    """Gemini moderation with tool-use loop for risk research."""
+    settings = get_settings()
+    ticker = trade_proposal.get("ticker", "general")
+
+    if not check_budget(Provider.GOOGLE.value):
+        return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
+
+    user_prompt = _build_user_prompt(trade_proposal, portfolio_context, market_context)
+    sys_prompt = SYSTEM_PROMPT + "\n\nYou may use research tools to check risk factors, macro headwinds, or SEC filings. Use sparingly (1-2 searches). When done, respond with JSON only."
+
+    tools = _gemini_tool_declarations()
+    max_iter = 4
+
+    try:
+        client = genai.Client(api_key=settings.google_ai_api_key)
+        contents: list[Any] = [types.Content(parts=[types.Part.from_text(text=user_prompt)], role="user")]
+
+        for _ in range(max_iter):
+            if not check_budget(Provider.GOOGLE.value):
+                break
+
+            response = client.models.generate_content(
+                model=settings.moderator_2_model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=sys_prompt,
+                    max_output_tokens=2048,
+                    temperature=0.4,
+                    tools=tools,
+                ),
+            )
+            _log_gemini_cost(response, cycle_id, settings)
+
+            candidate = response.candidates[0] if response.candidates else None
+            if not candidate or not candidate.content or not candidate.content.parts:
+                break
+
+            parts = candidate.content.parts
+            func_calls = [p for p in parts if hasattr(p, "function_call") and p.function_call]
+            text_parts = [p for p in parts if hasattr(p, "text") and p.text]
+
+            if not func_calls:
+                text = "".join(p.text for p in text_parts if p.text)
+                content_str = _extract_json_from_text(text)
+                result = _parse_json_with_repair(content_str)
+                result["moderator"] = settings.moderator_2_model
+                result["available"] = True
+                return result
+
+            contents.append(candidate.content)
+
+            tool_response_parts = []
+            for fc_part in func_calls:
+                fc = fc_part.function_call
+                args = dict(fc.args) if fc.args else {}
+                res = _dispatch_tool_call(fc.name, args, ticker, research_executor)
+                tool_response_parts.append(
+                    types.Part.from_function_response(
+                        name=fc.name,
+                        response={"results": json.dumps(res)[:8000] if res else "[]"},
+                    )
+                )
+
+            contents.append(types.Content(parts=tool_response_parts, role="user"))
+
+        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
+
+    except Exception as e:
+        logger.error(f"Gemini tool-use moderation failed: {e}")
+        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
 
 
 def _parse_json_with_repair(text: str) -> dict[str, Any]:

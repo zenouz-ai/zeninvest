@@ -51,11 +51,13 @@ class ResearchExecutor:
         if cached is not None:
             self._log(member, ticker, "web_search", query, cached, "brave", cache_hit=True)
             return cached
+        t0 = time.perf_counter()
         results, provider = self._router.search(query=query, num_results=num_results)
+        latency_ms = int((time.perf_counter() - t0) * 1000)
         serial = [{"url": r.url, "title": r.title, "snippet": r.snippet} for r in results]
         self._budget.record_call(member)
         self._cache.set(ticker, "web_search", query, serial)
-        self._log(member, ticker, "web_search", query, serial, provider, cache_hit=False)
+        self._log(member, ticker, "web_search", query, serial, provider, cache_hit=False, latency_ms=latency_ms)
         return serial
 
     def news_search(
@@ -72,13 +74,15 @@ class ResearchExecutor:
         if cached is not None:
             self._log(member, ticker, "news_search", query, cached, "brave", cache_hit=True)
             return cached
+        t0 = time.perf_counter()
         results, provider = self._router.search(
             query=query, num_results=num_results, topic="finance"
         )
+        latency_ms = int((time.perf_counter() - t0) * 1000)
         serial = [{"url": r.url, "title": r.title, "snippet": r.snippet} for r in results]
         self._budget.record_call(member)
         self._cache.set(ticker, "news_search", query, serial)
-        self._log(member, ticker, "news_search", query, serial, provider, cache_hit=False)
+        self._log(member, ticker, "news_search", query, serial, provider, cache_hit=False, latency_ms=latency_ms)
         return serial
 
     def sector_search(
@@ -97,13 +101,15 @@ class ResearchExecutor:
         if cached is not None:
             self._log(member, ticker, "sector_search", full_query, cached, "brave", cache_hit=True)
             return cached
+        t0 = time.perf_counter()
         results, provider = self._router.search(
             query=full_query, num_results=num_results, topic="finance"
         )
+        latency_ms = int((time.perf_counter() - t0) * 1000)
         serial = [{"url": r.url, "title": r.title, "snippet": r.snippet} for r in results]
         self._budget.record_call(member)
         self._cache.set(ticker, "sector_search", full_query, serial)
-        self._log(member, ticker, "sector_search", full_query, serial, provider, cache_hit=False)
+        self._log(member, ticker, "sector_search", full_query, serial, provider, cache_hit=False, latency_ms=latency_ms)
         return serial
 
     def sec_search_tool(
@@ -120,7 +126,9 @@ class ResearchExecutor:
         if cached is not None:
             self._log(member, ticker, "sec_search", doc_type, cached, "sec", cache_hit=True)
             return cached
+        t0 = time.perf_counter()
         results: list[SECResult] = sec_search(ticker, doc_type=doc_type, num_results=num_results)
+        latency_ms = int((time.perf_counter() - t0) * 1000)
         serial = [
             {
                 "filing_type": r.filing_type,
@@ -132,7 +140,29 @@ class ResearchExecutor:
             for r in results
         ]
         self._cache.set(ticker, "sec_search", doc_type, serial)
-        self._log(member, ticker, "sec_search", doc_type, serial, "sec", cache_hit=False)
+        self._log(member, ticker, "sec_search", doc_type, serial, "sec", cache_hit=False, latency_ms=latency_ms)
+        return serial
+
+    def macro_search(
+        self,
+        member: str,
+        query: str,
+        num_results: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Search macro/economic topics (Fed policy, rates, GDP, inflation)."""
+        if not self._can_research(member):
+            return []
+        cached = self._cache.get("_MACRO_", "macro_search", query)
+        if cached is not None:
+            self._log(member, "_MACRO_", "macro_search", query, cached, "brave", cache_hit=True)
+            return cached
+        t0 = time.perf_counter()
+        results, provider = self._router.search(query=query, num_results=num_results, topic="finance")
+        latency_ms = int((time.perf_counter() - t0) * 1000)
+        serial = [{"url": r.url, "title": r.title, "snippet": r.snippet} for r in results]
+        self._budget.record_call(member)
+        self._cache.set("_MACRO_", "macro_search", query, serial)
+        self._log(member, "_MACRO_", "macro_search", query, serial, provider, cache_hit=False, latency_ms=latency_ms)
         return serial
 
     def _log(
@@ -144,6 +174,7 @@ class ResearchExecutor:
         results: list[Any],
         provider: str,
         cache_hit: bool,
+        latency_ms: int = 0,
     ) -> None:
         """Persist to ResearchLog and emit EventsLog for dashboard."""
         session = get_session()
@@ -158,8 +189,8 @@ class ResearchExecutor:
                     num_results=len(results),
                     results_json=json.dumps(results)[:10000] if results else None,
                     provider=provider,
-                    cost_usd=0.0,
-                    latency_ms=0,
+                    cost_usd=0.005 if not cache_hit and provider in ("brave", "tavily") else 0.0,
+                    latency_ms=latency_ms,
                     cache_hit=cache_hit,
                     error=None,
                 )

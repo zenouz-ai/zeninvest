@@ -205,6 +205,7 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     +-- GET /api/moderation/{cycle_id}, /api/moderation/ticker/{ticker}; GET /api/risk/{cycle_id}
     +-- GET /api/opportunity/config, /api/opportunity/scores, /api/opportunity/queue, /api/opportunity/history/{ticker}
     +-- GET /api/outcomes, /api/outcomes/stats
+    +-- GET /api/research/logs, /api/research/summary
     +-- GET /api/stop-loss/current, /api/stop-loss/adjustments
     +-- GET /api/performance/metrics, /api/performance/history
     +-- GET /api/costs/daily, /api/costs/monthly, /api/costs/degradation
@@ -328,7 +329,7 @@ graph TB
         AV[Alpha Vantage<br/>Per-Ticker News Sentiment]
         IND[Technical Indicators<br/>RSI, MACD, BB, 50MA]
         MACRO[Macro Data<br/>VIX, S&P vs 200MA<br/>+ sector perf, economic headlines]
-        UNIV[Universe Screener<br/>Sector-balanced, cap-tiered<br/>24h cooldown, review/new buckets]
+        UNIV[Universe Screener<br/>Sector-balanced, cap-tiered<br/>configurable cooldown, effective 12h, review/new buckets]
     end
 
     subgraph Strategy["Strategy Engine"]

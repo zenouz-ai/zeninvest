@@ -263,6 +263,8 @@ Challenge the thesis. Use tools if needed to find bear cases or downgrades. Resp
                     res = research_executor.sector_search("skeptic", t, inp.get("sector", ""), inp.get("query", ""), n)
                 elif name == "sec_search":
                     res = research_executor.sec_search_tool("skeptic", t, inp.get("doc_type", "10-K"), n or 3)
+                elif name == "macro_search":
+                    res = research_executor.macro_search("skeptic", inp.get("query", ""), n)
                 else:
                     res = [{"error": f"Unknown tool: {name}"}]
 

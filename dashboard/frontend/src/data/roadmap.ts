@@ -37,9 +37,9 @@ export interface Milestone {
   architectureComponents?: string[]
 }
 
-/** All 28 milestones from SOPHISTICATION_ROADMAP (10 delivered, 18 pipeline) */
+/** All 28 milestones from SOPHISTICATION_ROADMAP (11 delivered, 17 pipeline) */
 export const MILESTONES: Milestone[] = [
-  // --- Delivered (10) ---
+  // --- Delivered (11) ---
   {
     id: 'US-1.1',
     name: 'Performance Tracking',
@@ -115,7 +115,7 @@ export const MILESTONES: Milestone[] = [
     effort: 'L',
     priority: 'P1',
     description:
-      'Web dashboard: 7 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs); full API',
+      'Web dashboard: 8 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs, Roadmap & Architecture); full API',
     architectureComponents: ['Dashboard', 'FastAPI', 'React'],
   },
   {
@@ -170,18 +170,20 @@ export const MILESTONES: Milestone[] = [
       'Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache',
     architectureComponents: ['Backtesting module'],
   },
-  // --- Pipeline (18) ---
   {
     id: 'US-4.4',
     name: 'Agentic Research',
     topic: 'Signals',
-    status: 'pipeline',
+    status: 'delivered',
+    start: '2026-03-10',
+    end: '2026-03-13',
     effort: 'L',
     priority: 'P1',
     description:
-      'Partially implemented: Strategy + Skeptic tool-use loops available, Risk loop pending; Brave primary, Tavily fallback; caps 20/8/7 (total 35)',
-    architectureComponents: ['Strategy Engine', 'Data Fetcher'],
+      '5 tools (web_search, news_search, sector_search, sec_search, macro_search); all 3 members (Strategy, GPT-4o Skeptic, Gemini Risk) have tool-use loops; shared pipeline-wide budget (35/cycle); Brave primary, Tavily fallback; 37 unit tests',
+    architectureComponents: ['Strategy Engine', 'Moderation Panel', 'Research Executor'],
   },
+  // --- Pipeline (17) ---
   {
     id: 'US-4.5',
     name: 'Proactive Macro News Intelligence',

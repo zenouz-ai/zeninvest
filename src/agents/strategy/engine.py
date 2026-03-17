@@ -23,7 +23,7 @@ logger = get_logger("strategy_engine")
 RESEARCH_GUIDANCE = """
 
 ## RESEARCH TOOLS (use sparingly — 1–2 high-value searches per ticker)
-You have web_search, news_search, sector_search, and sec_search. Use them to verify thesis before proposing BUY.
+You have web_search, news_search, sector_search, sec_search, and macro_search. Use them to verify thesis before proposing BUY.
 When done researching, output your decisions as JSON in the schema below. Do not use tools after starting the JSON output."""
 
 
@@ -129,6 +129,9 @@ class StrategyEngine:
         num_positions: int,
         cycle_id: str,
         uov_swap_context: str = "",
+        research_executor: "ResearchExecutor | None" = None,
+        position_pnl: str = "",
+        strategy_performance: str = "",
     ) -> dict[str, Any]:
         """Send strategy data to Claude for final synthesis."""
         if not check_budget(Provider.ANTHROPIC.value):
@@ -153,6 +156,9 @@ class StrategyEngine:
                 num_positions=num_positions,
                 cycle_id=cycle_id,
                 uov_swap_context=uov_swap_context,
+                research_executor=research_executor,
+                position_pnl=position_pnl,
+                strategy_performance=strategy_performance,
             )
 
         return self._synthesize_single_turn(
@@ -168,6 +174,8 @@ class StrategyEngine:
             num_positions=num_positions,
             cycle_id=cycle_id,
             uov_swap_context=uov_swap_context,
+            position_pnl=position_pnl,
+            strategy_performance=strategy_performance,
         )
 
     def _synthesize_single_turn(
@@ -184,6 +192,8 @@ class StrategyEngine:
         num_positions: int,
         cycle_id: str,
         uov_swap_context: str,
+        position_pnl: str = "",
+        strategy_performance: str = "",
     ) -> dict[str, Any]:
         """Original single-turn synthesis without tools."""
         max_pos_pct = self.settings.max_position_pct
@@ -213,6 +223,8 @@ class StrategyEngine:
             mean_reversion_weight=self.settings.mean_reversion_weight,
             factor_weight=self.settings.factor_weight,
             uov_swap_context=uov_swap_context,
+            position_pnl=position_pnl,
+            strategy_performance=strategy_performance,
         )
 
         try:
@@ -282,6 +294,9 @@ class StrategyEngine:
         num_positions: int,
         cycle_id: str,
         uov_swap_context: str,
+        research_executor: "ResearchExecutor | None" = None,
+        position_pnl: str = "",
+        strategy_performance: str = "",
     ) -> dict[str, Any]:
         """Tool-use loop: Claude can call research tools, then output decisions JSON."""
         max_pos_pct = self.settings.max_position_pct
@@ -311,10 +326,12 @@ class StrategyEngine:
             mean_reversion_weight=self.settings.mean_reversion_weight,
             factor_weight=self.settings.factor_weight,
             uov_swap_context=uov_swap_context,
+            position_pnl=position_pnl,
+            strategy_performance=strategy_performance,
         )
         prompt = prompt + RESEARCH_GUIDANCE
 
-        executor = ResearchExecutor(cycle_id=cycle_id)
+        executor = research_executor or ResearchExecutor(cycle_id=cycle_id)
         tools = get_research_tool_definitions()
         messages: list[dict] = [{"role": "user", "content": prompt}]
         max_iterations = 8
@@ -393,6 +410,8 @@ class StrategyEngine:
                         "strategy", ticker or "general",
                         inp.get("doc_type", "10-K"), num_results or 3,
                     )
+                elif name == "macro_search":
+                    res = executor.macro_search("strategy", inp.get("query", ""), num_results)
                 else:
                     res = [{"error": f"Unknown tool: {name}"}]
 

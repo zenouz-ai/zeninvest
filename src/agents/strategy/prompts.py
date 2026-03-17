@@ -83,6 +83,12 @@ Use headlines to identify catalysts, risks, and market mood that numbers cannot 
 - Max position size: {max_position_pct}%
 - Positions: {num_positions}/{max_positions}
 
+## CURRENT POSITION P&L
+{position_pnl}
+
+## STRATEGY PERFORMANCE HISTORY
+{strategy_performance}
+
 ## UOV SWAP CONTEXT (optional, from prior cycles)
 {uov_swap_context}
 
@@ -142,6 +148,8 @@ def build_strategy_prompt(
     mean_reversion_weight: float,
     factor_weight: float,
     uov_swap_context: str = "",
+    position_pnl: str = "",
+    strategy_performance: str = "",
 ) -> str:
     """Build the full strategy prompt for Claude."""
     state_constraints = ""
@@ -172,5 +180,7 @@ def build_strategy_prompt(
         mean_reversion_weight=mean_reversion_weight,
         factor_weight=factor_weight,
         uov_swap_context=uov_swap_context or "No prior UOV swap signals available.",
+        position_pnl=position_pnl or "No open positions.",
+        strategy_performance=strategy_performance or "Insufficient trade history for strategy performance metrics.",
         state_constraints=state_constraints,
     )

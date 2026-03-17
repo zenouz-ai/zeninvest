@@ -81,4 +81,16 @@ def get_research_tool_definitions() -> list[dict]:
                 "required": ["ticker"],
             },
         },
+        {
+            "name": "macro_search",
+            "description": "Search macro-economic topics: Fed policy, interest rates, GDP, inflation, employment. Use to assess macro backdrop for risk assessment.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Macro search query (e.g. 'Fed rate decision March 2026')"},
+                    "num_results": {"type": "integer", "description": "Max results", "default": 5},
+                },
+                "required": ["query"],
+            },
+        },
     ]

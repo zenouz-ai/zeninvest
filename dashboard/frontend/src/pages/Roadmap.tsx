@@ -43,16 +43,22 @@ graph TB
         GOOG[Google<br/>Gemini]
     end
 
+    subgraph Research["Agentic Research - US-4.4"]
+        REXEC["ResearchExecutor<br/>5 tools, shared budget 35/cycle"]
+    end
+
     subgraph Strategy["Strategy Engine - US-2.1, 2.2, 4.4"]
         CLAUDE[Claude Synthesis<br/>+ Research tools]
     end
 
-    subgraph Mod["Moderation - US-2.3"]
+    subgraph Mod["Moderation - US-2.3, 4.4"]
+        GPT4O[GPT-4o Skeptic<br/>+ Research tools]
+        GEMRISK[Gemini Risk<br/>+ Research tools]
         CONS[Consensus]
     end
 
-    subgraph Risk["Risk Agent - US-3.2, 3.3"]
-        RULES[Hard Rules VETO]
+    subgraph RiskRules["Risk Agent - US-3.2, 3.3"]
+        RULES["11 Hard Rules VETO"]
     end
 
     subgraph Opp["UOV - US-3.4"]
@@ -60,8 +66,8 @@ graph TB
     end
 
     subgraph Exec["Order Mgmt - US-3.5, 3.1"]
-        OM[Order Manager]
-        SL[Stop-Loss Manager]
+        OM["Order Manager<br/>+ retry"]
+        SL["Stop-Loss Manager<br/>trailing + ATR"]
     end
 
     subgraph Out["Output"]
@@ -73,22 +79,30 @@ graph TB
     AV --> DF
     AV --> MACRO
     FH --> MACRO
+    BRAVE --> REXEC
+    TAVILY --> REXEC
+    SEC --> REXEC
     BRAVE --> FALLBACK
     TAVILY --> FALLBACK
     BRAVE --> UNIV
     TAVILY --> UNIV
-    SEC --> CLAUDE
 
     DF --> UNIV
     DF --> CLAUDE
     MACRO --> CLAUDE
     FALLBACK --> CLAUDE
 
+    REXEC --> CLAUDE
+    REXEC --> GPT4O
+    REXEC --> GEMRISK
+
     ANTH --> CLAUDE
-    CLAUDE --> OAI
-    CLAUDE --> GOOG
-    OAI --> CONS
-    GOOG --> CONS
+    CLAUDE --> GPT4O
+    CLAUDE --> GEMRISK
+    OAI --> GPT4O
+    GOOG --> GEMRISK
+    GPT4O --> CONS
+    GEMRISK --> CONS
 
     CONS --> RULES
     RULES --> UOV

@@ -16,11 +16,16 @@ Transform the investment agent's committee pipeline from a **fixed data payload*
 
 ### Current Status
 
-This project is **US-4.4** in the sophistication roadmap. Status: **Partially Implemented**.
+This project is **US-4.4** in the sophistication roadmap.
 
-- Strategy (Claude): tool-use loop available behind feature flag.
-- Skeptic (GPT-4o): tool-use loop available behind feature flag.
-- Risk (Gemini): still single-turn in current code path (no active tool-use loop yet).
+| Phase | Focus | Status |
+|-------|-------|--------|
+| **A** | Infrastructure (providers, cache, budget, executor, ResearchLog) | Complete |
+| **B** | Strategy tool-use (Claude) | Complete |
+| **C** | Moderation tool-use (GPT-4o skeptic + Gemini risk) | Complete — both have tool-use loops |
+| **D** | Observability (latency_ms, cost_usd in ResearchLog; 37 tests) | Complete |
+
+The pipeline shares a single `ResearchExecutor` and `ResearchBudget` across strategy and moderation for pipeline-wide 35-call enforcement.
 
 Implementation checklist and rollout steps are maintained in [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md).
 
@@ -179,7 +184,7 @@ Research tools are accessed via a standardised LLM tool-use interface. The `Rese
 | `news_search(ticker: str, query: str, num_results: int = 5) → list[NewsResult]` | Financial news search (earnings, upgrades, insider, filings) | Brave + Tavily (topic: finance; fallback/additional) | News + sentiment + source credibility | £0.005/call | 100/min |
 | `sec_search(ticker: str, doc_type: str, num_results: int = 3) → list[SECResult]` | Search SEC filings for a company (10-K, 10-Q, 8-K, proxy) | SEC EDGAR API (direct HTTP; no LangChain) | Filing summary, key excerpts, filing date | Free | 10/min |
 | `sector_search(sector: str, query: str, num_results: int = 5) → list[SectorResult]` | Search sector rotation, peer analysis, industry trends | Brave + Tavily (topic: finance; fallback) | Results ranked by recency and authority | £0.003/call | 100/min |
-| `macro_search(query: str, num_results: int = 5) → list[MacroResult]` | Search macro events (Fed, inflation, geopolitics, correlations) | Brave + Tavily (topic: news; fallback) | Current headlines + economic calendar | £0.003/call | 100/min |
+| `macro_search(query: str, num_results: int = 5) → list[MacroResult]` | Search macro events (Fed, inflation, geopolitics, correlations). **Implemented.** | Brave + Tavily (topic: news; fallback) | Current headlines + economic calendar | £0.003/call | 100/min |
 
 #### Search Provider Strategy
 
