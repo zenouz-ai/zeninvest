@@ -73,6 +73,130 @@ class OrderManager:
         finally:
             session.close()
 
+    def cancel_conflicting_stops(self, ticker: str) -> dict[str, Any]:
+        """Cancel pending stop-loss orders for a ticker before SELL/REDUCE.
+
+        In dry-run mode, queries DB for pending stops and logs what would be
+        cancelled. In live mode, fetches pending orders from T212 and cancels
+        matching stop orders.
+
+        Returns:
+            {"status": "ok", "cancelled": [...]} on success or no stops found.
+            {"status": "failed", "error": "..."} on cancellation failure.
+        """
+        cancelled: list[str] = []
+
+        if self.dry_run:
+            # Check local DB for pending stops to log what would happen
+            session = get_session()
+            try:
+                rows = (
+                    session.query(Order)
+                    .filter(
+                        Order.ticker == ticker,
+                        Order.order_type == "stop",
+                        Order.status.in_(["pending", "dry_run"]),
+                    )
+                    .all()
+                )
+                for row in rows:
+                    order_id = row.t212_order_id or str(row.id)
+                    logger.info(
+                        f"[DRY RUN] Would cancel stop-loss for {ticker}: "
+                        f"order_id={order_id}, stop_price={row.stop_price}"
+                    )
+                    row.status = "cancelled"
+                    row.error_message = "Cancelled before SELL/REDUCE (dry run)"
+                    cancelled.append(order_id)
+                if rows:
+                    session.commit()
+            except Exception:
+                session.rollback()
+            finally:
+                session.close()
+            return {"status": "ok", "cancelled": cancelled}
+
+        # Live mode: fetch pending orders from T212
+        try:
+            pending = self.client.get_pending_orders()
+        except Exception as e:
+            error_msg = f"Failed to fetch pending orders: {e}"
+            logger.error(error_msg)
+            return {"status": "failed", "error": error_msg}
+
+        stops_for_ticker = [
+            order
+            for order in pending
+            if order.get("ticker") == ticker
+            and (order.get("type") == "STOP" or "stopPrice" in order)
+        ]
+
+        if not stops_for_ticker:
+            return {"status": "ok", "cancelled": []}
+
+        for stop_order in stops_for_ticker:
+            order_id = stop_order.get("id") or stop_order.get("orderId")
+            if not order_id:
+                continue
+            try:
+                self.client.cancel_order(str(order_id))
+                cancelled.append(str(order_id))
+                logger.info(
+                    f"Cancelled stop-loss for {ticker} before SELL/REDUCE: "
+                    f"order_id={order_id}"
+                )
+                # Update local DB record
+                session = get_session()
+                try:
+                    row = (
+                        session.query(Order)
+                        .filter(
+                            Order.t212_order_id == str(order_id),
+                            Order.status == "pending",
+                        )
+                        .first()
+                    )
+                    if row:
+                        row.status = "cancelled"
+                        row.error_message = "Cancelled before SELL/REDUCE execution"
+                        session.commit()
+                except Exception:
+                    session.rollback()
+                finally:
+                    session.close()
+
+                # Dashboard event
+                if DASHBOARD_AVAILABLE and log_event is not None:
+                    try:
+                        log_event(
+                            event_type="order_adjustment",
+                            source="execution",
+                            message=f"Cancelled stop-loss for {ticker} before SELL/REDUCE",
+                            metadata={
+                                "ticker": ticker,
+                                "cancelled_order_id": str(order_id),
+                                "stop_price": stop_order.get("stopPrice"),
+                                "reason": "conflicting_stop_before_sell",
+                            },
+                        )
+                    except Exception:
+                        pass  # Fail-open
+
+            except Exception as e:
+                error_str = str(e).lower()
+                # If stop already gone (triggered or cancelled), treat as success
+                if "404" in error_str or "not found" in error_str:
+                    logger.info(
+                        f"Stop-loss {order_id} for {ticker} already gone (triggered or cancelled)"
+                    )
+                    cancelled.append(str(order_id))
+                    continue
+                error_msg = f"Failed to cancel stop-loss {order_id} for {ticker}: {e}"
+                logger.error(error_msg)
+                return {"status": "failed", "error": error_msg}
+
+        return {"status": "ok", "cancelled": cancelled}
+
     def _place_with_retry(
         self,
         ticker: str,
@@ -197,6 +321,37 @@ class OrderManager:
                 f"£{self.settings.min_order_value_gbp:.2f}"
             )
             return {"status": "skipped", "reason": reject_reason}
+
+        # Cancel conflicting stop-loss orders before SELL/REDUCE
+        if action in ("SELL", "REDUCE"):
+            cancel_result = self.cancel_conflicting_stops(ticker)
+            if cancel_result.get("status") == "failed":
+                error_msg = (
+                    f"Cannot {action} {ticker}: failed to cancel conflicting "
+                    f"stop-loss: {cancel_result.get('error', 'unknown')}"
+                )
+                logger.error(error_msg)
+                self._log_order(
+                    ticker=ticker,
+                    action=action,
+                    order_type="market",
+                    quantity=quantity,
+                    price=current_price,
+                    value_gbp=value_gbp,
+                    status="failed",
+                    strategy=strategy,
+                    conviction=conviction,
+                    moderation_result=moderation_result,
+                    risk_result=risk_result,
+                    error_message=error_msg,
+                    dedup_key=dedup_key,
+                )
+                return {"status": "failed", "error": error_msg}
+            if cancel_result.get("cancelled"):
+                logger.info(
+                    f"Cancelled {len(cancel_result['cancelled'])} stop-loss order(s) "
+                    f"for {ticker} before {action}"
+                )
 
         if self.dry_run:
             logger.info(f"[DRY RUN] Would execute: {action} {abs(quantity)} x {ticker} @ {current_price}")
@@ -569,6 +724,11 @@ class OrderManager:
                 quantity = float(position.get("quantity", 0))
                 if quantity > 0:
                     try:
+                        # Cancel conflicting stops (fail-open for liquidation)
+                        try:
+                            self.cancel_conflicting_stops(ticker)
+                        except Exception as e:
+                            logger.warning(f"Stop cancel failed during liquidation of {ticker}: {e}")
                         result = self.client.place_market_order(ticker, -quantity)
                         self._log_order(
                             ticker=ticker,
