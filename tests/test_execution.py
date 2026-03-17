@@ -363,6 +363,208 @@ class TestOrderManager:
         assert db_session.query(Order).count() == 0
 
 
+class TestCancelConflictingStops:
+    """Tests for cancelling stop-loss orders before SELL/REDUCE."""
+
+    def test_sell_cancels_existing_stop(self, db_session):
+        """SELL with an existing stop-loss should cancel the stop first, then SELL."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.33, "id": "stop-123"},
+        ]
+        mock_client.place_market_order.return_value = {"id": "sell-456", "status": "FILLED"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="VRTX_US_EQ",
+            action="SELL",
+            target_amount_gbp=600.0,
+            current_price=465.0,
+        )
+
+        assert result["status"] == "filled"
+        mock_client.cancel_order.assert_called_once_with("stop-123")
+        mock_client.place_market_order.assert_called_once()
+
+    def test_reduce_cancels_existing_stop(self, db_session):
+        """REDUCE with an existing stop-loss should cancel the stop first."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "AAPL_US_EQ", "type": "STOP", "stopPrice": 161.0, "id": "stop-789"},
+        ]
+        mock_client.place_market_order.return_value = {"id": "reduce-101", "status": "FILLED"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="REDUCE",
+            target_amount_gbp=600.0,
+            current_price=175.0,
+        )
+
+        assert result["status"] == "filled"
+        mock_client.cancel_order.assert_called_once_with("stop-789")
+
+    def test_sell_no_existing_stop_proceeds(self, db_session):
+        """SELL with no existing stop should proceed normally."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = []
+        mock_client.place_market_order.return_value = {"id": "sell-111", "status": "FILLED"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="MSFT_US_EQ",
+            action="SELL",
+            target_amount_gbp=800.0,
+            current_price=400.0,
+        )
+
+        assert result["status"] == "filled"
+        mock_client.cancel_order.assert_not_called()
+
+    def test_dry_run_sell_does_not_call_t212_cancel(self, db_session):
+        """Dry-run SELL should not call T212 cancel API."""
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+
+        result = manager.execute_market_order(
+            ticker="VRTX_US_EQ",
+            action="SELL",
+            target_amount_gbp=600.0,
+            current_price=465.0,
+        )
+
+        assert result["status"] == "dry_run"
+        mock_client.cancel_order.assert_not_called()
+        mock_client.get_pending_orders.assert_not_called()
+
+    def test_stop_cancel_failure_aborts_sell(self, db_session):
+        """If stop cancellation fails, SELL should be aborted."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.33, "id": "stop-fail"},
+        ]
+        mock_client.cancel_order.side_effect = Exception("T212 server error")
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="VRTX_US_EQ",
+            action="SELL",
+            target_amount_gbp=600.0,
+            current_price=465.0,
+        )
+
+        assert result["status"] == "failed"
+        assert "failed to cancel conflicting stop-loss" in result["error"]
+        mock_client.place_market_order.assert_not_called()
+
+    def test_only_cancels_stops_for_target_ticker(self, db_session):
+        """Stops for other tickers should not be cancelled."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "AAPL_US_EQ", "type": "STOP", "stopPrice": 161.0, "id": "stop-aapl"},
+            {"ticker": "MSFT_US_EQ", "type": "STOP", "stopPrice": 380.0, "id": "stop-msft"},
+        ]
+        mock_client.place_market_order.return_value = {"id": "sell-222", "status": "FILLED"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="SELL",
+            target_amount_gbp=600.0,
+            current_price=175.0,
+        )
+
+        assert result["status"] == "filled"
+        mock_client.cancel_order.assert_called_once_with("stop-aapl")
+
+    def test_stop_already_triggered_treated_as_success(self, db_session):
+        """If stop was already triggered (404), treat as success and proceed."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.33, "id": "stop-gone"},
+        ]
+        mock_client.cancel_order.side_effect = Exception("404 Not Found")
+        mock_client.place_market_order.return_value = {"id": "sell-333", "status": "FILLED"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="VRTX_US_EQ",
+            action="SELL",
+            target_amount_gbp=600.0,
+            current_price=465.0,
+        )
+
+        assert result["status"] == "filled"
+        mock_client.place_market_order.assert_called_once()
+
+    def test_liquidate_all_cancels_stops(self, db_session):
+        """liquidate_all should cancel stops before selling each position."""
+        mock_client = MagicMock()
+        mock_client.get_portfolio.return_value = [
+            {"ticker": "AAPL_US_EQ", "quantity": 10},
+        ]
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "AAPL_US_EQ", "type": "STOP", "stopPrice": 161.0, "id": "stop-liq"},
+        ]
+        mock_client.place_market_order.return_value = {"id": "liq-123"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        results = manager.liquidate_all()
+
+        assert len(results) == 1
+        assert results[0]["status"] == "sold"
+        mock_client.cancel_order.assert_called_once_with("stop-liq")
+
+    def test_buy_does_not_cancel_stops(self, db_session):
+        """BUY orders should not trigger stop cancellation."""
+        mock_client = MagicMock()
+        mock_client.place_market_order.return_value = {"id": "buy-111", "status": "FILLED"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=600.0,
+            current_price=175.0,
+        )
+
+        assert result["status"] == "filled"
+        mock_client.get_pending_orders.assert_not_called()
+        mock_client.cancel_order.assert_not_called()
+
+    def test_cancel_updates_local_db_record(self, db_session):
+        """After cancelling a stop on T212, the local Order record should be updated."""
+        # Pre-create a pending stop order in DB
+        stop_order = Order(
+            ticker="VRTX_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-0.55,
+            stop_price=431.33,
+            t212_order_id="stop-db-123",
+            status="pending",
+        )
+        db_session.add(stop_order)
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.33, "id": "stop-db-123"},
+        ]
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.cancel_conflicting_stops("VRTX_US_EQ")
+
+        assert result["status"] == "ok"
+        assert "stop-db-123" in result["cancelled"]
+
+        # Verify DB was updated
+        db_session.expire_all()
+        updated = db_session.query(Order).filter(Order.t212_order_id == "stop-db-123").first()
+        assert updated.status == "cancelled"
+
+
 class TestT212TimeValidityMapping:
     """T212 API requires GOOD_TILL_CANCEL, not GTC."""
 
