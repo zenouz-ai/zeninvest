@@ -37,7 +37,7 @@ export interface Milestone {
   architectureComponents?: string[]
 }
 
-/** All 28 milestones from SOPHISTICATION_ROADMAP (11 delivered, 17 pipeline) */
+/** All milestones from SOPHISTICATION_ROADMAP shown in dashboard roadmap */
 export const MILESTONES: Milestone[] = [
   // --- Delivered (11) ---
   {
@@ -370,6 +370,50 @@ export const MILESTONES: Milestone[] = [
     description:
       'Literature + data assessment; decision gate before any implementation',
     architectureComponents: ['Future ML layer'],
+  },
+  {
+    id: 'US-7.1',
+    name: 'Dashboard Authentication',
+    topic: 'Foundation',
+    status: 'pipeline',
+    effort: 'S',
+    priority: 'P1',
+    description:
+      'API key or token-based auth on dashboard endpoints before broader exposure',
+    architectureComponents: ['Dashboard', 'FastAPI'],
+  },
+  {
+    id: 'US-7.2',
+    name: 'Partial Fill Resubmission',
+    topic: 'Portfolio & Risk',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P2',
+    description:
+      'Detect partial fills and resubmit unfilled remainder in the next cycle',
+    architectureComponents: ['Order Manager', 'Execution'],
+  },
+  {
+    id: 'US-7.3',
+    name: 'Execution Quality & Slippage',
+    topic: 'Portfolio & Risk',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P2',
+    description:
+      'Track slippage and improve execution quality with timing and benchmark metrics',
+    architectureComponents: ['Order Manager', 'Reporting'],
+  },
+  {
+    id: 'US-7.4',
+    name: 'Integration Test Coverage',
+    topic: 'Validation',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P1',
+    description:
+      'End-to-end run_cycle and state machine transition coverage as a release gate',
+    architectureComponents: ['Orchestrator', 'State Machine', 'Testing'],
   },
 ]
 
