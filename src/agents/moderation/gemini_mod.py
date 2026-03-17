@@ -211,6 +211,19 @@ def _gemini_tool_declarations() -> list[types.Tool]:
             ),
         ),
         types.FunctionDeclaration(
+            name="sector_search",
+            description="Search sector/industry trends, peer performance, competitive dynamics.",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "sector": types.Schema(type=types.Type.STRING, description="Sector or industry name"),
+                    "query": types.Schema(type=types.Type.STRING, description="What to search for"),
+                    "ticker": types.Schema(type=types.Type.STRING, description="Optional ticker for cache"),
+                },
+                required=["sector", "query"],
+            ),
+        ),
+        types.FunctionDeclaration(
             name="sec_search",
             description="Search SEC filings (10-K, 10-Q, 8-K, proxy). Free and institutional-grade.",
             parameters=types.Schema(
@@ -234,6 +247,8 @@ def _dispatch_tool_call(name: str, args: dict, ticker_hint: str, research_execut
         return research_executor.web_search("risk", t, args.get("query", ""), n)
     elif name == "news_search":
         return research_executor.news_search("risk", t, args.get("query", ""), n)
+    elif name == "sector_search":
+        return research_executor.sector_search("risk", t, args.get("sector", ""), args.get("query", ""), n)
     elif name == "macro_search":
         return research_executor.macro_search("risk", args.get("query", ""), n)
     elif name == "sec_search":

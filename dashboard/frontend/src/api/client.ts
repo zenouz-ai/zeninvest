@@ -222,6 +222,39 @@ export const costsApi = {
   },
 }
 
+// Research API
+export interface ResearchSummary {
+  total_calls: number
+  cache_hits: number
+  cache_hit_rate: number
+  total_cost_usd: number
+  avg_latency_ms: number | null
+  by_member: Record<string, { calls: number; cost_usd: number }>
+  by_tool: Record<string, { calls: number; cost_usd: number }>
+  by_provider: Record<string, { calls: number; cost_usd: number }>
+}
+
+export const researchApi = {
+  getSummary: async (params?: { from_date?: string; to_date?: string }): Promise<ResearchSummary> => {
+    const response = await api.get('/api/research/summary', { params })
+    return response.data
+  },
+  getLogs: async (params?: {
+    cycle_id?: string
+    member?: string
+    ticker?: string
+    limit?: number
+    offset?: number
+  }): Promise<any[]> => {
+    const response = await api.get('/api/research/logs', { params })
+    return response.data
+  },
+  getByTicker: async (ticker: string, limit?: number): Promise<any[]> => {
+    const response = await api.get(`/api/research/ticker/${ticker}`, { params: { limit } })
+    return response.data
+  },
+}
+
 // Dashboard API (monthly summary, run feed)
 export const dashboardApi = {
   getMonthlySummary: async (year: number, month: number): Promise<{

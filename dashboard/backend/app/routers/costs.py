@@ -11,7 +11,7 @@ from src.data.models import CostLog
 from src.utils.config import get_settings
 
 from ..schemas import CostDailySchema, CostForCycleSchema, CostMonthlySchema, DegradationSchema
-from ..services.api_cost_estimator import get_api_cost_by_day, get_api_cost_by_month
+from ..services.api_cost_estimator import get_api_cost_by_day, get_api_cost_by_month, get_research_cost_by_day, get_research_cost_by_month
 
 router = APIRouter()
 settings = get_settings()
@@ -74,11 +74,14 @@ async def get_costs_daily(
             d = day.isoformat() if hasattr(day, "isoformat") else str(day)
             by_date[d][provider] = float(total or 0)
         api_by_day = get_api_cost_by_day(start, end)
+        research_by_day = get_research_cost_by_day(start, end)
+        all_dates = set(by_date.keys()) | set(api_by_day.keys()) | set(research_by_day.keys())
         result = []
-        for date_str in sorted(by_date.keys(), reverse=True)[:days]:
-            p = by_date[date_str]
+        for date_str in sorted(all_dates, reverse=True)[:days]:
+            p = by_date.get(date_str, {"anthropic": 0.0, "openai": 0.0, "google": 0.0})
             llm = p["anthropic"] + p["openai"] + p["google"]
             api = api_by_day.get(date_str, 0.0)
+            research = research_by_day.get(date_str, 0.0)
             result.append(
                 CostDailySchema(
                     date=date_str,
@@ -88,6 +91,7 @@ async def get_costs_daily(
                     total_gbp=round(llm, 4),
                     llm_cost_gbp=round(llm, 4),
                     api_cost_gbp=api,
+                    research_cost_gbp=research,
                 )
             )
         return result
@@ -118,12 +122,15 @@ async def get_costs_monthly(
         for (ym, provider, total) in rows:
             by_ym[ym][provider] = float(total or 0)
         api_by_ym = get_api_cost_by_month(start, end)
+        research_by_ym = get_research_cost_by_month(start, end)
+        all_months = set(by_ym.keys()) | set(api_by_ym.keys()) | set(research_by_ym.keys())
         result = []
-        for ym in sorted(by_ym.keys(), reverse=True)[:months]:
-            p = by_ym[ym]
+        for ym in sorted(all_months, reverse=True)[:months]:
+            p = by_ym.get(ym, {"anthropic": 0.0, "openai": 0.0, "google": 0.0})
             llm = p["anthropic"] + p["openai"] + p["google"]
             api = api_by_ym.get(ym, 0.0)
-            total = llm + api
+            research = research_by_ym.get(ym, 0.0)
+            total = llm + api + research
             result.append(
                 CostMonthlySchema(
                     year_month=ym,
@@ -131,6 +138,7 @@ async def get_costs_monthly(
                     by_provider=dict(p),
                     llm_cost_gbp=round(llm, 4),
                     api_cost_gbp=api,
+                    research_cost_gbp=research,
                 )
             )
         return result

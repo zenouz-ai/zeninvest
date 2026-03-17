@@ -85,6 +85,7 @@ class UniverseBubbleSchema(BaseModel):
     sold_qty: float = 0.0
     sold_live_qty: float = 0.0
     sold_dry_run_qty: float = 0.0
+    research_calls: int = 0
 
 
 class PositionSchema(BaseModel):
@@ -337,7 +338,7 @@ class PerformanceMetricSchema(BaseModel):
 
 
 class CostDailySchema(BaseModel):
-    """Daily cost breakdown by provider, with API vs LLM split."""
+    """Daily cost breakdown by provider, with API vs LLM vs Research split."""
 
     date: str
     anthropic_gbp: float
@@ -346,16 +347,18 @@ class CostDailySchema(BaseModel):
     total_gbp: float  # LLM only (anthropic + openai + google)
     llm_cost_gbp: float = 0.0   # same as total_gbp
     api_cost_gbp: float = 0.0   # estimated from api_logs
+    research_cost_gbp: float = 0.0  # agentic research (from research_logs.cost_usd → GBP)
 
 
 class CostMonthlySchema(BaseModel):
-    """Monthly cumulative cost with API vs LLM split."""
+    """Monthly cumulative cost with API vs LLM vs Research split."""
 
     year_month: str
-    total_gbp: float  # llm + api
+    total_gbp: float  # llm + api + research
     by_provider: dict[str, float]
     llm_cost_gbp: float = 0.0   # sum of LLM providers
     api_cost_gbp: float = 0.0   # estimated from api_logs
+    research_cost_gbp: float = 0.0  # agentic research (from research_logs.cost_usd → GBP)
 
 
 class CostForCycleSchema(BaseModel):

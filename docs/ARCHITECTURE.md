@@ -89,7 +89,7 @@ Anthropic  -------> CLAUDE SONNET SYNTHESIS
                      (per-ticker, aggregate, broad, sector, economic) + analyst data
                      + portfolio state] → decisions with conviction
                      → market_assessment thesis
-                     [When research.enabled: tool-use loop (web_search, news_search, sector_search, sec_search) — caps 20/8/7 per member, 35 total/cycle]
+                     [When research.enabled: tool-use loop (web_search, news_search, sector_search, sec_search, macro_search) — caps 20/8/7 per member, 35 total/cycle]
                             |
                             v
                    MARKET CONTEXT (context.py)
@@ -103,7 +103,7 @@ OpenAI ----------> GPT-4o MODERATOR ---+
   (skeptic)        (full data access; when skeptic_research_enabled: tool-use)  |
                                        +--> MODERATION PANEL --> SQLite
 Gemini ----------> GEMINI MODERATOR ---+    (consensus logic)   (moderation_logs)
-  (risk assessor)  (full data access; when risk_research_enabled: tool-use TBD)  |
+  (risk assessor)  (full data access; when risk_research_enabled: tool-use loop)  |
                             +----------+
                             |
                             v
@@ -205,7 +205,7 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     +-- GET /api/moderation/{cycle_id}, /api/moderation/ticker/{ticker}; GET /api/risk/{cycle_id}
     +-- GET /api/opportunity/config, /api/opportunity/scores, /api/opportunity/queue, /api/opportunity/history/{ticker}
     +-- GET /api/outcomes, /api/outcomes/stats
-    +-- GET /api/research/logs, /api/research/summary
+    +-- GET /api/research/logs, /api/research/ticker/{ticker}, /api/research/summary
     +-- GET /api/stop-loss/current, /api/stop-loss/adjustments
     +-- GET /api/performance/metrics, /api/performance/history
     +-- GET /api/costs/daily, /api/costs/monthly, /api/costs/degradation
@@ -686,7 +686,7 @@ For the full prioritised backlog and detailed user story specifications, see [So
 - **Chat & Notifications (US-1.5)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. See [Chat & Commands](CHAT_AND_COMMANDS.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
 - **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (8 pages). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
-- **Agentic Research (US-4.4)** — *Partially delivered.* Strategy + Skeptic tool-use loops are available behind feature flags; Risk remains single-turn in current code path. Provider abstraction uses Brave (primary) + Tavily (fallback). Routing validation is documented in notebooks (`research_api_investigation.ipynb`, `research_api_decision_framework.ipynb`) with static-first gating and complexity-based action modes (skip/single-call/mini-research). See [Agentic Research](AGENTIC_RESEARCH.md) and [Follow-up Routing Plan](FOLLOWUP_RESEARCH_ROUTING_PLAN.md).
+- **Agentic Research (US-4.4)** — *Delivered.* All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have tool-use loops with 5 tools (web_search, news_search, sector_search, sec_search, macro_search). Pipeline shares a single ResearchExecutor/ResearchBudget for pipeline-wide cap enforcement. Dashboard displays per-ticker research trail: which member used which tool, queries, results, cache hits, latency, and cost. `GET /api/research/ticker/{ticker}` provides historical research per ticker. Universe table includes a `Research` column. See [Agentic Research](AGENTIC_RESEARCH.md).
 - **Nemotron Integration Investigation (US-2.4)** — *Investigation only.* Candidate risk/moderation model evaluated via smoke testing and shadow-mode comparison before any promotion to live committee roles. See [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md).
 
 ---

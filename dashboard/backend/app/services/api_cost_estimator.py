@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func
 
 from src.data.database import get_session
-from src.data.models import ApiLog
+from src.data.models import ApiLog, ResearchLog
 
 # Per-call cost estimates in GBP (from CLAUDE.md pricing, USD→GBP ~0.79)
 # brave_search: $5/1000; brave_answers: $4/1000 base; tavily: ~$0.008/credit
@@ -94,5 +94,50 @@ def get_api_cost_by_month(start: datetime, end: datetime) -> dict[str, float]:
             cost = int(row.calls or 0) * rate
             by_ym[row.ym] = by_ym.get(row.ym, 0.0) + cost
         return {ym: round(v, 4) for ym, v in by_ym.items()}
+    finally:
+        session.close()
+
+
+_USD_TO_GBP = 0.79
+
+
+def get_research_cost_by_day(start: datetime, end: datetime) -> dict[str, float]:
+    """Return {date_str: research_cost_gbp} aggregated from research_logs.cost_usd."""
+    session = get_session()
+    try:
+        rows = (
+            session.query(
+                func.date(ResearchLog.created_at).label("day"),
+                func.coalesce(func.sum(ResearchLog.cost_usd), 0.0).label("cost_usd"),
+            )
+            .filter(ResearchLog.created_at >= start, ResearchLog.created_at <= end)
+            .group_by(func.date(ResearchLog.created_at))
+            .all()
+        )
+        return {
+            (row.day.isoformat() if hasattr(row.day, "isoformat") else str(row.day)): round(
+                float(row.cost_usd) * _USD_TO_GBP, 4
+            )
+            for row in rows
+        }
+    finally:
+        session.close()
+
+
+def get_research_cost_by_month(start: datetime, end: datetime) -> dict[str, float]:
+    """Return {year_month: research_cost_gbp} aggregated from research_logs.cost_usd."""
+    session = get_session()
+    try:
+        ym_expr = func.strftime("%Y-%m", ResearchLog.created_at)
+        rows = (
+            session.query(
+                ym_expr.label("ym"),
+                func.coalesce(func.sum(ResearchLog.cost_usd), 0.0).label("cost_usd"),
+            )
+            .filter(ResearchLog.created_at >= start, ResearchLog.created_at <= end)
+            .group_by(ym_expr)
+            .all()
+        )
+        return {row.ym: round(float(row.cost_usd) * _USD_TO_GBP, 4) for row in rows}
     finally:
         session.close()

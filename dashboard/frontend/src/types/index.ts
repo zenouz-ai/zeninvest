@@ -47,6 +47,7 @@ export interface UniverseBubbleItem extends Instrument {
   hold_count: number
   hold_qty: number
   sold_qty: number
+  research_calls: number
 }
 
 /** Single moderator output in committee */
@@ -89,6 +90,20 @@ export interface RiskFull {
   triggered_rules?: unknown
 }
 
+/** Single agentic research call made during a cycle for a ticker */
+export interface ResearchCall {
+  member: string
+  tool_name: string
+  query: string
+  num_results: number | null
+  provider: string | null
+  cache_hit: boolean
+  latency_ms: number | null
+  cost_usd: number | null
+  results_summary: string | null
+  created_at: string | null
+}
+
 export interface InstrumentDetail extends Instrument {
   label: string | null
   last_decision: {
@@ -96,6 +111,7 @@ export interface InstrumentDetail extends Instrument {
     strategy?: StrategyFull
     moderation?: ModerationEntry[] | null
     risk?: RiskFull
+    research?: ResearchCall[] | null
     execution_summary?: {
       last_buy?: {
         timestamp: string

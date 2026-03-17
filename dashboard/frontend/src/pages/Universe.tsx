@@ -21,6 +21,7 @@ type UniverseRow = Instrument & {
   _holding: number
   _sold: number
   _uov_ewma: number | null
+  _research: number
 }
 
 const columnHelper = createColumnHelper<UniverseRow>()
@@ -44,6 +45,7 @@ export default function Universe() {
   const [holdingsMap, setHoldingsMap] = useState<Record<string, number>>({})
   const [soldMap, setSoldMap] = useState<Record<string, number>>({})
   const [uovMap, setUovMap] = useState<Record<string, number | null>>({})
+  const [researchMap, setResearchMap] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -66,6 +68,7 @@ export default function Universe() {
       const holds: Record<string, number> = {}
       const sold: Record<string, number> = {}
       const uov: Record<string, number | null> = {}
+      const research: Record<string, number> = {}
       bubble.forEach((b) => {
         if (b.investigated) investigated[b.ticker] = true
         stats[b.ticker] = {
@@ -78,12 +81,14 @@ export default function Universe() {
         holds[b.ticker] = b.hold_qty ?? 0
         sold[b.ticker] = b.sold_qty ?? 0
         uov[b.ticker] = b.uov_ewma ?? null
+        research[b.ticker] = b.research_calls ?? 0
       })
       setInvestigatedMap(investigated)
       setDecisionStatsMap(stats)
       setHoldingsMap(holds)
       setSoldMap(sold)
       setUovMap(uov)
+      setResearchMap(research)
     } catch (err) {
       console.error('Failed to fetch universe:', err)
       setError(err instanceof Error ? err.message : 'Failed to load universe')
@@ -233,6 +238,19 @@ export default function Universe() {
           return <span className="text-terminal-text-dim text-xs font-mono">{parts.join(' / ')}</span>
         },
       }),
+      columnHelper.accessor('_research', {
+        header: 'Research',
+        enableSorting: true,
+        cell: (info) => {
+          const v = info.getValue()
+          if (!v) return <span className="text-terminal-text-dim text-xs">—</span>
+          return (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-accent/15 text-accent">
+              {v} call{v !== 1 ? 's' : ''}
+            </span>
+          )
+        },
+      }),
       columnHelper.accessor('_holding', {
         header: 'Holding',
         enableSorting: true,
@@ -301,6 +319,7 @@ export default function Universe() {
         _holding: holding,
         _sold: sold,
         _uov_ewma: uov ?? null,
+        _research: researchMap[ticker] ?? 0,
       }
     })
 
@@ -330,7 +349,7 @@ export default function Universe() {
     })
 
     return filtered
-  }, [instruments, search, sectorFilter, investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap])
+  }, [instruments, search, sectorFilter, investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap, researchMap])
 
   const table = useReactTable({
     data: filteredData,

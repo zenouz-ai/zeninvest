@@ -19,7 +19,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 - **Order auditing** — stop-loss adjustments, trailing stops, limit orders, execution trail
 - **Cost monitoring** — LLM spend tracking, degradation state, API usage
 - **Performance analysis** — win rates, Sharpe/Sortino, trade outcomes, attribution by committee member
-- **Research transparency** (Phase D) — per-member research activity via `GET /api/research/logs`, `GET /api/research/summary`; cache hit rates; `research_call` events in SSE stream
+- **Research transparency** (Phase D) — per-member research activity via `GET /api/research/logs`, `GET /api/research/ticker/{ticker}`, `GET /api/research/summary`; cache hit rates; `research_call` events in SSE stream; Universe table `Research` column and expandable research trail per ticker
 
 ---
 
@@ -128,7 +128,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 - Latest committee trail: Strategy decision → Moderation scores → Risk verdict → UOV score
 - Execution summary: most recent BUY/SELL orders for the ticker (quantity, status, timestamp), so reviewers can see whether BUY decisions actually resulted in Trading 212 orders or remained hypothetical (dry-run only or blocked before execution)
 - Historical decisions: timeline of all past evaluations for this ticker
-- Research trail (Phase D): what each member searched for this ticker, key findings
+- Research trail (Phase D, implemented): what each member searched for this ticker, key findings, cache hits, latency, cost — displayed in expandable `Agentic Research` block within the committee reasoning panel
 - Company profile: business summary, sector, industry (from `instruments`)
 
 **Filters:**
@@ -224,8 +224,8 @@ Strategy (Claude) → conviction 0.8, action BUY
 **Cost split: API vs LLM (daily and monthly):**
 - Dashboard Home "This month" card: Runs, Cost (API/LLM split), Portfolio (start→end), P&L, New tickers investigated; collapsible daily cost table for last 7 days.
 - Dashboard Home "Cumulative" card (separate): Screened, Investigated (with breakdown: 1×, 2×, 3+ reviews), Uninvestigated (with breakdown: enriched vs not enriched), Orders — lifetime stats.
-- Costs page: daily chart stacks API (Brave/Tavily) + LLM (Anthropic, OpenAI, Google); monthly table has API, LLM, and per-provider columns
-- API cost is estimated from `api_logs` call counts × published rates (Brave, Tavily); LLM cost from `cost_logs`
+- Costs page: daily chart stacks API (Brave/Tavily) + Agentic Research + LLM (Anthropic, OpenAI, Google); monthly table has API, Research, LLM, and per-provider columns
+- API cost is estimated from `api_logs` call counts × published rates (Brave, Tavily); LLM cost from `cost_logs`; Research cost from `research_logs.cost_usd` (converted USD→GBP)
 
 **LLM costs (from `cost_logs`):**
 - Daily spend by provider (Anthropic, OpenAI, Google) — bar/area chart
@@ -238,10 +238,12 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Error rates and latency percentiles
 - Rate limit proximity warnings
 
-**Research costs (Phase D, from `research_logs`):**
-- Per-member research spend
-- Cache hit rate over time
-- Most-queried tickers and topics
+**Research costs (Phase D, implemented — from `research_logs`):**
+- Separate "Agentic Research" band in daily stacked area chart (purple #c084fc)
+- "Research" column in monthly cumulative table
+- Dedicated "Agentic Research Cost Breakdown" card: total calls, total cost (USD), cache hit rate, avg latency
+- Breakdown by member (Strategy/Skeptic/Risk), by tool (web_search, news_search, etc.), by provider (Brave/Tavily/SEC)
+- Data sourced from `/api/research/summary` (cost aggregation by member/tool/provider) and `/api/costs/daily` + `/api/costs/monthly` (research_cost_gbp field)
 
 ### Page 8: Roadmap & Architecture
 
@@ -385,13 +387,15 @@ GET /api/costs/degradation          # Degradation state history
 GET /api/api-usage/daily            # API call counts and error rates
 ```
 
-### Research (Phase D)
+### Research (Phase D — implemented)
 
 ```
-GET /api/research/cycle/{cycle_id}  # Research activity for a cycle
-GET /api/research/ticker/{ticker}   # Research history for a ticker
-GET /api/research/stats             # Aggregate research metrics
+GET /api/research/logs              # Paginated logs (filter by cycle_id, member, ticker)
+GET /api/research/ticker/{ticker}   # Research history for a ticker (all cycles)
+GET /api/research/summary           # Aggregate stats: total calls, cache hit rate, by_member
 ```
+
+Research data is also embedded in the `GET /api/universe/{ticker}` response inside `last_decision.research`, providing per-cycle research calls inline with strategy/moderation/risk data.
 
 ### System Control
 
@@ -640,7 +644,7 @@ Update Claude.md and README.md with deployment instructions. Ensure the dashboar
 
 When [Agentic Research](AGENTIC_RESEARCH.md) reaches full rollout: **Research Activity** panel showing per-cycle research summary (searches, cache hit rate, cost), per-ticker research trail, and research influence tracking. See `docs/AGENTIC_RESEARCH.md`.
 
-**Status:** 🔄 In Progress (US-4.4 partially implemented; Strategy + Skeptic tool-use available, Risk loop pending)
+**Status:** ✅ Delivered — Research trail embedded in Universe expanded rows (Agentic Research block: member, tool, query, results, cache hit, latency, cost). `Research` column in Universe table. `GET /api/research/ticker/{ticker}` endpoint for historical research per ticker.
 
 ---
 

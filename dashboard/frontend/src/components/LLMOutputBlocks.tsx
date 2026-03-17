@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { ModerationEntry, StrategyFull, RiskFull } from '../types'
+import type { ModerationEntry, StrategyFull, RiskFull, ResearchCall } from '../types'
 import { cleanTicker } from '../types'
 
 export function LLMStrategyBlock({
@@ -213,11 +213,148 @@ export function LLMRiskBlock({
   )
 }
 
+const MEMBER_LABELS: Record<string, string> = {
+  strategy: 'Strategy (Claude)',
+  skeptic: 'Skeptic (GPT-4o)',
+  risk: 'Risk (Gemini)',
+}
+
+const TOOL_ICONS: Record<string, string> = {
+  web_search: '🌐',
+  news_search: '📰',
+  sector_search: '📊',
+  sec_search: '📄',
+  macro_search: '🏛️',
+}
+
+export function LLMResearchBlock({
+  calls,
+  expanded,
+  onToggle,
+}: {
+  calls: ResearchCall[]
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const totalCost = calls.reduce((s, c) => s + (c.cost_usd ?? 0), 0)
+  const cacheHits = calls.filter((c) => c.cache_hit).length
+  const freshCalls = calls.length - cacheHits
+  const byMember = calls.reduce<Record<string, ResearchCall[]>>((acc, c) => {
+    ;(acc[c.member] ??= []).push(c)
+    return acc
+  }, {})
+
+  return (
+    <div className="border border-terminal-border rounded p-3 bg-terminal-surface/30">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="text-terminal-text-dim text-xs font-medium">
+          Agentic Research
+          <span className="ml-2 px-1.5 py-0.5 rounded bg-accent/20 text-accent text-[10px]">
+            {calls.length} call{calls.length !== 1 ? 's' : ''}
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="text-xs text-accent hover:underline"
+        >
+          {expanded ? 'Hide details' : 'Show details'}
+        </button>
+      </div>
+
+      <div className="text-terminal-text text-xs flex flex-wrap gap-3">
+        <span>{freshCalls} fresh · {cacheHits} cached</span>
+        {totalCost > 0 && <span>Cost: ${totalCost.toFixed(3)}</span>}
+        <span>
+          Tools:{' '}
+          {[...new Set(calls.map((c) => c.tool_name))].map((t) => (
+            <span key={t} className="inline-block mr-1.5">
+              {TOOL_ICONS[t] ?? '🔧'} {t}
+            </span>
+          ))}
+        </span>
+      </div>
+
+      {expanded && (
+        <div className="mt-2 space-y-3 border-t border-terminal-border pt-2">
+          {Object.entries(byMember).map(([member, memberCalls]) => (
+            <div key={member}>
+              <div className="text-terminal-text font-medium text-xs mb-1">
+                {MEMBER_LABELS[member] ?? member}
+                <span className="text-terminal-text-dim ml-1">
+                  ({memberCalls.length} call{memberCalls.length !== 1 ? 's' : ''})
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {memberCalls.map((call, idx) => (
+                  <ResearchCallRow key={idx} call={call} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ResearchCallRow({ call }: { call: ResearchCall }) {
+  const [showResult, setShowResult] = useState(false)
+
+  return (
+    <div className="p-2 rounded bg-terminal-bg/50 border border-terminal-border/50 text-xs">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span>{TOOL_ICONS[call.tool_name] ?? '🔧'}</span>
+            <span className="font-medium text-terminal-text">{call.tool_name}</span>
+            {call.cache_hit && (
+              <span className="px-1 py-0.5 rounded bg-neutral/20 text-neutral text-[10px]">
+                cached
+              </span>
+            )}
+            {call.provider && (
+              <span className="text-terminal-text-dim">{call.provider}</span>
+            )}
+            {call.latency_ms != null && (
+              <span className="text-terminal-text-dim">{call.latency_ms}ms</span>
+            )}
+            {call.cost_usd != null && call.cost_usd > 0 && (
+              <span className="text-terminal-text-dim">${call.cost_usd.toFixed(3)}</span>
+            )}
+          </div>
+          {call.query && (
+            <div className="text-terminal-text-dim mt-0.5 truncate" title={call.query}>
+              "{call.query}"
+            </div>
+          )}
+        </div>
+        {call.results_summary && (
+          <button
+            type="button"
+            onClick={() => setShowResult((v) => !v)}
+            className="text-[10px] text-accent hover:underline whitespace-nowrap"
+          >
+            {showResult ? 'hide' : `${call.num_results ?? '?'} results`}
+          </button>
+        )}
+      </div>
+      {showResult && call.results_summary && (
+        <pre className="mt-1.5 p-1.5 bg-terminal-bg rounded text-[10px] overflow-x-auto max-h-32 overflow-y-auto border border-terminal-border whitespace-pre-wrap">
+          {call.results_summary}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+
 export type LastDecision = {
   cycle_id?: string
   strategy?: StrategyFull
   moderation?: ModerationEntry[] | null
   risk?: RiskFull
+  research?: ResearchCall[] | null
   execution_summary?: {
     last_buy?: {
       timestamp: string
@@ -245,6 +382,7 @@ export function LLMOutputPanel({
   const [showModerationFull, setShowModerationFull] = useState(false)
   const [showRiskFull, setShowRiskFull] = useState(false)
   const [showRawJson, setShowRawJson] = useState(false)
+  const [showResearchFull, setShowResearchFull] = useState(false)
 
   if (!lastDecision) {
     return <div className="text-terminal-text-dim text-sm">No decision data for this ticker.</div>
@@ -307,6 +445,14 @@ export function LLMOutputPanel({
           risk={lastDecision.risk}
           expanded={showRiskFull}
           onToggle={() => setShowRiskFull((v) => !v)}
+        />
+      )}
+
+      {lastDecision.research && lastDecision.research.length > 0 && (
+        <LLMResearchBlock
+          calls={lastDecision.research}
+          expanded={showResearchFull}
+          onToggle={() => setShowResearchFull((v) => !v)}
         />
       )}
     </div>

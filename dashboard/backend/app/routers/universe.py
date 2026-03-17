@@ -9,7 +9,7 @@ from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from src.data.database import get_session
-from src.data.models import Instrument, ModerationLog, OpportunityScoreSnapshot, Order, PortfolioSnapshot, RiskDecision, StrategyDecision
+from src.data.models import Instrument, ModerationLog, OpportunityScoreSnapshot, Order, PortfolioSnapshot, ResearchLog, RiskDecision, StrategyDecision
 from src.utils.config import get_settings
 
 from ..schemas import InstrumentDetailSchema, InstrumentSchema, UniverseBubbleSchema
@@ -112,11 +112,37 @@ def _get_instrument_label(session: Session, ticker: str) -> tuple[str | None, di
             except Exception:
                 pass
 
+    # Research logs for this cycle + ticker
+    research_rows = (
+        session.query(ResearchLog)
+        .filter(ResearchLog.cycle_id == strategy.cycle_id, ResearchLog.ticker == ticker)
+        .order_by(ResearchLog.created_at)
+        .all()
+    )
+    research_data: list[dict[str, Any]] | None = None
+    if research_rows:
+        research_data = [
+            {
+                "member": r.member,
+                "tool_name": r.tool_name,
+                "query": r.query,
+                "num_results": r.num_results,
+                "provider": r.provider,
+                "cache_hit": r.cache_hit,
+                "latency_ms": r.latency_ms,
+                "cost_usd": r.cost_usd,
+                "results_summary": (r.results_json[:300] if r.results_json else None),
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in research_rows
+        ]
+
     decision_data = {
         "cycle_id": strategy.cycle_id,
         "strategy": strategy_full,
         "moderation": moderation_full,
         "risk": risk_full,
+        "research": research_data,
     }
 
     return label, decision_data
@@ -244,6 +270,14 @@ async def get_universe_bubble(
         sold_live_qty: dict[str, float] = {t: float(q or 0.0) for t, q in sold_live_rows}
         sold_dry_run_qty: dict[str, float] = {t: float(q or 0.0) for t, q in sold_dry_run_rows}
 
+        research_count_rows = (
+            session.query(ResearchLog.ticker, func.count(ResearchLog.id))
+            .filter(ResearchLog.ticker.in_(tickers))
+            .group_by(ResearchLog.ticker)
+            .all()
+        )
+        research_counts: dict[str, int] = {t: int(c) for t, c in research_count_rows}
+
         result = []
         for i in instruments:
             uov = latest_uov.get(i.ticker)
@@ -270,6 +304,7 @@ async def get_universe_bubble(
                     sold_qty=sold_live_qty.get(i.ticker, 0.0) + sold_dry_run_qty.get(i.ticker, 0.0),
                     sold_live_qty=sold_live_qty.get(i.ticker, 0.0),
                     sold_dry_run_qty=sold_dry_run_qty.get(i.ticker, 0.0),
+                    research_calls=research_counts.get(i.ticker, 0),
                 )
             )
         return result

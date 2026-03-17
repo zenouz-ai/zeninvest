@@ -10,26 +10,29 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
-import { costsApi } from '../api/client'
+import { costsApi, researchApi, type ResearchSummary } from '../api/client'
 
 export default function Costs() {
   const [daily, setDaily] = useState<any[]>([])
   const [monthly, setMonthly] = useState<any[]>([])
   const [degradation, setDegradation] = useState<{ level: string; message?: string } | null>(null)
+  const [researchSummary, setResearchSummary] = useState<ResearchSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = async () => {
     setError(null)
     try {
-      const [dailyData, monthlyData, degData] = await Promise.all([
+      const [dailyData, monthlyData, degData, resSummary] = await Promise.all([
         costsApi.getDaily({ days: 30 }),
         costsApi.getMonthly({ months: 12 }),
         costsApi.getDegradation(),
+        researchApi.getSummary().catch(() => null),
       ])
       setDaily(dailyData)
       setMonthly(monthlyData)
       setDegradation(degData)
+      setResearchSummary(resSummary)
     } catch (e) {
       console.error('Failed to fetch costs:', e)
       setError(e instanceof Error ? e.message : 'Failed to load costs')
@@ -61,6 +64,7 @@ export default function Costs() {
     .map((d) => {
       const llm = (d.llm_cost_gbp ?? d.total_gbp) || 0
       const api = d.api_cost_gbp ?? 0
+      const research = d.research_cost_gbp ?? 0
       return {
         date: d.date,
         anthropic: d.anthropic_gbp,
@@ -68,7 +72,8 @@ export default function Costs() {
         google: d.google_gbp,
         llm,
         api,
-        total: llm + api,
+        research,
+        total: llm + api + research,
       }
     })
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -162,6 +167,7 @@ export default function Costs() {
                 />
                 <Legend />
                 <Area type="monotone" dataKey="api" stackId="1" stroke="#ff6b6b" fill="#ff6b6b33" name="API (Brave/Tavily)" />
+                <Area type="monotone" dataKey="research" stackId="1" stroke="#c084fc" fill="#c084fc33" name="Agentic Research" />
                 <Area type="monotone" dataKey="anthropic" stackId="1" stroke="#00ff88" fill="#00ff8833" name="Anthropic" />
                 <Area type="monotone" dataKey="openai" stackId="1" stroke="#58a6ff" fill="#58a6ff33" name="OpenAI" />
                 <Area type="monotone" dataKey="google" stackId="1" stroke="#d4a017" fill="#d4a01733" name="Google" />
@@ -183,6 +189,7 @@ export default function Costs() {
                   <th className="py-2 font-mono">Month</th>
                   <th className="py-2 font-mono">Total</th>
                   <th className="py-2 font-mono">API</th>
+                  <th className="py-2 font-mono">Research</th>
                   <th className="py-2 font-mono">LLM</th>
                   <th className="py-2 font-mono">Anthropic</th>
                   <th className="py-2 font-mono">OpenAI</th>
@@ -195,6 +202,7 @@ export default function Costs() {
                     <td className="py-2 font-mono">{m.year_month}</td>
                     <td className="py-2 font-mono">{m.total_gbp?.toFixed(2)}</td>
                     <td className="py-2 font-mono">£{(m.api_cost_gbp ?? 0).toFixed(2)}</td>
+                    <td className="py-2 font-mono" style={{ color: '#c084fc' }}>£{(m.research_cost_gbp ?? 0).toFixed(2)}</td>
                     <td className="py-2 font-mono">£{(m.llm_cost_gbp ?? 0).toFixed(2)}</td>
                     <td className="py-2 font-mono">{m.by_provider?.anthropic?.toFixed(2) ?? '—'}</td>
                     <td className="py-2 font-mono">{m.by_provider?.openai?.toFixed(2) ?? '—'}</td>
@@ -206,6 +214,87 @@ export default function Costs() {
           </div>
         )}
       </div>
+
+      {researchSummary && researchSummary.total_calls > 0 && (
+        <div className="card">
+          <h2 className="text-lg font-semibold mb-1">Agentic Research Cost Breakdown</h2>
+          <p className="text-terminal-text-dim text-xs mb-3">
+            Research tool calls made by Strategy, Skeptic, and Risk during pipeline cycles.
+            Cost derived from research_logs ($0.005 per paid Brave/Tavily call; SEC EDGAR is free).
+          </p>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+            <div className="bg-terminal-surface/30 rounded p-3 border border-terminal-border">
+              <div className="text-terminal-text-dim text-xs">Total calls</div>
+              <div className="text-xl font-mono font-semibold">{researchSummary.total_calls}</div>
+            </div>
+            <div className="bg-terminal-surface/30 rounded p-3 border border-terminal-border">
+              <div className="text-terminal-text-dim text-xs">Total cost (USD)</div>
+              <div className="text-xl font-mono font-semibold" style={{ color: '#c084fc' }}>
+                ${researchSummary.total_cost_usd.toFixed(3)}
+              </div>
+            </div>
+            <div className="bg-terminal-surface/30 rounded p-3 border border-terminal-border">
+              <div className="text-terminal-text-dim text-xs">Cache hit rate</div>
+              <div className="text-xl font-mono font-semibold text-gain">
+                {(researchSummary.cache_hit_rate * 100).toFixed(1)}%
+              </div>
+            </div>
+            <div className="bg-terminal-surface/30 rounded p-3 border border-terminal-border">
+              <div className="text-terminal-text-dim text-xs">Avg latency</div>
+              <div className="text-xl font-mono font-semibold">
+                {researchSummary.avg_latency_ms != null ? `${researchSummary.avg_latency_ms.toFixed(0)}ms` : '—'}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <h3 className="text-sm font-semibold mb-2 text-terminal-text-dim">By Member</h3>
+              <div className="space-y-1">
+                {Object.entries(researchSummary.by_member).map(([member, data]) => (
+                  <div key={member} className="flex justify-between text-xs">
+                    <span className="text-terminal-text">
+                      {member === 'strategy' ? 'Strategy (Claude)' : member === 'skeptic' ? 'Skeptic (GPT-4o)' : member === 'risk' ? 'Risk (Gemini)' : member}
+                    </span>
+                    <span className="font-mono text-terminal-text-dim">
+                      {data.calls} calls · ${data.cost_usd.toFixed(3)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold mb-2 text-terminal-text-dim">By Tool</h3>
+              <div className="space-y-1">
+                {Object.entries(researchSummary.by_tool).map(([tool, data]) => (
+                  <div key={tool} className="flex justify-between text-xs">
+                    <span className="text-terminal-text">{tool}</span>
+                    <span className="font-mono text-terminal-text-dim">
+                      {data.calls} calls · ${data.cost_usd.toFixed(3)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold mb-2 text-terminal-text-dim">By Provider</h3>
+              <div className="space-y-1">
+                {Object.entries(researchSummary.by_provider).map(([provider, data]) => (
+                  <div key={provider} className="flex justify-between text-xs">
+                    <span className="text-terminal-text">{provider}</span>
+                    <span className="font-mono text-terminal-text-dim">
+                      {data.calls} calls · ${data.cost_usd.toFixed(3)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
