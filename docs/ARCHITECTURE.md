@@ -1,7 +1,7 @@
 ---
 tags: [architecture, pipeline, database, diagrams]
 status: current
-last_updated: 2026-03-16
+last_updated: 2026-03-17
 ---
 
 # Solution Architecture
@@ -23,7 +23,8 @@ This document is the single source of truth for the investment agent's technical
 |  | APScheduler     |     |           ORCHESTRATOR                    |     |
 |  |                 |---->|  State Machine: ACTIVE/CAUTIOUS/HALTED    |     |
 |  | 08/12/16 or 07/19 UTC cycles |     |  Cycle ID tracking                       |     |
-|  | 21:30 snapshot  |     |  Error handling & recovery                |     |
+|  | Mon-Fri, skip NYSE holidays  |     |  Error handling & recovery                |     |
+|  | 21:30 snapshot  |     |                                           |     |
 |  | Fri 22:00 weekly|     +----+-----------+-----------+----------+---+     |
 |  | Sun 12:00 instr |          v           v           v          v        |
 |  +-----------------+     +--------+  +--------+  +-------+  +--------+   |

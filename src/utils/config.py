@@ -70,6 +70,11 @@ class Settings:
         return self.trading["market_days"]
 
     @property
+    def skip_market_holidays(self) -> bool:
+        """Skip analysis cycles on NYSE holidays (default: True)."""
+        return bool(self.trading.get("skip_market_holidays", True))
+
+    @property
     def max_positions(self) -> int:
         return self.trading["max_positions"]
 

@@ -1,7 +1,7 @@
 ---
 tags: [governance, security, risk, cost-controls, audit]
 status: current
-last_updated: 2026-03-16
+last_updated: 2026-03-17
 ---
 
 # Governance, Security & Cost Controls
@@ -62,7 +62,7 @@ The system is designed as a **human-supervised autonomous agent**, not a fully u
 - **Practice/Demo mode by default.** The Trading 212 API integration targets the demo endpoint (`https://demo.trading212.com/api/v0`). Switching to a live endpoint requires an explicit configuration change and is treated as a major deployment decision requiring sign-off.
 - **Pause/Resume control.** A human operator can pause all trading at any time via `--pause` and resume with `--resume`. The paused state is persisted in the database and survives restarts.
 - **Force sell capability.** Any position can be force-liquidated immediately via `--force-sell <TICKER>`, bypassing the normal strategy-moderation-risk pipeline.
-- **Scheduled execution only.** The system runs on a fixed schedule (configurable via `cycle_frequency`: intraday = 08/12/16 UTC, standard = 07/19 UTC, Monday-Friday). It does not react to intraday events autonomously.
+- **Scheduled execution only.** The system runs on a fixed schedule (configurable via `cycle_frequency`: intraday = 08/12/16 UTC, standard = 07/19 UTC, Monday-Friday). It does not react to intraday events autonomously. **US market holidays** (NYSE) are automatically skipped via `src/utils/market_holidays.py`; configurable via `skip_market_holidays: true` in settings.yaml.
 - **Daily and weekly reports.** Automated reports are generated at 21:30 UTC daily and 22:00 UTC Fridays, providing full transparency into decisions, costs, and performance.
 
 ### 2.2 Defense in Depth
@@ -754,6 +754,7 @@ trading:
   cycle_hours: 4
   cycle_times_utc: ["08:00", "12:00", "16:00"]  # when intraday; ["07:00", "19:00"] when standard
   market_days: [0, 1, 2, 3, 4]           # Mon-Fri
+  skip_market_holidays: true              # Skip analysis cycles on NYSE holidays
   max_positions: 15
   min_position_pct: 2
   max_position_pct: 15

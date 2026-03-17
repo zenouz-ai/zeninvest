@@ -213,6 +213,8 @@ The scheduler (`src/scheduler/scheduler.py`) creates one cron job per entry in `
 
 Other scheduled jobs (unchanged): daily snapshot 21:30 UTC, weekly report Fri 22:00 UTC, instrument refresh Sun 12:00 UTC.
 
+**Market holiday skip:** When `skip_market_holidays: true` (default), analysis cycles are skipped on NYSE-observed holidays (New Year, MLK, Presidents' Day, Good Friday, Memorial Day, Juneteenth, Independence Day, Labor Day, Thanksgiving, Christmas). Implemented in `src/utils/market_holidays.py` using rule-based date computation (no external dependency).
+
 **Run deduplication:** Scheduled cycles produce a single Run record. The scheduler creates a Run with `cycle_id = scheduled_YYYYMMDD_HHMMSS`, passes it to `orchestrator.run_cycle(scheduled_cycle_id=...)`, and the orchestrator uses that cycle_id and updates the Run on completion (it does not create a second Run).
 
 ## Environment Variables
@@ -338,7 +340,7 @@ Gathers macro-level market intelligence to inform trading decisions:
 
 Key tuneable values:
 
-- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `max_positions: 15`, `cash_floor_pct: 10`, `min_order_value_gbp: 500` (BUY/REDUCE/limit/stop floor; explicit market SELL exempt), `min_reduce_pct_of_position: 25`, `reduce_tiers_pct: [25, 50, 70, 100]`
+- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `skip_market_holidays: true` (NYSE holiday skip), `max_positions: 15`, `cash_floor_pct: 10`, `min_order_value_gbp: 500` (BUY/REDUCE/limit/stop floor; explicit market SELL exempt), `min_reduce_pct_of_position: 25`, `reduce_tiers_pct: [25, 50, 70, 100]`
 - **Risk**: `min_holding_hours_before_reduce: 24`, `max_single_stock_pct: 15`, `max_sector_pct: 35`, `cautious_drawdown_pct: 30`, `halt_drawdown_pct: 40`
 - **Strategy weights**: momentum `0.35`, mean_reversion `0.30`, factor `0.35`
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)

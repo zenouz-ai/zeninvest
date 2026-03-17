@@ -31,7 +31,16 @@ def _run_analysis_cycle() -> None:
     """Run a full analysis/trading cycle."""
     from src.agents.notifications import NotificationService
     from src.orchestrator.main import Orchestrator
-    
+    from src.utils.market_holidays import is_us_market_holiday
+
+    # Skip cycle on US market holidays (NYSE closed)
+    settings = get_settings()
+    if settings.skip_market_holidays:
+        today = datetime.now(timezone.utc).date()
+        if is_us_market_holiday(today):
+            logger.info(f"US market holiday ({today}) — skipping analysis cycle")
+            return
+
     cycle_start_time = datetime.now(timezone.utc)
     cycle_id = None
     

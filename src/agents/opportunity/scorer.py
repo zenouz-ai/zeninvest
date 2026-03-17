@@ -327,17 +327,34 @@ class OpportunityScorer:
 
     @staticmethod
     def _get_previous_ewma(session, tickers: list[str]) -> dict[str, float]:  # type: ignore[no-untyped-def]
-        result: dict[str, float] = {}
-        for ticker in {t for t in tickers if t}:
-            latest = (
-                session.query(OpportunityScoreSnapshot)
-                .filter(OpportunityScoreSnapshot.ticker == ticker)
-                .order_by(OpportunityScoreSnapshot.timestamp.desc())
-                .first()
+        from sqlalchemy import func
+
+        unique = {t for t in tickers if t}
+        if not unique:
+            return {}
+
+        # Single query: latest timestamp per ticker, then fetch EWMA for those rows
+        subq = (
+            session.query(
+                OpportunityScoreSnapshot.ticker,
+                func.max(OpportunityScoreSnapshot.timestamp).label("max_ts"),
             )
-            if latest:
-                result[ticker] = float(latest.uov_ewma)
-        return result
+            .filter(OpportunityScoreSnapshot.ticker.in_(unique))
+            .group_by(OpportunityScoreSnapshot.ticker)
+            .subquery()
+        )
+
+        rows = (
+            session.query(OpportunityScoreSnapshot.ticker, OpportunityScoreSnapshot.uov_ewma)
+            .join(
+                subq,
+                (OpportunityScoreSnapshot.ticker == subq.c.ticker)
+                & (OpportunityScoreSnapshot.timestamp == subq.c.max_ts),
+            )
+            .all()
+        )
+
+        return {str(row.ticker): float(row.uov_ewma) for row in rows}
 
     @staticmethod
     def _z_scores(values: list[float]) -> list[float]:

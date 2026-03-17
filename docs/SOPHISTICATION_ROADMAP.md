@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-16
+last_updated: 2026-03-17
 ---
 
 # Sophistication Roadmap
@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **10** · Pipeline **18** (order by priority and feasibility below)
+**At a glance:** Delivered **10** · Pipeline **22** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -50,6 +50,10 @@ timeline
         US-3.3 : Correlation Screening
         US-4.2 : Earnings Calendar
         US-4.3 : Sector Rotation
+        US-7.1 : Dashboard Authentication
+        US-7.2 : Partial Fill Resubmission
+        US-7.3 : Execution Quality & Slippage
+        US-7.4 : Integration Test Coverage
         US-6.1 : ML Trade Scoring (investigation)
         US-6.2 : Journal Embeddings
         US-6.3 : RL Investigation
@@ -84,9 +88,13 @@ timeline
 | | 13 | US-3.3 | Correlation Screening |
 | | 14 | US-4.2 | Earnings Calendar |
 | | 15 | US-4.3 | Sector Rotation |
-| | 16 | US-6.1 | ML Trade Scoring (investigation) |
-| | 17 | US-6.2 | Journal Embeddings |
-| | 18 | US-6.3 | RL Investigation |
+| | 16 | US-7.1 | Dashboard Authentication (audit finding C1) |
+| | 17 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
+| | 18 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
+| | 19 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
+| | 20 | US-6.1 | ML Trade Scoring (investigation) |
+| | 21 | US-6.2 | Journal Embeddings |
+| | 22 | US-6.3 | RL Investigation |
 
 ---
 
@@ -119,6 +127,10 @@ timeline
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Planned** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
+| **US-7.1** | Dashboard Authentication | API key or token-based auth on all dashboard endpoints; required before exposing beyond localhost | Critical security hardening; prevents unauthorized live cycle triggers | **Planned** |
+| **US-7.2** | Partial Fill Resubmission | Detect partial fills and resubmit unfilled remainder in next cycle | Ensures intended position sizes are achieved | **Planned** |
+| **US-7.3** | Execution Quality & Slippage | VWAP/TWAP awareness, execution timing, slippage tracking; pre-live prerequisite | Required before transitioning from practice to live account | **Planned** |
+| **US-7.4** | Integration Test Coverage | End-to-end orchestrator run_cycle test, state machine transition tests | Catch pipeline regressions early; quality gate for new features | **Planned** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
 | **US-6.2** | Trade Journal Embeddings | Embeddings for journals; similarity search on new proposals | "Have we seen this pattern before?" context | **Planned** |
 | **US-6.3** | RL Investigation | Literature + data assessment; decision gate before any implementation | Evidence-based decision on RL; document findings | **Planned** |
@@ -183,6 +195,10 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 | 3.2 | Enhanced regime detection | Medium | Medium | M | Existing macro | **P2** |
 | 5.2 | Parameter sensitivity | Medium | Medium | M | Backtest engine | **P2** |
 | 6.1 | ML trade scoring | Medium | Hard | L | 500+ trades | **P2** |
+| 7.1 | Dashboard authentication | Critical | Easy | S | None | **P1** |
+| 7.2 | Partial fill resubmission | Medium | Easy | S | Existing orders | **P2** |
+| 7.3 | Execution quality & slippage | High | Medium | M | Trade data | **P1** (pre-live) |
+| 7.4 | Integration test coverage | High | Easy | M | None | **P1** |
 | 4.3 | Sector rotation signal | Low–Med | Easy | M | ETF data (free) | **P3** |
 | 6.2 | Journal embeddings | Low | Medium | M | Trade journals | **P3** |
 | 6.3 | RL investigation | Low | Hard | M | Academic lit | **P3** |
@@ -626,6 +642,81 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
+### Operational Hardening (from March 2026 audit)
+
+**US-7.1: Dashboard Authentication**
+**Value:** Critical — currently all 20 API endpoints are unauthenticated, including `POST /api/runs/trigger-live` which can trigger a live trading cycle
+**Effort:** Small (1–2 days)
+**Data Sources:** None
+**Stage:** Planned
+**Audit finding:** C1
+
+**Acceptance Criteria:**
+- [ ] API key or Bearer token authentication on all `/api/*` endpoints
+- [ ] Auth middleware with configurable secret in `.env` (`DASHBOARD_API_KEY`)
+- [ ] Health check (`/health`) remains unauthenticated
+- [ ] Frontend includes auth token in requests (cookie or header)
+- [ ] Existing CORS settings still apply; auth is additive
+
+**Note:** Required before exposing dashboard beyond localhost/VPS IP.
+
+---
+
+**US-7.2: Partial Fill Resubmission**
+**Value:** Medium — currently unfilled portions of partial fills are lost, meaning intended position sizes may not be achieved
+**Effort:** Small (2–3 days)
+**Data Sources:** Existing orders table, T212 order history
+**Stage:** Planned
+**Audit finding:** I1
+
+**Acceptance Criteria:**
+- [ ] `sync_order_status_from_t212()` detects partial fills and records unfilled remainder
+- [ ] Next cycle resubmits unfilled remainder if strategy still holds the position
+- [ ] Resubmission respects dedup (new dedup key with "resubmit" tag)
+- [ ] Config: `resubmit_partial_fills: true/false` (default: true)
+- [ ] Logged in orders table with `strategy = "partial_fill_resubmit"`
+
+**Expands:** US-3.5 (Intelligent Order Management)
+
+---
+
+**US-7.3: Execution Quality & Slippage Monitoring**
+**Value:** High — required before transitioning from practice to live account. Currently no VWAP/TWAP, no slippage tracking, no execution timing
+**Effort:** Medium (3–5 days)
+**Data Sources:** Orders (filled price vs decision-time price), T212 execution reports
+**Stage:** Planned
+**Audit finding:** I2
+
+**Acceptance Criteria:**
+- [ ] Record decision-time price alongside order price for slippage calculation
+- [ ] `slippage_bps` column in orders table (filled_price - decision_price) / decision_price × 10000
+- [ ] Dashboard: slippage distribution chart (mean, p50, p95 by order type)
+- [ ] Alert when avg slippage exceeds configurable threshold
+- [ ] Investigation: VWAP-aware execution timing for large orders (>£2000)
+
+**Pre-requisite for:** Transition from `account_type: practice` to `account_type: live`
+**Related:** US-3.1 (Risk-Parity Sizing) — both are sizing/execution quality improvements
+
+---
+
+**US-7.4: Integration Test Coverage**
+**Value:** High — orchestrator run_cycle() has no end-to-end test; state machine transitions untested; opportunity optimizer was under-tested (fixed in audit)
+**Effort:** Medium (3–5 days)
+**Data Sources:** None
+**Stage:** Planned (partially addressed: +7 opportunity optimizer tests, +7 holiday tests added during audit)
+**Audit findings:** I4, I5
+
+**Acceptance Criteria:**
+- [ ] End-to-end `run_cycle()` test with all APIs mocked (T212, LLMs, data providers)
+- [ ] Test covers: data fetch → strategy → moderation → risk → execution → journal
+- [ ] State machine transition test: ACTIVE → CAUTIOUS → HALTED → manual reset
+- [ ] Dashboard API endpoint tests (pytest-based, not standalone scripts)
+- [ ] Concurrent cycle safety test (verify dedup and scheduler guards)
+- [x] Opportunity optimizer edge cases: TTL expiry, capacity gating, cash floor, dequeue (added in audit)
+- [x] Holiday calendar tests: 7 tests covering observation rules, year range (added in audit)
+
+---
+
 ### P3 — Lower priority
 
 **US-4.3: Sector Rotation Signal**
@@ -716,6 +807,13 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Immediate (current focus):**
 - **US-4.4** — Agentic Research: **Delivered**. All 3 members (Strategy, Skeptic, Risk) have tool-use loops; 5 tools; shared budget; 37 tests. See `docs/AGENTIC_RESEARCH.md`.
 - **US-2.4** — Nemotron integration investigation (evaluation only; no production switch). See `docs/Nemotron_3_Super_Integration_Investigation.md`.
+- **US-7.1** — Dashboard authentication (audit critical finding — required before VPS exposure)
+
+**Audit hardening (delivered 2026-03-17):**
+- US market holiday calendar — scheduler skips analysis cycles on NYSE holidays (`src/utils/market_holidays.py`)
+- Opportunity scorer batch EWMA query — eliminated N+1 queries
+- Opportunity optimizer test coverage — +7 tests (TTL expiry, capacity gating, cash floor, dequeue, rejection details)
+- Holiday calendar tests — +7 tests
 
 **Deferred (await data or later sprint):**
 - **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (requires ~50 trades)
@@ -723,6 +821,9 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - **US-1.6** — Slack NL trade commands (Phase 2 chat)
 - **US-1.9** — Conversational trading workflow (multi-turn Slack + dashboard chat)
 - **US-4.5** — Proactive macro news intelligence (stateful macro layer + action planner)
+- **US-7.2** — Partial fill resubmission (expand US-3.5)
+- **US-7.3** — Execution quality & slippage (pre-live prerequisite)
+- **US-7.4** — Integration test coverage (partially addressed in audit)
 
 **Delivery references:**
 - `docs/ORDER_MANAGEMENT_PROJECT.md`
