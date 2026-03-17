@@ -168,6 +168,13 @@ When the operator has run the steps above on a VPS:
 With VPS IP and HTTP:
 - Use firewall to restrict access (e.g. only your IP) if desired.
 - Consider basic auth or API key for the dashboard later.
+- **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: localhost only. For VPS, add your IP:
+  ```yaml
+  dashboard:
+    cors_origins:
+      - "http://YOUR_VPS_IP:8000"
+      - "http://localhost:3000"
+  ```
 - Dashboard Home has **Dry Run** and **Live Run** buttons; they call `POST /api/runs/trigger` and `POST /api/runs/trigger-live` respectively. Live Run requires confirmation.
 
 ## Related Notes

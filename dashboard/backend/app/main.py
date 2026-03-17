@@ -59,7 +59,7 @@ app = FastAPI(
 
 # CORS middleware for frontend — restrict to same-origin and VPS IP
 _settings = get_settings()
-_cors_origins = getattr(_settings, "dashboard_cors_origins", None) or [
+_cors_origins = _settings.dashboard_cors_origins or [
     "http://localhost:3000",
     "http://localhost:8000",
     "http://127.0.0.1:3000",

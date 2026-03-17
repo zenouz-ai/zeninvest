@@ -1704,7 +1704,7 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 ## 13. Dashboard VPS Deployment
 
-The web dashboard (activity feed, portfolio, run history, universe, 7 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-1.8 delivered; dashboard running on VPS once the operator runs the deployment steps below.
+The web dashboard (activity feed, portfolio, run history, universe, 7 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-1.8 delivered; dashboard running on VPS once the operator runs the deployment steps below. **CORS:** Configure `dashboard.cors_origins` in `config/settings.yaml` with your VPS IP (defaults to localhost for local dev).
 
 ### Access Options (no domain required)
 

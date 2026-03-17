@@ -163,3 +163,8 @@ notifications:
 dashboard:
   enabled: true
   events_enabled: true
+  # CORS origins for dashboard API — restrict to your VPS IP in production
+  # Default (when absent): localhost:3000, localhost:8000, 127.0.0.1:3000, 127.0.0.1:8000
+  # cors_origins:
+  #   - "http://YOUR_VPS_IP:8000"
+  #   - "http://localhost:3000"
