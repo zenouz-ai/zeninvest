@@ -316,7 +316,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 **Data Sources:** yfinance historical (fetch + CSV cache when data/backtest/ empty)  
 **Stage:** Delivered  
 
-**Detailed plan:** `docs/BACKTESTING.md`. See also `docs/WALK_FORWARD_VALIDATION.md`.  
+**Detailed plan:** `docs/BACKTESTING.md` (includes walk-forward validation and promotion report).  
 
 **Status (2026-03):** Delivered  
 
@@ -726,7 +726,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 **Delivery references:**
 - `docs/ORDER_MANAGEMENT_PROJECT.md`
-- `docs/WALK_FORWARD_VALIDATION.md`
+- `docs/BACKTESTING.md` (includes walk-forward validation)
 - `docs/DASHBOARD_DEPLOYMENT.md`
 - `docs/archived/CHAT_INTERFACE_PROJECT.md`
 - `docs/archived/SLACK_TRADE_COMMANDS_PROJECT.md`

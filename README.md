@@ -95,7 +95,7 @@ poetry run python -m src.backtesting.main --synthetic --output-dir backtests/res
 poetry run python -m src.backtesting.main --scenario bull --synthetic
 ```
 
-See [Backtesting](docs/BACKTESTING.md) and [Walk-Forward Validation](docs/WALK_FORWARD_VALIDATION.md) for details.
+See [Backtesting](docs/BACKTESTING.md) (includes walk-forward validation and promotion report) for details.
 
 ### Run the scheduler (continuous)
 
@@ -306,12 +306,12 @@ docs/                   # Project documentation (including archived plans in doc
 ├── LOCAL_SETUP.md               # Local setup guide (Trading 212 Practice)
 ├── ORDER_MANAGEMENT_PROJECT.md  # Stop-loss, trailing stops, limit dip-buy: design and config
 ├── PRESENTATION.md              # Project presentation and summary
-├── SOPHISTICATION_ROADMAP.md    # Prioritised improvement roadmap
-└── WALK_FORWARD_VALIDATION.md   # Walk-forward validation and promotion report
+└── SOPHISTICATION_ROADMAP.md    # Prioritised improvement roadmap
 notebooks/
 ├── diagnostics.ipynb       # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
 ├── research_api_investigation.ipynb  # Phase 0 baseline: provider/API capability + SEC EDGAR validation
 ├── research_api_decision_framework.ipynb  # Phase 0.2: routing policy benchmark (difficulty gating, action mode, provider policy)
+├── enriched_instruments.ipynb  # Inspect enriched instrument data (sector, market_cap, industry, summary)
 ├── brave_api_smoke.py      # Manual smoke test for Brave Search + Answers APIs (requires API keys)
 ├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
 └── enrichment_benchmark.py # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
@@ -329,7 +329,6 @@ notebooks/
 - [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) — VPS deployment: Docker, port 8000, SPA fallback
 - [Chat & Commands](docs/CHAT_AND_COMMANDS.md) — trade alerts, notification routing, planned inbound commands
 - [Backtesting](docs/BACKTESTING.md) — engine, walk-forward validation, promotion report
-- [Walk-Forward Validation](docs/WALK_FORWARD_VALIDATION.md) — walk-forward validation and promotion report
 - [Order Management](docs/ORDER_MANAGEMENT_PROJECT.md) — stop-loss, trailing stops, limit dip-buy: design and config
 - [Agentic Research](docs/AGENTIC_RESEARCH.md) — canonical architecture and conventions; [Implementation Plan](docs/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) — checklist; [Follow-up Routing Plan](docs/FOLLOWUP_RESEARCH_ROUTING_PLAN.md) — routing policy
 - [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — VPS-to-local export procedure with integrity checks

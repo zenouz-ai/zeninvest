@@ -715,7 +715,7 @@ The following enhancements are planned or recommended to strengthen the governan
 
 ### 9.5 Backtesting Validation
 
-- **Implemented.** A backtesting engine, paper broker, walk-forward runner, and promotion report (safe to deploy / hold) are in place. See `docs/BACKTESTING.md` and `docs/WALK_FORWARD_VALIDATION.md`.
+- **Implemented.** A backtesting engine, paper broker, walk-forward runner, and promotion report (safe to deploy / hold) are in place. See `docs/BACKTESTING.md` (includes walk-forward validation).
 - Before deploying any strategy change to the live pipeline:
   - Run the updated strategy against 12+ months of historical data via the backtest CLI.
   - Compare Sharpe ratio, max drawdown, and alpha vs. the benchmark.

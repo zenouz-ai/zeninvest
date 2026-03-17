@@ -98,6 +98,7 @@ notebooks/
 ├── diagnostics.ipynb      # 24-section Jupyter notebook testing every pipeline component (Config → Backtesting → Walk-Forward)
 ├── research_api_investigation.ipynb  # Phase 0: Brave/Tavily/SEC EDGAR API validation
 ├── research_api_decision_framework.ipynb  # Phase 0.2: Follow-up routing policy validation
+├── enriched_instruments.ipynb  # Inspect enriched instrument data (sector, market_cap, industry, summary)
 ├── brave_api_smoke.py     # Manual smoke test for Brave Search + Answers APIs (requires API keys)
 ├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
 └── enrichment_benchmark.py    # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
@@ -381,8 +382,7 @@ Files to check on every feature:
 | `docs/COMPETITIVE_ANALYSIS.md` | Positioning changes, new differentiators, market landscape updates |
 | `docs/CHAT_AND_COMMANDS.md` | Chat alerts, command interface scope, Slack trade commands |
 | `docs/ORDER_MANAGEMENT_PROJECT.md` | Stop-loss and limit order management: current design, config, future sophistication |
-| `docs/BACKTESTING.md` | Backtesting scope, engine design, validation assumptions, walk-forward |
-| `docs/WALK_FORWARD_VALIDATION.md` | Walk-forward validation and promotion report |
+| `docs/BACKTESTING.md` | Backtesting scope, engine design, validation assumptions, walk-forward validation, promotion report |
 | `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
 | `docs/DASHBOARD.md` | Dashboard architecture, phases, data alignment, frontend/backend design |
 | `docs/DASHBOARD_DEPLOYMENT.md` | Dashboard VPS deployment: Docker service, VPS IP access, firewall |

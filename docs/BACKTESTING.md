@@ -205,7 +205,54 @@ This project is built and maintained collaboratively:
 
 ---
 
+## Walk-Forward Validation
+
+> Multi-fold time-series validation to assess strategy stability and gate deployments.
+
+### What is walk-forward validation?
+
+**Walk-forward validation** tests a strategy across **non-overlapping time windows** and evaluates performance on each window separately. Unlike a single backtest over the full period, walk-forward:
+
+- Runs the **same strategy** (and config) on multiple **test windows** (e.g. Year 1, Year 2, Year 3).
+- Aggregates metrics **across folds** (e.g. mean/min/max Sharpe, mean drawdown).
+- Produces a **promotion report** that recommends "safe to deploy" or "hold" based on whether the strategy meets criteria (e.g. Sharpe, drawdown, hit rate, excess return vs benchmark) across folds.
+
+In this project we do **not** retrain a model between folds; the policy is deterministic and fixed. So "walk-forward" here means: *run the backtest engine on each time fold, collect metrics, and combine them* to assess stability and avoid overfitting to one period.
+
+### Why it is important
+
+1. **Reduces overfitting to one period** — A strategy that works only in 2020–2021 but fails in 2022–2023 will show up when we look at per-fold metrics.
+2. **Stability of performance** — We care not only that average Sharpe is acceptable, but that it is acceptable in **multiple** periods.
+3. **Release gating** — The promotion report turns walk-forward results into a clear **go/no-go** for deploying strategy or config changes.
+4. **Alignment with best practice** — In quantitative finance, validating on out-of-sample time periods is standard.
+
+### Walk-forward components
+
+| Component | Role |
+|-----------|------|
+| **make_splits()** | Builds a list of `WalkForwardSplit` (fold_id, test_start, test_end). Non-overlapping calendar windows. |
+| **run_walk_forward()** | For each split, loads bars for that window, runs `BacktestEngine`, and collects per-fold metrics. |
+| **aggregate_fold_metrics()** | Computes `*_mean`, `*_min`, `*_max` across folds for each numeric metric, plus `n_folds`. |
+| **write_promotion_report()** | Writes a markdown report and returns recommendation: **"safe to deploy"** or **"hold"**. |
+
+**Module:** `src/backtesting/walk_forward.py` | **Promotion report:** `src/backtesting/promotion_report.py`
+
+### Walk-forward flow
+
+1. User runs CLI with `--walk-forward` (and optionally `--synthetic` for synthetic bars).
+2. Config supplies tickers, date range, seed, and backtest params.
+3. `make_splits()` produces e.g. 3 folds (e.g. 2020, 2021, 2022).
+4. `run_walk_forward()` runs the backtest engine on each fold and collects metrics.
+5. `aggregate_fold_metrics()` computes mean/min/max across folds.
+6. `write_promotion_report()` evaluates criteria and writes `promotion_report.md`.
+7. Output dir also contains `walk_forward_results.json` (aggregate + per-fold metrics).
+
+### Scenario configs
+
+Scenario YAMLs under `backtests/scenarios/` (e.g. `bull.yaml`, `bear.yaml`, `sideways.yaml`) define date ranges and tickers for regime-specific runs. Run walk-forward with a scenario: `--scenario bull` loads `backtests/scenarios/bull.yaml`.
+
+---
+
 ## Related Notes
 
-- [Walk-Forward Validation](WALK_FORWARD_VALIDATION.md) — Multi-fold rolling splits and promotion report template
 - [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — US-5.1 (Core Engine) and US-5.2 (Walk-Forward + Promotion) status
