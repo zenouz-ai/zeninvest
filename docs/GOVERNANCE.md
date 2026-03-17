@@ -380,8 +380,8 @@ FULL -> NO_GEMINI -> NO_GPT4O -> NO_STRATEGY -> HALTED
 | Level | Condition | Behaviour |
 |-------|-----------|-----------|
 | **FULL** | All budgets within limits | All 3 LLMs active. Full pipeline. |
-| **NO_GEMINI** | Google daily budget exceeded | Skip Gemini Flash risk assessment. GPT-4o + Claude still active. |
-| **NO_GPT4O** | OpenAI daily budget exceeded (or both moderators exceeded) | Skip GPT-4o moderation. Claude strategy synthesis still active. |
+| **NO_GEMINI** | One moderator daily budget exceeded (Google OR OpenAI) | One moderator still runs. Claude strategy synthesis still active. Individual moderators self-check their own budgets before each call. |
+| **NO_GPT4O** | Both moderator budgets exceeded (Google AND OpenAI) | No moderation available. Claude strategy synthesis still active. |
 | **NO_STRATEGY** | Anthropic daily budget exceeded | Skip entire strategy cycle. No new trades proposed. |
 | **HALTED** | Monthly cap exceeded | All LLM calls halted. System waits for next month. |
 
@@ -396,11 +396,11 @@ def get_degradation_level() -> DegradationLevel:
     if not anthropic_ok:
         return DegradationLevel.NO_STRATEGY
     if not openai_ok and not google_ok:
-        return DegradationLevel.NO_GPT4O
+        return DegradationLevel.NO_GPT4O       # Both moderators gone
     if not google_ok:
-        return DegradationLevel.NO_GEMINI
+        return DegradationLevel.NO_GEMINI       # Only Google over budget
     if not openai_ok:
-        return DegradationLevel.NO_GPT4O
+        return DegradationLevel.NO_GEMINI       # Only OpenAI over budget (Gemini still available)
     return DegradationLevel.FULL
 ```
 
@@ -715,7 +715,7 @@ The following enhancements are planned or recommended to strengthen the governan
 
 ### 9.5 Backtesting Validation
 
-- **Implemented.** A backtesting engine, paper broker, walk-forward runner, and promotion report (safe to deploy / hold) are in place. See `docs/BACKTESTING.md` and `docs/WALK_FORWARD_VALIDATION.md`.
+- **Implemented.** A backtesting engine, paper broker, walk-forward runner, and promotion report (safe to deploy / hold) are in place. See `docs/BACKTESTING.md` (includes walk-forward validation).
 - Before deploying any strategy change to the live pipeline:
   - Run the updated strategy against 12+ months of historical data via the backtest CLI.
   - Compare Sharpe ratio, max drawdown, and alpha vs. the benchmark.

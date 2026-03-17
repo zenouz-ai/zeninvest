@@ -659,6 +659,13 @@ class Settings:
     def dashboard_events_enabled(self) -> bool:
         return bool(self.dashboard.get("events_enabled", True))
 
+    @property
+    def dashboard_cors_origins(self) -> list[str] | None:
+        origins = self.dashboard.get("cors_origins")
+        if isinstance(origins, list) and origins:
+            return origins
+        return None
+
 
 # Singleton
 _settings: Settings | None = None

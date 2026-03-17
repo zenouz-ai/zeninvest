@@ -66,9 +66,15 @@ class TestT212Client:
         mock_response.text = '{"detail":"No open position found for AAPL_US_EQ"}'
         mock_response.headers = {}
 
-        with patch("src.agents.execution.t212_client.get_session"), patch(
-            "httpx.Client"
-        ) as mock_client_class, patch.object(T212Client, "_check_rate_limit"):
+        mock_settings = MagicMock()
+        mock_settings.t212_base_url = "https://demo.trading212.com"
+        mock_settings.t212_api_key = "test_key"
+        mock_settings.t212_api_secret = "test_secret"
+
+        with patch("src.agents.execution.t212_client.get_session"), \
+             patch("src.agents.execution.t212_client.get_settings", return_value=mock_settings), \
+             patch("httpx.Client") as mock_client_class, \
+             patch.object(T212Client, "_check_rate_limit"):
             mock_client_instance = MagicMock()
             mock_client_class.return_value = mock_client_instance
             mock_client_instance.request.return_value = mock_response

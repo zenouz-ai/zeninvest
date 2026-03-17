@@ -395,5 +395,16 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
             "modifications": None,
         }
 
-    # Nothing worked — raise the original error
-    raise json.JSONDecodeError("Could not repair Gemini JSON output", text, 0)
+    # Nothing worked — return a safe default instead of raising.
+    # Callers catch JSONDecodeError, but returning a default here avoids unnecessary
+    # fallback chains (e.g. _review_with_tools falling back to _review_single_turn).
+    logger.warning("Could not repair Gemini JSON output — returning AGREE default")
+    return {
+        "verdict": "AGREE",
+        "growth_score": 5,
+        "risk_score": 5,
+        "confidence_score": 3,
+        "assessment": "Could not parse Gemini response",
+        "high_risk_flag": False,
+        "modifications": None,
+    }

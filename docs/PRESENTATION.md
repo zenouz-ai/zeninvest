@@ -316,7 +316,7 @@ docker compose logs -f investment-agent
 - ~~Rejected stock tracking~~ → Every non-traded stock recorded with stage, reason, and company metadata
 - ~~Chat/notifications~~ → Slack + email alerts (trade approved, execution result, cycle summary, state transition, critical failure); notification_logs audit trail
 - ~~Performance & trade outcomes~~ → performance_metrics (Sharpe, Sortino, drawdown, win rates), trade_outcomes (per-trade P&L, conviction linkage), --performance / --dashboard CLI
-- ~~Backtesting~~ → Engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); see docs/BACKTESTING.md and WALK_FORWARD_VALIDATION.md
+- ~~Backtesting~~ → Engine, paper broker, walk-forward validation, promotion report (safe to deploy / hold); see docs/BACKTESTING.md
 - ~~UOV ranking & queue~~ → Universal Opportunity Value scoring, ranked BUY execution, queue + swap suggestions (shadow/active mode)
 - ~~Intelligent order management~~ → ATR-based stop reassessment, software trailing stops, limit dip-buy orders; stop_loss_adjustments audit trail
 - ~~Dashboard Phase 1~~ → FastAPI backend (runs, universe, portfolio, orders, SSE events), React frontend (8 pages including Roadmap & Architecture); stabilisation complete; US-1.8 delivered (Docker service, port 8000; SPA served by FastAPI; activity feed works from VPS IP)

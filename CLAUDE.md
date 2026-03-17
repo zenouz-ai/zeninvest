@@ -98,6 +98,7 @@ notebooks/
 ├── diagnostics.ipynb      # 24-section Jupyter notebook testing every pipeline component (Config → Backtesting → Walk-Forward)
 ├── research_api_investigation.ipynb  # Phase 0: Brave/Tavily/SEC EDGAR API validation
 ├── research_api_decision_framework.ipynb  # Phase 0.2: Follow-up routing policy validation
+├── enriched_instruments.ipynb  # Inspect enriched instrument data (sector, market_cap, industry, summary)
 ├── brave_api_smoke.py     # Manual smoke test for Brave Search + Answers APIs (requires API keys)
 ├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
 └── enrichment_benchmark.py    # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
@@ -187,7 +188,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 5c. **Queued ticker re-evaluation** — When opportunity is enabled, Phase 3 in `_fetch_stocks_data` re-adds queued tickers (from OpportunityQueue) to stocks_data each cycle, bypassing screening cooldown, so they can reach 2nd cycle and promote before expiring.
 6. **Company profiles** — `longBusinessSummary` + `industry` from yfinance are persisted in the `Instrument` model and included in the Claude strategy prompt for qualitative reasoning. When yfinance returns sparse data, the orchestrator falls back to Instrument.industry and Instrument.business_summary (enriched by bulk/backfill scripts; ~5,477 instruments deployed).
 7. **T212 order status** — Order status is derived from T212 API response `status`: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/UNCONFIRMED/LOCAL→pending, REJECTED/CANCELLED→failed. Do not assume filled on 200 OK. **Order sync**: At the start of each cycle (non–dry-run), `OrderManager.sync_order_status_from_t212()` fetches T212 order history and updates local `Order.status` from pending to filled when T212 reports FILLED.
-8. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. Budget per-provider per-day, plus monthly cap. **Research costs** tracked separately in `research_logs.cost_usd` ($0.005/paid call); surfaced in dashboard Costs page as a distinct "Agentic Research" band (daily chart + monthly table) alongside LLM and API costs. `/api/research/summary` returns cost breakdowns by member, tool, and provider.
+8. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. When only one moderator is over budget (Google or OpenAI), returns NO_GEMINI (one moderator still operational); when both are over budget, returns NO_GPT4O (no moderation). Individual moderators self-check their own budgets before each call. Budget per-provider per-day, plus monthly cap. **Research costs** tracked separately in `research_logs.cost_usd` ($0.005/paid call); surfaced in dashboard Costs page as a distinct "Agentic Research" band (daily chart + monthly table) alongside LLM and API costs. `/api/research/summary` returns cost breakdowns by member, tool, and provider.
 9. **Order dedup** — 5-minute window prevents double-execution of the same order.
 10. **Order value floor** — `min_order_value_gbp` applies to BUY/REDUCE/limit/stop paths; explicit market SELL decisions may execute below the floor so small positions can be fully exited. REDUCE that would leave a sub-£500 residual is auto-converted to full SELL.
 11. **Stop-loss** — automatically placed after every BUY using Claude's `stop_loss_pct` (GTC validity).
@@ -349,7 +350,7 @@ Key tuneable values:
 - **Opportunity**: `enabled`, `mode: shadow|active`, `immediate_threshold_z` (0.3), `queue_threshold_z` (0.0), `queue_ttl_cycles` (6), swap delta, EWMA half-life, weighted feature map, stage penalties. Rejection reasons are structured (`awaiting_promotion`, `capacity_gated`, `below_immediate`, `below_queue`, `queue_expired`, `no_longer_eligible`). Queued tickers re-evaluated each cycle (Phase 3 in _fetch_stocks_data) bypassing cooldown.
 - **Order management**: `enabled`, `default_stop_loss_pct: -8`, `reassess_stops`, `trailing_stops` (enabled, trail_pct), `limit_orders` (enabled, offset_pct, validity), ATR multiplier, min/max stop distance, only_tighten_stops
 - **Notifications**: `enabled`, channels/routes, retry/timeout/dedup config, dry-run alert policy, command gateway flag (disabled in v1)
-- **Dashboard**: `enabled`, `events_enabled` (Phase 1 backend: REST API + SSE stream)
+- **Dashboard**: `enabled`, `events_enabled`, `cors_origins` (list of allowed CORS origins; defaults to localhost when absent) (Phase 1 backend: REST API + SSE stream)
 
 ## When Adding New Features
 
@@ -381,8 +382,7 @@ Files to check on every feature:
 | `docs/COMPETITIVE_ANALYSIS.md` | Positioning changes, new differentiators, market landscape updates |
 | `docs/CHAT_AND_COMMANDS.md` | Chat alerts, command interface scope, Slack trade commands |
 | `docs/ORDER_MANAGEMENT_PROJECT.md` | Stop-loss and limit order management: current design, config, future sophistication |
-| `docs/BACKTESTING.md` | Backtesting scope, engine design, validation assumptions, walk-forward |
-| `docs/WALK_FORWARD_VALIDATION.md` | Walk-forward validation and promotion report |
+| `docs/BACKTESTING.md` | Backtesting scope, engine design, validation assumptions, walk-forward validation, promotion report |
 | `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
 | `docs/DASHBOARD.md` | Dashboard architecture, phases, data alignment, frontend/backend design |
 | `docs/DASHBOARD_DEPLOYMENT.md` | Dashboard VPS deployment: Docker service, VPS IP access, firewall |

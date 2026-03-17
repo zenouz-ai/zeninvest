@@ -171,11 +171,11 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
 ## Cost Degradation Chain
 
 ```
-  +-----------+    Google over    +------------+    OpenAI over   +-----------+
-  |   FULL    | ----------------> | NO_GEMINI  | ---------------> | NO_GPT4O  |
-  | All LLMs  |                   | Skip Gemini|                  | No mods   |
-  | available |                   | moderator  |                  | available |
-  +-----------+                   +------------+                  +-----------+
+  +-----------+  One moderator   +------------+  Both moderators  +-----------+
+  |   FULL    | ----------------> | NO_GEMINI  | ----------------> | NO_GPT4O  |
+  | All LLMs  |  over budget     | One mod     |  over budget     | No mods   |
+  | available |  (Google OR      | still runs  |                  | available |
+  +-----------+   OpenAI)        +------------+                   +-----------+
                                                                        |
                                          Anthropic over budget         |
        +--------+                   +---------------+                  |
@@ -183,6 +183,10 @@ Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,
        | All    |   Monthly cap     | Skip Claude   |   Anthropic over
        | halted |   exceeded        | synthesis     |
        +--------+                   +---------------+
+
+  Note: Individual moderators self-check their own budgets before each call.
+  NO_GEMINI is returned when either one moderator is over budget (Gemini still
+  available when only OpenAI is exceeded, and vice versa). NO_GPT4O only when both.
 ```
 
 ## Dashboard (Phase 1 + Phase 1.5 Analytics Lite)
@@ -220,6 +224,8 @@ React frontend (SPA, served by FastAPI when dist/ exists)
     +-- Run History: timeline, run diff (new/closed/position changes)
     +-- Portfolio: positions, P&L chart, sector allocation
 ```
+
+**CORS:** Dashboard API uses configurable CORS origins via `dashboard.cors_origins` in `config/settings.yaml`. Defaults to localhost (`:3000`, `:8000`) when absent. For VPS deployment, set to the VPS IP or domain. Individual moderators self-check budgets, so the degradation level is primarily for reporting.
 
 **Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. The orchestrator **normalises T212 positions** before saving to `portfolio_snapshots.positions_json` — converting `instrument.ticker` and `walletImpact` (currentValue, unrealizedProfitLoss, totalCost) into flat fields (ticker, value_gbp, pnl_gbp, pnl_pct) for dashboard display. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL — works when accessing at `http://VPS_IP:8000`.
 
