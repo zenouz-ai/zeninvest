@@ -168,9 +168,9 @@ export default function Costs() {
                 <Legend />
                 <Area type="monotone" dataKey="api" stackId="1" stroke="#ff6b6b" fill="#ff6b6b33" name="API (Brave/Tavily)" />
                 <Area type="monotone" dataKey="research" stackId="1" stroke="#c084fc" fill="#c084fc33" name="Agentic Research" />
-                <Area type="monotone" dataKey="anthropic" stackId="1" stroke="#00ff88" fill="#00ff8833" name="Anthropic" />
-                <Area type="monotone" dataKey="openai" stackId="1" stroke="#58a6ff" fill="#58a6ff33" name="OpenAI" />
-                <Area type="monotone" dataKey="google" stackId="1" stroke="#d4a017" fill="#d4a01733" name="Google" />
+                <Area type="monotone" dataKey="anthropic" stackId="1" stroke="#00ffa3" fill="#00ffa333" name="Anthropic" />
+                <Area type="monotone" dataKey="openai" stackId="1" stroke="#00d4ff" fill="#00d4ff33" name="OpenAI" />
+                <Area type="monotone" dataKey="google" stackId="1" stroke="#6332ff" fill="#6332ff33" name="Google" />
               </AreaChart>
             </ResponsiveContainer>
           </div>

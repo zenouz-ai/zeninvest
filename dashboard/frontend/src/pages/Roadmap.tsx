@@ -237,11 +237,11 @@ function GanttTabContent() {
         theme: 'dark',
         themeVariables: {
           primaryColor: '#1f2937',
-          primaryTextColor: '#58a6ff',
+          primaryTextColor: '#00d4ff',
           primaryBorderColor: '#374151',
           lineColor: '#4b5563',
           secondaryColor: '#111827',
-          tertiaryColor: '#0d1117',
+          tertiaryColor: '#06060a',
         },
         gantt: {
           barHeight: 20,
@@ -420,11 +420,11 @@ function ArchitectureTabContent() {
         theme: 'dark',
         themeVariables: {
           primaryColor: '#1f2937',
-          primaryTextColor: '#58a6ff',
+          primaryTextColor: '#00d4ff',
           primaryBorderColor: '#374151',
           lineColor: '#4b5563',
           secondaryColor: '#111827',
-          tertiaryColor: '#0d1117',
+          tertiaryColor: '#06060a',
         },
       })
       mermaid

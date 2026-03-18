@@ -7,21 +7,28 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Financial terminal: dark charcoal, electric green, warm red, cool blue, muted gold
-        'terminal-bg': '#0d1117',
-        'terminal-surface': '#161b22',
-        'terminal-border': '#30363d',
-        'terminal-text': '#e6edf3',
-        'terminal-text-dim': '#8b949e',
-        'gain': '#00ff88',
-        'loss': '#ff4444',
-        'neutral': '#58a6ff',
-        'accent': '#d4a017',
-        'warning': '#ffaa00',
+        // ZENOUZ.ai brand palette — see /branding/BRAND.md
+        'terminal-bg': '#06060a',       // --bg-primary
+        'terminal-surface': '#0c0c14',  // --bg-card
+        'terminal-border': 'rgba(255, 255, 255, 0.06)', // --border
+        'terminal-text': '#ffffff',     // --text-primary
+        'terminal-text-dim': 'rgba(255, 255, 255, 0.5)', // --text-secondary
+        'gain': '#00ffa3',              // --positive (emerald)
+        'loss': '#ff4466',              // --negative
+        'neutral': '#00d4ff',           // --cyan / --accent
+        'accent': '#00d4ff',            // --cyan (brand primary)
+        'warning': '#f7c948',           // --warning
+        // Additional brand tokens
+        'cyan': '#00d4ff',
+        'emerald': '#00ffa3',
+        'violet': '#6332ff',
+        'navy': '#0a1628',
+        'elevated': '#12121c',          // --bg-elevated
+        'text-muted': 'rgba(255, 255, 255, 0.25)',
       },
       fontFamily: {
         'mono': ['"JetBrains Mono"', '"Fira Code"', 'monospace'],
-        'sans': ['Inter', 'system-ui', 'sans-serif'],
+        'sans': ['Outfit', 'system-ui', 'sans-serif'],
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

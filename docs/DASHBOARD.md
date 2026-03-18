@@ -63,7 +63,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 │  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Costs  │ Roadmap│ │
 │  │ (state) │         │         │           │ Pipeline  │ Mgmt    │        │ & Arch │ │
 │  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┴────────┘ │
-│         Recharts / TanStack Table / dark terminal design (#0d1117, etc.)     │
+│         Recharts / TanStack Table / ZENOUZ.ai brand (dark #06060a, cyan→emerald)     │
 └──────────────────┬──────────────────────────────────────────────────────────┘
                     │ REST + Server-Sent Events (SSE)
 ┌──────────────────┴──────────────────────────────────┐
@@ -455,26 +455,35 @@ GET /api/events/stream              # Server-Sent Events (SSE) stream of activit
 
 ## Design Tokens
 
-### Colour Palette
+### Colour Palette (ZENOUZ.ai Brand)
+
+See `/branding/BRAND.md` for the full brand guide.
 
 | Token | Hex | Usage |
 |-------|-----|-------|
-| **Background** | `#0d1117` | Main canvas, dark charcoal terminal aesthetic |
-| **Gain** | `#00ff88` | Positive P&L, bullish signals, "up" indicators |
-| **Loss** | `#ff4444` | Negative P&L, bearish signals, "down" indicators |
-| **Neutral** | `#58a6ff` | Info, neutral states, secondary metrics |
-| **Accent** | `#d4a017` | Key metrics, highlights, important controls |
+| **Background** | `#06060a` | Main canvas (--bg-primary) |
+| **Card** | `#0c0c14` | Card/panel surfaces (--bg-card) |
+| **Elevated** | `#12121c` | Elevated surfaces (--bg-elevated) |
+| **Positive** | `#00ffa3` | Positive P&L, bullish signals, emerald (--positive) |
+| **Negative** | `#ff4466` | Negative P&L, bearish signals (--negative) |
+| **Accent/Cyan** | `#00d4ff` | Key metrics, active states, links (--accent) |
+| **Violet** | `#6332ff` | Secondary accent, hover states, category distinction |
+| **Warning** | `#f7c948` | CAUTIOUS state, warnings (--warning) |
 
 ### Typography
 
-- **Numbers/codes**: Monospace (JetBrains Mono or IBM Plex Mono)
-- **Labels/headings**: Clean sans-serif (Inter, Roboto, SF Pro Display)
+- **Numbers/codes**: JetBrains Mono (400–500) — all data, timestamps, tickers
+- **Headings**: Outfit (600–700) — section titles, page headings
+- **Body**: Outfit (300–400) — labels, descriptions, body text
+- **Data labels/tags**: JetBrains Mono, 9–11px, uppercase, letter-spacing 2–4px
 
 ### Visual Style
 
-- Dark charcoal background with subtle grid/scan-line texture for depth
-- All numbers in monospace
-- Dashboard aesthetic: Bloomberg terminal meets modern data dashboard
+- ZENOUZ.ai branded: Graph Theory Z logo + "ZENOUZ.ai" wordmark in nav
+- Dark background (#06060a) with subtle grid texture for depth
+- Cyan→emerald gradient for active states, chart accents, progress indicators
+- All numbers in monospace (JetBrains Mono)
+- Dashboard aesthetic: modern financial intelligence platform
 
 ---
 
@@ -537,12 +546,12 @@ Read Claude.md and README.md.
 Create the React frontend for the investment agent dashboard at
 dashboard/frontend/.
 
-Design direction: Dark theme, financial terminal aesthetic. Think Bloomberg
-terminal meets modern data dashboard. Monospace font for numbers, clean
-sans-serif for labels. Colour palette: dark charcoal background (#0d1117),
-electric green (#00ff88) for gains, warm red (#ff4444) for losses, cool
-blue (#58a6ff) for neutral/info, muted gold (#d4a017) for key metrics.
-Subtle grid/scan-line texture on background for depth.
+Design direction: ZENOUZ.ai brand (see /branding/BRAND.md). Dark theme with
+Graph Theory Z logo. Outfit font for body/headings, JetBrains Mono for data.
+Colour palette: dark background (#06060a), emerald (#00ffa3) for gains,
+red (#ff4466) for losses, cyan (#00d4ff) for accent/active, violet (#6332ff)
+for secondary accent. Cyan→emerald gradient for key metrics and active states.
+Subtle grid texture on background for depth.
 
 Build these pages:
 
