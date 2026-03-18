@@ -334,39 +334,40 @@ A 10/10 autonomous agent monitoring dashboard would:
 
 ## Appendix: Findings Summary Table
 
-| ID | Finding | Severity | Phase |
-|----|---------|----------|-------|
-| IA-1 | Dashboard home buries actionable info in collapsed sections | Critical | 1B |
-| IA-2 | Portfolio positions on separate page | Major | 1B |
-| IA-3 | No unified "attention required" signal | Critical | 1A |
-| IA-4 | SSE status card in prime real estate | Minor | 1B |
-| IA-5 | "Latest Run" / "Last Run" card duplication | Minor | 1B |
-| IA-6 | 8 top-level nav items excessive | Enhancement | 3 |
-| WF-1 | No pause/resume in dashboard | Major | 2A |
-| WF-2 | No force-sell from portfolio view | Major | 2A |
-| WF-3 | No cycle-level summary card | Major | 1B |
-| WF-4 | No data freshness indicators | Major | 2B |
-| WF-5 | No deep-link from notification to decision | Enhancement | 3E |
-| VD-1 | Chart colours don't match design system | Minor | 2 |
-| VD-2 | State badges lack PAUSED differentiation | Major | 1B |
-| VD-3 | No visual severity for critical events | Major | 1A |
-| VD-4 | Typography hierarchy is flat | Minor | 3 |
-| VD-5 | Gain/loss colours not colour-blind safe | Major | 2D |
-| ES-1 | All-or-nothing loading (Promise.all) | Major | 1C |
-| ES-2 | No skeleton loading screens | Enhancement | 3 |
-| ES-3 | No stale-data warning | Major | 2B |
-| RE-1 | Tables not responsive on mobile | Major | 3D |
-| RE-2 | No mobile-optimised priority view | Enhancement | 3D |
-| RE-3 | Modals don't trap keyboard focus | Minor | 2C |
-| RE-4 | Hamburger menu stays open on navigation | Minor | 1 |
-| A11Y-1 | Table rows not keyboard-accessible | Major | 2C |
-| A11Y-2 | No aria-live for SSE events | Minor | 2C |
-| A11Y-3 | Colour-only P&L differentiation | Major | 2D |
-| A11Y-4 | Sort buttons lack aria-sort | Minor | 2C |
-| A11Y-5 | Collapsible sections lack aria-expanded | Minor | 2C |
+| ID | Finding | Severity | Phase | Status |
+|----|---------|----------|-------|--------|
+| IA-1 | Dashboard home buries actionable info in collapsed sections | Critical | 1B | **Fixed** — Activity feed + positions always visible |
+| IA-2 | Portfolio positions on separate page | Major | 1B | **Fixed** — Top 5 positions on home page |
+| IA-3 | No unified "attention required" signal | Critical | 1A | **Fixed** — AlertBanner component |
+| IA-4 | SSE status card in prime real estate | Minor | 1B | **Fixed** — Replaced with small dot indicator |
+| IA-5 | "Latest Run" / "Last Run" card duplication | Minor | 1B | **Fixed** — Merged into single Cycle card |
+| IA-6 | 8 top-level nav items excessive | Enhancement | 3 | Open |
+| WF-1 | No pause/resume in dashboard | Major | 2A | **Fixed** — Pause/Resume toggle on home |
+| WF-2 | No force-sell from portfolio view | Major | 2A | Open |
+| WF-3 | No cycle-level summary card | Major | 1B | **Fixed** — Always-visible cycle summary |
+| WF-4 | No data freshness indicators | Major | 2B | Open |
+| WF-5 | No deep-link from notification to decision | Enhancement | 3E | Open |
+| VD-1 | Chart colours don't match design system | Minor | 2 | Open |
+| VD-2 | State badges lack PAUSED differentiation | Major | 1B | **Fixed** — PAUSED gets cyan badge |
+| VD-3 | No visual severity for critical events | Major | 1A | **Fixed** — AlertBanner with severity colours |
+| VD-4 | Typography hierarchy is flat | Minor | 3 | Open |
+| VD-5 | Gain/loss colours not colour-blind safe | Major | 2D | Open |
+| ES-1 | All-or-nothing loading (Promise.all) | Major | 1C | **Fixed** — useAsyncData per section |
+| ES-2 | No skeleton loading screens | Enhancement | 3 | Open |
+| ES-3 | No stale-data warning | Major | 2B | Open |
+| RE-1 | Tables not responsive on mobile | Major | 3D | Open |
+| RE-2 | No mobile-optimised priority view | Enhancement | 3D | Open |
+| RE-3 | Modals don't trap keyboard focus | Minor | 2C | Open |
+| RE-4 | Hamburger menu stays open on navigation | Minor | 1 | **Fixed** |
+| A11Y-1 | Table rows not keyboard-accessible | Major | 2C | Open |
+| A11Y-2 | No aria-live for SSE events | Minor | 2C | **Fixed** — aria-live on activity feed |
+| A11Y-3 | Colour-only P&L differentiation | Major | 2D | Open |
+| A11Y-4 | Sort buttons lack aria-sort | Minor | 2C | Open |
+| A11Y-5 | Collapsible sections lack aria-expanded | Minor | 2C | **Fixed** |
 
 **Totals:** 2 Critical, 14 Major, 8 Minor, 4 Enhancement
+**Phase 1 resolved:** 2 Critical, 5 Major, 3 Minor = **10 of 28 findings fixed**
 
 ---
 
-*This audit is based on static code review of the React/TypeScript source. A live usability test with the actual user would validate these findings and likely surface additional interaction issues not visible in code alone.*
+*This audit is based on static code review of the React/TypeScript source. Phase 1 fixes implemented 2026-03-18. A live usability test with the actual user would validate remaining findings.*

@@ -8,41 +8,43 @@ import Opportunity from './pages/Opportunity'
 import OrderManagement from './pages/OrderManagement'
 import Costs from './pages/Costs'
 import Roadmap from './pages/Roadmap'
+import { AlertBanner } from './components/AlertBanner'
+import { useSSE } from './hooks/useSSE'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 transition-colors rounded focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface ${
     isActive ? 'border-accent text-accent' : 'border-transparent text-terminal-text hover:text-accent hover:border-accent'
   }`
 
-function NavLinks({ mobile = false }: { mobile?: boolean }) {
+function NavLinks({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) {
   const base = 'block px-3 py-2 text-base font-medium'
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `${base} rounded-md focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-inset ${isActive ? 'bg-terminal-bg text-accent' : 'text-terminal-text hover:bg-terminal-bg hover:text-accent'}`
 
   return (
     <>
-      <NavLink to="/" className={mobile ? linkClass : navLinkClass}>
+      <NavLink to="/" className={mobile ? linkClass : navLinkClass} onClick={onNavigate}>
         Dashboard
       </NavLink>
-      <NavLink to="/universe" className={mobile ? linkClass : navLinkClass}>
+      <NavLink to="/universe" className={mobile ? linkClass : navLinkClass} onClick={onNavigate}>
         Universe
       </NavLink>
-      <NavLink to="/runs" className={mobile ? linkClass : navLinkClass}>
+      <NavLink to="/runs" className={mobile ? linkClass : navLinkClass} onClick={onNavigate}>
         Run History
       </NavLink>
-      <NavLink to="/portfolio" className={mobile ? linkClass : navLinkClass}>
+      <NavLink to="/portfolio" className={mobile ? linkClass : navLinkClass} onClick={onNavigate}>
         Portfolio
       </NavLink>
-      <NavLink to="/opportunity" className={mobile ? linkClass : navLinkClass}>
+      <NavLink to="/opportunity" className={mobile ? linkClass : navLinkClass} onClick={onNavigate}>
         Opportunity
       </NavLink>
-      <NavLink to="/orders" className={mobile ? linkClass : navLinkClass}>
+      <NavLink to="/orders" className={mobile ? linkClass : navLinkClass} onClick={onNavigate}>
         Order Mgmt
       </NavLink>
-      <NavLink to="/costs" className={mobile ? linkClass : navLinkClass}>
+      <NavLink to="/costs" className={mobile ? linkClass : navLinkClass} onClick={onNavigate}>
         Costs
       </NavLink>
-      <NavLink to="/roadmap" className={mobile ? linkClass : navLinkClass}>
+      <NavLink to="/roadmap" className={mobile ? linkClass : navLinkClass} onClick={onNavigate}>
         Roadmap
       </NavLink>
     </>
@@ -51,6 +53,7 @@ function NavLinks({ mobile = false }: { mobile?: boolean }) {
 
 function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { events: sseEvents, isConnected: sseConnected } = useSSE({ enabled: true })
 
   return (
     <BrowserRouter>
@@ -93,15 +96,16 @@ function App() {
           {mobileMenuOpen && (
             <div className="sm:hidden border-t border-terminal-border">
               <div className="pt-2 pb-3 space-y-1">
-                <NavLinks mobile />
+                <NavLinks mobile onNavigate={() => setMobileMenuOpen(false)} />
               </div>
             </div>
           )}
         </nav>
+        <AlertBanner sseConnected={sseConnected} />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Routes>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Dashboard sseEvents={sseEvents} sseConnected={sseConnected} />} />
             <Route path="/universe" element={<Universe />} />
             <Route path="/runs" element={<RunHistory />} />
             <Route path="/portfolio" element={<Portfolio />} />
