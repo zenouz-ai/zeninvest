@@ -136,6 +136,8 @@ poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
 
 ### Dashboard Frontend
 
+**Brand:** ZENOUZ.ai — Graph Theory Z logo, cyan→emerald gradient, Outfit + JetBrains Mono typography, dark theme (`#06060a`). See `/branding/BRAND.md` for the full brand guide.
+
 ```bash
 cd dashboard/frontend
 npm install

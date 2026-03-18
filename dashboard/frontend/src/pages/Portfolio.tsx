@@ -69,7 +69,7 @@ export default function Portfolio() {
     }))
     .filter((d) => d.date)
 
-  const COLORS = ['#4a9eff', '#00ff88', '#ffd700', '#ff4444', '#ffaa00']
+  const COLORS = ['#00d4ff', '#00ffa3', '#6332ff', '#ff4466', '#f7c948']
 
   if (loading) {
     return <LoadingSpinner />

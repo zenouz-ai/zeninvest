@@ -59,8 +59,10 @@ function App() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
               <div className="flex">
-                <Link to="/" className="flex items-center px-2 py-2 text-xl font-bold text-accent focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface rounded">
-                  Investment Agent
+                <Link to="/" className="flex items-center gap-2.5 px-2 py-2 text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface rounded">
+                  <img src="/logo.svg" alt="ZENOUZ.ai" className="h-7 w-7" />
+                  <span className="text-white tracking-wide">ZENOUZ</span>
+                  <span className="brand-gradient-text font-normal">.ai</span>
                 </Link>
                 <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                   <NavLinks />
