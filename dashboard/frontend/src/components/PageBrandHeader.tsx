@@ -27,7 +27,7 @@ export function PageBrandHeader({ title, description, eyebrow, titleMeta }: Page
         <img
           src={hybridZBold}
           alt="ZENOUZ hybrid bold Z symbol"
-          className="h-24 w-auto sm:h-28 lg:h-32 opacity-90"
+          className="h-24 w-auto sm:h-28 lg:h-32 opacity-70 contrast-90 saturate-90"
         />
       </div>
     </div>

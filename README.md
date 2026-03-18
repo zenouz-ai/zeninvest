@@ -136,7 +136,7 @@ poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
 
 ### Dashboard Frontend
 
-**Brand:** ZENOUZ.ai — Graph Theory Z logo, cyan→emerald gradient, Outfit + JetBrains Mono typography, dark theme (`#06060a`). See `/branding/BRAND.md` for the full brand guide.
+**Brand:** ZENOUZ.ai — Graph Theory Z logo, cyan→emerald gradient, Outfit + JetBrains Mono typography, dark theme (`#06060a`). The frontend uses a shared page header across all tabs with a right-aligned hybrid Concept 1+2 bold Z mark rendered on transparent background (no card) for an embedded look. See `/branding/BRAND.md` for the full brand guide.
 
 ```bash
 cd dashboard/frontend

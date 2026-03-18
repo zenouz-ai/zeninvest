@@ -1,7 +1,7 @@
 ---
 tags: [dashboard, frontend, api]
 status: current
-last_updated: 2026-03-13
+last_updated: 2026-03-18
 ---
 
 # Dashboard System
@@ -33,7 +33,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **8 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
+| **React Frontend** | Complete | **8 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-18): shared page header across all tabs with right-aligned hybrid Concept 1+2 bold Z mark, rendered on transparent background (no card/panel) for embedded dark-theme treatment. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -480,6 +480,7 @@ See `/branding/BRAND.md` for the full brand guide.
 ### Visual Style
 
 - ZENOUZ.ai branded: Graph Theory Z logo + "ZENOUZ.ai" wordmark in nav
+- Shared per-page branded header: hybrid Concept 1+2 bold Z rendered directly on page background (no boxed panel), consistently across all tabs
 - Dark background (#06060a) with subtle grid texture for depth
 - Cyan→emerald gradient for active states, chart accents, progress indicators
 - All numbers in monospace (JetBrains Mono)
