@@ -334,6 +334,10 @@ export const systemApi = {
     const response = await api.post('/api/system/reset-peak')
     return response.data
   },
+  forceSell: async (ticker: string): Promise<{ status: string; ticker: string; quantity?: number; error?: string }> => {
+    const response = await api.post(`/api/system/force-sell/${ticker}`)
+    return response.data
+  },
 }
 
 export default api

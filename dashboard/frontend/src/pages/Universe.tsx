@@ -419,10 +419,13 @@ export default function Universe() {
               <tr key={headerGroup.id} className="border-b border-terminal-border">
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort()
+                  const sortDir = header.column.getIsSorted()
+                  const ariaSortValue = !sortDir ? 'none' as const : sortDir === 'asc' ? 'ascending' as const : 'descending' as const
                   return (
                     <th
                       key={header.id}
                       className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim"
+                      aria-sort={canSort ? ariaSortValue : undefined}
                     >
                       {header.isPlaceholder ? null : canSort ? (
                         <button
@@ -458,6 +461,10 @@ export default function Universe() {
                     <tr
                       key={row.id}
                       onClick={() => setExpandedTicker(isExpanded ? null : ticker)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedTicker(isExpanded ? null : ticker) } }}
+                      tabIndex={0}
+                      role="button"
+                      aria-expanded={isExpanded}
                       className={`border-b border-terminal-border hover:bg-terminal-surface/50 transition-colors cursor-pointer ${
                         isExpanded ? 'bg-terminal-surface/70' : ''
                       }`}

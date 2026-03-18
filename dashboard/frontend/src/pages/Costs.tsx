@@ -165,7 +165,7 @@ export default function Costs() {
                   }
                 />
                 <Legend />
-                <Area type="monotone" dataKey="api" stackId="1" stroke="#ff6b6b" fill="#ff6b6b33" name="API (Brave/Tavily)" />
+                <Area type="monotone" dataKey="api" stackId="1" stroke="#ff4466" fill="#ff446633" name="API (Brave/Tavily)" />
                 <Area type="monotone" dataKey="research" stackId="1" stroke="#c084fc" fill="#c084fc33" name="Agentic Research" />
                 <Area type="monotone" dataKey="anthropic" stackId="1" stroke="#00ffa3" fill="#00ffa333" name="Anthropic" />
                 <Area type="monotone" dataKey="openai" stackId="1" stroke="#00d4ff" fill="#00d4ff33" name="OpenAI" />

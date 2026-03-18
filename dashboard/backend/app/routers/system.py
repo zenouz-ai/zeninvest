@@ -121,3 +121,24 @@ async def reset_peak():
     sm = StateMachine()
     sm.reset_peak_to_current(current)
     return {"message": "Peak reset to current value", "state": "ACTIVE", "current_value": current}
+
+
+@router.post("/force-sell/{ticker}")
+async def force_sell(ticker: str):
+    """Force sell an entire position for the given T212 ticker (e.g. AAPL_US_EQ)."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    from src.orchestrator.main import Orchestrator
+
+    try:
+        orch = Orchestrator(dry_run=False)
+        result = orch.force_sell(ticker)
+        orch.close()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Force sell failed: {e}") from e
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
+
+    return result

@@ -57,6 +57,17 @@ Based on `docs/UX_AUDIT.md`, resolved 10 of 28 findings (2 Critical, 5 Major, 3 
 - **aria-expanded** on all collapsible sections, **aria-live** on activity feed.
 - **Mobile nav fix**: hamburger menu closes on link click.
 
+### UX Phase 2 — Major Improvements (delivered 2026-03-18)
+
+Resolved 9 more findings (6 Major, 3 Minor) from `docs/UX_AUDIT.md`:
+
+- **Force Sell** (`Portfolio.tsx`): "Force Sell" button on each position row, wired to `POST /api/system/force-sell/{ticker}` (new backend endpoint). Confirmation modal with focus trap, success/error toast.
+- **Data freshness** (`useAsyncData` extended, `FreshnessIndicator.tsx`): `lastUpdatedAt` and `isStale` fields. "Updated Xs ago" shown below Dashboard cards. When a fetch fails, old data is preserved with "(stale)" label instead of being wiped.
+- **Keyboard-accessible tables** (`Universe.tsx`, `Dashboard.tsx`): expandable rows get `tabIndex={0}`, `role="button"`, `onKeyDown` (Enter/Space). Universe column headers get `aria-sort`.
+- **Focus trap** (`useFocusTrap.ts`): all modals (Live Run, Reset Peak, Pause, Force Sell) trap Tab/Shift+Tab, Escape closes.
+- **Colour accessibility** (`PnlDisplay.tsx`): `PnlCurrency` and `PnlValue` components render directional arrows (▲/▼) alongside colour, with `aria-label` for screen readers. Applied to Dashboard + Portfolio.
+- **Chart colour alignment**: Portfolio line chart and pie chart now use design tokens (#00d4ff accent, #30363d grid, #8b949e axis). Costs chart API colour aligned to #ff4466 (loss token). Tooltip backgrounds aligned.
+
 ### Deployment (delivered)
 
 See `docs/DASHBOARD_DEPLOYMENT.md` — Docker service, multi-stage frontend build, SPA fallback, port 8000. Activity feed (SSE) uses relative URL — works when accessing at `http://VPS_IP:8000`. CORS origins are configurable via `dashboard.cors_origins` in `config/settings.yaml` (defaults to localhost for local dev; set to VPS IP/domain for production). Deploy to VPS.

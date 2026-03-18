@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { portfolioApi } from '../api/client'
+import { portfolioApi, systemApi } from '../api/client'
+import { useFocusTrap } from '../hooks/useFocusTrap'
+import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { PortfolioSnapshot } from '../types'
 import { cleanTicker } from '../types'
@@ -23,6 +25,10 @@ export default function Portfolio() {
   const [history, setHistory] = useState<PortfolioSnapshot[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [forceSellTicker, setForceSellTicker] = useState<string | null>(null)
+  const [forceSellLoading, setForceSellLoading] = useState(false)
+  const [forceSellResult, setForceSellResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const forceSellModalRef = useFocusTrap(forceSellTicker != null, () => setForceSellTicker(null))
 
   const fetchPortfolio = async () => {
     setError(null)
@@ -72,6 +78,33 @@ export default function Portfolio() {
 
   const COLORS = ['#00d4ff', '#00ffa3', '#6332ff', '#ff4466', '#f7c948']
 
+  const handleForceSell = async () => {
+    if (!forceSellTicker) return
+    setForceSellLoading(true)
+    setForceSellResult(null)
+    try {
+      const result = await systemApi.forceSell(forceSellTicker)
+      if (result.status === 'sold' || result.status === 'dry_run') {
+        setForceSellResult({ type: 'success', message: `${cleanTicker(forceSellTicker)} sold (${result.quantity} shares) — ${result.status}` })
+        fetchPortfolio()
+      } else if (result.status === 'no_position') {
+        setForceSellResult({ type: 'error', message: `No open position for ${cleanTicker(forceSellTicker)}` })
+      } else {
+        setForceSellResult({ type: 'error', message: result.error || 'Unknown error' })
+      }
+    } catch (err) {
+      setForceSellResult({ type: 'error', message: err instanceof Error ? err.message : 'Force sell failed' })
+    } finally {
+      setForceSellLoading(false)
+      setForceSellTicker(null)
+    }
+  }
+
+  // Auto-dismiss result toast after 5s
+  if (forceSellResult) {
+    setTimeout(() => setForceSellResult(null), 5000)
+  }
+
   if (loading) {
     return <LoadingSpinner />
   }
@@ -106,6 +139,31 @@ export default function Portfolio() {
         }
         description="Current positions, cash, and value history from the latest snapshot (updated each run). Charts show portfolio value over time and sector allocation. Positions table lists ticker, quantity, value, and P&L per position."
       />
+
+      {/* Force Sell confirmation modal */}
+      {forceSellTicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setForceSellTicker(null)}>
+          <div ref={forceSellModalRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-loss mb-2">Force sell {cleanTicker(forceSellTicker)}?</h3>
+            <p className="text-sm text-terminal-text-dim mb-4">
+              This will immediately sell the entire position at market price. This action cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setForceSellTicker(null)} className="btn-secondary text-sm py-1.5">Cancel</button>
+              <button type="button" onClick={handleForceSell} disabled={forceSellLoading} className="btn-danger-solid text-sm py-1.5 disabled:opacity-50">
+                {forceSellLoading ? 'Selling...' : 'Force Sell'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Result toast */}
+      {forceSellResult && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded shadow-lg text-sm font-mono ${forceSellResult.type === 'success' ? 'bg-gain/20 border border-gain/40 text-gain' : 'bg-loss/20 border border-loss/40 text-loss'}`}>
+          {forceSellResult.message}
+        </div>
+      )}
 
       {/* Portfolio Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -155,22 +213,22 @@ export default function Portfolio() {
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-                <XAxis dataKey="date" stroke="#888888" />
-                <YAxis stroke="#888888" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                <XAxis dataKey="date" stroke="#8b949e" />
+                <YAxis stroke="#8b949e" />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#141414',
-                    border: '1px solid #2a2a2a',
-                    color: '#e0e0e0',
+                    backgroundColor: '#0d1117',
+                    border: '1px solid #30363d',
+                    color: '#e6edf3',
                   }}
                 />
                 <Line
                   type="monotone"
                   dataKey="value"
-                  stroke="#4a9eff"
+                  stroke="#00d4ff"
                   strokeWidth={2}
-                  dot={{ fill: '#4a9eff', r: 4 }}
+                  dot={{ fill: '#00d4ff', r: 4 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -196,7 +254,7 @@ export default function Portfolio() {
                     `${name}: ${(percent * 100).toFixed(0)}%`
                   }
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill="#00d4ff"
                   dataKey="value"
                 >
                   {pieData.map((_, index) => (
@@ -205,9 +263,9 @@ export default function Portfolio() {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#141414',
-                    border: '1px solid #2a2a2a',
-                    color: '#e0e0e0',
+                    backgroundColor: '#0d1117',
+                    border: '1px solid #30363d',
+                    color: '#e6edf3',
                   }}
                 />
               </PieChart>
@@ -250,6 +308,9 @@ export default function Portfolio() {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
                     P&L %
                   </th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -269,24 +330,20 @@ export default function Portfolio() {
                         maximumFractionDigits: 2,
                       })}
                     </td>
-                    <td
-                      className={`px-4 py-3 font-mono ${
-                        pos.pnl_gbp >= 0 ? 'text-gain' : 'text-loss'
-                      }`}
-                    >
-                      {pos.pnl_gbp >= 0 ? '+' : ''}
-                      £{pos.pnl_gbp.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
+                    <td className="px-4 py-3 font-mono">
+                      <PnlCurrency value={pos.pnl_gbp} />
                     </td>
-                    <td
-                      className={`px-4 py-3 font-mono ${
-                        pos.pnl_pct >= 0 ? 'text-gain' : 'text-loss'
-                      }`}
-                    >
-                      {pos.pnl_pct >= 0 ? '+' : ''}
-                      {pos.pnl_pct.toFixed(2)}%
+                    <td className="px-4 py-3 font-mono">
+                      <PnlValue value={pos.pnl_pct} suffix="%" />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setForceSellTicker(pos.ticker)}
+                        className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
+                      >
+                        Force Sell
+                      </button>
                     </td>
                   </tr>
                 ))}

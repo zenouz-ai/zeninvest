@@ -343,31 +343,33 @@ A 10/10 autonomous agent monitoring dashboard would:
 | IA-5 | "Latest Run" / "Last Run" card duplication | Minor | 1B | **Fixed** — Merged into single Cycle card |
 | IA-6 | 8 top-level nav items excessive | Enhancement | 3 | Open |
 | WF-1 | No pause/resume in dashboard | Major | 2A | **Fixed** — Pause/Resume toggle on home |
-| WF-2 | No force-sell from portfolio view | Major | 2A | Open |
+| WF-2 | No force-sell from portfolio view | Major | 2A | **Fixed** — Force Sell button per position row |
 | WF-3 | No cycle-level summary card | Major | 1B | **Fixed** — Always-visible cycle summary |
-| WF-4 | No data freshness indicators | Major | 2B | Open |
+| WF-4 | No data freshness indicators | Major | 2B | **Fixed** — FreshnessIndicator + stale-data preservation |
 | WF-5 | No deep-link from notification to decision | Enhancement | 3E | Open |
-| VD-1 | Chart colours don't match design system | Minor | 2 | Open |
+| VD-1 | Chart colours don't match design system | Minor | 2 | **Fixed** — All charts use design tokens |
 | VD-2 | State badges lack PAUSED differentiation | Major | 1B | **Fixed** — PAUSED gets cyan badge |
 | VD-3 | No visual severity for critical events | Major | 1A | **Fixed** — AlertBanner with severity colours |
 | VD-4 | Typography hierarchy is flat | Minor | 3 | Open |
-| VD-5 | Gain/loss colours not colour-blind safe | Major | 2D | Open |
+| VD-5 | Gain/loss colours not colour-blind safe | Major | 2D | **Fixed** — Directional arrows (▲/▼) + aria-labels |
 | ES-1 | All-or-nothing loading (Promise.all) | Major | 1C | **Fixed** — useAsyncData per section |
 | ES-2 | No skeleton loading screens | Enhancement | 3 | Open |
-| ES-3 | No stale-data warning | Major | 2B | Open |
+| ES-3 | No stale-data warning | Major | 2B | **Fixed** — useAsyncData preserves stale data + isStale flag |
 | RE-1 | Tables not responsive on mobile | Major | 3D | Open |
 | RE-2 | No mobile-optimised priority view | Enhancement | 3D | Open |
-| RE-3 | Modals don't trap keyboard focus | Minor | 2C | Open |
+| RE-3 | Modals don't trap keyboard focus | Minor | 2C | **Fixed** — useFocusTrap hook on all modals |
 | RE-4 | Hamburger menu stays open on navigation | Minor | 1 | **Fixed** |
-| A11Y-1 | Table rows not keyboard-accessible | Major | 2C | Open |
+| A11Y-1 | Table rows not keyboard-accessible | Major | 2C | **Fixed** — tabIndex, role="button", onKeyDown |
 | A11Y-2 | No aria-live for SSE events | Minor | 2C | **Fixed** — aria-live on activity feed |
-| A11Y-3 | Colour-only P&L differentiation | Major | 2D | Open |
-| A11Y-4 | Sort buttons lack aria-sort | Minor | 2C | Open |
+| A11Y-3 | Colour-only P&L differentiation | Major | 2D | **Fixed** — PnlDisplay components with arrows + aria-labels |
+| A11Y-4 | Sort buttons lack aria-sort | Minor | 2C | **Fixed** — aria-sort on Universe table headers |
 | A11Y-5 | Collapsible sections lack aria-expanded | Minor | 2C | **Fixed** |
 
 **Totals:** 2 Critical, 14 Major, 8 Minor, 4 Enhancement
-**Phase 1 resolved:** 2 Critical, 5 Major, 3 Minor = **10 of 28 findings fixed**
+**Phase 1 resolved:** 2 Critical, 5 Major, 3 Minor = 10 fixed
+**Phase 2 resolved:** 6 Major, 3 Minor = 9 fixed
+**Overall: 19 of 28 findings fixed** (2/2 Critical, 11/14 Major, 6/8 Minor)
 
 ---
 
-*This audit is based on static code review of the React/TypeScript source. Phase 1 fixes implemented 2026-03-18. A live usability test with the actual user would validate remaining findings.*
+*Phase 1 fixes: 2026-03-18. Phase 2 fixes: 2026-03-18. Remaining 9 findings are Phase 3 (enhancements + polish).*

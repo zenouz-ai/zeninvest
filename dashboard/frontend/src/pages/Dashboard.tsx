@@ -8,6 +8,9 @@ import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { useAsyncData } from '../hooks/useAsyncData'
+import { FreshnessIndicator } from '../components/FreshnessIndicator'
+import { useFocusTrap } from '../hooks/useFocusTrap'
+import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
 
 function formatCountdown(isoString: string): string {
   const target = new Date(isoString)
@@ -161,6 +164,11 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
   const [showPauseConfirm, setShowPauseConfirm] = useState(false)
   const [pauseLoading, setPauseLoading] = useState(false)
 
+  // Focus traps for modals
+  const liveConfirmRef = useFocusTrap(showLiveConfirm, () => setShowLiveConfirm(false))
+  const resetPeakRef = useFocusTrap(showResetPeakConfirm, () => setShowResetPeakConfirm(false))
+  const pauseConfirmRef = useFocusTrap(showPauseConfirm, () => setShowPauseConfirm(false))
+
   const filteredLatestOrders = useMemo(() => {
     const { ticker, action, status } = latestTradesFilters
     return latestOrders.filter((o) => {
@@ -309,7 +317,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
       {/* Confirmation modals */}
       {showLiveConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowLiveConfirm(false)}>
-          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div ref={liveConfirmRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-semibold text-loss mb-2">Execute live cycle?</h3>
             <p className="text-sm text-terminal-text-dim mb-4">This will run a full cycle and execute real trades on the Trading 212 Practice account.</p>
             <div className="flex gap-2 justify-end">
@@ -321,7 +329,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
       )}
       {showResetPeakConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowResetPeakConfirm(false)}>
-          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div ref={resetPeakRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-semibold text-accent mb-2">Reset peak?</h3>
             <p className="text-sm text-terminal-text-dim mb-4">Sets peak portfolio value to current value and transitions to ACTIVE. Use when CAUTIOUS was triggered incorrectly.</p>
             <div className="flex gap-2 justify-end">
@@ -333,7 +341,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
       )}
       {showPauseConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowPauseConfirm(false)}>
-          <div className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+          <div ref={pauseConfirmRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-semibold text-warning mb-2">Pause trading?</h3>
             <p className="text-sm text-terminal-text-dim mb-4">The agent will skip trading during scheduled cycles until resumed. Existing positions and stop-losses remain active.</p>
             <div className="flex gap-2 justify-end">
@@ -377,9 +385,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
                 £{portfolio.total_value_gbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div className="text-xs mt-1">
-                <span className={portfolio.pnl_gbp >= 0 ? 'text-gain' : 'text-loss'} aria-label={`P&L: ${portfolio.pnl_gbp >= 0 ? '+' : ''}£${portfolio.pnl_gbp.toFixed(2)}`}>
-                  {portfolio.pnl_gbp >= 0 ? '+' : ''}£{portfolio.pnl_gbp.toFixed(2)} ({portfolio.pnl_pct >= 0 ? '+' : ''}{portfolio.pnl_pct.toFixed(2)}%)
-                </span>
+                <PnlCurrency value={portfolio.pnl_gbp} className="font-mono" /> <PnlValue value={portfolio.pnl_pct} suffix="%" className="font-mono" />
               </div>
               <div className="text-xs text-terminal-text-dim mt-0.5">{portfolio.num_positions} positions · £{portfolio.cash_gbp.toFixed(0)} cash</div>
             </>
@@ -387,6 +393,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
             <div className="text-lg font-mono">N/A</div>
           )}
           {portfolioResult.error && <SectionError error="Failed to load" onRetry={portfolioResult.refetch} />}
+          <FreshnessIndicator lastUpdatedAt={portfolioResult.lastUpdatedAt} isStale={portfolioResult.isStale} className="mt-1 block" />
         </div>
 
         {/* Card 3: Performance (replaces SSE card) */}
@@ -419,6 +426,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
             <div className="text-sm text-terminal-text-dim mt-1">No performance data yet</div>
           )}
           {perfResult.error && <SectionError error="Failed to load" onRetry={perfResult.refetch} />}
+          <FreshnessIndicator lastUpdatedAt={perfResult.lastUpdatedAt} isStale={perfResult.isStale} className="mt-1 block" />
         </div>
 
         {/* Card 4: This month summary (compact) */}
@@ -438,8 +446,8 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
               </div>
               <div>
                 <div className="text-xs text-terminal-text-dim">P&L</div>
-                <div className={`font-mono text-sm ${monthlySummary.pnl_gbp != null && monthlySummary.pnl_gbp >= 0 ? 'text-gain' : monthlySummary.pnl_gbp != null ? 'text-loss' : ''}`}>
-                  {monthlySummary.pnl_gbp != null ? `£${monthlySummary.pnl_gbp.toFixed(2)}` : '—'}
+                <div className="font-mono text-sm">
+                  {monthlySummary.pnl_gbp != null ? <PnlCurrency value={monthlySummary.pnl_gbp} /> : '—'}
                 </div>
               </div>
               <div>
@@ -451,6 +459,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
             <div className="text-sm text-terminal-text-dim mt-1">No data</div>
           )}
           {monthlyResult.error && <SectionError error="Failed to load" onRetry={monthlyResult.refetch} />}
+          <FreshnessIndicator lastUpdatedAt={monthlyResult.lastUpdatedAt} isStale={monthlyResult.isStale} className="mt-1 block" />
         </div>
       </div>
 
@@ -511,12 +520,8 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
                           style={{ width: `${barWidth}%` }}
                         />
                       </div>
-                      <span className={`font-mono text-sm w-24 text-right ${pos.pnl_gbp >= 0 ? 'text-gain' : 'text-loss'}`} aria-label={`P&L: ${pos.pnl_gbp >= 0 ? '+' : ''}£${pos.pnl_gbp.toFixed(2)}`}>
-                        {pos.pnl_gbp >= 0 ? '+' : ''}£{pos.pnl_gbp.toFixed(2)}
-                      </span>
-                      <span className={`font-mono text-xs w-16 text-right ${pos.pnl_pct >= 0 ? 'text-gain' : 'text-loss'}`}>
-                        {pos.pnl_pct >= 0 ? '+' : ''}{pos.pnl_pct.toFixed(1)}%
-                      </span>
+                      <PnlCurrency value={pos.pnl_gbp} className="font-mono text-sm w-24 text-right" />
+                      <PnlValue value={pos.pnl_pct} suffix="%" className="font-mono text-xs w-16 text-right" />
                     </div>
                   )
                 })}
@@ -719,6 +724,10 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
                       <React.Fragment key={o.id}>
                         <tr
                           onClick={() => setTickerForLLM(tickerForLLM === o.ticker ? null : o.ticker)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setTickerForLLM(tickerForLLM === o.ticker ? null : o.ticker) } }}
+                          tabIndex={0}
+                          role="button"
+                          aria-expanded={tickerForLLM === o.ticker}
                           className="border-b border-terminal-border cursor-pointer hover:bg-terminal-surface/50"
                         >
                           <td className="py-1 font-mono text-xs">{safeFormat(o.timestamp, 'MMM dd HH:mm', '')}</td>
