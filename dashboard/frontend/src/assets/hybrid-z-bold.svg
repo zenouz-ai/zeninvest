@@ -1,0 +1,73 @@
+<svg viewBox="0 0 260 260" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="z-main" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#00ffa3"/>
+    </linearGradient>
+    <linearGradient id="z-edge" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#00ffa3"/>
+    </linearGradient>
+    <filter id="z-glow">
+      <feGaussianBlur stdDeviation="2.4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Concept 2 influence: subtle geometric frame -->
+  <polygon
+    points="130,24 186,46 212,92 212,168 186,214 130,236 74,214 48,168 48,92 74,46"
+    fill="none"
+    stroke="url(#z-main)"
+    stroke-width="2"
+    opacity="0.16"
+  />
+
+  <!-- Concept 1 influence: bolder Z body -->
+  <path
+    d="M74,70 L188,70 L188,86 L108,166 L188,166 L188,182 L72,182 L72,166 L152,86 L74,86 Z"
+    fill="none"
+    stroke="url(#z-edge)"
+    stroke-width="5.5"
+    stroke-linejoin="round"
+    stroke-linecap="round"
+    opacity="0.85"
+    filter="url(#z-glow)"
+  />
+
+  <!-- Hybrid graph nodes and links -->
+  <line x1="82" y1="78" x2="114" y2="78" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+  <line x1="114" y1="78" x2="146" y2="78" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+  <line x1="146" y1="78" x2="178" y2="78" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+
+  <line x1="176" y1="80" x2="154" y2="105" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+  <line x1="154" y1="105" x2="130" y2="132" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+  <line x1="130" y1="132" x2="106" y2="157" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+  <line x1="106" y1="157" x2="82" y2="174" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+
+  <line x1="82" y1="174" x2="114" y2="174" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+  <line x1="114" y1="174" x2="146" y2="174" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+  <line x1="146" y1="174" x2="178" y2="174" stroke="url(#z-edge)" stroke-width="2.2" opacity="0.65"/>
+
+  <circle cx="82" cy="78" r="5.8" fill="url(#z-main)" opacity="0.95"/>
+  <circle cx="114" cy="78" r="4.9" fill="url(#z-main)" opacity="0.95"/>
+  <circle cx="146" cy="78" r="4.9" fill="url(#z-main)" opacity="0.95"/>
+  <circle cx="178" cy="78" r="5.8" fill="url(#z-main)" opacity="0.95"/>
+
+  <circle cx="154" cy="105" r="4.6" fill="url(#z-main)" opacity="0.92"/>
+  <circle cx="130" cy="132" r="5.3" fill="url(#z-main)" opacity="0.95"/>
+  <circle cx="106" cy="157" r="4.6" fill="url(#z-main)" opacity="0.92"/>
+
+  <circle cx="82" cy="174" r="5.8" fill="url(#z-main)" opacity="0.95"/>
+  <circle cx="114" cy="174" r="4.9" fill="url(#z-main)" opacity="0.95"/>
+  <circle cx="146" cy="174" r="4.9" fill="url(#z-main)" opacity="0.95"/>
+  <circle cx="178" cy="174" r="5.8" fill="url(#z-main)" opacity="0.95"/>
+
+  <line x1="114" y1="78" x2="154" y2="105" stroke="url(#z-edge)" stroke-width="0.9" opacity="0.14"/>
+  <line x1="146" y1="78" x2="130" y2="132" stroke="url(#z-edge)" stroke-width="0.9" opacity="0.14"/>
+  <line x1="106" y1="157" x2="114" y2="174" stroke="url(#z-edge)" stroke-width="0.9" opacity="0.14"/>
+  <line x1="130" y1="132" x2="146" y2="174" stroke="url(#z-edge)" stroke-width="0.9" opacity="0.14"/>
+</svg>

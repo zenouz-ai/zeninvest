@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ordersApi, stopLossApi } from '../api/client'
 import { LoadingSpinner } from '../components/LoadingSpinner'
 import { safeFormat } from '../utils/date'
+import { PageBrandHeader } from '../components/PageBrandHeader'
 
 function cleanTicker(t: string) {
   return t.replace(/_US_EQ$/, '').replace(/_UK_EQ$/, '')
@@ -54,12 +55,10 @@ export default function OrderManagement() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Order Management</h1>
-        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
-          Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent market orders (BUY/SELL/REDUCE) are listed below.
-        </p>
-      </div>
+      <PageBrandHeader
+        title="Order Management"
+        description="Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent market orders (BUY/SELL/REDUCE) are listed below."
+      />
 
       <div className="card">
         <h2 className="text-lg font-semibold mb-3">Recent Orders ({recentOrders.length})</h2>

@@ -14,6 +14,7 @@ import type { Instrument, InstrumentDetail, UniverseBubbleItem } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
+import { PageBrandHeader } from '../components/PageBrandHeader'
 
 type UniverseRow = Instrument & {
   _investigated: boolean
@@ -378,15 +379,11 @@ export default function Universe() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold">Stock Universe</h1>
-        <div className="text-sm text-terminal-text-dim">
-          {filteredData.length} of {instruments.length} stocks
-        </div>
-      </div>
-      <p className="text-terminal-text-dim text-sm max-w-2xl">
-        All instruments the agent screens for opportunities. Columns show screening history (Investigated, Reviews, Decisions), holdings, shares sold, and UOV scores. Use search and sector filters; click a row to expand full LLM reasoning (strategy, moderation, risk).
-      </p>
+      <PageBrandHeader
+        title="Stock Universe"
+        titleMeta={`${filteredData.length} of ${instruments.length} stocks`}
+        description="All instruments the agent screens for opportunities. Columns show screening history (Investigated, Reviews, Decisions), holdings, shares sold, and UOV scores. Use search and sector filters; click a row to expand full LLM reasoning (strategy, moderation, risk)."
+      />
 
       {/* Filters */}
       <div className="card flex gap-4 items-center">

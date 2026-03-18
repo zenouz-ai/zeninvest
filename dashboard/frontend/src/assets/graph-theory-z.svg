@@ -1,0 +1,44 @@
+<svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#00ffa3"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00d4ff"/>
+      <stop offset="100%" stop-color="#00ffa3"/>
+    </linearGradient>
+  </defs>
+
+  <line x1="35" y1="45" x2="70" y2="45" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="70" y1="45" x2="110" y2="45" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="110" y1="45" x2="150" y2="45" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+
+  <circle cx="35" cy="45" r="6" fill="url(#grad)"/>
+  <circle cx="70" cy="45" r="5" fill="url(#grad)"/>
+  <circle cx="110" cy="45" r="5" fill="url(#grad)"/>
+  <circle cx="150" cy="45" r="6" fill="url(#grad)"/>
+
+  <line x1="150" y1="45" x2="125" y2="75" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="125" y1="75" x2="95" y2="110" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="95" y1="110" x2="65" y2="140" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="65" y1="140" x2="35" y2="170" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+
+  <circle cx="125" cy="75" r="5" fill="url(#grad)"/>
+  <circle cx="95" cy="110" r="5.5" fill="url(#grad)"/>
+  <circle cx="65" cy="140" r="5" fill="url(#grad)"/>
+
+  <line x1="35" y1="170" x2="70" y2="170" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="70" y1="170" x2="110" y2="170" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="110" y1="170" x2="150" y2="170" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+
+  <circle cx="35" cy="170" r="6" fill="url(#grad)"/>
+  <circle cx="70" cy="170" r="5" fill="url(#grad)"/>
+  <circle cx="110" cy="170" r="5" fill="url(#grad)"/>
+  <circle cx="150" cy="170" r="6" fill="url(#grad)"/>
+
+  <line x1="70" y1="45" x2="125" y2="75" stroke="url(#edge)" stroke-width="0.8" opacity="0.15"/>
+  <line x1="110" y1="45" x2="95" y2="110" stroke="url(#edge)" stroke-width="0.8" opacity="0.15"/>
+  <line x1="65" y1="140" x2="70" y2="170" stroke="url(#edge)" stroke-width="0.8" opacity="0.15"/>
+  <line x1="95" y1="110" x2="110" y2="170" stroke="url(#edge)" stroke-width="0.8" opacity="0.15"/>
+</svg>

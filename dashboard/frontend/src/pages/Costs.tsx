@@ -11,6 +11,7 @@ import {
   Legend,
 } from 'recharts'
 import { costsApi, researchApi, type ResearchSummary } from '../api/client'
+import { PageBrandHeader } from '../components/PageBrandHeader'
 
 export default function Costs() {
   const [daily, setDaily] = useState<any[]>([])
@@ -88,12 +89,10 @@ export default function Costs() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Costs</h1>
-        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
-          LLM spend tracking and budget enforcement. Daily budgets (Anthropic £1, OpenAI £0.75, Google £0.50) plus a monthly cap (£50) control costs. If a budget is exceeded, the system degrades gracefully instead of failing. Use the charts and table to monitor spend by provider.
-        </p>
-      </div>
+      <PageBrandHeader
+        title="Costs"
+        description="LLM spend tracking and budget enforcement. Daily budgets (Anthropic £1, OpenAI £0.75, Google £0.50) plus a monthly cap (£50) control costs. If a budget is exceeded, the system degrades gracefully instead of failing. Use the charts and table to monitor spend by provider."
+      />
 
       {degradation && (
         <div className="card">

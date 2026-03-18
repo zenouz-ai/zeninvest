@@ -4,6 +4,7 @@ import { LoadingSpinner } from '../components/LoadingSpinner'
 import type { PortfolioSnapshot } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
+import { PageBrandHeader } from '../components/PageBrandHeader'
 import {
   LineChart,
   Line,
@@ -88,10 +89,10 @@ export default function Portfolio() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h1 className="text-2xl font-bold">Portfolio</h1>
-          {currentPortfolio && (
+      <PageBrandHeader
+        title="Portfolio"
+        titleMeta={
+          currentPortfolio ? (
             <div className="text-right">
               <div className="text-sm text-terminal-text-dim">Total Value</div>
               <div className="text-2xl font-mono font-bold">
@@ -101,12 +102,10 @@ export default function Portfolio() {
                 })}
               </div>
             </div>
-          )}
-        </div>
-        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
-          Current positions, cash, and value history from the latest snapshot (updated each run). Charts show portfolio value over time and sector allocation. Positions table lists ticker, quantity, value, and P&L per position.
-        </p>
-      </div>
+          ) : null
+        }
+        description="Current positions, cash, and value history from the latest snapshot (updated each run). Charts show portfolio value over time and sector allocation. Positions table lists ticker, quantity, value, and P&L per position."
+      />
 
       {/* Portfolio Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

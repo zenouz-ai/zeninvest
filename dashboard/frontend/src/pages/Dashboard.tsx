@@ -6,6 +6,7 @@ import { safeFormat } from '../utils/date'
 import { cleanTicker } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 import { LoadingSpinner } from '../components/LoadingSpinner'
+import { PageBrandHeader } from '../components/PageBrandHeader'
 
 function formatCountdown(isoString: string): string {
   const target = new Date(isoString)
@@ -265,12 +266,11 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
-          Overview of the agent&apos;s state, next run countdown, and recent activity. Use Dry Run to test a cycle without executing trades, or Live Run to run for real. Scroll for monthly summary, latest trades, run summaries, and the activity feed.
-        </p>
-      </div>
+      <PageBrandHeader
+        eyebrow="Dashboard"
+        title="Investment Agent Dashboard"
+        description="Overview of the agent's state, next run countdown, and recent activity. Use Dry Run to test a cycle without executing trades, or Live Run to run for real. Scroll for monthly summary, latest trades, run summaries, and the activity feed."
+      />
       {/* System state badge + Trigger buttons */}
       <div className="flex items-center gap-4 flex-wrap">
         <span

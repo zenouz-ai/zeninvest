@@ -12,6 +12,7 @@ import {
   type Topic,
 } from '../data/roadmap'
 import { safeFormat } from '../utils/date'
+import { PageBrandHeader } from '../components/PageBrandHeader'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
@@ -505,13 +506,10 @@ export default function Roadmap() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Roadmap &amp; Architecture</h1>
-        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
-          Project evolution from day 0 ({safeFormat(PROJECT_START, 'd MMM yyyy')}) to now.
-          {daysDev} days in development.
-        </p>
-      </div>
+      <PageBrandHeader
+        title="Roadmap & Architecture"
+        description={`Project evolution from day 0 (${safeFormat(PROJECT_START, 'd MMM yyyy')}) to now. ${daysDev} days in development.`}
+      />
 
       <div className="flex flex-wrap gap-4">
         <div className="card flex-1 min-w-[140px]">

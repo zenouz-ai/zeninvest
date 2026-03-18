@@ -5,6 +5,7 @@ import type { InstrumentDetail } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
+import { PageBrandHeader } from '../components/PageBrandHeader'
 
 type QueueConfig = { queue_ttl_cycles: number; immediate_threshold_z: number }
 type QueueMeta = { blocked_by_capacity?: boolean; final_allocation_pct?: number }
@@ -132,12 +133,10 @@ export default function Opportunity() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Opportunity Pipeline</h1>
-        <p className="text-terminal-text-dim text-sm mt-1 max-w-2xl">
-          UOV-ranked queue of tickers awaiting execution, and latest score snapshots. Tickers above the queue threshold but below immediate threshold sit in the queue. Click a row to see full LLM output (strategy, moderation, risk).
-        </p>
-      </div>
+      <PageBrandHeader
+        title="Opportunity Pipeline"
+        description="UOV-ranked queue of tickers awaiting execution, and latest score snapshots. Tickers above the queue threshold but below immediate threshold sit in the queue. Click a row to see full LLM output (strategy, moderation, risk)."
+      />
 
       {expandedTicker && (
         <div className="card">
