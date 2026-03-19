@@ -136,16 +136,21 @@ class Orchestrator:
                 try:
                     from dashboard.backend.app.database import Run
                     session = get_session()
-                    run = Run(
-                        cycle_id=cycle_id,
-                        run_type="manual" if not self.dry_run else "dry_run",
-                        started_at=cycle_start_time,
-                        status="running",
-                    )
-                    session.add(run)
-                    session.commit()
-                    session.close()
-                    logger.debug(f"Created Run record for cycle {cycle_id}")
+                    try:
+                        run = Run(
+                            cycle_id=cycle_id,
+                            run_type="manual" if not self.dry_run else "dry_run",
+                            started_at=cycle_start_time,
+                            status="running",
+                        )
+                        session.add(run)
+                        session.commit()
+                        logger.debug(f"Created Run record for cycle {cycle_id}")
+                    except Exception:
+                        session.rollback()
+                        raise
+                    finally:
+                        session.close()
                 except Exception as e:
                     logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
             except Exception:
@@ -208,39 +213,43 @@ class Orchestrator:
                             "num_rejected": result["num_rejected"],
                         },
                     )
-                    # Update run record
+                    # Update run record (session leak fix H-6)
                     try:
                         from dashboard.backend.app.database import Run
                         session = get_session()
-                        run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
-                        if run:
-                            run.completed_at = cycle_end_time
-                            run.status = status
-                            run.summary_json = {
-                                "num_trades": result["num_trades"],
-                                "num_rejected": result["num_rejected"],
-                                "duration_seconds": duration_seconds,
-                            }
-                            session.commit()
-                            logger.debug(f"Updated Run record for cycle {cycle_id}")
-                        else:
-                            logger.debug(f"Run record not found for cycle {cycle_id}, creating new one")
-                            # Create if missing (scheduler Run creation may have failed)
-                            run = Run(
-                                cycle_id=cycle_id,
-                                run_type="scheduled" if scheduled_cycle_id else ("manual" if not self.dry_run else "dry_run"),
-                                started_at=cycle_start_time,
-                                completed_at=cycle_end_time,
-                                status=status,
-                                summary_json={
+                        try:
+                            run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                            if run:
+                                run.completed_at = cycle_end_time
+                                run.status = status
+                                run.summary_json = {
                                     "num_trades": result["num_trades"],
                                     "num_rejected": result["num_rejected"],
                                     "duration_seconds": duration_seconds,
-                                },
-                            )
-                            session.add(run)
-                            session.commit()
-                        session.close()
+                                }
+                                session.commit()
+                                logger.debug(f"Updated Run record for cycle {cycle_id}")
+                            else:
+                                logger.debug(f"Run record not found for cycle {cycle_id}, creating new one")
+                                run = Run(
+                                    cycle_id=cycle_id,
+                                    run_type="scheduled" if scheduled_cycle_id else ("manual" if not self.dry_run else "dry_run"),
+                                    started_at=cycle_start_time,
+                                    completed_at=cycle_end_time,
+                                    status=status,
+                                    summary_json={
+                                        "num_trades": result["num_trades"],
+                                        "num_rejected": result["num_rejected"],
+                                        "duration_seconds": duration_seconds,
+                                    },
+                                )
+                                session.add(run)
+                                session.commit()
+                        except Exception:
+                            session.rollback()
+                            raise
+                        finally:
+                            session.close()
                     except Exception as e:
                         logger.warning(f"Failed to update Run record (fail-open): {e}", exc_info=True)
                 except Exception:

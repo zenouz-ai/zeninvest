@@ -416,22 +416,14 @@ class StopLossManager:
         high_water_mark: float | None = None,
         cycle_id: str | None = None,
     ) -> dict[str, Any]:
-        """Cancel existing stop (if any) and place a new one. Log the adjustment."""
+        """Place new stop first, then cancel old one. This ensures the position
+        is never unprotected — if the new stop fails, the old one remains.
+        (Audit fix H-1: reversed order to prevent gap risk.)
+        """
         old_stop_price = float(old_stop_info["stopPrice"]) if old_stop_info else None
         cancelled_order_id = None
 
-        # Cancel existing stop
-        if old_stop_info and not self.dry_run:
-            old_order_id = old_stop_info.get("id") or old_stop_info.get("orderId")
-            if old_order_id:
-                try:
-                    self.client.cancel_order(str(old_order_id))
-                    cancelled_order_id = str(old_order_id)
-                    logger.info(f"Cancelled old stop for {ticker}: order_id={old_order_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to cancel old stop for {ticker}: {e}")
-
-        # Place new stop
+        # Place new stop FIRST — so position is never unprotected
         stop_result = self.order_manager.place_stop_loss(
             ticker=ticker,
             quantity=quantity,
@@ -442,6 +434,26 @@ class StopLossManager:
 
         new_order_id = stop_result.get("t212_order_id")
         status = stop_result.get("status", "failed")
+
+        # Cancel old stop AFTER new one is placed successfully
+        if old_stop_info and not self.dry_run:
+            new_stop_placed = status in ("placed", "pending", "dry_run")
+            if new_stop_placed:
+                old_order_id = old_stop_info.get("id") or old_stop_info.get("orderId")
+                if old_order_id:
+                    try:
+                        self.client.cancel_order(str(old_order_id))
+                        cancelled_order_id = str(old_order_id)
+                        logger.info(f"Cancelled old stop for {ticker}: order_id={old_order_id}")
+                    except Exception as e:
+                        # Old stop remains — position has two stops (over-protected), which is
+                        # safer than zero stops. Log for manual cleanup.
+                        logger.warning(f"Failed to cancel old stop for {ticker} (position has two stops): {e}")
+            else:
+                logger.warning(
+                    f"New stop placement failed for {ticker} (status={status}), "
+                    f"keeping old stop at {old_stop_price} for protection"
+                )
 
         self._record_adjustment(
             ticker=ticker,

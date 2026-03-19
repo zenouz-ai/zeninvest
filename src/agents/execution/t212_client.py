@@ -83,7 +83,6 @@ class T212Client:
         finally:
             session.close()
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=4))
     def _request(
         self,
         method: str,
@@ -93,7 +92,46 @@ class T212Client:
         *,
         ignore_404: bool = False,
     ) -> dict[str, Any] | list[Any]:
-        """Make an authenticated API request with retry logic."""
+        """Make an authenticated API request.
+
+        GET requests are retried (safe/idempotent). POST and DELETE requests
+        are NOT retried to prevent duplicate orders or double-cancellations
+        (T212 has no idempotency keys). See audit finding C-1.
+        """
+        is_safe = method.upper() in ("GET", "HEAD", "OPTIONS")
+        if is_safe:
+            return self._request_with_retry(
+                method, endpoint, json_body=json_body, params=params, ignore_404=ignore_404,
+            )
+        return self._request_once(
+            method, endpoint, json_body=json_body, params=params, ignore_404=ignore_404,
+        )
+
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=4))
+    def _request_with_retry(
+        self,
+        method: str,
+        endpoint: str,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        *,
+        ignore_404: bool = False,
+    ) -> dict[str, Any] | list[Any]:
+        """Retryable request — only for safe/idempotent methods (GET)."""
+        return self._request_once(
+            method, endpoint, json_body=json_body, params=params, ignore_404=ignore_404,
+        )
+
+    def _request_once(
+        self,
+        method: str,
+        endpoint: str,
+        json_body: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        *,
+        ignore_404: bool = False,
+    ) -> dict[str, Any] | list[Any]:
+        """Execute a single HTTP request without automatic retry."""
         self._check_rate_limit()
 
         start = time.monotonic()

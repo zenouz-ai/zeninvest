@@ -142,9 +142,11 @@ Respond with JSON only."""
 
     except json.JSONDecodeError as e:
         logger.error(f"GPT-4o returned invalid JSON: {e}")
+        # Default to DISAGREE on parse failure — a garbage response should not
+        # silently approve trades. (Audit fix H-5.)
         return {
-            "verdict": "AGREE",
-            "reasoning": f"Could not parse response: {e}",
+            "verdict": "DISAGREE",
+            "reasoning": f"Could not parse response (defaulting to DISAGREE for safety): {e}",
             "moderator": "gpt-4o",
             "available": True,
             "parse_error": True,
