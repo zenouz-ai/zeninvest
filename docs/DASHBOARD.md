@@ -490,7 +490,7 @@ GET /api/events/stream              # Server-Sent Events (SSE) stream of activit
 | Run History | `runs` + `events_log` | Run metadata + per-run events ✅ |
 | Stock Universe | `instruments` | Sector, industry, market_cap, business_summary, last_screened_at, data_available |
 | Committee Decisions | `strategy_decisions` + `moderation_logs` + `risk_decisions` | Full pipeline trail per ticker per cycle |
-| Portfolio | `portfolio_snapshots` + `orders` | Snapshots for history, orders for current state. `positions_json` stores **normalized** positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) — orchestrator converts from T212 `instrument.ticker` and `walletImpact` before saving. Dashboard router supports both normalized and legacy T212 format for backward compatibility. |
+| Portfolio | `portfolio_snapshots` + `orders` | Snapshots for history, orders for current state. `positions_json` stores **normalized** positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) — orchestrator converts from T212 `instrument.ticker`, uses `walletImpact` when present, and falls back to account-level GBP scaling (`account_summary.investments.currentValue`) when per-position wallet fields are absent. Dashboard router supports both normalized and legacy T212 format for backward compatibility. |
 | P&L / Trade Outcomes | `trade_outcomes` | Links BUY→SELL with P&L, conviction, moderator scores |
 | UOV Scoring | `opportunity_score_snapshots` + `opportunity_queue` | Per-cycle UOV components, queue state |
 | Order Management | `orders` + `stop_loss_adjustments` | Stop-loss audit trail, trailing stops, limit orders |

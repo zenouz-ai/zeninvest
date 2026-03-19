@@ -1066,10 +1066,12 @@ class Orchestrator:
             else:
                 cash = float(cash_data)
                 reserved = 0.0
-            invested = sum(
-                float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
-                for p in positions
-            )
+            invested = float((summary.get("investments") or {}).get("currentValue", 0) or 0)
+            if invested <= 0:
+                invested = sum(
+                    float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
+                    for p in positions
+                )
             total_value = cash + invested + reserved
 
         # Cash for allocation logic: free/available only
@@ -1077,10 +1079,12 @@ class Orchestrator:
             cash = float(cash_data.get("free", cash_data.get("availableToTrade", 0)))
         else:
             cash = float(cash_data)
-        invested = sum(
-            float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
-            for p in positions
-        )
+        invested = float((summary.get("investments") or {}).get("currentValue", 0) or 0)
+        if invested <= 0:
+            invested = sum(
+                float(p.get("currentPrice", 0)) * float(p.get("quantity", 0))
+                for p in positions
+            )
 
         return {
             "cash": cash,
@@ -1931,15 +1935,54 @@ class Orchestrator:
         return (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
 
     @staticmethod
-    def _normalize_position_for_snapshot(pos: dict) -> dict:
+    def _compute_position_value_scale(positions: list[dict], invested_gbp: float) -> float:
+        """Estimate FX/value scale when per-position walletImpact GBP fields are absent."""
+        if invested_gbp <= 0:
+            return 1.0
+        native_total = 0.0
+        for pos in positions:
+            qty = float(pos.get("quantity", 0) or 0)
+            price = float(pos.get("currentPrice", 0) or 0)
+            if qty > 0 and price > 0:
+                native_total += qty * price
+        if native_total <= 0:
+            return 1.0
+        return invested_gbp / native_total
+
+    @staticmethod
+    def _normalize_position_for_snapshot(pos: dict, value_scale: float = 1.0) -> dict:
         """Convert T212 position format to dashboard schema (ticker, quantity, value_gbp, pnl_gbp, pnl_pct)."""
         ticker = Orchestrator._ticker_from_position(pos)
         quantity = float(pos.get("quantity", 0))
         current_price = float(pos.get("currentPrice", 0))
         wallet = pos.get("walletImpact") or {}
-        value_gbp = float(wallet.get("currentValue", 0)) or (quantity * current_price if quantity and current_price else 0)
-        pnl_gbp = float(wallet.get("unrealizedProfitLoss", 0))
-        total_cost = float(wallet.get("totalCost", 0))
+        raw_value_gbp = pos.get("value_gbp", 0) or 0
+        if raw_value_gbp:
+            value_gbp = float(raw_value_gbp)
+        else:
+            wallet_value = float(wallet.get("currentValue", 0) or 0)
+            if wallet_value > 0:
+                value_gbp = wallet_value
+            else:
+                native_value = quantity * current_price if quantity and current_price else 0.0
+                value_gbp = native_value * value_scale
+
+        raw_pnl_gbp = pos.get("pnl_gbp", 0) or 0
+        if raw_pnl_gbp:
+            pnl_gbp = float(raw_pnl_gbp)
+        else:
+            wallet_pnl = float(wallet.get("unrealizedProfitLoss", 0) or 0)
+            if wallet_pnl != 0:
+                pnl_gbp = wallet_pnl
+            else:
+                # T212 returns ppl + fxPpl when walletImpact is absent.
+                pnl_gbp = float(pos.get("ppl", 0) or 0) + float(pos.get("fxPpl", 0) or 0)
+
+        total_cost = float(wallet.get("totalCost", 0) or 0)
+        if total_cost <= 0:
+            avg_price = float(pos.get("averagePrice", 0) or 0)
+            if avg_price > 0 and quantity > 0:
+                total_cost = avg_price * quantity * value_scale
         pnl_pct = (pnl_gbp / total_cost * 100) if total_cost else 0.0
         return {"ticker": ticker, "quantity": quantity, "value_gbp": value_gbp, "pnl_gbp": pnl_gbp, "pnl_pct": pnl_pct}
 
@@ -1953,18 +1996,18 @@ class Orchestrator:
             return {}
 
         sector_values: dict[str, float] = {}
+        value_scale = self._compute_position_value_scale(
+            positions,
+            float(portfolio_data.get("invested", 0) or 0),
+        )
         session = get_session()
         try:
             for pos in positions:
                 ticker = self._ticker_from_position(pos)
                 if not ticker:
                     continue
-                wallet = pos.get("walletImpact") or {}
-                value = float(pos.get("value_gbp", 0)) or float(wallet.get("currentValue", 0))
-                if not value:
-                    qty = float(pos.get("quantity", 0))
-                    price = float(pos.get("currentPrice", 0))
-                    value = qty * price
+                norm = self._normalize_position_for_snapshot(pos, value_scale=value_scale)
+                value = float(norm.get("value_gbp", 0) or 0)
                 if value <= 0:
                     continue
                 inst = session.query(Instrument).filter(Instrument.ticker == ticker).first()
@@ -1980,16 +2023,17 @@ class Orchestrator:
         if total <= 0:
             return {}
         result: dict[str, float] = {}
-        for pos in portfolio_data.get("positions", []):
+        positions = portfolio_data.get("positions", [])
+        value_scale = self._compute_position_value_scale(
+            positions,
+            float(portfolio_data.get("invested", 0) or 0),
+        )
+        for pos in positions:
             ticker = self._ticker_from_position(pos)
             if not ticker:
                 continue
-            wallet = pos.get("walletImpact") or {}
-            value = float(pos.get("value_gbp", 0)) or float(wallet.get("currentValue", 0))
-            if not value:
-                qty = float(pos.get("quantity", 0))
-                price = float(pos.get("currentPrice", 0))
-                value = qty * price
+            norm = self._normalize_position_for_snapshot(pos, value_scale=value_scale)
+            value = float(norm.get("value_gbp", 0) or 0)
             result[ticker] = (value / total) * 100
         return result
 
@@ -2001,11 +2045,15 @@ class Orchestrator:
             return ""
         lines = ["Ticker | Value (GBP) | P&L (GBP) | P&L (%) | Qty"]
         lines.append("--- | --- | --- | --- | ---")
+        value_scale = Orchestrator._compute_position_value_scale(
+            positions,
+            float(portfolio_data.get("invested", 0) or 0),
+        )
         for pos in positions:
             ticker = Orchestrator._ticker_from_position(pos)
             if not ticker:
                 continue
-            norm = Orchestrator._normalize_position_for_snapshot(pos)
+            norm = Orchestrator._normalize_position_for_snapshot(pos, value_scale=value_scale)
             lines.append(
                 f"{ticker} | {norm['value_gbp']:.0f} | {norm['pnl_gbp']:.2f} | {norm['pnl_pct']:.1f}% | {norm['quantity']:.2f}"
             )
@@ -2061,7 +2109,11 @@ class Orchestrator:
         session = get_session()
         try:
             raw_positions = portfolio_data.get("positions", [])
-            normalised = [self._normalize_position_for_snapshot(p) for p in raw_positions]
+            value_scale = self._compute_position_value_scale(
+                raw_positions,
+                float(portfolio_data.get("invested", 0) or 0),
+            )
+            normalised = [self._normalize_position_for_snapshot(p, value_scale=value_scale) for p in raw_positions]
 
             benchmark_value, benchmark_pnl_pct, alpha_pct = None, None, None
             try:

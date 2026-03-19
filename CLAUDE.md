@@ -336,7 +336,7 @@ Gathers macro-level market intelligence to inform trading decisions:
 | `ResearchLog` | `research_logs` | Agentic research tool calls (member, ticker, tool, provider, cache_hit) — US-4.4 |
 | `NotificationLog` | `notification_logs` | Outbound alert audit trail (sent/failed/skipped/deduped attempts) |
 | `MarketDataCache` | `market_data_cache` | OHLCV + indicators + fundamentals (configurable TTL: lite_analysis 4h, full_analysis 4h) |
-| `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state. `positions_json` stores normalised positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) converted from T212 `instrument.ticker` and `walletImpact` |
+| `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state. `positions_json` stores normalised positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) converted from T212 `instrument.ticker`; uses `walletImpact` when available, otherwise applies account-level GBP scaling from `account_summary.investments.currentValue` |
 | `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
 | `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities awaiting execution |
 | `PerformanceMetric` | `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy, alpha |
