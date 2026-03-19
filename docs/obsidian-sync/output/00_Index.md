@@ -19,6 +19,7 @@ Quick reference for all notes in this vault section. Synced from the GitHub repo
 | [[Data Pipeline Rationale]] | Data sources, what's kept/removed, LLM necessity assessment | 2026-03-18 |
 | [[Backtesting and Validation]] | Engine design, walk-forward, promotion report, methodology | 2026-03-18 |
 | [[Order Management and Execution]] | Stop-loss, trailing stops, limit dip-buy, execution guardrails | 2026-03-18 |
+| [[Investment Agent — CV Impact]] | CV differentiators, suggested bullets, interview angles, gap analysis | 2026-03-18 |
 
 ## Sync Info
 
