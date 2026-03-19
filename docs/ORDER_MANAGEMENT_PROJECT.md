@@ -128,12 +128,14 @@ When a future user story is adopted, add it to `docs/SOPHISTICATION_ROADMAP.md` 
 
 ## Dashboard
 
-The Order Management page shows: **Recent Orders** (all market/stop orders with status: filled/pending/dry_run/failed), **Current Stop-Loss Levels** (per position, source: order or adjustment), and **Adjustment History** (ATR reassessment, trailing, limit orders). Order status reflects T212 API response (see rule 7 in CLAUDE.md).
+The Order Management page shows: **Order Health** (unresolved failed count, local-vs-live pending counts, stale/reconciled pending counts, last reconciliation timestamp), **Recent Orders** (all market/stop orders with status: filled/pending/dry_run/failed plus failure detail drill-down), **Current Stop-Loss Levels** (per position, source: order or adjustment), and **Adjustment History** (ATR reassessment, trailing, limit orders). Order status reflects T212 API response (see rule 7 in CLAUDE.md).
 
 Clarification on `pending`:
 - `MARKET` + `pending` usually means the order is accepted (`NEW`) but not yet executed; this is common outside market hours.
 - `STOP` + `pending` is expected for working protective stops; these remain open until the stop price is triggered, cancelled, or replaced.
 - Local `orders.status` is reconciled at the start of each non-dry-run cycle by `OrderManager.sync_order_status_from_t212()` (pending -> filled when T212 history reports FILLED/PARTIALLY_FILLED).
+- Dashboard `/api/orders/health` runs reconciliation on demand: stale local `pending` stop rows that are missing from live T212 pending orders are marked `cancelled` with an audit message.
+- Failed-order alerting is based on unresolved failures (not raw historical failed rows). A failure remains unresolved if it is recent (default 7 days) or if no later successful order exists for the same `ticker + action + order_type`.
 
 ## Related Notes
 

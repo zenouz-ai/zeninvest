@@ -155,10 +155,14 @@ export interface Order {
   order_type: string
   quantity: number
   price: number | null
+  limit_price?: number | null
+  stop_price?: number | null
   value_gbp: number | null
   status: string
   strategy: string | null
   conviction: number | null
+  t212_order_id?: string | null
+  error_message?: string | null
 }
 
 // Utility function to clean ticker format for display

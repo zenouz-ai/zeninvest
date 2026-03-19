@@ -318,6 +318,30 @@ export const ordersApi = {
     const response = await api.get(`/api/orders/${id}`)
     return response.data
   },
+  health: async (params?: {
+    unresolved_window_days?: number
+    reconcile_pending?: boolean
+  }): Promise<{
+    failed_open_count: number
+    failed_recent: Array<{
+      id: number
+      timestamp: string
+      ticker: string
+      action: string
+      order_type: string
+      error_message?: string | null
+    }>
+    pending_local_count: number
+    pending_live_count: number
+    stale_pending_count: number
+    reconciled_pending_count: number
+    unresolved_window_days: number
+    last_reconciled_at: string
+    live_fetch_error?: string | null
+  }> => {
+    const response = await api.get('/api/orders/health', { params })
+    return response.data
+  },
 }
 
 // System API (state, pause, resume, reset-peak)

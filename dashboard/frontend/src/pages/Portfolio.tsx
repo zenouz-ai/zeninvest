@@ -233,10 +233,18 @@ export default function Portfolio() {
                 <YAxis stroke="#8b949e" />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#0d1117',
-                    border: '1px solid #30363d',
+                    backgroundColor: '#06060a',
+                    border: '1px solid #00d4ff66',
+                    borderRadius: '8px',
+                    boxShadow: '0 6px 20px rgba(0, 0, 0, 0.45)',
                     color: '#e6edf3',
                   }}
+                  itemStyle={{ color: '#e6edf3' }}
+                  labelStyle={{ color: '#00d4ff', fontWeight: 600 }}
+                  formatter={(value: number, name: string) => [
+                    `£${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    name,
+                  ]}
                 />
                 <Line
                   type="monotone"
@@ -278,10 +286,18 @@ export default function Portfolio() {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#0d1117',
-                    border: '1px solid #30363d',
+                    backgroundColor: '#06060a',
+                    border: '1px solid #00d4ff66',
+                    borderRadius: '8px',
+                    boxShadow: '0 6px 20px rgba(0, 0, 0, 0.45)',
                     color: '#e6edf3',
                   }}
+                  itemStyle={{ color: '#e6edf3' }}
+                  labelStyle={{ color: '#00d4ff', fontWeight: 600 }}
+                  formatter={(value: number, name: string) => [
+                    `£${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    name,
+                  ]}
                 />
               </PieChart>
             </ResponsiveContainer>

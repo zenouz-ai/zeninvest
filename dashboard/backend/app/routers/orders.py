@@ -1,16 +1,16 @@
-"""Orders router - order history."""
+"""Orders router - order history and operational health."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
 
+from src.agents.execution.order_manager import OrderManager
 from src.data.database import get_session
 from src.data.models import Order
 from src.utils.config import get_settings
 
-from ..schemas import OrderSchema
+from ..schemas import FailedOrderHealthSchema, OrderSchema, OrdersHealthSchema
 
 router = APIRouter()
 settings = get_settings()
@@ -69,3 +69,100 @@ async def get_order(order_id: int):
         return order
     finally:
         session.close()
+
+
+def _is_failed_order_unresolved(failed_order: Order, window_days: int) -> bool:
+    """Return True when a failed order should still appear as unresolved."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    failed_ts = failed_order.timestamp
+    # SQLite commonly returns naive datetimes even when app logic uses UTC.
+    if failed_ts.tzinfo is None:
+        cutoff = cutoff.replace(tzinfo=None)
+    if failed_ts >= cutoff:
+        return True
+
+    session = get_session()
+    try:
+        later_success = (
+            session.query(Order.id)
+            .filter(
+                Order.ticker == failed_order.ticker,
+                Order.action == failed_order.action,
+                Order.order_type == failed_order.order_type,
+                Order.timestamp > failed_order.timestamp,
+                Order.status.in_(["filled", "dry_run", "cancelled"]),
+            )
+            .first()
+        )
+        return later_success is None
+    finally:
+        session.close()
+
+
+@router.get("/health", response_model=OrdersHealthSchema)
+async def get_orders_health(
+    unresolved_window_days: int = Query(default=7, ge=1, le=30),
+    reconcile_pending: bool = Query(default=True),
+):
+    """Summarize unresolved failed orders and stale pending order counts."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    reconciled = {
+        "pending_local_count": 0,
+        "pending_live_count": 0,
+        "stale_pending_count": 0,
+        "reconciled_pending_count": 0,
+        "live_fetch_error": None,
+    }
+    if reconcile_pending:
+        reconciled = OrderManager(dry_run=False).reconcile_pending_stop_orders_with_t212()
+    else:
+        session = get_session()
+        try:
+            pending_local = (
+                session.query(Order.id)
+                .filter(Order.status == "pending", Order.order_type == "stop")
+                .count()
+            )
+        finally:
+            session.close()
+        reconciled["pending_local_count"] = pending_local
+
+    session = get_session()
+    try:
+        failed_orders = (
+            session.query(Order)
+            .filter(Order.status == "failed")
+            .order_by(desc(Order.timestamp))
+            .all()
+        )
+    finally:
+        session.close()
+
+    unresolved = [
+        order for order in failed_orders if _is_failed_order_unresolved(order, unresolved_window_days)
+    ]
+    failed_recent = [
+        FailedOrderHealthSchema(
+            id=order.id,
+            timestamp=order.timestamp,
+            ticker=order.ticker,
+            action=order.action,
+            order_type=order.order_type,
+            error_message=order.error_message,
+        )
+        for order in unresolved[:10]
+    ]
+
+    return OrdersHealthSchema(
+        failed_open_count=len(unresolved),
+        failed_recent=failed_recent,
+        pending_local_count=int(reconciled.get("pending_local_count", 0)),
+        pending_live_count=int(reconciled.get("pending_live_count", 0)),
+        stale_pending_count=int(reconciled.get("stale_pending_count", 0)),
+        reconciled_pending_count=int(reconciled.get("reconciled_pending_count", 0)),
+        unresolved_window_days=unresolved_window_days,
+        last_reconciled_at=datetime.now(timezone.utc),
+        live_fetch_error=reconciled.get("live_fetch_error"),
+    )

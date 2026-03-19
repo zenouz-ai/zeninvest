@@ -584,6 +584,91 @@ class OrderManager:
             logger.warning(f"Order status sync failed: {e}")
             return 0
 
+    def reconcile_pending_stop_orders_with_t212(self) -> dict[str, Any]:
+        """Reconcile local pending stop orders against live T212 pending orders.
+
+        Local rows that are pending in DB but missing from live T212 pending orders
+        are stale and are updated to cancelled.
+        """
+        if self.dry_run:
+            return {
+                "pending_local_count": 0,
+                "pending_live_count": 0,
+                "stale_pending_count": 0,
+                "reconciled_pending_count": 0,
+                "live_fetch_error": None,
+            }
+
+        session = get_session()
+        try:
+            local_pending = (
+                session.query(Order)
+                .filter(
+                    Order.status == "pending",
+                    Order.order_type == "stop",
+                    Order.t212_order_id.isnot(None),
+                )
+                .all()
+            )
+            pending_local_count = len(local_pending)
+            if pending_local_count == 0:
+                return {
+                    "pending_local_count": 0,
+                    "pending_live_count": 0,
+                    "stale_pending_count": 0,
+                    "reconciled_pending_count": 0,
+                    "live_fetch_error": None,
+                }
+
+            try:
+                live_pending = self.client.get_pending_orders()
+            except Exception as e:
+                err = str(e)
+                logger.warning(f"Pending stop reconciliation skipped: failed to fetch live pending orders: {err}")
+                return {
+                    "pending_local_count": pending_local_count,
+                    "pending_live_count": 0,
+                    "stale_pending_count": 0,
+                    "reconciled_pending_count": 0,
+                    "live_fetch_error": err,
+                }
+
+            live_pending_ids = {
+                str(item.get("id") or item.get("orderId"))
+                for item in live_pending
+                if (item.get("id") or item.get("orderId")) is not None
+            }
+            pending_live_count = len(live_pending_ids)
+
+            stale_rows = [row for row in local_pending if str(row.t212_order_id) not in live_pending_ids]
+            for row in stale_rows:
+                row.status = "cancelled"
+                row.error_message = "Reconciled: missing from live T212 pending orders"
+            if stale_rows:
+                session.commit()
+                logger.info(f"Reconciled {len(stale_rows)} stale pending stop orders")
+
+            return {
+                "pending_local_count": pending_local_count,
+                "pending_live_count": pending_live_count,
+                "stale_pending_count": len(stale_rows),
+                "reconciled_pending_count": len(stale_rows),
+                "live_fetch_error": None,
+            }
+        except Exception as e:
+            session.rollback()
+            err = str(e)
+            logger.warning(f"Pending stop reconciliation failed: {err}")
+            return {
+                "pending_local_count": 0,
+                "pending_live_count": 0,
+                "stale_pending_count": 0,
+                "reconciled_pending_count": 0,
+                "live_fetch_error": err,
+            }
+        finally:
+            session.close()
+
     def get_portfolio_state(self) -> dict[str, Any]:
         """Get current portfolio positions and cash.
 

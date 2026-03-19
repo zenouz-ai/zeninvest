@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { ordersApi, stopLossApi } from '../api/client'
 import { TableSkeleton } from '../components/Skeleton'
 import { safeFormat } from '../utils/date'
@@ -12,6 +12,17 @@ export default function OrderManagement() {
   const [current, setCurrent] = useState<{ ticker: string; stop_price: number | null; source: string }[]>([])
   const [adjustments, setAdjustments] = useState<any[]>([])
   const [recentOrders, setRecentOrders] = useState<any[]>([])
+  const [expandedErrorOrderId, setExpandedErrorOrderId] = useState<number | null>(null)
+  const [health, setHealth] = useState<{
+    failed_open_count: number
+    pending_local_count: number
+    pending_live_count: number
+    stale_pending_count: number
+    reconciled_pending_count: number
+    unresolved_window_days: number
+    last_reconciled_at: string
+    live_fetch_error?: string | null
+  } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -23,9 +34,11 @@ export default function OrderManagement() {
         stopLossApi.getAdjustments({ limit: 50 }),
         ordersApi.list({ limit: 30 }),
       ])
+      const healthData = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: true })
       setCurrent(currentData)
       setAdjustments(adjData)
       setRecentOrders(ordersData)
+      setHealth(healthData)
     } catch (e) {
       console.error('Failed to fetch stop-loss data:', e)
       setError(e instanceof Error ? e.message : 'Failed to load stop-loss data')
@@ -60,6 +73,38 @@ export default function OrderManagement() {
         description="Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent market orders (BUY/SELL/REDUCE) are listed below."
       />
 
+      {health && (
+        <div className="card">
+          <h2 className="text-lg font-semibold tracking-wide mb-3">Order Health</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <div className="border border-terminal-border rounded-md p-3">
+              <div className="text-terminal-text-dim">Unresolved failed</div>
+              <div className={`font-mono text-lg ${health.failed_open_count > 0 ? 'text-loss' : 'text-profit'}`}>
+                {health.failed_open_count}
+              </div>
+            </div>
+            <div className="border border-terminal-border rounded-md p-3">
+              <div className="text-terminal-text-dim">Pending (local vs live)</div>
+              <div className="font-mono text-lg">
+                {health.pending_local_count} / {health.pending_live_count}
+              </div>
+              <div className="text-xs text-terminal-text-dim mt-1">
+                stale={health.stale_pending_count}, reconciled={health.reconciled_pending_count}
+              </div>
+            </div>
+            <div className="border border-terminal-border rounded-md p-3">
+              <div className="text-terminal-text-dim">Last reconciled</div>
+              <div className="font-mono text-xs">{safeFormat(health.last_reconciled_at, 'MMM dd HH:mm:ss', '—')}</div>
+            </div>
+          </div>
+          {health.live_fetch_error && (
+            <p className="text-warning text-xs mt-2">
+              Live pending fetch warning: {health.live_fetch_error}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="card">
         <h2 className="text-lg font-semibold tracking-wide mb-3">Recent Orders ({recentOrders.length})</h2>
         {recentOrders.length === 0 ? (
@@ -75,18 +120,43 @@ export default function OrderManagement() {
                   <th className="py-2 font-mono">Qty</th>
                   <th className="py-2 font-mono">Type</th>
                   <th className="py-2 font-mono">Status</th>
+                  <th className="py-2 font-mono">Error</th>
                 </tr>
               </thead>
               <tbody>
                 {recentOrders.map((o) => (
-                  <tr key={o.id} className="border-b border-terminal-border">
-                    <td className="py-1 font-mono text-xs">{safeFormat(o.timestamp, 'MMM dd HH:mm', '')}</td>
-                    <td className="py-1 font-mono">{cleanTicker(o.ticker)}</td>
-                    <td className="py-1">{o.action}</td>
-                    <td className="py-1 font-mono">{o.quantity}</td>
-                    <td className="py-1 text-terminal-text-dim">{o.order_type}</td>
-                    <td className="py-1">{o.status}</td>
-                  </tr>
+                  <Fragment key={o.id}>
+                    <tr className="border-b border-terminal-border">
+                      <td className="py-1 font-mono text-xs">{safeFormat(o.timestamp, 'MMM dd HH:mm', '')}</td>
+                      <td className="py-1 font-mono">{cleanTicker(o.ticker)}</td>
+                      <td className="py-1">{o.action}</td>
+                      <td className="py-1 font-mono">{o.quantity}</td>
+                      <td className="py-1 text-terminal-text-dim">{o.order_type}</td>
+                      <td className={`py-1 ${o.status === 'failed' ? 'text-loss' : ''}`}>{o.status}</td>
+                      <td className="py-1 text-xs text-terminal-text-dim">
+                        {o.error_message ? (
+                          <button
+                            type="button"
+                            className="underline hover:text-terminal-text"
+                            onClick={() => setExpandedErrorOrderId(expandedErrorOrderId === o.id ? null : o.id)}
+                          >
+                            {expandedErrorOrderId === o.id ? 'hide' : 'details'}
+                          </button>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                    {expandedErrorOrderId === o.id && o.error_message && (
+                      <tr className="border-b border-terminal-border bg-terminal-surface/30">
+                        <td className="py-2 text-xs text-terminal-text-dim" colSpan={7}>
+                          <div><span className="font-semibold">Order ID:</span> {o.id}</div>
+                          <div><span className="font-semibold">Broker ID:</span> {o.t212_order_id ?? '—'}</div>
+                          <div className="mt-1 whitespace-pre-wrap break-words">
+                            <span className="font-semibold">Error:</span> {o.error_message}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

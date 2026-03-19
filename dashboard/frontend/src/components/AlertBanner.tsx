@@ -59,14 +59,14 @@ export function AlertBanner({ sseConnected }: { sseConnected: boolean }) {
       }
     } catch { /* silent */ }
 
-    // 5. Failed orders
+    // 5. Unresolved failed orders
     try {
-      const orders = await ordersApi.list({ limit: 5, status: 'failed' })
-      if (orders.length > 0) {
+      const health = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: true })
+      if (health.failed_open_count > 0) {
         newAlerts.push({
           id: 'failed-orders',
           severity: 'critical',
-          message: `${orders.length} failed order${orders.length > 1 ? 's' : ''} — check Order Management`,
+          message: `${health.failed_open_count} unresolved failed order${health.failed_open_count > 1 ? 's' : ''} — check Order Management`,
         })
       }
     } catch { /* silent */ }

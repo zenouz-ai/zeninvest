@@ -793,3 +793,79 @@ class TestCancelConflictingStopsRetryError:
 
         assert result["status"] == "failed"
         assert "stop-888" in result["error"]
+
+
+class TestPendingStopReconciliation:
+    """Reconcile local pending stop rows against live T212 pending orders."""
+
+    @pytest.fixture(autouse=True)
+    def mock_get_session(self, db_session):
+        with patch("src.agents.execution.order_manager.get_session", return_value=db_session):
+            yield
+
+    def test_reconcile_marks_stale_pending_stops_cancelled(self, db_session):
+        db_session.add_all([
+            Order(
+                ticker="AAPL_US_EQ",
+                action="SELL",
+                order_type="stop",
+                quantity=-1.0,
+                stop_price=100.0,
+                t212_order_id="live-1",
+                status="pending",
+            ),
+            Order(
+                ticker="MSFT_US_EQ",
+                action="SELL",
+                order_type="stop",
+                quantity=-1.0,
+                stop_price=200.0,
+                t212_order_id="stale-1",
+                status="pending",
+            ),
+        ])
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"id": "live-1", "ticker": "AAPL_US_EQ", "type": "STOP"},
+        ]
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.reconcile_pending_stop_orders_with_t212()
+
+        assert result["pending_local_count"] == 2
+        assert result["pending_live_count"] == 1
+        assert result["stale_pending_count"] == 1
+        assert result["reconciled_pending_count"] == 1
+        assert result["live_fetch_error"] is None
+
+        db_session.expire_all()
+        stale = db_session.query(Order).filter(Order.t212_order_id == "stale-1").first()
+        assert stale.status == "cancelled"
+        assert "Reconciled" in (stale.error_message or "")
+
+    def test_reconcile_returns_live_fetch_error_fail_open(self, db_session):
+        db_session.add(
+            Order(
+                ticker="AAPL_US_EQ",
+                action="SELL",
+                order_type="stop",
+                quantity=-1.0,
+                stop_price=100.0,
+                t212_order_id="live-1",
+                status="pending",
+            )
+        )
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.side_effect = RuntimeError("rate limited")
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.reconcile_pending_stop_orders_with_t212()
+
+        assert result["pending_local_count"] == 1
+        assert result["pending_live_count"] == 0
+        assert result["reconciled_pending_count"] == 0
+        assert "rate limited" in (result["live_fetch_error"] or "")
