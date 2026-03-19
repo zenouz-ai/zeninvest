@@ -187,6 +187,12 @@ class OrderManager:
 
             except Exception as e:
                 error_str = str(e).lower()
+                # Unwrap tenacity RetryError to inspect the underlying exception
+                inner = getattr(e, "last_attempt", None)
+                if inner is not None and callable(getattr(inner, "exception", None)):
+                    inner_exc = inner.exception()
+                    if inner_exc is not None:
+                        error_str = str(inner_exc).lower()
                 # If stop already gone (triggered or cancelled), treat as success
                 if "404" in error_str or "not found" in error_str:
                     logger.info(

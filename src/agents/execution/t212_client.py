@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from src.data.database import get_session
 from src.data.models import ApiLog
@@ -24,6 +24,14 @@ T212_TIME_VALIDITY: dict[str, str] = {"GTC": "GOOD_TILL_CANCEL", "DAY": "DAY"}
 def _t212_time_validity(value: str) -> str:
     """Map config/caller time validity to T212 API enum."""
     return T212_TIME_VALIDITY.get(value.upper(), value)
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Only retry on transient errors: 429, 5xx, and network failures."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        code = exc.response.status_code
+        return code == 429 or code >= 500
+    return isinstance(exc, (httpx.RequestError, json.JSONDecodeError))
 
 
 class T212Client:
@@ -83,7 +91,11 @@ class T212Client:
         finally:
             session.close()
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=4))
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
+        retry=retry_if_exception(_is_retryable),
+    )
     def _request(
         self,
         method: str,
@@ -121,6 +133,9 @@ class T212Client:
                 return {}
 
             response.raise_for_status()
+            # T212 DELETE endpoints return 200 with empty body
+            if not response.text or not response.text.strip():
+                return {}
             return response.json()
 
         except httpx.HTTPStatusError as e:

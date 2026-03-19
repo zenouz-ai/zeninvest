@@ -38,6 +38,7 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
   - `StopLossManager.reassess_stops(positions, stocks_data, cycle_id)` — ATR-based stop levels for all positions; only tighten if `only_tighten_stops` is true.
   - `StopLossManager.apply_trailing_stops(positions, cycle_id)` — HWM-based ratchet; cancel existing stop, place new one at trail distance below HWM.
 - **Execution retry:** T212 order placement and stop operations use 2 retries with 5-second backoff for transient T212 API failures.
+- **T212 empty-body DELETE:** T212's `DELETE /equity/orders/{id}` returns HTTP 200 with an empty body. `T212Client._request` returns `{}` for empty responses. The retry predicate only retries 429/5xx/network errors; 4xx (including 404) fails immediately. `cancel_conflicting_stops` also unwraps tenacity `RetryError` to detect 404 in the underlying exception.
 
 ### ATR-based reassessment
 

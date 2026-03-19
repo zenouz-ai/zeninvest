@@ -4,6 +4,9 @@ import pytest
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
+import httpx
+from tenacity import RetryError, Future
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -15,6 +18,7 @@ except ImportError:
     DashboardBase = None
 from src.agents.execution.t212_client import (
     T212Client,
+    _is_retryable,
     _t212_time_validity,
     calculate_quantity,
 )
@@ -598,3 +602,194 @@ class TestT212TimeValidityMapping:
             call_args = mock_client_instance.request.call_args
             body = call_args[1].get("json") or {}
             assert body.get("timeValidity") == "GOOD_TILL_CANCEL"
+
+
+class TestT212EmptyResponseBody:
+    """T212 DELETE /equity/orders/{id} returns 200 with empty body."""
+
+    def test_request_handles_empty_body_200(self):
+        """_request should return {} when T212 responds 200 with empty body."""
+        mock_settings = MagicMock()
+        mock_settings.t212_base_url = "https://demo.trading212.com/api/v0"
+        mock_settings.t212_api_key = "test-key"
+        mock_settings.t212_api_secret = "test-secret"
+        with patch("src.agents.execution.t212_client.get_session"), patch(
+            "src.agents.execution.t212_client.get_settings", return_value=mock_settings
+        ), patch("httpx.Client") as mock_client_class:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.text = ""  # Empty body — the root cause
+            mock_response.headers = {}
+            mock_response.raise_for_status = MagicMock()
+
+            mock_client_instance = MagicMock()
+            mock_client_class.return_value = mock_client_instance
+            mock_client_instance.request.return_value = mock_response
+
+            client = T212Client()
+            result = client.cancel_order("46150111089")
+
+            assert result == {}
+            # Should NOT have called .json() on empty body
+            mock_response.json.assert_not_called()
+
+    def test_request_handles_whitespace_only_body(self):
+        """_request should return {} when T212 responds with whitespace-only body."""
+        mock_settings = MagicMock()
+        mock_settings.t212_base_url = "https://demo.trading212.com/api/v0"
+        mock_settings.t212_api_key = "test-key"
+        mock_settings.t212_api_secret = "test-secret"
+        with patch("src.agents.execution.t212_client.get_session"), patch(
+            "src.agents.execution.t212_client.get_settings", return_value=mock_settings
+        ), patch("httpx.Client") as mock_client_class:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.text = "  \n  "  # Whitespace only
+            mock_response.headers = {}
+            mock_response.raise_for_status = MagicMock()
+
+            mock_client_instance = MagicMock()
+            mock_client_class.return_value = mock_client_instance
+            mock_client_instance.request.return_value = mock_response
+
+            client = T212Client()
+            result = client.cancel_order("12345")
+
+            assert result == {}
+            mock_response.json.assert_not_called()
+
+    def test_request_parses_json_when_body_present(self):
+        """_request should parse JSON normally when body is present."""
+        mock_settings = MagicMock()
+        mock_settings.t212_base_url = "https://demo.trading212.com/api/v0"
+        mock_settings.t212_api_key = "test-key"
+        mock_settings.t212_api_secret = "test-secret"
+        with patch("src.agents.execution.t212_client.get_session"), patch(
+            "src.agents.execution.t212_client.get_settings", return_value=mock_settings
+        ), patch("httpx.Client") as mock_client_class:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.text = '{"id": 123, "status": "FILLED"}'
+            mock_response.headers = {}
+            mock_response.raise_for_status = MagicMock()
+            mock_response.json.return_value = {"id": 123, "status": "FILLED"}
+
+            mock_client_instance = MagicMock()
+            mock_client_class.return_value = mock_client_instance
+            mock_client_instance.request.return_value = mock_response
+
+            client = T212Client()
+            result = client.place_market_order("AAPL_US_EQ", 1.0)
+
+            assert result == {"id": 123, "status": "FILLED"}
+            mock_response.json.assert_called_once()
+
+
+class TestRetryPredicate:
+    """_is_retryable should only retry transient errors."""
+
+    def test_429_is_retryable(self):
+        resp = MagicMock()
+        resp.status_code = 429
+        exc = httpx.HTTPStatusError("rate limited", request=MagicMock(), response=resp)
+        assert _is_retryable(exc) is True
+
+    def test_500_is_retryable(self):
+        resp = MagicMock()
+        resp.status_code = 500
+        exc = httpx.HTTPStatusError("server error", request=MagicMock(), response=resp)
+        assert _is_retryable(exc) is True
+
+    def test_502_is_retryable(self):
+        resp = MagicMock()
+        resp.status_code = 502
+        exc = httpx.HTTPStatusError("bad gateway", request=MagicMock(), response=resp)
+        assert _is_retryable(exc) is True
+
+    def test_404_is_not_retryable(self):
+        resp = MagicMock()
+        resp.status_code = 404
+        exc = httpx.HTTPStatusError("not found", request=MagicMock(), response=resp)
+        assert _is_retryable(exc) is False
+
+    def test_400_is_not_retryable(self):
+        resp = MagicMock()
+        resp.status_code = 400
+        exc = httpx.HTTPStatusError("bad request", request=MagicMock(), response=resp)
+        assert _is_retryable(exc) is False
+
+    def test_422_is_not_retryable(self):
+        resp = MagicMock()
+        resp.status_code = 422
+        exc = httpx.HTTPStatusError("unprocessable", request=MagicMock(), response=resp)
+        assert _is_retryable(exc) is False
+
+    def test_network_error_is_retryable(self):
+        exc = httpx.ConnectError("connection refused")
+        assert _is_retryable(exc) is True
+
+    def test_timeout_is_retryable(self):
+        exc = httpx.ReadTimeout("timeout")
+        assert _is_retryable(exc) is True
+
+
+class TestCancelConflictingStopsRetryError:
+    """cancel_conflicting_stops should unwrap RetryError wrapping a 404."""
+
+    @pytest.fixture(autouse=True)
+    def mock_get_session(self, db_session):
+        with patch("src.agents.execution.order_manager.get_session", return_value=db_session):
+            yield
+
+    def test_retryerror_wrapping_404_treated_as_success(self, db_session):
+        """When cancel_order raises RetryError whose last attempt was a 404,
+        cancel_conflicting_stops should treat the stop as already gone."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.0, "id": "stop-999"},
+        ]
+
+        # Build a RetryError wrapping an HTTPStatusError with 404
+        resp_404 = MagicMock()
+        resp_404.status_code = 404
+        resp_404.text = '{"detail":"Order not found"}'
+        inner_exc = httpx.HTTPStatusError(
+            "404 Not Found", request=MagicMock(), response=resp_404
+        )
+        # tenacity RetryError needs a last_attempt Future
+        future = Future(1)
+        future.set_exception(inner_exc)
+        retry_error = RetryError(future)
+
+        mock_client.cancel_order.side_effect = retry_error
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.cancel_conflicting_stops("VRTX_US_EQ")
+
+        assert result["status"] == "ok"
+        assert "stop-999" in result["cancelled"]
+
+    def test_retryerror_wrapping_non_404_treated_as_failure(self, db_session):
+        """When cancel_order raises RetryError wrapping a 500, it should fail."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.0, "id": "stop-888"},
+        ]
+
+        resp_500 = MagicMock()
+        resp_500.status_code = 500
+        resp_500.text = "Internal Server Error"
+        inner_exc = httpx.HTTPStatusError(
+            "500 Internal Server Error", request=MagicMock(), response=resp_500
+        )
+        future = Future(1)
+        future.set_exception(inner_exc)
+        retry_error = RetryError(future)
+
+        mock_client.cancel_order.side_effect = retry_error
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.cancel_conflicting_stops("VRTX_US_EQ")
+
+        assert result["status"] == "failed"
+        assert "stop-888" in result["error"]
