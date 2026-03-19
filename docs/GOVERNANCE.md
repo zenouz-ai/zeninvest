@@ -493,6 +493,7 @@ poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
 - If a position exists, places a market sell order for the full quantity.
 - **Bypasses** the strategy, moderation, and risk pipeline -- this is an emergency action.
 - Logged to the `orders` table with `strategy="liquidation"`.
+- Also available via **Dashboard Portfolio page** "Force Sell" button (`POST /api/system/force-sell/{ticker}`) with confirmation modal — no CLI/SSH required.
 
 ### 6.3 Manual Override Procedures
 
@@ -661,7 +662,7 @@ Key MiFID II requirements for algorithmic trading and their mapping to this syst
 
 | MiFID II Requirement | System Implementation |
 |---------------------|----------------------|
-| Kill functionality to urgently cancel orders | `--pause` command, `--force-sell`, `liquidate_all()` |
+| Kill functionality to urgently cancel orders | `--pause` command, `--force-sell` (CLI or Dashboard Force Sell button), `liquidate_all()` |
 | Pre-trade risk controls | 11 hard rules in Risk Agent, checked before every order |
 | Post-trade monitoring | Portfolio snapshots, daily/weekly reports, order history |
 | Real-time monitoring | Cycle-level logging, cost tracking, state machine |

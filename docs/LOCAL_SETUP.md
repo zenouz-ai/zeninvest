@@ -431,6 +431,8 @@ poetry run python -m src.orchestrator.main
 - Orders are market orders on the **Practice** account
 - Each trade is journaled in `journals/` directory
 
+**Dashboard alternative:** When the dashboard is running (`dashboard.enabled: true`), you can trigger cycles via the **Dry Run** and **Live Run** buttons on Dashboard Home, and force-sell positions via the **Force Sell** button on the Portfolio page — no CLI/SSH required. Pause/Resume is also available from the Dashboard.
+
 ## Running the Scheduler (Continuous Operation)
 
 For continuous automated trading:
