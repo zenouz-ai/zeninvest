@@ -317,7 +317,14 @@ class OrderManager:
             logger.warning(f"Duplicate order detected: {dedup_key}")
             return {"status": "skipped", "reason": "duplicate"}
 
-        value_gbp = abs(quantity) * current_price
+        computed_value_gbp = abs(quantity) * current_price
+        # Min-order policy is based on the *target* trade value (pre quantity flooring)
+        # for BUY orders. This avoids off-by-a-few-pence skips when the share quantity
+        # is rounded down to 2 decimals.
+        if action == "BUY":
+            value_gbp = float(abs(target_amount_gbp))
+        else:
+            value_gbp = computed_value_gbp
         can_place, reject_reason = self._passes_min_order_value(
             action=action,
             order_type="market",

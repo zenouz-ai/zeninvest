@@ -258,7 +258,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Table of all recent orders: time, ticker, action, quantity, order type, status (filled/pending/dry_run/failed)
 - Market orders (BUY/SELL/REDUCE) and stop orders in one view
 - Failed rows expose error details directly in the table (drill-down with full error message and broker order ID when available)
-- Order-value floor behavior is visible in execution outcomes: BUY/REDUCE/limit/stop below £500 are skipped, while explicit market SELL can still execute for full exits
+- Order-value floor behavior is visible in execution outcomes: BUY/REDUCE/limit/stop below £500 are skipped (for MARKET BUYs, floor check uses target trade value to avoid rounding dips), while explicit market SELL can still execute for full exits
 - REDUCE decisions that would leave a residual position below £500 appear as executed SELL actions in the orders stream
 - Status reflects T212 API response when live (FILLED→filled, NEW→pending, REJECTED→failed)
 - `pending` has two common meanings in this table:

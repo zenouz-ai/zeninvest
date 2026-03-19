@@ -26,7 +26,7 @@ Post-trade order lifecycle: initial stop-loss, ATR-based reassessment, trailing 
 
 ## Guardrails
 
-- **£500 order floor** — BUY, REDUCE, and limit paths require minimum order value. Explicit market SELL and protective stop-loss are exempt so small holdings can be exited/protected.
+- **£500 order floor** — BUY, REDUCE, and limit paths require minimum order value. For MARKET BUYs, the floor check uses the *target trade value* (pre share flooring) to avoid tiny rounding dips. Explicit market SELL and protective stop-loss are exempt so small holdings can be exited/protected.
 - **REDUCE floor safeguard** — if REDUCE would leave position below £500, auto-converts to full SELL.
 - **Reduction tiers** — REDUCE rounded to nearest tier (25%, 50%, 70%, 100%). Below 25% skipped unless residual floor triggers.
 - **Order dedup** — 5-minute window prevents double execution.

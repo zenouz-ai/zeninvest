@@ -172,6 +172,29 @@ class TestOrderManager:
         assert result["reason"] == "below_min_order_value"
         assert db_session.query(Order).count() == 0
 
+    def test_buy_at_floor_allows_quantity_rounding_dip(self, db_session):
+        """Target>=min should allow BUY even if quantity flooring makes computed value dip slightly below."""
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+
+        # Raw shares = 500/333.33 = 1.500015... => floors to 1.50
+        # Computed order value = 1.50 * 333.33 = 499.995 < 500.
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=500.0,
+            current_price=333.33,
+            strategy="momentum",
+            conviction=80,
+        )
+
+        assert result["status"] == "dry_run"
+        orders = db_session.query(Order).all()
+        assert len(orders) == 1
+        assert orders[0].status == "dry_run"
+        # With target-based enforcement, logged value_gbp should match the target.
+        assert orders[0].value_gbp == 500.0
+
     def test_reduce_below_min_order_value_skipped_and_not_logged(self, db_session):
         mock_client = MagicMock()
         manager = OrderManager(client=mock_client, dry_run=True)

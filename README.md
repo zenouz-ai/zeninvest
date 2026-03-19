@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 346 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router, search API tracker, daily/weekly reports, market holidays, opportunity optimizer edge cases), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite + UX Phase 1 complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) and [UX Audit](docs/UX_AUDIT.md).
+**Status:** POC — 347 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router, search API tracker, daily/weekly reports, market holidays, opportunity optimizer edge cases), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite + UX Phase 1 complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) and [UX Audit](docs/UX_AUDIT.md).
 
 ## Architecture
 
@@ -377,7 +377,7 @@ Execution behavior:
 
 - **Market orders** — BUY, SELL, REDUCE (partial sell) via T212 market order API
 - **Stop-loss orders** — Automatically placed after BUY executions using Claude's `stop_loss_pct` (GTC validity)
-- **£500 order floor** — Orders below `min_order_value_gbp` are skipped for BUY/REDUCE/limit paths; explicit market SELL and protective stop-loss orders are allowed below the floor so small holdings can still be exited/protected
+- **£500 order floor** — Orders below `min_order_value_gbp` are skipped for BUY/REDUCE/limit paths; for MARKET BUYs the floor check uses the *target trade value* (pre quantity flooring) and the logged order value uses the target to avoid off-by-a-few-pence rounding dips. Explicit market SELL and protective stop-loss orders are allowed below the floor so small holdings can still be exited/protected
 - **REDUCE floor safeguard** — If a REDUCE would leave a position below £500, execution is automatically converted to a full SELL
 - **Order deduplication** — 5-minute window prevents double-execution
 - **Ticker normalization** — plain symbols returned by strategy (e.g. `AAPL`) are normalized to T212 instrument IDs (e.g. `AAPL_US_EQ`) before execution when an unambiguous mapping exists

@@ -26,7 +26,7 @@ export function PageBrandHeader({ title, description, eyebrow, titleMeta }: Page
       <div className="flex items-center justify-start sm:justify-center lg:justify-end pointer-events-none select-none">
         <img
           src={hybridZBold}
-          alt="ZENOUZ hybrid bold Z symbol"
+          alt="Graph Theory Z symbol"
           className="h-24 w-auto sm:h-28 lg:h-32 opacity-70 contrast-90 saturate-90"
         />
       </div>
