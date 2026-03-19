@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
-import { portfolioApi } from '../api/client'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { useEffect, useState, useMemo } from 'react'
+import { portfolioApi, systemApi } from '../api/client'
+import { useFocusTrap } from '../hooks/useFocusTrap'
+import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
+import { Sparkline } from '../components/Sparkline'
+import { TableSkeleton } from '../components/Skeleton'
 import type { PortfolioSnapshot } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
@@ -23,6 +26,10 @@ export default function Portfolio() {
   const [history, setHistory] = useState<PortfolioSnapshot[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [forceSellTicker, setForceSellTicker] = useState<string | null>(null)
+  const [forceSellLoading, setForceSellLoading] = useState(false)
+  const [forceSellResult, setForceSellResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const forceSellModalRef = useFocusTrap(forceSellTicker != null, () => setForceSellTicker(null))
 
   const fetchPortfolio = async () => {
     setError(null)
@@ -49,6 +56,20 @@ export default function Portfolio() {
 
   const positions = currentPortfolio?.positions ?? []
 
+  // Build per-position sparkline data from history snapshots (3A bonus)
+  const positionSparklines = useMemo(() => {
+    const sparklines: Record<string, number[]> = {}
+    // History is newest-first; reverse for chronological order
+    const chronological = [...history].reverse()
+    for (const snapshot of chronological) {
+      for (const pos of snapshot.positions ?? []) {
+        if (!sparklines[pos.ticker]) sparklines[pos.ticker] = []
+        sparklines[pos.ticker].push(pos.pnl_pct)
+      }
+    }
+    return sparklines
+  }, [history])
+
   const sectorAllocation = positions.reduce((acc, pos) => {
     const sector = pos.sector ?? 'Unknown'
     acc[sector] = (acc[sector] || 0) + pos.value_gbp
@@ -72,8 +93,35 @@ export default function Portfolio() {
 
   const COLORS = ['#00d4ff', '#00ffa3', '#6332ff', '#ff4466', '#f7c948']
 
+  const handleForceSell = async () => {
+    if (!forceSellTicker) return
+    setForceSellLoading(true)
+    setForceSellResult(null)
+    try {
+      const result = await systemApi.forceSell(forceSellTicker)
+      if (result.status === 'sold' || result.status === 'dry_run') {
+        setForceSellResult({ type: 'success', message: `${cleanTicker(forceSellTicker)} sold (${result.quantity} shares) — ${result.status}` })
+        fetchPortfolio()
+      } else if (result.status === 'no_position') {
+        setForceSellResult({ type: 'error', message: `No open position for ${cleanTicker(forceSellTicker)}` })
+      } else {
+        setForceSellResult({ type: 'error', message: result.error || 'Unknown error' })
+      }
+    } catch (err) {
+      setForceSellResult({ type: 'error', message: err instanceof Error ? err.message : 'Force sell failed' })
+    } finally {
+      setForceSellLoading(false)
+      setForceSellTicker(null)
+    }
+  }
+
+  // Auto-dismiss result toast after 5s
+  if (forceSellResult) {
+    setTimeout(() => setForceSellResult(null), 5000)
+  }
+
   if (loading) {
-    return <LoadingSpinner />
+    return <TableSkeleton rows={6} cols={5} />
   }
 
   if (error) {
@@ -106,6 +154,31 @@ export default function Portfolio() {
         }
         description="Current positions, cash, and value history from the latest snapshot (updated each run). Charts show portfolio value over time and sector allocation. Positions table lists ticker, quantity, value, and P&L per position."
       />
+
+      {/* Force Sell confirmation modal */}
+      {forceSellTicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setForceSellTicker(null)}>
+          <div ref={forceSellModalRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-loss mb-2">Force sell {cleanTicker(forceSellTicker)}?</h3>
+            <p className="text-sm text-terminal-text-dim mb-4">
+              This will immediately sell the entire position at market price. This action cannot be undone.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setForceSellTicker(null)} className="btn-secondary text-sm py-1.5">Cancel</button>
+              <button type="button" onClick={handleForceSell} disabled={forceSellLoading} className="btn-danger-solid text-sm py-1.5 disabled:opacity-50">
+                {forceSellLoading ? 'Selling...' : 'Force Sell'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Result toast */}
+      {forceSellResult && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded shadow-lg text-sm font-mono ${forceSellResult.type === 'success' ? 'bg-gain/20 border border-gain/40 text-gain' : 'bg-loss/20 border border-loss/40 text-loss'}`}>
+          {forceSellResult.message}
+        </div>
+      )}
 
       {/* Portfolio Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -151,26 +224,26 @@ export default function Portfolio() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Portfolio Value Chart */}
         <div className="card">
-          <h3 className="text-lg font-semibold mb-4">Portfolio Value History</h3>
+          <h3 className="text-lg font-semibold tracking-wide mb-4">Portfolio Value History</h3>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-                <XAxis dataKey="date" stroke="#888888" />
-                <YAxis stroke="#888888" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                <XAxis dataKey="date" stroke="#8b949e" />
+                <YAxis stroke="#8b949e" />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#141414',
-                    border: '1px solid #2a2a2a',
-                    color: '#e0e0e0',
+                    backgroundColor: '#0d1117',
+                    border: '1px solid #30363d',
+                    color: '#e6edf3',
                   }}
                 />
                 <Line
                   type="monotone"
                   dataKey="value"
-                  stroke="#4a9eff"
+                  stroke="#00d4ff"
                   strokeWidth={2}
-                  dot={{ fill: '#4a9eff', r: 4 }}
+                  dot={{ fill: '#00d4ff', r: 4 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -183,7 +256,7 @@ export default function Portfolio() {
 
         {/* Sector Allocation */}
         <div className="card">
-          <h3 className="text-lg font-semibold mb-4">Sector Allocation</h3>
+          <h3 className="text-lg font-semibold tracking-wide mb-4">Sector Allocation</h3>
           {pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -196,7 +269,7 @@ export default function Portfolio() {
                     `${name}: ${(percent * 100).toFixed(0)}%`
                   }
                   outerRadius={80}
-                  fill="#8884d8"
+                  fill="#00d4ff"
                   dataKey="value"
                 >
                   {pieData.map((_, index) => (
@@ -205,9 +278,9 @@ export default function Portfolio() {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#141414',
-                    border: '1px solid #2a2a2a',
-                    color: '#e0e0e0',
+                    backgroundColor: '#0d1117',
+                    border: '1px solid #30363d',
+                    color: '#e6edf3',
                   }}
                 />
               </PieChart>
@@ -220,79 +293,103 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {/* Positions Table */}
+      {/* Positions — mobile cards + desktop table */}
       <div className="card">
-        <h3 className="text-lg font-semibold mb-4">Current Positions</h3>
+        <h3 className="text-lg font-semibold tracking-wide mb-4">Current Positions</h3>
         {positions.length === 0 ? (
           <div className="text-center py-8 text-terminal-text-dim">
             No positions
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-terminal-border">
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Ticker
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Sector
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Quantity
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Value
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    P&L
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    P&L %
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {positions.map((pos) => (
-                  <tr
-                    key={pos.ticker}
-                    className="border-b border-terminal-border hover:bg-terminal-surface/50"
-                  >
-                    <td className="px-4 py-3 font-mono font-semibold">
-                      {cleanTicker(pos.ticker)}
-                    </td>
-                    <td className="px-4 py-3 text-sm">{pos.sector ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono">{pos.quantity}</td>
-                    <td className="px-4 py-3 font-mono">
-                      £{pos.value_gbp.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td
-                      className={`px-4 py-3 font-mono ${
-                        pos.pnl_gbp >= 0 ? 'text-gain' : 'text-loss'
-                      }`}
-                    >
-                      {pos.pnl_gbp >= 0 ? '+' : ''}
-                      £{pos.pnl_gbp.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td
-                      className={`px-4 py-3 font-mono ${
-                        pos.pnl_pct >= 0 ? 'text-gain' : 'text-loss'
-                      }`}
-                    >
-                      {pos.pnl_pct >= 0 ? '+' : ''}
-                      {pos.pnl_pct.toFixed(2)}%
-                    </td>
+          <>
+            {/* Mobile card layout */}
+            <div className="sm:hidden space-y-3">
+              {positions.map((pos) => (
+                <div key={pos.ticker} className="border border-terminal-border rounded-lg p-3 bg-terminal-surface/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold">{cleanTicker(pos.ticker)}</span>
+                      {positionSparklines[pos.ticker]?.length >= 2 && (
+                        <Sparkline data={positionSparklines[pos.ticker]} directional width={48} height={16} />
+                      )}
+                    </div>
+                    <PnlValue value={pos.pnl_pct} suffix="%" className="font-mono text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-terminal-text-dim text-xs">Value</span>
+                      <div className="font-mono">£{pos.value_gbp.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <span className="text-terminal-text-dim text-xs">P&L</span>
+                      <div className="font-mono"><PnlCurrency value={pos.pnl_gbp} /></div>
+                    </div>
+                    <div>
+                      <span className="text-terminal-text-dim text-xs">Qty</span>
+                      <div className="font-mono">{pos.quantity}</div>
+                    </div>
+                    <div className="flex items-end justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setForceSellTicker(pos.ticker)}
+                        className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
+                      >
+                        Force Sell
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-terminal-border">
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Ticker</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden md:table-cell">Sector</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Quantity</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Value</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">P&L</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">P&L %</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Trend</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {positions.map((pos) => (
+                    <tr key={pos.ticker} className="border-b border-terminal-border hover:bg-terminal-surface/50">
+                      <td className="px-4 py-3 font-mono font-semibold">{cleanTicker(pos.ticker)}</td>
+                      <td className="px-4 py-3 text-sm hidden md:table-cell">{pos.sector ?? '—'}</td>
+                      <td className="px-4 py-3 font-mono hidden lg:table-cell">{pos.quantity}</td>
+                      <td className="px-4 py-3 font-mono">
+                        £{pos.value_gbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 font-mono"><PnlCurrency value={pos.pnl_gbp} /></td>
+                      <td className="px-4 py-3 font-mono"><PnlValue value={pos.pnl_pct} suffix="%" /></td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {positionSparklines[pos.ticker]?.length >= 2 ? (
+                          <Sparkline data={positionSparklines[pos.ticker]} directional width={72} height={20} />
+                        ) : (
+                          <span className="text-terminal-text-dim text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setForceSellTicker(pos.ticker)}
+                          className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
+                        >
+                          Force Sell
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

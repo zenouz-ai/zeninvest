@@ -322,8 +322,20 @@ export const ordersApi = {
 
 // System API (state, pause, resume, reset-peak)
 export const systemApi = {
+  pause: async (): Promise<{ message: string; paused: boolean }> => {
+    const response = await api.post('/api/system/pause')
+    return response.data
+  },
+  resume: async (): Promise<{ message: string; paused: boolean }> => {
+    const response = await api.post('/api/system/resume')
+    return response.data
+  },
   resetPeak: async (): Promise<{ message: string; state: string; current_value: number }> => {
     const response = await api.post('/api/system/reset-peak')
+    return response.data
+  },
+  forceSell: async (ticker: string): Promise<{ status: string; ticker: string; quantity?: number; error?: string }> => {
+    const response = await api.post(`/api/system/force-sell/${ticker}`)
     return response.data
   },
 }

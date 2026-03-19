@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { opportunityApi, universeApi } from '../api/client'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { TableSkeleton } from '../components/Skeleton'
 import type { InstrumentDetail } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 import { cleanTicker } from '../types'
@@ -113,7 +113,7 @@ export default function Opportunity() {
   }, [expandedTicker])
 
   if (loading) {
-    return <LoadingSpinner />
+    return <TableSkeleton rows={5} cols={4} />
   }
 
   if (error) {
@@ -141,7 +141,7 @@ export default function Opportunity() {
       {expandedTicker && (
         <div className="card">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold text-accent">
+            <h2 className="text-lg font-semibold tracking-wide text-accent">
               LLM output — {cleanTicker(expandedTicker)}
             </h2>
             <button
@@ -168,7 +168,7 @@ export default function Opportunity() {
       )}
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Opportunity Queue ({queue.length})</h2>
+        <h2 className="text-lg font-semibold tracking-wide mb-3">Opportunity Queue ({queue.length})</h2>
         <p className="text-terminal-text-dim text-sm mb-3">
           Tickers above the queue threshold but deferred. Action: BUY. Promotes when queued ≥2 cycles and capacity available.
           {config && ` Queue TTL: ${config.queue_ttl_cycles} cycles.`}
@@ -225,7 +225,7 @@ export default function Opportunity() {
       </div>
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Latest UOV Scores ({scores.length})</h2>
+        <h2 className="text-lg font-semibold tracking-wide mb-3">Latest UOV Scores ({scores.length})</h2>
         {scores.length === 0 ? (
           <p className="text-terminal-text-dim">No score snapshots.</p>
         ) : (

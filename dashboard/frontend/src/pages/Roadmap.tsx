@@ -333,7 +333,7 @@ function RoadmapTabContent({
           if (!items || items.length === 0) return null
           return (
             <div key={topic} className="card">
-              <h3 className="text-lg font-semibold mb-4 text-accent">{topic}</h3>
+              <h3 className="text-lg font-semibold tracking-wide mb-4 text-accent">{topic}</h3>
               <div className="space-y-0">
                 {items.map((m) => (
                   <MilestoneRow key={m.id} m={m} />
@@ -378,7 +378,7 @@ function DocViewerModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-terminal-border px-4 py-2">
-          <h2 className="font-semibold text-accent">{title}</h2>
+          <h2 className="text-lg font-semibold tracking-wide text-accent">{title}</h2>
           <button
             type="button"
             onClick={onClose}

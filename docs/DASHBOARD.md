@@ -42,6 +42,44 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 - Run-to-run diff: compare positions between two runs (new, closed, size changes)
 - Top-bar: next run countdown, P&L summary
 
+### UX Phase 1 — Critical Path (delivered 2026-03-18)
+
+Based on `docs/UX_AUDIT.md`, resolved 10 of 28 findings (2 Critical, 5 Major, 3 Minor):
+
+- **AlertBanner** (`AlertBanner.tsx`): persistent alert aggregation bar below navbar on all pages. Checks 5 sources independently: system state, SSE connectivity, cost degradation, losing positions (>5%), failed orders. Severity-coded (red critical, amber warning), dismissible, auto-refresh 30s.
+- **Dashboard home restructure**: replaced collapsed sections with always-visible layout. Two-column grid: positions + activity (left), cumulative stats + cost breakdown (right). Last cycle summary always visible above the fold.
+- **Independent section loading** (`useAsyncData` hook): each dashboard section fetches and error-handles independently — one failing endpoint no longer takes down the whole page.
+- **Positions on home page**: top 5 positions by |P&L| shown on Dashboard with inline bar chart, linking to Portfolio page.
+- **Performance card**: replaces SSE status card with Sharpe (30d), win rate, max drawdown, trade count from `/api/performance/metrics`.
+- **Pause/Resume toggle**: wired `systemApi.pause()` / `resume()` to Dashboard UI with confirmation modal.
+- **SSE lifted to App level**: SSE connection shared between AlertBanner and Dashboard via props (single EventSource).
+- **PAUSED badge colour**: distinct cyan badge instead of reusing ACTIVE green.
+- **aria-expanded** on all collapsible sections, **aria-live** on activity feed.
+- **Mobile nav fix**: hamburger menu closes on link click.
+
+### UX Phase 2 — Major Improvements (delivered 2026-03-18)
+
+Resolved 9 more findings (6 Major, 3 Minor) from `docs/UX_AUDIT.md`:
+
+- **Force Sell** (`Portfolio.tsx`): "Force Sell" button on each position row, wired to `POST /api/system/force-sell/{ticker}` (new backend endpoint). Confirmation modal with focus trap, success/error toast.
+- **Data freshness** (`useAsyncData` extended, `FreshnessIndicator.tsx`): `lastUpdatedAt` and `isStale` fields. "Updated Xs ago" shown below Dashboard cards. When a fetch fails, old data is preserved with "(stale)" label instead of being wiped.
+- **Keyboard-accessible tables** (`Universe.tsx`, `Dashboard.tsx`): expandable rows get `tabIndex={0}`, `role="button"`, `onKeyDown` (Enter/Space). Universe column headers get `aria-sort`.
+- **Focus trap** (`useFocusTrap.ts`): all modals (Live Run, Reset Peak, Pause, Force Sell) trap Tab/Shift+Tab, Escape closes.
+- **Colour accessibility** (`PnlDisplay.tsx`): `PnlCurrency` and `PnlValue` components render directional arrows (▲/▼) alongside colour, with `aria-label` for screen readers. Applied to Dashboard + Portfolio.
+- **Chart colour alignment**: Portfolio line chart and pie chart now use design tokens (#00d4ff accent, #30363d grid, #8b949e axis). Costs chart API colour aligned to #ff4466 (loss token). Tooltip backgrounds aligned.
+
+### UX Phase 3 — Final Polish + Bonus Features (delivered 2026-03-19)
+
+Resolved final 9 findings + 2 bonus features, completing all 28/28 UX audit items:
+
+- **Mobile-responsive tables** (`Portfolio.tsx`, `Universe.tsx`): Card layout on mobile (`sm:hidden`), hidden secondary columns on tablet via `meta.responsive` on TanStack column defs (RE-1, RE-2).
+- **Nav consolidation** (`App.tsx`): Primary 4 pages (Dashboard, Universe, Portfolio, Runs) + "More" dropdown for secondary 4 (Opportunity, Order Mgmt, Costs, Roadmap). Click-outside + `aria-expanded` (IA-6).
+- **Typography hierarchy**: `tracking-wide` on all section h2 headings, explicit `text-base` on modal h3s, consistent type scale across all 8 pages (VD-4).
+- **Skeleton loading screens** (`Skeleton.tsx`): `DashboardSkeleton`, `TableSkeleton`, `SkeletonCard` with pulsing placeholders. Replaces `LoadingSpinner` on all pages (ES-2).
+- **Deep-linking & URL state** (`Universe.tsx`): `/universe/:ticker` route auto-expands matched row. `?q=` and `?sector=` search params synced to URL via `useSearchParams` (WF-5).
+- **Position sparklines** (`Sparkline.tsx`, `Portfolio.tsx`): Inline SVG sparkline per position showing P&L % trend across portfolio history snapshots. Directional colouring (green up, red down). Desktop + mobile (3A bonus).
+- **Decision pipeline waterfall** (`PipelineWaterfall.tsx`, `LLMOutputBlocks.tsx`): Horizontal Strategy → Moderation → Risk → Execution flow with colour-coded stage nodes (pass/block/skip/pending). Shown at top of every LLM Output Panel (3B bonus).
+
 ### Deployment (delivered)
 
 See `docs/DASHBOARD_DEPLOYMENT.md` — Docker service, multi-stage frontend build, SPA fallback, port 8000. Activity feed (SSE) uses relative URL — works when accessing at `http://VPS_IP:8000`. CORS origins are configurable via `dashboard.cors_origins` in `config/settings.yaml` (defaults to localhost for local dev; set to VPS IP/domain for production). Deploy to VPS.
@@ -85,7 +123,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 | Layer     | Choice                   | Rationale                                                  |
 |-----------|--------------------------|-------------------------------------------------------------|
-| Frontend  | React + Vite + Tailwind  | Fast dev, component ecosystem, pairs with Recharts/D3       |
+| Frontend  | React + Vite + Tailwind  | Fast dev, component ecosystem, pairs with Recharts/D3. Hooks: `useSSE` (real-time events), `useAsyncData` (independent section loading with auto-refresh) |
 | Backend   | FastAPI                  | Already Python stack, async-native, auto-generated API docs |
 | Database  | SQLite (current) → Postgres (future) | Zero config for VPS, upgrade path when needed |
 | Real-time | Server-Sent Events (SSE) | Simpler than WebSockets for one-way push updates            |
@@ -97,23 +135,38 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 ### Page 1: Dashboard Home (Operations Hub)
 
-**Top metrics bar:**
-- System state badge: ACTIVE / CAUTIOUS / HALTED (from `system_state`). When CAUTIOUS, a "Reset Peak" button appears to clear false drawdown and return to ACTIVE.
-- Last cycle timestamp + next scheduled cycle countdown
-- Portfolio total value + daily P&L (from latest `portfolio_snapshots`)
-- Cost burn: today's LLM spend vs daily budget (from `cost_logs`)
-- Degradation level: FULL / NO_GEMINI / NO_GPT4O / etc.
+**Alert banner (persistent, all pages):**
+- AlertBanner component renders below navbar on every page
+- Aggregates 5 alert sources independently: system state (CAUTIOUS/HALTED), SSE disconnect, cost degradation, losing positions (>5% loss), failed orders
+- Severity-coded: red (critical), amber (warning). Dismissible per-alert, auto-refresh 30s
 
-**Activity feed (real-time via SSE):**
-- Scrolling feed from `events_log` — run_started, universe_updated, decision_made, order_placed, order_executed, notification_sent, order_adjustment, research_completed
-- Each event shows: timestamp, type icon, source, message, expandable metadata
-- `universe_updated` message format: `Screened X/Y candidates (large=a/b, mid=c/d, small=e/f) — reviews: R, new: N | P in portfolio | cumul: S screened, V reviewed, O orders` where X=selected, Y=total available, a/c/e=per-tier selected, b/d/f=per-tier pool size, R=review count (investigated 24–48h ago), N=new investigations, P=positions re-evaluated; cumul = lifetime: S=instruments ever screened, V=distinct tickers ever reviewed by strategy, O=total orders placed
-- Filter by event type, ticker, source
+**Control bar:**
+- System state badge: ACTIVE (green) / CAUTIOUS (amber) / HALTED (red) / PAUSED (cyan — distinct colour). When CAUTIOUS, "Reset Peak" button appears.
+- SSE indicator: small coloured dot (green connected, red disconnected) — no longer a full KPI card
+- Pause/Resume toggle button with confirmation modal for Pause
+- Dry Run + Live Run buttons (Live requires confirmation)
 
-**Quick actions:**
-- Dry Run and Live Run buttons (POST /api/runs/trigger, POST /api/runs/trigger-live); Live Run requires confirmation
-- Pause/Resume trading
-- Force sell a position
+**Top metrics bar (4 cards, merged from previous 5):**
+- Card 1 — Cycle Timing: next countdown + last run time/status/cost (merged from 3 old cards)
+- Card 2 — Portfolio Value: total + P&L + position count + cash
+- Card 3 — Performance (30d): Sharpe, win rate, max drawdown, trade count (from `/api/performance/metrics`)
+- Card 4 — This Month: runs, cost, P&L, new investigations (compact summary)
+
+**Last cycle summary (always visible):**
+- Full-width card showing cycle_id, timestamp, status, stocks reviewed, trades, rejections, duration
+- Never collapsed — primary "what just happened" signal
+
+**Two-column layout:**
+- Left (wider): Positions snapshot (top 5 by |P&L| with inline bar chart, "View all" link to Portfolio) + Recent Activity (always-visible SSE feed, last 15 events, `aria-live="polite"`)
+- Right (320px): Cumulative stats (screened, investigated, uninvestigated, orders) + Cost breakdown (LLM/API/total with expandable daily table)
+
+**Secondary sections (expandable):**
+- Latest trades & LLM reasons: filterable table with expandable LLM output per row
+- Run summaries (notification-style): full decisions and orders per cycle
+
+**Data loading:**
+- Each section loads independently via `useAsyncData` hook — one failing endpoint shows a section-level error + retry, not a full-page error
+- 30s auto-refresh per section
 
 ### Page 2: Stock Universe Explorer
 

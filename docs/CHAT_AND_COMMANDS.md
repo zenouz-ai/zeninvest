@@ -71,7 +71,7 @@ Orchestrator + StateMachine + CLI actions
 - `src/orchestrator/state_machine.py`
   - `StateMachine.transition()` emits `state_transition`.
 - Existing command surface for Phase 2 mapping:
-  - `--status`, `--pause`, `--resume`, `--force-sell`.
+  - `--status`, `--pause`, `--resume`, `--force-sell`. Dashboard equivalents: Pause/Resume toggle and Force Sell button (Portfolio page) via REST API.
 
 ### Event Contract (Canonical)
 

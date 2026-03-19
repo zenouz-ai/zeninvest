@@ -54,16 +54,16 @@ Then either:
 
 In the browser, confirm each route loads without errors:
 
-| Page            | URL           | What to check                                      |
-|-----------------|---------------|----------------------------------------------------|
-| Dashboard Home  | `/`           | State badge (ACTIVE/CAUTIOUS/HALTED), metrics, SSE feed |
-| Universe        | `/universe`   | Table, expand row for committee reasoning          |
-| Run History     | `/runs`       | Timeline, run diff (from/to)                        |
-| Portfolio       | `/portfolio`  | Positions, P&L, charts                             |
-| Opportunity     | `/opportunity`| UOV queue (when/why/when action) and scores table   |
-| Order Management| `/orders`     | Current stops, adjustment history                   |
-| Costs           | `/costs`      | Degradation badge, daily chart, monthly table      |
-| Roadmap         | `/roadmap`    | Project timeline, topic filter, Architecture tab   |
+| Page            | URL                    | What to check                                      |
+|-----------------|------------------------|----------------------------------------------------|
+| Dashboard Home  | `/`                    | Skeleton loading → state badge, metrics, SSE feed, positions with sparklines, alert banner |
+| Universe        | `/universe`            | Table skeleton → sortable table, expand row for pipeline waterfall + committee reasoning; deep-link: `/universe/AAPL`; URL params: `?q=AAPL&sector=Technology` |
+| Run History     | `/runs`                | Table skeleton → timeline, run diff (from/to)       |
+| Portfolio       | `/portfolio`           | Table skeleton → positions with sparklines + Force Sell button per row, P&L with ▲/▼ arrows, mobile card layout (resize < 640px) |
+| Opportunity     | `/opportunity`         | Table skeleton → UOV queue and scores table (via "More" dropdown) |
+| Order Management| `/orders`              | Table skeleton → current stops, adjustment history (via "More" dropdown) |
+| Costs           | `/costs`               | Card skeleton → degradation badge, daily chart, monthly table (via "More" dropdown) |
+| Roadmap         | `/roadmap`             | Project timeline, topic filter, Architecture tab (via "More" dropdown) |
 
 ### 7. SSE activity feed
 
