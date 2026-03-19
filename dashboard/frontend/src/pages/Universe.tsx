@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -8,8 +8,9 @@ import {
   createColumnHelper,
   type SortingState,
 } from '@tanstack/react-table'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { universeApi } from '../api/client'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { TableSkeleton } from '../components/Skeleton'
 import type { Instrument, InstrumentDetail, UniverseBubbleItem } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
@@ -38,6 +39,9 @@ function SortIndicator({ column }: { column: { getIsSorted: () => false | 'asc' 
 }
 
 export default function Universe() {
+  const { ticker: urlTicker } = useParams<{ ticker?: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const deepLinked = useRef(false)
   const [instruments, setInstruments] = useState<Instrument[]>([])
   const [investigatedMap, setInvestigatedMap] = useState<Record<string, boolean>>({})
   const [decisionStatsMap, setDecisionStatsMap] = useState<
@@ -49,12 +53,34 @@ export default function Universe() {
   const [researchMap, setResearchMap] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [sectorFilter, setSectorFilter] = useState<string>('')
+  const [search, setSearch] = useState(searchParams.get('q') ?? '')
+  const [sectorFilter, setSectorFilter] = useState<string>(searchParams.get('sector') ?? '')
   const [expandedTicker, setExpandedTicker] = useState<string | null>(null)
   const [detail, setDetail] = useState<InstrumentDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
+
+  // Deep-link: auto-expand ticker from URL param (WF-5)
+  useEffect(() => {
+    if (urlTicker && !loading && instruments.length > 0 && !deepLinked.current) {
+      deepLinked.current = true
+      const match = instruments.find(
+        (i) => i.ticker === urlTicker || i.ticker.startsWith(urlTicker + '_') || cleanTicker(i.ticker) === urlTicker
+      )
+      if (match) {
+        setExpandedTicker(match.ticker)
+        setSearch(urlTicker)
+      }
+    }
+  }, [urlTicker, loading, instruments])
+
+  // Sync filters to URL search params (WF-5)
+  useEffect(() => {
+    const params: Record<string, string> = {}
+    if (search) params.q = search
+    if (sectorFilter) params.sector = sectorFilter
+    setSearchParams(params, { replace: true })
+  }, [search, sectorFilter, setSearchParams])
 
   const fetchUniverse = async () => {
     setError(null)
@@ -150,6 +176,7 @@ export default function Universe() {
       columnHelper.accessor('industry', {
         header: 'Industry',
         enableSorting: true,
+        meta: { responsive: 'hidden xl:table-cell' },
         cell: (info) => (
           <span className="text-terminal-text-dim text-sm">
             {info.getValue() || 'N/A'}
@@ -159,6 +186,7 @@ export default function Universe() {
       columnHelper.accessor('market_cap', {
         header: 'Market Cap',
         enableSorting: true,
+        meta: { responsive: 'hidden lg:table-cell' },
         cell: (info) => {
           const value = info.getValue()
           if (!value) return 'N/A'
@@ -171,6 +199,7 @@ export default function Universe() {
       columnHelper.accessor('last_screened_at', {
         header: 'Last Screened',
         enableSorting: true,
+        meta: { responsive: 'hidden lg:table-cell' },
         cell: (info) => {
           const date = info.getValue()
           if (!date) return <span className="text-terminal-text-dim">Never</span>
@@ -184,6 +213,7 @@ export default function Universe() {
       columnHelper.accessor('data_available', {
         header: 'Status',
         enableSorting: true,
+        meta: { responsive: 'hidden xl:table-cell' },
         cell: (info) => (
           <span
             className={
@@ -240,6 +270,7 @@ export default function Universe() {
         },
       }),
       columnHelper.accessor('_research', {
+        meta: { responsive: 'hidden xl:table-cell' },
         header: 'Research',
         enableSorting: true,
         cell: (info) => {
@@ -363,7 +394,7 @@ export default function Universe() {
   })
 
   if (loading) {
-    return <LoadingSpinner />
+    return <TableSkeleton rows={8} cols={6} />
   }
 
   if (error) {
@@ -424,7 +455,7 @@ export default function Universe() {
                   return (
                     <th
                       key={header.id}
-                      className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim"
+                      className={`px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim ${(header.column.columnDef.meta as any)?.responsive ?? ''}`}
                       aria-sort={canSort ? ariaSortValue : undefined}
                     >
                       {header.isPlaceholder ? null : canSort ? (
@@ -470,7 +501,7 @@ export default function Universe() {
                       }`}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <td key={cell.id} className="px-4 py-3">
+                        <td key={cell.id} className={`px-4 py-3 ${(cell.column.columnDef.meta as any)?.responsive ?? ''}`}>
                           {flexRender(cell.column.columnDef.cell, cell.getContext())}
                         </td>
                       ))}

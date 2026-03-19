@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ModerationEntry, StrategyFull, RiskFull, ResearchCall } from '../types'
 import { cleanTicker } from '../types'
+import { PipelineWaterfall } from './PipelineWaterfall'
 
 export function LLMStrategyBlock({
   strategy,
@@ -421,6 +422,9 @@ export function LLMOutputPanel({
           )}
         </div>
       )}
+
+      {/* Pipeline waterfall visualization (3B bonus) */}
+      <PipelineWaterfall decision={lastDecision} />
 
       {lastDecision.strategy && (
         <LLMStrategyBlock

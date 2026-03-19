@@ -68,6 +68,18 @@ Resolved 9 more findings (6 Major, 3 Minor) from `docs/UX_AUDIT.md`:
 - **Colour accessibility** (`PnlDisplay.tsx`): `PnlCurrency` and `PnlValue` components render directional arrows (▲/▼) alongside colour, with `aria-label` for screen readers. Applied to Dashboard + Portfolio.
 - **Chart colour alignment**: Portfolio line chart and pie chart now use design tokens (#00d4ff accent, #30363d grid, #8b949e axis). Costs chart API colour aligned to #ff4466 (loss token). Tooltip backgrounds aligned.
 
+### UX Phase 3 — Final Polish + Bonus Features (delivered 2026-03-19)
+
+Resolved final 9 findings + 2 bonus features, completing all 28/28 UX audit items:
+
+- **Mobile-responsive tables** (`Portfolio.tsx`, `Universe.tsx`): Card layout on mobile (`sm:hidden`), hidden secondary columns on tablet via `meta.responsive` on TanStack column defs (RE-1, RE-2).
+- **Nav consolidation** (`App.tsx`): Primary 4 pages (Dashboard, Universe, Portfolio, Runs) + "More" dropdown for secondary 4 (Opportunity, Order Mgmt, Costs, Roadmap). Click-outside + `aria-expanded` (IA-6).
+- **Typography hierarchy**: `tracking-wide` on all section h2 headings, explicit `text-base` on modal h3s, consistent type scale across all 8 pages (VD-4).
+- **Skeleton loading screens** (`Skeleton.tsx`): `DashboardSkeleton`, `TableSkeleton`, `SkeletonCard` with pulsing placeholders. Replaces `LoadingSpinner` on all pages (ES-2).
+- **Deep-linking & URL state** (`Universe.tsx`): `/universe/:ticker` route auto-expands matched row. `?q=` and `?sector=` search params synced to URL via `useSearchParams` (WF-5).
+- **Position sparklines** (`Sparkline.tsx`, `Portfolio.tsx`): Inline SVG sparkline per position showing P&L % trend across portfolio history snapshots. Directional colouring (green up, red down). Desktop + mobile (3A bonus).
+- **Decision pipeline waterfall** (`PipelineWaterfall.tsx`, `LLMOutputBlocks.tsx`): Horizontal Strategy → Moderation → Risk → Execution flow with colour-coded stage nodes (pass/block/skip/pending). Shown at top of every LLM Output Panel (3B bonus).
+
 ### Deployment (delivered)
 
 See `docs/DASHBOARD_DEPLOYMENT.md` — Docker service, multi-stage frontend build, SPA fallback, port 8000. Activity feed (SSE) uses relative URL — works when accessing at `http://VPS_IP:8000`. CORS origins are configurable via `dashboard.cors_origins` in `config/settings.yaml` (defaults to localhost for local dev; set to VPS IP/domain for production). Deploy to VPS.

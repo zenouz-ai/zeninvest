@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { SkeletonCard } from '../components/Skeleton'
 import {
   AreaChart,
   Area,
@@ -47,7 +47,7 @@ export default function Costs() {
   }, [])
 
   if (loading) {
-    return <LoadingSpinner />
+    return <SkeletonCard lines={6} />
   }
 
   if (error) {
@@ -128,7 +128,7 @@ export default function Costs() {
       )}
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-1">Daily cost: API vs LLM (last 30 days)</h2>
+        <h2 className="text-lg font-semibold tracking-wide mb-1">Daily cost: API vs LLM (last 30 days)</h2>
         <p className="text-terminal-text-dim text-xs mb-3">
           Stacked: each line = cumulative sum up to that provider. Height of each band = that provider&apos;s cost.
         </p>
@@ -177,7 +177,7 @@ export default function Costs() {
       </div>
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Monthly cumulative (£): API vs LLM</h2>
+        <h2 className="text-lg font-semibold tracking-wide mb-3">Monthly cumulative (£): API vs LLM</h2>
         {monthly.length === 0 ? (
           <p className="text-terminal-text-dim">No monthly data.</p>
         ) : (
@@ -216,7 +216,7 @@ export default function Costs() {
 
       {researchSummary && researchSummary.total_calls > 0 && (
         <div className="card">
-          <h2 className="text-lg font-semibold mb-1">Agentic Research Cost Breakdown</h2>
+          <h2 className="text-lg font-semibold tracking-wide mb-1">Agentic Research Cost Breakdown</h2>
           <p className="text-terminal-text-dim text-xs mb-3">
             Research tool calls made by Strategy, Skeptic, and Risk during pipeline cycles.
             Cost derived from research_logs ($0.005 per paid Brave/Tavily call; SEC EDGAR is free).

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ordersApi, stopLossApi } from '../api/client'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { TableSkeleton } from '../components/Skeleton'
 import { safeFormat } from '../utils/date'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 
@@ -39,7 +39,7 @@ export default function OrderManagement() {
   }, [])
 
   if (loading) {
-    return <LoadingSpinner />
+    return <TableSkeleton rows={5} cols={5} />
   }
 
   if (error) {
@@ -61,7 +61,7 @@ export default function OrderManagement() {
       />
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Recent Orders ({recentOrders.length})</h2>
+        <h2 className="text-lg font-semibold tracking-wide mb-3">Recent Orders ({recentOrders.length})</h2>
         {recentOrders.length === 0 ? (
           <p className="text-terminal-text-dim">No orders yet.</p>
         ) : (
@@ -95,7 +95,7 @@ export default function OrderManagement() {
       </div>
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Current Stop-Loss Levels ({current.length})</h2>
+        <h2 className="text-lg font-semibold tracking-wide mb-3">Current Stop-Loss Levels ({current.length})</h2>
         {current.length === 0 ? (
           <p className="text-terminal-text-dim">No stop levels (no positions or no stop orders).</p>
         ) : (
@@ -123,7 +123,7 @@ export default function OrderManagement() {
       </div>
 
       <div className="card">
-        <h2 className="text-lg font-semibold mb-3">Adjustment History</h2>
+        <h2 className="text-lg font-semibold tracking-wide mb-3">Adjustment History</h2>
         {adjustments.length === 0 ? (
           <p className="text-terminal-text-dim">No adjustments yet.</p>
         ) : (

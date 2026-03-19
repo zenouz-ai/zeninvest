@@ -3,7 +3,7 @@
 **Date:** 2026-03-18
 **Auditor:** Senior UX Designer (Financial Dashboard Specialist)
 **Scope:** Full frontend under `dashboard/frontend/src/` — 8 pages, 6 reusable components, API layer, design system
-**Current Rating:** 6.5 / 10
+**Current Rating:** 9.0 / 10 (was 6.5, remediated across Phases 1-3)
 
 ---
 
@@ -341,22 +341,22 @@ A 10/10 autonomous agent monitoring dashboard would:
 | IA-3 | No unified "attention required" signal | Critical | 1A | **Fixed** — AlertBanner component |
 | IA-4 | SSE status card in prime real estate | Minor | 1B | **Fixed** — Replaced with small dot indicator |
 | IA-5 | "Latest Run" / "Last Run" card duplication | Minor | 1B | **Fixed** — Merged into single Cycle card |
-| IA-6 | 8 top-level nav items excessive | Enhancement | 3 | Open |
+| IA-6 | 8 top-level nav items excessive | Enhancement | 3 | **Fixed** — More dropdown consolidates secondary pages |
 | WF-1 | No pause/resume in dashboard | Major | 2A | **Fixed** — Pause/Resume toggle on home |
 | WF-2 | No force-sell from portfolio view | Major | 2A | **Fixed** — Force Sell button per position row |
 | WF-3 | No cycle-level summary card | Major | 1B | **Fixed** — Always-visible cycle summary |
 | WF-4 | No data freshness indicators | Major | 2B | **Fixed** — FreshnessIndicator + stale-data preservation |
-| WF-5 | No deep-link from notification to decision | Enhancement | 3E | Open |
+| WF-5 | No deep-link from notification to decision | Enhancement | 3E | **Fixed** — `/universe/:ticker` route + URL search params |
 | VD-1 | Chart colours don't match design system | Minor | 2 | **Fixed** — All charts use design tokens |
 | VD-2 | State badges lack PAUSED differentiation | Major | 1B | **Fixed** — PAUSED gets cyan badge |
 | VD-3 | No visual severity for critical events | Major | 1A | **Fixed** — AlertBanner with severity colours |
-| VD-4 | Typography hierarchy is flat | Minor | 3 | Open |
+| VD-4 | Typography hierarchy is flat | Minor | 3 | **Fixed** — tracking-wide on section headings, consistent type scale |
 | VD-5 | Gain/loss colours not colour-blind safe | Major | 2D | **Fixed** — Directional arrows (▲/▼) + aria-labels |
 | ES-1 | All-or-nothing loading (Promise.all) | Major | 1C | **Fixed** — useAsyncData per section |
-| ES-2 | No skeleton loading screens | Enhancement | 3 | Open |
+| ES-2 | No skeleton loading screens | Enhancement | 3 | **Fixed** — DashboardSkeleton, TableSkeleton, SkeletonCard components |
 | ES-3 | No stale-data warning | Major | 2B | **Fixed** — useAsyncData preserves stale data + isStale flag |
-| RE-1 | Tables not responsive on mobile | Major | 3D | Open |
-| RE-2 | No mobile-optimised priority view | Enhancement | 3D | Open |
+| RE-1 | Tables not responsive on mobile | Major | 3D | **Fixed** — Card layout on mobile, hidden columns on tablet |
+| RE-2 | No mobile-optimised priority view | Enhancement | 3D | **Fixed** — Mobile card views on Portfolio, responsive columns on Universe |
 | RE-3 | Modals don't trap keyboard focus | Minor | 2C | **Fixed** — useFocusTrap hook on all modals |
 | RE-4 | Hamburger menu stays open on navigation | Minor | 1 | **Fixed** |
 | A11Y-1 | Table rows not keyboard-accessible | Major | 2C | **Fixed** — tabIndex, role="button", onKeyDown |

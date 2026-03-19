@@ -94,8 +94,8 @@ dashboard/
 └── frontend/              # React + Vite + Tailwind frontend
     └── src/
         ├── pages/         # 8 pages: Dashboard, Universe, Portfolio, Opportunity, OrderManagement, RunHistory, Costs, Roadmap
-        ├── components/    # AlertBanner (alert aggregation), LLMOutputBlocks, PageBrandHeader, LoadingSpinner, EmptyState, UniverseBubbleChart
-        ├── hooks/         # useSSE (real-time events), useAsyncData (independent section loading)
+        ├── components/    # AlertBanner, LLMOutputBlocks, PageBrandHeader, Skeleton, Sparkline, PipelineWaterfall, PnlDisplay, FreshnessIndicator, LoadingSpinner, EmptyState, UniverseBubbleChart
+        ├── hooks/         # useSSE (real-time events), useAsyncData (independent section loading), useFocusTrap (modal keyboard trap)
         ├── api/client.ts  # Typed Axios API client (all endpoints)
         └── types/index.ts # TypeScript interfaces
 config/

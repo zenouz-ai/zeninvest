@@ -5,7 +5,7 @@ import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail } from '../
 import { safeFormat } from '../utils/date'
 import { cleanTicker } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { DashboardSkeleton } from '../components/Skeleton'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { FreshnessIndicator } from '../components/FreshnessIndicator'
@@ -254,7 +254,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
   const allLoading = statusResult.loading && portfolioResult.loading && latestRunResult.loading
 
   if (allLoading) {
-    return <LoadingSpinner />
+    return <DashboardSkeleton />
   }
 
   return (
@@ -318,7 +318,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
       {showLiveConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowLiveConfirm(false)}>
           <div ref={liveConfirmRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold text-loss mb-2">Execute live cycle?</h3>
+            <h3 className="text-base font-semibold text-loss mb-2">Execute live cycle?</h3>
             <p className="text-sm text-terminal-text-dim mb-4">This will run a full cycle and execute real trades on the Trading 212 Practice account.</p>
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => setShowLiveConfirm(false)} className="btn-secondary text-sm py-1.5">Cancel</button>
@@ -330,7 +330,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
       {showResetPeakConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowResetPeakConfirm(false)}>
           <div ref={resetPeakRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold text-accent mb-2">Reset peak?</h3>
+            <h3 className="text-base font-semibold text-accent mb-2">Reset peak?</h3>
             <p className="text-sm text-terminal-text-dim mb-4">Sets peak portfolio value to current value and transitions to ACTIVE. Use when CAUTIOUS was triggered incorrectly.</p>
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => setShowResetPeakConfirm(false)} className="btn-secondary text-sm py-1.5">Cancel</button>
@@ -342,7 +342,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
       {showPauseConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowPauseConfirm(false)}>
           <div ref={pauseConfirmRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold text-warning mb-2">Pause trading?</h3>
+            <h3 className="text-base font-semibold text-warning mb-2">Pause trading?</h3>
             <p className="text-sm text-terminal-text-dim mb-4">The agent will skip trading during scheduled cycles until resumed. Existing positions and stop-losses remain active.</p>
             <div className="flex gap-2 justify-end">
               <button type="button" onClick={() => setShowPauseConfirm(false)} className="btn-secondary text-sm py-1.5">Cancel</button>
@@ -499,7 +499,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
           {/* Positions snapshot — always visible (IA-2) */}
           <div className="card">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">Positions</h2>
+              <h2 className="text-lg font-semibold tracking-wide">Positions</h2>
               <Link to="/portfolio" className="text-xs text-accent hover:underline">View all</Link>
             </div>
             {portfolioResult.loading ? (
@@ -531,7 +531,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
 
           {/* Recent activity — always visible (IA-1) */}
           <div className="card">
-            <h2 className="text-lg font-semibold mb-3">Recent Activity</h2>
+            <h2 className="text-lg font-semibold tracking-wide mb-3">Recent Activity</h2>
             <div className="space-y-1.5 max-h-80 overflow-y-auto" aria-live="polite">
               {events.length === 0 ? (
                 <div className="text-terminal-text-dim text-sm py-4">No events yet. Waiting for activity...</div>

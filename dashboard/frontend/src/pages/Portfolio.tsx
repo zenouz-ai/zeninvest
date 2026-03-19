@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { portfolioApi, systemApi } from '../api/client'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { Sparkline } from '../components/Sparkline'
+import { TableSkeleton } from '../components/Skeleton'
 import type { PortfolioSnapshot } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
@@ -55,6 +56,20 @@ export default function Portfolio() {
 
   const positions = currentPortfolio?.positions ?? []
 
+  // Build per-position sparkline data from history snapshots (3A bonus)
+  const positionSparklines = useMemo(() => {
+    const sparklines: Record<string, number[]> = {}
+    // History is newest-first; reverse for chronological order
+    const chronological = [...history].reverse()
+    for (const snapshot of chronological) {
+      for (const pos of snapshot.positions ?? []) {
+        if (!sparklines[pos.ticker]) sparklines[pos.ticker] = []
+        sparklines[pos.ticker].push(pos.pnl_pct)
+      }
+    }
+    return sparklines
+  }, [history])
+
   const sectorAllocation = positions.reduce((acc, pos) => {
     const sector = pos.sector ?? 'Unknown'
     acc[sector] = (acc[sector] || 0) + pos.value_gbp
@@ -106,7 +121,7 @@ export default function Portfolio() {
   }
 
   if (loading) {
-    return <LoadingSpinner />
+    return <TableSkeleton rows={6} cols={5} />
   }
 
   if (error) {
@@ -144,7 +159,7 @@ export default function Portfolio() {
       {forceSellTicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setForceSellTicker(null)}>
           <div ref={forceSellModalRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-semibold text-loss mb-2">Force sell {cleanTicker(forceSellTicker)}?</h3>
+            <h3 className="text-base font-semibold text-loss mb-2">Force sell {cleanTicker(forceSellTicker)}?</h3>
             <p className="text-sm text-terminal-text-dim mb-4">
               This will immediately sell the entire position at market price. This action cannot be undone.
             </p>
@@ -209,7 +224,7 @@ export default function Portfolio() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Portfolio Value Chart */}
         <div className="card">
-          <h3 className="text-lg font-semibold mb-4">Portfolio Value History</h3>
+          <h3 className="text-lg font-semibold tracking-wide mb-4">Portfolio Value History</h3>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
@@ -241,7 +256,7 @@ export default function Portfolio() {
 
         {/* Sector Allocation */}
         <div className="card">
-          <h3 className="text-lg font-semibold mb-4">Sector Allocation</h3>
+          <h3 className="text-lg font-semibold tracking-wide mb-4">Sector Allocation</h3>
           {pieData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
@@ -278,65 +293,42 @@ export default function Portfolio() {
         </div>
       </div>
 
-      {/* Positions Table */}
+      {/* Positions — mobile cards + desktop table */}
       <div className="card">
-        <h3 className="text-lg font-semibold mb-4">Current Positions</h3>
+        <h3 className="text-lg font-semibold tracking-wide mb-4">Current Positions</h3>
         {positions.length === 0 ? (
           <div className="text-center py-8 text-terminal-text-dim">
             No positions
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-terminal-border">
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Ticker
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Sector
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Quantity
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    Value
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    P&L
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">
-                    P&L %
-                  </th>
-                  <th className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {positions.map((pos) => (
-                  <tr
-                    key={pos.ticker}
-                    className="border-b border-terminal-border hover:bg-terminal-surface/50"
-                  >
-                    <td className="px-4 py-3 font-mono font-semibold">
-                      {cleanTicker(pos.ticker)}
-                    </td>
-                    <td className="px-4 py-3 text-sm">{pos.sector ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono">{pos.quantity}</td>
-                    <td className="px-4 py-3 font-mono">
-                      £{pos.value_gbp.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td className="px-4 py-3 font-mono">
-                      <PnlCurrency value={pos.pnl_gbp} />
-                    </td>
-                    <td className="px-4 py-3 font-mono">
-                      <PnlValue value={pos.pnl_pct} suffix="%" />
-                    </td>
-                    <td className="px-4 py-3 text-right">
+          <>
+            {/* Mobile card layout */}
+            <div className="sm:hidden space-y-3">
+              {positions.map((pos) => (
+                <div key={pos.ticker} className="border border-terminal-border rounded-lg p-3 bg-terminal-surface/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold">{cleanTicker(pos.ticker)}</span>
+                      {positionSparklines[pos.ticker]?.length >= 2 && (
+                        <Sparkline data={positionSparklines[pos.ticker]} directional width={48} height={16} />
+                      )}
+                    </div>
+                    <PnlValue value={pos.pnl_pct} suffix="%" className="font-mono text-sm" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-terminal-text-dim text-xs">Value</span>
+                      <div className="font-mono">£{pos.value_gbp.toFixed(2)}</div>
+                    </div>
+                    <div>
+                      <span className="text-terminal-text-dim text-xs">P&L</span>
+                      <div className="font-mono"><PnlCurrency value={pos.pnl_gbp} /></div>
+                    </div>
+                    <div>
+                      <span className="text-terminal-text-dim text-xs">Qty</span>
+                      <div className="font-mono">{pos.quantity}</div>
+                    </div>
+                    <div className="flex items-end justify-end">
                       <button
                         type="button"
                         onClick={() => setForceSellTicker(pos.ticker)}
@@ -344,12 +336,60 @@ export default function Portfolio() {
                       >
                         Force Sell
                       </button>
-                    </td>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop table */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-terminal-border">
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Ticker</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden md:table-cell">Sector</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Quantity</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Value</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">P&L</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">P&L %</th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Trend</th>
+                    <th className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {positions.map((pos) => (
+                    <tr key={pos.ticker} className="border-b border-terminal-border hover:bg-terminal-surface/50">
+                      <td className="px-4 py-3 font-mono font-semibold">{cleanTicker(pos.ticker)}</td>
+                      <td className="px-4 py-3 text-sm hidden md:table-cell">{pos.sector ?? '—'}</td>
+                      <td className="px-4 py-3 font-mono hidden lg:table-cell">{pos.quantity}</td>
+                      <td className="px-4 py-3 font-mono">
+                        £{pos.value_gbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 font-mono"><PnlCurrency value={pos.pnl_gbp} /></td>
+                      <td className="px-4 py-3 font-mono"><PnlValue value={pos.pnl_pct} suffix="%" /></td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {positionSparklines[pos.ticker]?.length >= 2 ? (
+                          <Sparkline data={positionSparklines[pos.ticker]} directional width={72} height={20} />
+                        ) : (
+                          <span className="text-terminal-text-dim text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setForceSellTicker(pos.ticker)}
+                          className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
+                        >
+                          Force Sell
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
     </div>

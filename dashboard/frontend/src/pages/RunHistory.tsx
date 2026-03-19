@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { runsApi } from '../api/client'
-import { LoadingSpinner } from '../components/LoadingSpinner'
+import { TableSkeleton } from '../components/Skeleton'
 import type { Run } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
@@ -83,7 +83,7 @@ export default function RunHistory() {
   }
 
   if (loading) {
-    return <LoadingSpinner />
+    return <TableSkeleton rows={5} cols={4} />
   }
 
   if (error) {
@@ -106,7 +106,7 @@ export default function RunHistory() {
 
       {/* Run diff */}
       <div className="card">
-        <h3 className="text-lg font-semibold mb-4">Compare Runs</h3>
+        <h3 className="text-lg font-semibold tracking-wide mb-4">Compare Runs</h3>
         <div className="flex flex-wrap gap-4 items-end">
           <div>
             <label className="block text-xs text-terminal-text-dim mb-1">From (earlier)</label>
@@ -265,7 +265,7 @@ export default function RunHistory() {
         <div className="lg:col-span-1">
           {selectedRun ? (
             <div className="card sticky top-4">
-              <h3 className="text-lg font-semibold mb-4">Run Details</h3>
+              <h3 className="text-lg font-semibold tracking-wide mb-4">Run Details</h3>
               <div className="space-y-3 text-sm">
                 <div>
                   <div className="text-terminal-text-dim">Cycle ID</div>
