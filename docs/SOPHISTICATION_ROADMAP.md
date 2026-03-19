@@ -71,7 +71,7 @@ timeline
 | | 6 | US-3.5 | Intelligent Order Management |
 | | 7 | US-5.1 | Backtesting Engine |
 | | 8 | US-1.8 | Dashboard VPS Deployment |
-| | 9 | US-1.7 | Dashboard & Visualisation (full API + 7 pages) |
+| | 9 | US-1.7 | Dashboard & Visualisation (full API + 8 pages) |
 | | 10 | US-1.4 | Deploy POC to VPS |
 | **Pipeline** | 1 | US-4.4 | Agentic Research (complete: Strategy, Skeptic, and Risk tool-use loops; 5 tools; shared budget; 37 tests) |
 | | 2 | US-4.5 | Proactive Macro News Intelligence |
@@ -493,11 +493,11 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Full operational visibility — activity feed, universe, run history, portfolio, opportunity, order management, costs
 **Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)
 **Data Sources:** Existing DB; new `events_log` (optionally `runs`); backend reads agent tables read-only (no duplicate tables)
-**Stage:** In Progress (full API and 7 pages on branch `feature/dashboard-full-spec`)
+**Stage:** Complete (full API + 8 pages + UX audit 28/28 fixed)
 
 **Detailed plan:** `docs/DASHBOARD.md`.
 
-**Status (2026-03-10):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built. Agent instrumentation complete. Stabilisation complete. US-1.8 implemented: Docker service, multi-stage frontend build, SPA fallback. Phase 1.5 Analytics Lite: Decision Explorer (expandable universe rows), run diff, next-run countdown, P&L in top bar. **Full API and 7-page spec** (branch `feature/dashboard-full-spec`): backend exposes decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system; status includes system state (ACTIVE/CAUTIOUS/HALTED) and paused; frontend has 7 pages (Dashboard Home with state badge, Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs); Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only. Dashboard Home includes a “Latest trades & LLM reasons” audit table that surfaces recent orders (including failed attempts) with the latest committee reasoning by ticker; design tokens #0d1117, #58a6ff, #d4a017, grid texture.
+**Status (2026-03-19):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built. Agent instrumentation complete. Stabilisation complete. US-1.8 implemented: Docker service, multi-stage frontend build, SPA fallback. Phase 1.5 Analytics Lite: Decision Explorer (expandable universe rows), run diff, next-run countdown, P&L in top bar. **Full API and 8-page spec**: backend exposes decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system; status includes system state (ACTIVE/CAUTIOUS/HALTED) and paused; frontend has 8 pages (Dashboard Home, Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture); Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only; deep-linkable via `/universe/:ticker`. **UX Phases 1–3 (delivered 2026-03-18/19):** AlertBanner (multi-source alert aggregation), independent section loading (`useAsyncData`), Pause/Resume/Force Sell controls, FreshnessIndicator, PnlDisplay with directional arrows (▲/▼), focus-trapped modals, skeleton loading screens, position sparklines, decision pipeline waterfall, nav consolidation (“More” dropdown), mobile card layouts, responsive column hiding, URL state sync. 28/28 UX audit findings resolved (score 6.5→9.0/10). Design: ZENOUZ.ai brand — bg #06060a, positive #00ffa3, negative #ff4466, accent #00d4ff, violet #6332ff.
 
 **Phase 1 Acceptance Criteria:**
 - [x] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
@@ -513,8 +513,11 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_DEPLOYMENT.md`
 - [x] Phase 1.5 Analytics Lite: Decision Explorer, run diff, next-run countdown, P&L
 - [x] Full API: decisions (incl. pipeline waterfall), moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); status returns state and paused
-- [x] 7 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs
-- [x] Design: terminal palette #0d1117, #58a6ff, #d4a017, subtle grid background
+- [x] 8 pages: Dashboard Home, Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture
+- [x] Design: ZENOUZ.ai brand — bg #06060a, gain #00ffa3, loss #ff4466, accent #00d4ff, violet #6332ff
+- [x] UX Phase 1: AlertBanner, independent section loading, always-visible positions + activity, merged top cards, PAUSED badge
+- [x] UX Phase 2: Force Sell, FreshnessIndicator, PnlDisplay (▲/▼), focus-trapped modals, chart colour alignment, keyboard-accessible tables
+- [x] UX Phase 3: Skeleton loading, position sparklines, pipeline waterfall, nav "More" dropdown, `/universe/:ticker` deep-linking, mobile card layouts, responsive column hiding, typography hierarchy
 
 **Phases 2–4 (future):** Analytics & Insights; ML & Advanced (backtesting UI, anomaly detection, custom alerts); Interactive Control (manual run, strategy tuning UI, Slack mirror).
 

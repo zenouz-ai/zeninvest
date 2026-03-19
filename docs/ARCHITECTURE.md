@@ -221,10 +221,12 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     v
 React frontend (SPA, served by FastAPI when dist/ exists)
     |
-    +-- 8 pages: Dashboard Home (system state badge, Dry Run/Live Run buttons, next run, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline (queue: when/why queued, when action taken), Order Management, Costs, Roadmap & Architecture (project timeline, architecture diagram with component-to-US mapping)
-    +-- Universe: sortable columns, expandable rows with committee reasoning
+    +-- 8 pages: Dashboard Home (skeleton loading, alert banner, metric cards, positions with sparklines, activity feed), Universe (deep-linkable /universe/:ticker), Run History, Portfolio (sparklines, Force Sell), Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture
+    +-- Nav: primary 4 + "More" dropdown for secondary 4 pages
+    +-- Universe: sortable columns, expandable rows with pipeline waterfall + committee reasoning, responsive column hiding
     +-- Run History: timeline, run diff (new/closed/position changes)
-    +-- Portfolio: positions, P&L chart, sector allocation
+    +-- Portfolio: positions with inline sparklines, P&L chart, sector allocation, mobile card layout
+    +-- Components: AlertBanner, Skeleton, Sparkline, PipelineWaterfall, PnlDisplay, FreshnessIndicator, useFocusTrap
 ```
 
 **CORS:** Dashboard API uses configurable CORS origins via `dashboard.cors_origins` in `config/settings.yaml`. Defaults to localhost (`:3000`, `:8000`) when absent. For VPS deployment, set to the VPS IP or domain. Individual moderators self-check budgets, so the degradation level is primarily for reporting.
