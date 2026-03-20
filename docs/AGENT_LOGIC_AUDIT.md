@@ -1,7 +1,7 @@
 # Agent Logic Audit Report
 
 **Date:** 2026-03-20
-**Scope:** Strategy Engine, Moderation Panel, Risk Manager, Opportunity Scorer/Optimizer, Orchestrator pipeline flow
+**Scope:** Strategy Engine, Moderation Panel, Risk Manager, Opportunity Scorer/Optimizer, Execution layer, Orchestrator pipeline flow
 **Auditor:** Claude Opus 4.6 (automated code audit)
 **Prior audits:** `AUDIT_REPORT.md` (codebase-wide, 2026-03-17), `TRADING_SYSTEM_AUDIT.md` (production safety, 2026-03-19)
 
@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-This audit focuses on **agent decision-making logic** — how LLM outputs are parsed, validated, and flow through the Strategy → Moderation → Risk → Opportunity → Execution pipeline. While the codebase is well-structured with defence-in-depth, this audit identified **4 Critical, 5 High, 8 Medium, and 6 Low** findings, primarily around:
+This audit focuses on **agent decision-making logic** — how LLM outputs are parsed, validated, and flow through the Strategy → Moderation → Risk → Opportunity → Execution pipeline. While the codebase is well-structured with defence-in-depth, this audit identified **5 Critical, 6 High, 8 Medium, and 6 Low** findings, primarily around:
 
 - **MODIFY verdicts** requested by moderators but silently discarded
 - **CAUTION consensus** treated identically to APPROVED (no downstream differentiation)
@@ -21,8 +21,8 @@ This audit focuses on **agent decision-making logic** — how LLM outputs are pa
 
 | Severity | Count | Fixed (this PR) |
 |----------|-------|-----------------|
-| Critical | 4 | 4 |
-| High | 5 | 5 |
+| Critical | 5 | 5 |
+| High | 6 | 6 |
 | Medium | 8 | 0 (backlog) |
 | Low | 6 | 0 (backlog) |
 
@@ -74,9 +74,33 @@ In the regex fallback for malformed Gemini JSON, scores are extracted as raw int
 
 **Fix:** Clamp extracted scores to [1, 10] range. Apply same validation in the normal JSON parse path.
 
+### C-5: Orphaned "submitting" orders never synced — crash recovery gap
+
+**Files:** `src/agents/execution/order_manager.py:583,632`
+**Component:** Order Manager
+
+Orders are created with `status="submitting"` before the T212 API call (write-before-execute pattern). However, `sync_order_status_from_t212()` only queried `Order.status == "pending"`, not "submitting". If the process crashes between writing the submitting record and receiving the T212 response, the order remains "submitting" permanently — `sync_order_status_from_t212()` will never find it to reconcile.
+
+**Impact:** Orphaned "submitting" orders break the audit trail and could allow duplicate orders after the dedup window expires.
+
+**Fix:** Changed both `sync_order_status_from_t212()` and `reconcile_pending_stop_orders_with_t212()` to query `Order.status.in_(["pending", "submitting"])`.
+
 ---
 
 ## High Findings
+
+### H-6: Unexpected T212 status values silently default to "pending"
+
+**File:** `src/agents/execution/order_manager.py:486-497`
+**Component:** Order Manager
+
+The T212 status mapping defaults unknown values to "pending". If T212 returns "EXPIRED" or other new statuses, orders would incorrectly appear as pending when they're actually finalized. This is an execution-layer concern captured for completeness.
+
+**Impact:** Low probability but could leave orders in wrong status.
+
+**Status:** Backlog — requires T212 API documentation review for comprehensive status handling.
+
+---
 
 ### H-1: Risk rules for SELL/REDUCE skip critical checks
 
