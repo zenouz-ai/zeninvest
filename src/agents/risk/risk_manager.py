@@ -372,11 +372,25 @@ class RiskManager:
         self,
         num_positions: int,
         action: str,
+        conviction: int = 0,
+        is_losing_position: bool = False,
     ) -> RuleResult:
-        """Ensure minimum position count for diversification."""
+        """Ensure minimum position count for diversification.
+
+        Exemption (audit fix H-1): high-conviction SELL (>=80) on a losing position
+        is allowed even at min_positions to exit crashing stocks.
+        """
         min_pos = self.settings.min_positions
 
         if action == "SELL" and num_positions <= min_pos:
+            # Allow risk-driven exits for losing positions with high conviction
+            if conviction >= 80 and is_losing_position:
+                return RuleResult(
+                    rule_name="min_positions",
+                    passed=True,
+                    message=f"Risk-driven exit allowed: conviction {conviction}, losing position, "
+                            f"{num_positions} positions (min {min_pos})",
+                )
             return RuleResult(
                 rule_name="min_positions",
                 passed=False,
@@ -446,6 +460,8 @@ class RiskManager:
         system_state: str,
         is_existing_winner: bool = False,
         cycle_id: str | None = None,
+        conviction: int = 0,
+        is_losing_position: bool = False,
     ) -> RiskVerdict:
         """Run all risk checks on a proposed trade.
 
@@ -481,7 +497,9 @@ class RiskManager:
         results.append(self.check_correlation(portfolio_returns))
 
         if action in ("SELL", "REDUCE"):
-            results.append(self.check_min_positions(num_positions, action))
+            results.append(self.check_min_positions(
+                num_positions, action, conviction=conviction, is_losing_position=is_losing_position,
+            ))
             results.append(
                 self.check_min_holding_period(
                     ticker=ticker,

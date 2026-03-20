@@ -602,8 +602,20 @@ class Orchestrator:
                     logger.warning(f"Normalized strategy ticker '{raw_ticker}' -> '{ticker}'")
                     decision["ticker"] = ticker
                 action = decision.get("action", "HOLD")
-                conviction = decision.get("conviction", 0)
-                target_alloc = decision.get("target_allocation_pct", 0)
+
+                # Clamp LLM-produced numeric fields (audit fix C-3)
+                raw_conviction = decision.get("conviction", 0)
+                conviction = max(0, min(100, int(raw_conviction) if raw_conviction else 0))
+                if conviction != raw_conviction:
+                    logger.warning(f"Clamped conviction for {ticker}: {raw_conviction} -> {conviction}")
+                    decision["conviction"] = conviction
+
+                raw_alloc = decision.get("target_allocation_pct", 0)
+                max_alloc = self.settings.max_single_stock_pct
+                target_alloc = max(0.0, min(float(max_alloc), float(raw_alloc) if raw_alloc else 0.0))
+                if target_alloc != raw_alloc:
+                    logger.warning(f"Clamped target_allocation_pct for {ticker}: {raw_alloc} -> {target_alloc}")
+                    decision["target_allocation_pct"] = target_alloc
 
                 if action in ("HOLD", "QUEUED"):
                     hold_reason = decision.get("reasoning", f"{action} — no action this cycle")
@@ -727,8 +739,10 @@ class Orchestrator:
                     system_state=current_state,
                     is_existing_winner=ticker in existing_tickers,
                     cycle_id=cycle_id,
+                    conviction=conviction,
+                    is_losing_position=self._is_losing_position(ticker, portfolio_data),
                 )
-                
+
                 # Log risk decision
                 if DASHBOARD_AVAILABLE and log_event is not None:
                     try:
@@ -775,6 +789,23 @@ class Orchestrator:
                     continue
 
                 final_alloc = risk_verdict.adjusted_allocation_pct or target_alloc
+
+                # Apply moderator modifications — use most conservative allocation cap (audit fix C-1)
+                mod_modifications = mod_result.modifications
+                if mod_modifications and mod_modifications.get("target_allocation_pct"):
+                    mod_cap = float(mod_modifications["target_allocation_pct"])
+                    if mod_cap < final_alloc:
+                        logger.info(f"MODIFY cap applied for {ticker}: {final_alloc:.1f}% -> {mod_cap:.1f}%")
+                        final_alloc = mod_cap
+
+                # CAUTION consensus: reduce allocation by 25% (audit fix C-2)
+                if mod_result.consensus == "CAUTION" and action == "BUY":
+                    caution_alloc = round(final_alloc * 0.75, 2)
+                    logger.info(
+                        f"CAUTION allocation reduction for {ticker}: {final_alloc:.1f}% -> {caution_alloc:.1f}%"
+                    )
+                    final_alloc = caution_alloc
+
                 stage = "risk_resize" if (action == "BUY" and risk_verdict.verdict == "RESIZE") else "approved"
                 opportunity_evaluations.append({
                     "ticker": ticker,
@@ -1816,6 +1847,16 @@ class Orchestrator:
                 fund = s.get("fundamentals", {})
                 return fund.get("sector", "Unknown")
         return "Unknown"
+
+    @staticmethod
+    def _is_losing_position(ticker: str, portfolio_data: dict) -> bool:
+        """Check if a position is currently at a loss (audit fix H-1)."""
+        for pos in portfolio_data.get("positions", []):
+            pos_ticker = pos.get("ticker") or pos.get("instrument", {}).get("ticker", "")
+            if pos_ticker == ticker:
+                pnl = pos.get("pnl_pct") or pos.get("ppl", 0)
+                return float(pnl) < 0
+        return False
 
     def _get_current_price(self, ticker: str, stocks_data: list[dict]) -> float:
         for s in stocks_data:

@@ -35,6 +35,9 @@ Decision framework:
 - MEANINGFUL POSITION SIZES: Target allocations should yield trade values of at least £500.
   Prefer 25%, 50%, 70%, or 100% reduction tiers when proposing REDUCE — avoid trivial
   reductions (e.g. 5–10%) that add cost without meaningful portfolio impact.
+- ENTRY TYPE: For BUY decisions, set entry_type to "market" (default, execute immediately) or
+  "limit_dip" (place limit order below current price — use when you expect a short-term dip
+  before the thesis plays out). Only use limit_dip with high conviction and clear technical support.
 
 You must respond with ONLY valid JSON matching the exact schema. One decision object per ticker in TICKERS TO DECIDE."""
 
@@ -120,6 +123,7 @@ Respond with this exact JSON structure:
       "exit_conditions": "specific conditions for selling",
       "upside_target_pct": 15.0,
       "stop_loss_pct": -8.0,
+      "entry_type": "market",
       "expected_holding_period": "3-6 months",
       "news_sentiment_summary": "1-sentence summary of current news mood for this ticker"
     }}

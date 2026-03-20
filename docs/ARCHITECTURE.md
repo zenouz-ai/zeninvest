@@ -241,10 +241,13 @@ React frontend (SPA, served by FastAPI when dist/ exists)
   Strategy (always AGREE)  +  GPT-4o Verdict  +  Gemini Verdict
   ========================    ==============      ==============
 
-  3/3 AGREE                    --> APPROVED (proceed normally)
-  2/3 AGREE, 1 DISAGREE       --> CAUTION  (proceed with flag)
-  2/3 DISAGREE                 --> BLOCKED  (do not trade)
-  HIGH_RISK + any DISAGREE     --> BLOCKED  (do not trade)
+  3/3 AGREE (MODIFY = conditional AGREE) --> APPROVED (proceed normally)
+  2/3 AGREE, 1 DISAGREE                 --> CAUTION  (proceed with 25% allocation reduction)
+  2/3 DISAGREE                           --> BLOCKED  (do not trade)
+  HIGH_RISK + any DISAGREE               --> BLOCKED  (do not trade)
+
+  MODIFY verdicts: count as AGREE in consensus vote; their modifications.target_allocation_pct
+  is applied as an allocation cap on the final trade (most conservative suggestion wins).
 
   Fallback (1 moderator):
     AGREE + conviction >= 75   --> APPROVED

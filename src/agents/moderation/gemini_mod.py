@@ -338,6 +338,21 @@ def _review_with_tools(
         return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
 
 
+def _clamp_gemini_scores(result: dict[str, Any]) -> dict[str, Any]:
+    """Clamp Gemini scores to valid [1, 10] range (audit fix C-4)."""
+    for key in ("growth_score", "risk_score", "confidence_score"):
+        val = result.get(key)
+        if val is not None:
+            try:
+                clamped = max(1, min(10, int(val)))
+                if clamped != val:
+                    logger.warning(f"Clamped Gemini {key}: {val} -> {clamped}")
+                result[key] = clamped
+            except (TypeError, ValueError):
+                result[key] = 5  # Safe default
+    return result
+
+
 def _parse_json_with_repair(text: str) -> dict[str, Any]:
     """Parse JSON with repair for common LLM output issues.
 
@@ -346,7 +361,7 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
     """
     # First try normal parse
     try:
-        return json.loads(text)
+        return _clamp_gemini_scores(json.loads(text))
     except json.JSONDecodeError:
         pass
 
@@ -373,7 +388,7 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
     try:
         result = json.loads(repaired)
         logger.info("Gemini JSON repaired successfully")
-        return result
+        return _clamp_gemini_scores(result)
     except json.JSONDecodeError:
         pass
 
@@ -385,13 +400,15 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
 
     if verdict_match:
         logger.info("Gemini JSON extracted via regex fallback")
-        growth = int(growth_match.group(1)) if growth_match else 5
-        risk = int(risk_match.group(1)) if risk_match else 5
+        # Clamp scores to [1, 10] (audit fix C-4)
+        growth = max(1, min(10, int(growth_match.group(1)))) if growth_match else 5
+        risk = max(1, min(10, int(risk_match.group(1)))) if risk_match else 5
+        confidence = max(1, min(10, int(confidence_match.group(1)))) if confidence_match else 5
         return {
             "verdict": verdict_match.group(1),
             "growth_score": growth,
             "risk_score": risk,
-            "confidence_score": int(confidence_match.group(1)) if confidence_match else 5,
+            "confidence_score": confidence,
             "assessment": "Extracted from malformed response",
             "high_risk_flag": risk > growth,
             "modifications": None,

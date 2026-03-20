@@ -67,6 +67,26 @@ class ModerationResult:
             return None
         return self.gemini_verdict.get("reasoning") or self.gemini_verdict.get("assessment")
 
+    @property
+    def modifications(self) -> dict[str, Any] | None:
+        """Extract the most conservative modification from moderator MODIFY verdicts (audit fix C-1)."""
+        mods: list[dict[str, Any]] = []
+        for verdict in (self.gpt4o_verdict, self.gemini_verdict):
+            if verdict and verdict.get("verdict") == "MODIFY" and verdict.get("modifications"):
+                mods.append(verdict["modifications"])
+        if not mods:
+            return None
+        # Use the most conservative (lowest) allocation suggestion
+        alloc_suggestions = [m["target_allocation_pct"] for m in mods if m.get("target_allocation_pct")]
+        stop_suggestions = [m["stop_loss_pct"] for m in mods if m.get("stop_loss_pct")]
+        result: dict[str, Any] = {}
+        if alloc_suggestions:
+            result["target_allocation_pct"] = min(alloc_suggestions)
+        if stop_suggestions:
+            # Most conservative = smallest (closest to 0, tightest stop)
+            result["stop_loss_pct"] = max(stop_suggestions)  # e.g. -5 is tighter than -8
+        return result if result else None
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "ticker": self.ticker,
@@ -76,6 +96,7 @@ class ModerationResult:
             "gemini_verdict": self.gemini_verdict,
             "moderators_available": self.moderators_available,
             "caution_flag": self.caution_flag,
+            "modifications": self.modifications,
         }
 
 
@@ -225,8 +246,9 @@ class ModerationPanel:
                 return "CAUTION"
 
         # 2 moderators available
+        # Count MODIFY as conditional AGREE (audit fix C-1)
         verdicts = [strategy_verdict, gpt4o_verdict, gemini_verdict]
-        agree_count = verdicts.count("AGREE")
+        agree_count = verdicts.count("AGREE") + verdicts.count("MODIFY")
         disagree_count = verdicts.count("DISAGREE")
 
         # High risk + both moderators disagree → BLOCKED
@@ -263,7 +285,7 @@ class ModerationPanel:
                 consensus=result.consensus,
             ))
 
-            # Log GPT-4o verdict
+            # Log GPT-4o verdict (audit fix H-4: include consensus on all rows)
             if result.gpt4o_verdict:
                 session.add(ModerationLog(
                     timestamp=datetime.now(timezone.utc),
@@ -272,9 +294,10 @@ class ModerationPanel:
                     moderator="gpt-4o",
                     verdict=result.gpt4o_verdict.get("verdict", "SKIP"),
                     reasoning=result.gpt4o_verdict.get("reasoning"),
+                    consensus=result.consensus,
                 ))
 
-            # Log Gemini verdict
+            # Log Gemini verdict (audit fix H-4: include consensus on all rows)
             if result.gemini_verdict:
                 session.add(ModerationLog(
                     timestamp=datetime.now(timezone.utc),
@@ -283,6 +306,7 @@ class ModerationPanel:
                     moderator=result.gemini_verdict.get("moderator", "gemini"),
                     verdict=result.gemini_verdict.get("verdict", "SKIP"),
                     reasoning=result.gemini_verdict.get("assessment"),
+                    consensus=result.consensus,
                     growth_score=result.gemini_verdict.get("growth_score"),
                     risk_score=result.gemini_verdict.get("risk_score"),
                     confidence_score=result.gemini_verdict.get("confidence_score"),
