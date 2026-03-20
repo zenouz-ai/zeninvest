@@ -52,9 +52,13 @@ class RiskManager:
         proposed_pct: float,
         current_portfolio: dict[str, float],
     ) -> RuleResult:
-        """No single stock > max_single_stock_pct of portfolio."""
+        """No single stock > max_single_stock_pct of portfolio.
+
+        Note: proposed_pct is the strategy's TARGET allocation (total desired %),
+        not an incremental addition. The risk check compares the target directly
+        against the max limit.
+        """
         max_pct = self.settings.max_single_stock_pct
-        current_pct = current_portfolio.get(ticker, 0.0)
         total_pct = proposed_pct
 
         if total_pct > max_pct:

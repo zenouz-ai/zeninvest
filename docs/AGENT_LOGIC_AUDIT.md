@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-This audit focuses on **agent decision-making logic** — how LLM outputs are parsed, validated, and flow through the Strategy → Moderation → Risk → Opportunity → Execution pipeline. While the codebase is well-structured with defence-in-depth, this audit identified **5 Critical, 6 High, 8 Medium, and 6 Low** findings, primarily around:
+This audit focuses on **agent decision-making logic** — how LLM outputs are parsed, validated, and flow through the Strategy → Moderation → Risk → Opportunity → Execution pipeline. While the codebase is well-structured with defence-in-depth, this audit identified **5 Critical, 6 High, 9 Medium, and 6 Low** findings, primarily around:
 
 - **MODIFY verdicts** requested by moderators but silently discarded
 - **CAUTION consensus** treated identically to APPROVED (no downstream differentiation)
@@ -23,7 +23,7 @@ This audit focuses on **agent decision-making logic** — how LLM outputs are pa
 |----------|-------|-----------------|
 | Critical | 5 | 5 |
 | High | 6 | 6 |
-| Medium | 8 | 0 (backlog) |
+| Medium | 9 | 0 (backlog) |
 | Low | 6 | 0 (backlog) |
 
 ---
@@ -226,6 +226,21 @@ Claude outputs `stop_loss_pct` (e.g. -8 for 8% below entry) but this value is ne
 
 `is_existing_winner=ticker in existing_tickers` — This sets "is_winner" to True for any existing position, regardless of whether it's actually profitable. The Risk `check_cautious_state` (line 406) allows BUY "add to winners" in CAUTIOUS state, but this check treats all existing positions as winners.
 
+### M-9: Sector allocation check double-counts existing position on re-allocation
+
+**File:** `src/agents/risk/risk_manager.py:87`
+**Component:** Risk Manager
+
+`check_max_sector` computes `new_sector_pct = current_sector_pct + proposed_pct`. Since `proposed_pct` is a **target** allocation (not incremental), and `current_sector_pct` already includes the ticker's existing allocation, re-allocating an existing position double-counts it. Example: AAPL at 3% in Technology (sector at 20%), strategy targets 5% → check sees 20% + 5% = 25%, but real sector exposure would be 22% (subtract old 3%, add new 5%).
+
+**Impact:** Conservative (over-estimates sector exposure, fails safe). May occasionally block valid sector re-allocations that are within limits.
+
+**Fix:** Subtract the ticker's current allocation from `current_sector_pct` before adding `proposed_pct`.
+
+### Investigation note: `check_max_single_stock` (line 58)
+
+The risk audit flagged `total_pct = proposed_pct` (ignoring `current_pct`) as potentially critical. **Investigation confirmed this is correct behaviour.** The strategy's `target_allocation_pct` is a **target** (total desired portfolio %), not an incremental addition. The orchestrator passes it directly to execution at `_execute_trade` (line 1429: `trade_value = current_value * final_alloc / 100`). Comparing the target directly against `max_single_stock_pct` is the correct check. Removed the dead `current_pct` variable and added a clarifying docstring.
+
 ---
 
 ## Low Findings
@@ -290,7 +305,7 @@ The function name suggests it parses JSON and raises on failure. Instead, it ret
 
 ### Backlog
 
-- M-1 through M-8: See descriptions above
+- M-1 through M-9: See descriptions above
 - L-1 through L-6: See descriptions above
 
 ---
