@@ -194,7 +194,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 5b. **Web search fallback** — When Finnhub analyst data or Alpha Vantage ticker sentiment times out or fails, `get_news_sentiment_fallback` (Brave/Tavily) supplies analyst/news-like snippets for the strategy prompt. Controlled by `data_fallback_web_search_enabled`; respects search API monthly budget.
 5c. **Queued ticker re-evaluation** — When opportunity is enabled, Phase 3 in `_fetch_stocks_data` re-adds queued tickers (from OpportunityQueue) to stocks_data each cycle, bypassing screening cooldown, so they can reach 2nd cycle and promote before expiring.
 6. **Company profiles** — `longBusinessSummary` + `industry` from yfinance are persisted in the `Instrument` model and included in the Claude strategy prompt for qualitative reasoning. When yfinance returns sparse data, the orchestrator falls back to Instrument.industry and Instrument.business_summary (enriched by bulk/backfill scripts; ~5,477 instruments deployed).
-7. **T212 order status** — Order status is derived from T212 API response `status`: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/UNCONFIRMED/LOCAL→pending, REJECTED/CANCELLED→failed. Do not assume filled on 200 OK. **Order sync**: At the start of each cycle (non–dry-run), `OrderManager.sync_order_status_from_t212()` fetches T212 order history and updates local `Order.status` from pending to filled when T212 reports FILLED.
+7. **T212 order status** — Order status is derived from T212 API response `status`: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/UNCONFIRMED/LOCAL→pending, REJECTED/CANCELLED→failed. Do not assume filled on 200 OK. **Write-before-execute**: market orders are recorded with status `"submitting"` before the T212 API call; updated to actual status after response. **No retry on POST/DELETE**: mutating T212 requests are never automatically retried (T212 has no idempotency keys). Only safe methods (GET) are retried. **Order sync**: At the start of each cycle (non–dry-run), `OrderManager.sync_order_status_from_t212()` fetches T212 order history and updates local `Order.status` from pending to filled when T212 reports FILLED.
 8. **Cost degradation** — FULL → NO_GEMINI → NO_GPT4O → NO_STRATEGY → HALTED. When only Google is over budget, returns NO_GEMINI (GPT-4o still runs). When only OpenAI is over budget, returns NO_GPT4O (Gemini still runs). When both moderator budgets are exceeded, moderation is skipped. Individual moderators self-check their own budgets before each call. Budget per-provider per-day, plus monthly cap. **Research costs** tracked separately in `research_logs.cost_usd` ($0.005/paid call); surfaced in dashboard Costs page as a distinct "Agentic Research" band (daily chart + monthly table) alongside LLM and API costs. `/api/research/summary` returns cost breakdowns by member, tool, and provider.
 9. **Order dedup** — 5-minute window prevents double-execution of the same order.
 10. **Order value floor** — `min_order_value_gbp` applies to BUY/REDUCE/limit paths; explicit market SELL decisions may execute below the floor so small positions can be fully exited. Protective stop-loss SELL orders are also allowed below the floor so small positions remain risk-protected. REDUCE that would leave a sub-£500 residual is auto-converted to full SELL.
@@ -347,7 +347,7 @@ Gathers macro-level market intelligence to inform trading decisions:
 
 Key tuneable values:
 
-- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `skip_market_holidays: true` (NYSE holiday skip), `max_positions: 15`, `cash_floor_pct: 10`, `min_order_value_gbp: 500` (BUY/REDUCE/limit floor; explicit market SELL and protective stop-loss exempt), `min_reduce_pct_of_position: 25`, `reduce_tiers_pct: [25, 50, 70, 100]`
+- **Trading**: `mode`, `account_type: practice|live` (practice = relaxed state machine), `cycle_frequency: intraday|standard`, `cycle_times_utc`, `skip_market_holidays: true` (NYSE holiday skip), `cycle_timeout_seconds: 1800` (30min default; prevents hung cycles), `max_positions: 15`, `cash_floor_pct: 10`, `min_order_value_gbp: 500` (BUY/REDUCE/limit floor; explicit market SELL and protective stop-loss exempt), `min_reduce_pct_of_position: 25`, `reduce_tiers_pct: [25, 50, 70, 100]`
 - **Risk**: `min_holding_hours_before_reduce: 24`, `max_single_stock_pct: 15`, `max_sector_pct: 35`, `cautious_drawdown_pct: 30`, `halt_drawdown_pct: 40`
 - **Strategy weights**: momentum `0.35`, mean_reversion `0.30`, factor `0.35`
 - **Models**: `claude-sonnet-4-5-20250929` (strategy), `gpt-4o` + `gemini-2.5-flash` (moderation)
@@ -418,6 +418,7 @@ Files to check on every feature:
 - **US-1.7** Dashboard full spec (full API + 8 pages)
 - **US-1.4** Deploy POC to VPS
 - **US-4.4** Agentic Research — 5 tools, all 3 members have tool-use loops, shared pipeline-wide budget, 37 tests
+- **US-7.0** Production Audit & Safety Fixes — 34 findings (3C/6H/12M/13L); Phase 1+2 delivered, see `docs/TRADING_SYSTEM_AUDIT.md`
 
 **Deferred (await data or later sprint):**
 - Calibration (US-2.1, US-2.2) — requires ~50 trades

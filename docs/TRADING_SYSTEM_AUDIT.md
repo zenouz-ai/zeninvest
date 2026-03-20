@@ -230,13 +230,38 @@ The audit also identified well-implemented patterns:
 
 ---
 
-## Recommended Priority Order
+## Remediation Status
 
-1. **C-1 + C-2:** Fix retry-on-POST and write-before-execute (highest financial risk)
-2. **C-3:** Fix `liquidate_all` status mapping (HALT is the worst-case scenario)
-3. **H-1:** Fix cancel-then-replace stop atomicity
-4. **H-2:** Track committed cash within cycle
-5. **H-5:** Change moderator parse-failure default to DISAGREE
-6. **H-3 + H-4:** Either implement correlation/daily-loss or remove the dead code
-7. **H-6:** Fix session leak patterns
-8. **M-1 through M-12:** Address in order of operational impact
+### Phase 1 (Completed — 2026-03-19)
+| ID | Status | Fix |
+|----|--------|-----|
+| **C-1** | FIXED | Split `_request` into safe (GET, retried) and unsafe (POST/DELETE, no retry) |
+| **C-2** | FIXED | Write-before-execute: "submitting" DB record before T212 API call |
+| **C-3** | FIXED | `liquidate_all` now maps T212 response status properly |
+| **H-1** | FIXED | Reversed stop replacement: new stop placed first, old cancelled after |
+| **H-5** | FIXED | Moderator parse-failure default changed to DISAGREE (GPT-4o + Gemini) |
+| **H-6** | FIXED | Session leaks fixed with proper `finally` blocks in orchestrator + scheduler |
+
+### Phase 2 (Completed — 2026-03-20)
+| ID | Status | Fix |
+|----|--------|-----|
+| **H-2** | FIXED | Track `committed_cash` within cycle; BUYs see reduced cash; cash floor guard |
+| **H-3** | FIXED | `_get_portfolio_returns()` computes return series from OHLCV for correlation check |
+| **H-4** | FIXED | `daily_pnl_pct` computed from latest PortfolioSnapshot vs current total_value |
+| **M-7** | FIXED | Cycle-level timeout via `signal.alarm` (default 30min, configurable) |
+| **M-8** | FIXED | Notification/summary wrapped in try/except; original exception never lost |
+| **M-11** | FIXED | HALTED path fetches portfolio data before liquidation for meaningful alerts |
+
+### Remaining (Backlog)
+| ID | Severity | Description |
+|----|----------|-------------|
+| M-1 | Medium | Dedup check not atomic with order placement |
+| M-2 | Medium | Failed stop cancel still places new stop (duplicate stops) |
+| M-3 | Medium | DB audit record failures swallowed |
+| M-4 | Medium | `dry_run` stops in DB fallback |
+| M-5 | Medium | No response body validation on T212 API |
+| M-6 | Medium | Rate limit check not thread-safe |
+| M-9 | Medium | Notification retry blocks main thread |
+| M-10 | Medium | Missing rollback in cost_tracker.log_cost() |
+| M-12 | Medium | Test fixture dual-database isolation leak |
+| L-1..L-13 | Low | Various minor issues (see findings above) |

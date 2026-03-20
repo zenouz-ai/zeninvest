@@ -10,6 +10,7 @@ trading:
   cycle_times_utc: ["08:00", "12:00", "16:00"]
   market_days: [0, 1, 2, 3, 4]  # Mon-Fri
   skip_market_holidays: true     # Skip analysis cycles on NYSE holidays
+  cycle_timeout_seconds: 1800    # Max seconds per cycle before timeout (30 min default)
   max_positions: 15
   min_position_pct: 2
   max_position_pct: 15
