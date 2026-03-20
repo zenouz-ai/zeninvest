@@ -304,14 +304,29 @@ class TestOrderManager:
             {"ticker": "AAPL_US_EQ", "quantity": 10},
             {"ticker": "MSFT_US_EQ", "quantity": 5},
         ]
-        mock_client.place_market_order.return_value = {"id": "liquidation-123"}
+        # T212 returns FILLED status — liquidate_all now maps it properly (C-3 fix)
+        mock_client.place_market_order.return_value = {"id": "liquidation-123", "status": "FILLED"}
 
         manager = OrderManager(client=mock_client, dry_run=False)
         results = manager.liquidate_all()
 
         assert len(results) == 2
-        assert all(r["status"] == "sold" for r in results)
+        assert all(r["status"] == "filled" for r in results)
         assert mock_client.place_market_order.call_count == 2
+
+    def test_liquidate_all_pending_status(self, db_session):
+        """When T212 returns no status, liquidate_all should map to 'pending' not 'filled'."""
+        mock_client = MagicMock()
+        mock_client.get_portfolio.return_value = [
+            {"ticker": "AAPL_US_EQ", "quantity": 10},
+        ]
+        mock_client.place_market_order.return_value = {"id": "liquidation-456"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        results = manager.liquidate_all()
+
+        assert len(results) == 1
+        assert results[0]["status"] == "pending"
 
     def test_place_stop_loss_success(self, db_session):
         mock_client = MagicMock()
@@ -533,13 +548,13 @@ class TestCancelConflictingStops:
         mock_client.get_pending_orders.return_value = [
             {"ticker": "AAPL_US_EQ", "type": "STOP", "stopPrice": 161.0, "id": "stop-liq"},
         ]
-        mock_client.place_market_order.return_value = {"id": "liq-123"}
+        mock_client.place_market_order.return_value = {"id": "liq-123", "status": "FILLED"}
 
         manager = OrderManager(client=mock_client, dry_run=False)
         results = manager.liquidate_all()
 
         assert len(results) == 1
-        assert results[0]["status"] == "sold"
+        assert results[0]["status"] == "filled"
         mock_client.cancel_order.assert_called_once_with("stop-liq")
 
     def test_buy_does_not_cancel_stops(self, db_session):

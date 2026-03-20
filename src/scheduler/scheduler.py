@@ -61,16 +61,21 @@ def _run_analysis_cycle() -> None:
             # Create run record
             try:
                 session = get_db_session()
-                run = Run(
-                    cycle_id=cycle_id,
-                    run_type="scheduled",
-                    started_at=cycle_start_time,
-                    status="running",
-                )
-                session.add(run)
-                session.commit()
-                session.close()
-                logger.debug(f"Created Run record for scheduled cycle {cycle_id}")
+                try:
+                    run = Run(
+                        cycle_id=cycle_id,
+                        run_type="scheduled",
+                        started_at=cycle_start_time,
+                        status="running",
+                    )
+                    session.add(run)
+                    session.commit()
+                    logger.debug(f"Created Run record for scheduled cycle {cycle_id}")
+                except Exception:
+                    session.rollback()
+                    raise
+                finally:
+                    session.close()
             except Exception as e:
                 logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
         except Exception:
@@ -106,20 +111,25 @@ def _run_analysis_cycle() -> None:
                 # Update run record
                 try:
                     session = get_db_session()
-                    run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
-                    if run:
-                        run.completed_at = cycle_end_time
-                        run.status = result.get("status", "completed")
-                        run.summary_json = {
-                            "num_trades": result.get("num_trades", 0),
-                            "num_rejected": len(result.get("rejected_stocks", [])),
-                            "duration_seconds": duration_seconds,
-                        }
-                        session.commit()
-                        logger.debug(f"Updated Run record for scheduled cycle {cycle_id}")
-                    else:
-                        logger.debug(f"Run record not found for cycle {cycle_id}")
-                    session.close()
+                    try:
+                        run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                        if run:
+                            run.completed_at = cycle_end_time
+                            run.status = result.get("status", "completed")
+                            run.summary_json = {
+                                "num_trades": result.get("num_trades", 0),
+                                "num_rejected": len(result.get("rejected_stocks", [])),
+                                "duration_seconds": duration_seconds,
+                            }
+                            session.commit()
+                            logger.debug(f"Updated Run record for scheduled cycle {cycle_id}")
+                        else:
+                            logger.debug(f"Run record not found for cycle {cycle_id}")
+                    except Exception:
+                        session.rollback()
+                        raise
+                    finally:
+                        session.close()
                 except Exception as e:
                     logger.warning(f"Failed to update Run record to completed (fail-open): {e}", exc_info=True)
             except Exception:
@@ -149,20 +159,25 @@ def _run_analysis_cycle() -> None:
                 # Update run record
                 try:
                     session = get_db_session()
-                    run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
-                    if run:
-                        run.completed_at = cycle_end_time
-                        run.status = "failed"
-                        run.summary_json = {
-                            "error_type": type(e).__name__,
-                            "error_message": str(e),
-                            "duration_seconds": duration_seconds,
-                        }
-                        session.commit()
-                        logger.debug(f"Updated Run record to failed for cycle {cycle_id}")
-                    else:
-                        logger.debug(f"Run record not found for failed cycle {cycle_id}")
-                    session.close()
+                    try:
+                        run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                        if run:
+                            run.completed_at = cycle_end_time
+                            run.status = "failed"
+                            run.summary_json = {
+                                "error_type": type(e).__name__,
+                                "error_message": str(e),
+                                "duration_seconds": duration_seconds,
+                            }
+                            session.commit()
+                            logger.debug(f"Updated Run record to failed for cycle {cycle_id}")
+                        else:
+                            logger.debug(f"Run record not found for failed cycle {cycle_id}")
+                    except Exception:
+                        session.rollback()
+                        raise
+                    finally:
+                        session.close()
                 except Exception as ex:
                     logger.warning(f"Failed to update Run record to failed (fail-open): {ex}", exc_info=True)
             except Exception:

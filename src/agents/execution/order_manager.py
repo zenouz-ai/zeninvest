@@ -280,6 +280,30 @@ class OrderManager:
         finally:
             session.close()
 
+    def _update_order_status(
+        self,
+        order_id: int,
+        status: str,
+        t212_order_id: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Update an existing order record's status (for write-before-execute pattern)."""
+        session = get_session()
+        try:
+            row = session.query(Order).filter(Order.id == order_id).first()
+            if row:
+                row.status = status
+                if t212_order_id:
+                    row.t212_order_id = t212_order_id
+                if error_message:
+                    row.error_message = error_message
+                session.commit()
+        except Exception:
+            session.rollback()
+            logger.error(f"Failed to update order {order_id} to status={status}")
+        finally:
+            session.close()
+
     def execute_market_order(
         self,
         ticker: str,
@@ -418,6 +442,24 @@ class OrderManager:
                 "value_gbp": value_gbp,
             }
 
+        # Write-before-execute: create a "submitting" DB record BEFORE the T212
+        # API call. If the process crashes after T212 accepts but before we update,
+        # the orphaned "submitting" record enables crash recovery. (Audit fix C-2.)
+        order = self._log_order(
+            ticker=ticker,
+            action=action,
+            order_type="market",
+            quantity=quantity,
+            price=current_price,
+            value_gbp=value_gbp,
+            status="submitting",
+            strategy=strategy,
+            conviction=conviction,
+            moderation_result=moderation_result,
+            risk_result=risk_result,
+            dedup_key=dedup_key,
+        )
+
         try:
             # Log order_placed event before execution
             if DASHBOARD_AVAILABLE and log_event is not None:
@@ -438,7 +480,7 @@ class OrderManager:
                     )
                 except Exception:
                     pass  # Fail-open
-            
+
             result = self._place_with_retry(ticker, quantity)
             t212_order_id = result.get("id") or result.get("orderId")
             t212_status = (result.get("status") or "").upper()
@@ -454,21 +496,8 @@ class OrderManager:
                 if t212_status and t212_status not in ("NEW", "CONFIRMED", "UNCONFIRMED", "LOCAL"):
                     logger.info(f"T212 order {t212_order_id} status={t212_status} -> pending")
 
-            order = self._log_order(
-                ticker=ticker,
-                action=action,
-                order_type="market",
-                quantity=quantity,
-                price=current_price,
-                value_gbp=value_gbp,
-                t212_order_id=str(t212_order_id) if t212_order_id else None,
-                status=db_status,
-                strategy=strategy,
-                conviction=conviction,
-                moderation_result=moderation_result,
-                risk_result=risk_result,
-                dedup_key=dedup_key,
-            )
+            # Update the pre-written record with T212 response
+            self._update_order_status(order.id, db_status, t212_order_id=str(t212_order_id) if t212_order_id else None)
 
             logger.info(
                 f"Order {'filled' if db_status == 'filled' else 'placed'}: {action} {abs(quantity)} x {ticker} = £{value_gbp:.2f} (T212 status={t212_status})"
@@ -512,19 +541,8 @@ class OrderManager:
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Order failed for {ticker}: {error_msg}")
-            self._log_order(
-                ticker=ticker,
-                action=action,
-                order_type="market",
-                quantity=quantity,
-                price=current_price,
-                value_gbp=value_gbp,
-                status="failed",
-                strategy=strategy,
-                conviction=conviction,
-                error_message=error_msg,
-                dedup_key=dedup_key,
-            )
+            # Update the pre-written record to failed
+            self._update_order_status(order.id, "failed", error_message=error_msg)
             return {"status": "failed", "error": error_msg}
 
     def sync_order_status_from_t212(self) -> int:
@@ -832,16 +850,27 @@ class OrderManager:
                         except Exception as e:
                             logger.warning(f"Stop cancel failed during liquidation of {ticker}: {e}")
                         result = self.client.place_market_order(ticker, -quantity)
+                        # Map T212 status properly — do not assume filled (audit fix C-3)
+                        t212_order_id = result.get("id") or result.get("orderId")
+                        t212_status = (result.get("status") or "").upper()
+                        if t212_status in ("FILLED", "PARTIALLY_FILLED"):
+                            db_status = "filled"
+                        elif t212_status in ("REJECTED", "CANCELLED", "CANCELLING"):
+                            db_status = "failed"
+                            logger.warning(f"Liquidation order for {ticker} was {t212_status}")
+                        else:
+                            db_status = "pending"
                         self._log_order(
                             ticker=ticker,
                             action="SELL",
                             order_type="market",
                             quantity=-quantity,
-                            status="filled",
+                            t212_order_id=str(t212_order_id) if t212_order_id else None,
+                            status=db_status,
                             strategy="liquidation",
                         )
-                        results.append({"ticker": ticker, "status": "sold", "result": result})
-                        logger.info(f"Liquidated {quantity} x {ticker}")
+                        results.append({"ticker": ticker, "status": db_status, "result": result})
+                        logger.info(f"Liquidated {quantity} x {ticker} (status={db_status})")
                     except Exception as e:
                         results.append({"ticker": ticker, "status": "failed", "error": str(e)})
                         logger.error(f"Failed to liquidate {ticker}: {e}")

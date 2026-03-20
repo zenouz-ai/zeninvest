@@ -179,8 +179,10 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 
 - Tracks `x-ratelimit-remaining` from response headers.
 - When remaining calls drop below 5, the client pauses for 2 seconds before the next request.
-- All API calls use `tenacity` retry with exponential backoff: 3 attempts, 1-4 second wait.
+- **Safe methods only** (GET/HEAD): retried with `tenacity` exponential backoff (3 attempts, 1-4 second wait). Mutating methods (POST for orders, DELETE for cancellations) are **never retried** to prevent duplicate real-money orders — T212 has no idempotency keys.
+- **Write-before-execute**: Market orders are recorded in the DB with status `"submitting"` *before* the T212 API call. If the process crashes after T212 accepts but before the response is processed, the orphaned record enables crash recovery. The record is updated to the actual T212 status after the API returns.
 - Every API call is logged to the `api_logs` database table with method, endpoint, status code, duration, and any errors.
+- **Cycle timeout**: Each cycle has a configurable timeout (`cycle_timeout_seconds`, default 30 minutes) to prevent indefinite hangs from stuck LLM calls.
 
 **LLM Circuit Breakers**
 
@@ -263,10 +265,10 @@ The Risk Agent (`src/agents/risk/risk_manager.py`) enforces non-negotiable rules
 |---|------|-----------|-------------|--------|
 | 1 | **Max Single Stock** | No single stock > 15% of portfolio | REJECT or RESIZE | `check_max_single_stock()` |
 | 2 | **Max Sector Concentration** | No single sector > 35% of portfolio | REJECT or RESIZE | `check_max_sector()` |
-| 3 | **Correlation Limit** | Portfolio avg pairwise correlation < 0.7 | REJECT | `check_correlation()` |
+| 3 | **Correlation Limit** | Portfolio avg pairwise correlation < 0.7. Return series computed from OHLCV close prices for held positions (requires >=20 days). | REJECT | `check_correlation()` |
 | 4 | **Drawdown State Machine** | >cautious_drawdown_pct (30%) -> CAUTIOUS; >halt_drawdown_pct (40%) -> HALTED (liquidate all) | State transition + REJECT | `check_drawdown()` |
 | 5 | **VIX-Based Position Limits** | VIX >25: max 8%; VIX >35: max 5% per position | RESIZE | `check_vix_limit()` |
-| 6 | **Daily Loss Halt** | Daily loss >2%: no new buys for 24 hours | REJECT | `check_daily_loss_halt()` |
+| 6 | **Daily Loss Halt** | Daily loss >2%: no new buys for 24 hours. P&L computed from most recent PortfolioSnapshot (>24h ago) vs current total_value. | REJECT | `check_daily_loss_halt()` |
 | 7 | **Cash Floor** | Always maintain >= 10% cash | REJECT or RESIZE | `check_cash_floor()` |
 | 8 | **Min Positions** | Minimum 5 positions once invested (prevents over-concentration) | REJECT (on SELL or REDUCE) | `check_min_positions()` |
 | 9 | **Min Holding Period** | No REDUCE/SELL on positions held &lt; 24h unless over max_single_stock or max_sector | REJECT | `check_min_holding_period()` |

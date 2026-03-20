@@ -5,10 +5,11 @@ Sequence: Data -> Strategy -> Moderation -> Risk -> Execution -> Journal
 """
 
 import json
+import signal
 import sys
 import uuid
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 import click
@@ -136,16 +137,21 @@ class Orchestrator:
                 try:
                     from dashboard.backend.app.database import Run
                     session = get_session()
-                    run = Run(
-                        cycle_id=cycle_id,
-                        run_type="manual" if not self.dry_run else "dry_run",
-                        started_at=cycle_start_time,
-                        status="running",
-                    )
-                    session.add(run)
-                    session.commit()
-                    session.close()
-                    logger.debug(f"Created Run record for cycle {cycle_id}")
+                    try:
+                        run = Run(
+                            cycle_id=cycle_id,
+                            run_type="manual" if not self.dry_run else "dry_run",
+                            started_at=cycle_start_time,
+                            status="running",
+                        )
+                        session.add(run)
+                        session.commit()
+                        logger.debug(f"Created Run record for cycle {cycle_id}")
+                    except Exception:
+                        session.rollback()
+                        raise
+                    finally:
+                        session.close()
                 except Exception as e:
                     logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
             except Exception:
@@ -208,39 +214,43 @@ class Orchestrator:
                             "num_rejected": result["num_rejected"],
                         },
                     )
-                    # Update run record
+                    # Update run record (session leak fix H-6)
                     try:
                         from dashboard.backend.app.database import Run
                         session = get_session()
-                        run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
-                        if run:
-                            run.completed_at = cycle_end_time
-                            run.status = status
-                            run.summary_json = {
-                                "num_trades": result["num_trades"],
-                                "num_rejected": result["num_rejected"],
-                                "duration_seconds": duration_seconds,
-                            }
-                            session.commit()
-                            logger.debug(f"Updated Run record for cycle {cycle_id}")
-                        else:
-                            logger.debug(f"Run record not found for cycle {cycle_id}, creating new one")
-                            # Create if missing (scheduler Run creation may have failed)
-                            run = Run(
-                                cycle_id=cycle_id,
-                                run_type="scheduled" if scheduled_cycle_id else ("manual" if not self.dry_run else "dry_run"),
-                                started_at=cycle_start_time,
-                                completed_at=cycle_end_time,
-                                status=status,
-                                summary_json={
+                        try:
+                            run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                            if run:
+                                run.completed_at = cycle_end_time
+                                run.status = status
+                                run.summary_json = {
                                     "num_trades": result["num_trades"],
                                     "num_rejected": result["num_rejected"],
                                     "duration_seconds": duration_seconds,
-                                },
-                            )
-                            session.add(run)
-                            session.commit()
-                        session.close()
+                                }
+                                session.commit()
+                                logger.debug(f"Updated Run record for cycle {cycle_id}")
+                            else:
+                                logger.debug(f"Run record not found for cycle {cycle_id}, creating new one")
+                                run = Run(
+                                    cycle_id=cycle_id,
+                                    run_type="scheduled" if scheduled_cycle_id else ("manual" if not self.dry_run else "dry_run"),
+                                    started_at=cycle_start_time,
+                                    completed_at=cycle_end_time,
+                                    status=status,
+                                    summary_json={
+                                        "num_trades": result["num_trades"],
+                                        "num_rejected": result["num_rejected"],
+                                        "duration_seconds": duration_seconds,
+                                    },
+                                )
+                                session.add(run)
+                                session.commit()
+                        except Exception:
+                            session.rollback()
+                            raise
+                        finally:
+                            session.close()
                     except Exception as e:
                         logger.warning(f"Failed to update Run record (fail-open): {e}", exc_info=True)
                 except Exception:
@@ -255,6 +265,19 @@ class Orchestrator:
                     pass  # Fail-open
             
             return result
+
+        # Cycle-level timeout (audit fix M-7) — prevents indefinite hangs from LLM calls
+        cycle_timeout = self.settings.cycle_timeout_seconds
+        _prev_alarm_handler = None
+        try:
+            if hasattr(signal, "SIGALRM") and signal.getsignal(signal.SIGALRM) is not signal.SIG_IGN:
+                def _timeout_handler(signum: int, frame: Any) -> None:
+                    raise TimeoutError(f"Cycle {cycle_id} exceeded {cycle_timeout}s timeout")
+                _prev_alarm_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(cycle_timeout)
+                logger.debug(f"Cycle timeout set: {cycle_timeout}s")
+        except (ValueError, OSError):
+            pass  # Not in main thread or signal unavailable — skip timeout
 
         try:
             # Check if system is paused
@@ -276,6 +299,16 @@ class Orchestrator:
             # --- STEP 1: HALTED state handling ---
             if current_state == "HALTED":
                 logger.error("System is HALTED. Liquidating all positions.")
+                # Fetch portfolio before liquidation for meaningful notifications (audit fix M-11)
+                try:
+                    portfolio_data = self._get_portfolio_state()
+                    result["portfolio_at_halt"] = {
+                        "total_value": portfolio_data.get("total_value"),
+                        "cash": portfolio_data.get("cash"),
+                        "num_positions": portfolio_data.get("num_positions"),
+                    }
+                except Exception as port_err:
+                    logger.warning(f"Could not fetch portfolio data during HALT: {port_err}")
                 if not self.dry_run:
                     liquidation = self.order_manager.liquidate_all()
                     result["liquidation"] = liquidation
@@ -292,6 +325,9 @@ class Orchestrator:
             current_value = portfolio_data["total_value"]
             cash_gbp = portfolio_data["cash"]
             cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
+            # Track cash committed by BUYs within this cycle to prevent over-allocation
+            # (audit fix H-2: stale portfolio data)
+            committed_cash = 0.0
 
             # Sync order status from T212 (pending -> filled)
             if not self.dry_run:
@@ -550,6 +586,11 @@ class Orchestrator:
                 except Exception:
                     pass  # Fail-open
 
+            # Compute portfolio return series for correlation check (audit fix H-3)
+            portfolio_returns = self._get_portfolio_returns(
+                portfolio_data.get("positions", []), stocks_data,
+            )
+
             # --- STEP 5: Moderation -> Risk -> (Deferred BUY Execution) ---
             pending_buys: list[dict[str, Any]] = []
             projected_num_positions = len(existing_tickers)
@@ -675,7 +716,7 @@ class Orchestrator:
                     sector=sector,
                     current_portfolio=portfolio_allocs,
                     sector_allocations=sector_allocs,
-                    portfolio_returns={},
+                    portfolio_returns=portfolio_returns,
                     current_value=current_value,
                     peak_value=peak_value,
                     cash_pct=cash_pct,
@@ -898,6 +939,9 @@ class Orchestrator:
                             "moderation": pending["moderation"].consensus,
                             "risk": pending["risk_verdict"].verdict,
                         })
+                        # Track committed cash for limit BUYs (audit fix H-2)
+                        if limit_result.get("status") in ("placed", "pending", "dry_run"):
+                            committed_cash += trade_value
                         self.notification_service.emit_order_adjustment(
                             cycle_id=cycle_id,
                             payload={
@@ -912,14 +956,35 @@ class Orchestrator:
                         )
                     continue
 
+                buy_alloc = float(pending.get("final_allocation_pct", 0.0))
+                # Check remaining cash before BUY (audit fix H-2)
+                available_cash = cash_gbp - committed_cash
+                available_cash_pct = (available_cash / current_value * 100) if current_value > 0 else 0
+                buy_value = current_value * buy_alloc / 100
+                cash_floor = self.settings.cash_floor_pct
+                if available_cash_pct - (buy_value / current_value * 100 if current_value > 0 else 0) < cash_floor:
+                    logger.info(
+                        f"BUY {ticker} skipped: would breach cash floor "
+                        f"(available={available_cash_pct:.1f}%, buy={buy_alloc:.1f}%, floor={cash_floor}%)"
+                    )
+                    result["rejected_stocks"].append({
+                        "ticker": ticker,
+                        "action": "BUY",
+                        "stage": "cash_floor_guard",
+                        "reason": f"Insufficient cash after prior BUYs (available {available_cash_pct:.1f}%)",
+                        "conviction": decision.get("conviction", 0),
+                        **self._get_stock_metadata(ticker, stocks_data),
+                    })
+                    continue
+
                 trade_entry = self._execute_trade(
                     cycle_id=cycle_id,
                     decision=decision,
                     action="BUY",
                     ticker=ticker,
-                    final_alloc=float(pending.get("final_allocation_pct", 0.0)),
+                    final_alloc=buy_alloc,
                     current_value=current_value,
-                    cash_gbp=cash_gbp,
+                    cash_gbp=cash_gbp - committed_cash,
                     total_return_pct=portfolio_data.get("total_return_pct", 0),
                     alpha_pct=portfolio_data.get("alpha_pct", 0),
                     existing_tickers=existing_tickers,
@@ -935,6 +1000,10 @@ class Orchestrator:
                 )
                 if trade_entry:
                     result["trades"].append(trade_entry)
+                    # Track committed cash so subsequent BUYs see reduced availability
+                    exec_result = trade_entry.get("execution", {})
+                    if exec_result.get("status") in ("filled", "pending", "dry_run"):
+                        committed_cash += exec_result.get("value_gbp", buy_value)
 
             # --- STEP 7: Intelligent order management (stop-loss reassessment) ---
             if self.settings.order_management_enabled:
@@ -1003,20 +1072,37 @@ class Orchestrator:
             logger.exception(f"Unhandled cycle failure in {cycle_id}: {e}")
             result["errors"].append(f"unhandled: {e}")
             result["status"] = "error"
-            self.notification_service.emit_critical_cycle_failure(
-                cycle_id=cycle_id,
-                payload={
-                    "cycle_id": cycle_id,
-                    "dry_run": self.dry_run,
-                    "stage": "run_cycle",
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "trace_id": cycle_id,
-                },
-                source="orchestrator",
-            )
-            _emit_cycle_summary()
+            # Wrap notification in try/except so it never replaces the original
+            # exception (audit fix M-8)
+            try:
+                self.notification_service.emit_critical_cycle_failure(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": self.dry_run,
+                        "stage": "run_cycle",
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                        "trace_id": cycle_id,
+                    },
+                    source="orchestrator",
+                )
+            except Exception as notify_err:
+                logger.error(f"Failed to emit critical failure notification: {notify_err}")
+            try:
+                _emit_cycle_summary()
+            except Exception as summary_err:
+                logger.error(f"Failed to emit cycle summary after failure: {summary_err}")
             raise
+        finally:
+            # Cancel cycle timeout alarm (audit fix M-7)
+            try:
+                if hasattr(signal, "SIGALRM"):
+                    signal.alarm(0)
+                    if _prev_alarm_handler is not None:
+                        signal.signal(signal.SIGALRM, _prev_alarm_handler)
+            except (ValueError, OSError):
+                pass
 
     # --- Helper methods ---
 
@@ -1086,13 +1172,38 @@ class Orchestrator:
                 for p in positions
             )
 
+        # Compute daily P&L from most recent portfolio snapshot (audit fix H-4)
+        daily_pnl_pct = 0.0
+        try:
+            from src.data.models import PortfolioSnapshot
+            snap_session = get_session()
+            try:
+                yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
+                latest_snap = (
+                    snap_session.query(PortfolioSnapshot)
+                    .filter(PortfolioSnapshot.timestamp <= yesterday)
+                    .order_by(PortfolioSnapshot.timestamp.desc())
+                    .first()
+                )
+                if latest_snap and latest_snap.total_value_gbp > 0:
+                    daily_pnl_pct = ((total_value - latest_snap.total_value_gbp)
+                                     / latest_snap.total_value_gbp * 100)
+                    logger.debug(
+                        f"Daily P&L: {daily_pnl_pct:+.2f}% "
+                        f"(current={total_value:.0f}, snap={latest_snap.total_value_gbp:.0f})"
+                    )
+            finally:
+                snap_session.close()
+        except Exception as e:
+            logger.debug(f"Could not compute daily P&L (using 0.0): {e}")
+
         return {
             "cash": cash,
             "total_value": total_value,
             "invested": invested,
             "positions": positions,
             "num_positions": len(positions),
-            "daily_pnl_pct": 0.0,
+            "daily_pnl_pct": daily_pnl_pct,
             "total_return_pct": ((total_value / 10000) - 1) * 100 if total_value > 0 else 0,
             "alpha_pct": 0.0,
         }
@@ -2036,6 +2147,38 @@ class Orchestrator:
             value = float(norm.get("value_gbp", 0) or 0)
             result[ticker] = (value / total) * 100
         return result
+
+    @staticmethod
+    def _get_portfolio_returns(
+        positions: list[dict], stocks_data: list[dict],
+    ) -> dict[str, list[float]]:
+        """Extract daily return series for held positions from stocks_data OHLCV.
+
+        Used by RiskManager.check_correlation to detect dangerously correlated
+        positions. (Audit fix H-3: was always passed as empty dict.)
+        """
+        data_by_ticker = {s.get("ticker", ""): s for s in stocks_data}
+        returns: dict[str, list[float]] = {}
+        for pos in positions:
+            ticker = (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")
+            if not ticker:
+                continue
+            stock = data_by_ticker.get(ticker, {})
+            # Try to get close prices from indicators/ohlcv
+            closes = stock.get("indicators", {}).get("close_prices", [])
+            if not closes:
+                ohlcv = stock.get("ohlcv", {})
+                closes = ohlcv.get("close", [])
+            if len(closes) < 21:
+                continue
+            # Compute daily returns from close prices
+            daily_returns = []
+            for i in range(1, len(closes)):
+                if closes[i - 1] > 0:
+                    daily_returns.append((closes[i] - closes[i - 1]) / closes[i - 1])
+            if len(daily_returns) >= 20:
+                returns[ticker] = daily_returns
+        return returns
 
     @staticmethod
     def _build_position_pnl_summary(portfolio_data: dict) -> str:

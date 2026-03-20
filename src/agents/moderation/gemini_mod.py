@@ -155,9 +155,11 @@ def _review_single_turn(
 
     except json.JSONDecodeError as e:
         logger.error(f"Gemini returned invalid JSON: {e}")
+        # Default to DISAGREE on parse failure — a garbage response should not
+        # silently approve trades. (Audit fix H-5.)
         return {
-            "verdict": "AGREE",
-            "reasoning": f"Could not parse response: {e}",
+            "verdict": "DISAGREE",
+            "reasoning": f"Could not parse response (defaulting to DISAGREE for safety): {e}",
             "moderator": settings.moderator_2_model,
             "available": True,
             "parse_error": True,
@@ -396,15 +398,15 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
         }
 
     # Nothing worked — return a safe default instead of raising.
-    # Callers catch JSONDecodeError, but returning a default here avoids unnecessary
-    # fallback chains (e.g. _review_with_tools falling back to _review_single_turn).
-    logger.warning("Could not repair Gemini JSON output — returning AGREE default")
+    # Default to DISAGREE — unparseable output should not silently approve trades.
+    # (Audit fix H-5.)
+    logger.warning("Could not repair Gemini JSON output — returning DISAGREE default")
     return {
-        "verdict": "AGREE",
-        "growth_score": 5,
-        "risk_score": 5,
-        "confidence_score": 3,
-        "assessment": "Could not parse Gemini response",
+        "verdict": "DISAGREE",
+        "growth_score": 3,
+        "risk_score": 7,
+        "confidence_score": 1,
+        "assessment": "Could not parse Gemini response (defaulting to DISAGREE for safety)",
         "high_risk_flag": False,
         "modifications": None,
     }

@@ -111,7 +111,9 @@ Gemini ----------> GEMINI MODERATOR ---+    (consensus logic)   (moderation_logs
                    RISK MANAGER (hard rules) --> SQLite (risk_decisions)
                    [Max stock %, sector %,
                     drawdown, VIX, cash floor,
-                    correlation, REDUCE check]
+                    correlation (OHLCV returns),
+                    daily loss halt (snapshot P&L),
+                    REDUCE check]
                             |
                             v
 Trading 212 <----- ORDER MANAGER -----------> SQLite (orders, opportunity_queue,

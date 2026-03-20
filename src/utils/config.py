@@ -49,6 +49,11 @@ class Settings:
         return self.account_type == "practice"
 
     @property
+    def cycle_timeout_seconds(self) -> int:
+        """Maximum time for a single cycle before it's considered hung (audit fix M-7)."""
+        return int(self.trading.get("cycle_timeout_seconds", 1800))  # Default: 30 minutes
+
+    @property
     def cycle_frequency(self) -> str:
         """standard = 2 cycles/day, intraday = 3 cycles/day during market hours."""
         return self.trading.get("cycle_frequency", "standard")
