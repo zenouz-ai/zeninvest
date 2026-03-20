@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.agents.reporting.trade_outcome_tracker import update_trade_outcomes
+from src.agents.reporting.trade_outcome_tracker import _match_sell_to_buys, update_trade_outcomes
 from src.data.models import Base, Order, TradeOutcome
 
 
@@ -112,3 +112,41 @@ def test_update_trade_outcomes_idempotent(db_session) -> None:
     assert n1 == 1
     assert n2 == 0
     assert db_session.query(TradeOutcome).count() == 1
+
+
+def test_holding_days_mixed_naive_and_aware_timestamps_no_typeerror(db_session) -> None:
+    """Regression: subtracting naive ORM timestamps from aware datetimes must not raise."""
+    naive_buy = datetime(2026, 3, 1, 12, 0, 0)
+    aware_sell = datetime(2026, 3, 5, 12, 0, 0, tzinfo=timezone.utc)
+
+    db_session.add(
+        Order(
+            timestamp=naive_buy,
+            ticker="MIX_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=10.0,
+            price=100.0,
+            value_gbp=1000.0,
+            status="filled",
+        )
+    )
+    sell = Order(
+        timestamp=aware_sell,
+        ticker="MIX_US_EQ",
+        action="SELL",
+        order_type="market",
+        quantity=-10.0,
+        price=110.0,
+        value_gbp=1100.0,
+        status="filled",
+    )
+    db_session.add(sell)
+    db_session.commit()
+    db_session.refresh(sell)
+    sell.timestamp = aware_sell
+
+    outcome = _match_sell_to_buys(db_session, sell)
+    assert outcome is not None
+    assert outcome.holding_days is not None
+    assert outcome.holding_days > 0

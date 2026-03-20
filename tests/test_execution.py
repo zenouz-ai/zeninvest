@@ -279,6 +279,10 @@ class TestOrderManager:
 
         assert result["status"] == "failed"
         assert "API error" in result["error"]
+        assert result["quantity"] == 4.0
+        assert result["price"] == 150.0
+        assert result["value_gbp"] == 600.0
+        assert "order_id" in result
 
         orders = db_session.query(Order).all()
         assert len(orders) == 1
@@ -407,9 +411,15 @@ class TestOrderManager:
 class TestCancelConflictingStops:
     """Tests for cancelling stop-loss orders before SELL/REDUCE."""
 
+    @staticmethod
+    def _allow_live_sell(mock_client: MagicMock) -> None:
+        """Live SELL/REDUCE path clamps to get_position(); default ample shares."""
+        mock_client.get_position.return_value = {"quantity": 10000.0}
+
     def test_sell_cancels_existing_stop(self, db_session):
         """SELL with an existing stop-loss should cancel the stop first, then SELL."""
         mock_client = MagicMock()
+        self._allow_live_sell(mock_client)
         mock_client.get_pending_orders.return_value = [
             {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.33, "id": "stop-123"},
         ]
@@ -430,6 +440,7 @@ class TestCancelConflictingStops:
     def test_reduce_cancels_existing_stop(self, db_session):
         """REDUCE with an existing stop-loss should cancel the stop first."""
         mock_client = MagicMock()
+        self._allow_live_sell(mock_client)
         mock_client.get_pending_orders.return_value = [
             {"ticker": "AAPL_US_EQ", "type": "STOP", "stopPrice": 161.0, "id": "stop-789"},
         ]
@@ -449,6 +460,7 @@ class TestCancelConflictingStops:
     def test_sell_no_existing_stop_proceeds(self, db_session):
         """SELL with no existing stop should proceed normally."""
         mock_client = MagicMock()
+        self._allow_live_sell(mock_client)
         mock_client.get_pending_orders.return_value = []
         mock_client.place_market_order.return_value = {"id": "sell-111", "status": "FILLED"}
 
@@ -502,6 +514,7 @@ class TestCancelConflictingStops:
     def test_only_cancels_stops_for_target_ticker(self, db_session):
         """Stops for other tickers should not be cancelled."""
         mock_client = MagicMock()
+        self._allow_live_sell(mock_client)
         mock_client.get_pending_orders.return_value = [
             {"ticker": "AAPL_US_EQ", "type": "STOP", "stopPrice": 161.0, "id": "stop-aapl"},
             {"ticker": "MSFT_US_EQ", "type": "STOP", "stopPrice": 380.0, "id": "stop-msft"},
@@ -522,6 +535,7 @@ class TestCancelConflictingStops:
     def test_stop_already_triggered_treated_as_success(self, db_session):
         """If stop was already triggered (404), treat as success and proceed."""
         mock_client = MagicMock()
+        self._allow_live_sell(mock_client)
         mock_client.get_pending_orders.return_value = [
             {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.33, "id": "stop-gone"},
         ]
@@ -573,6 +587,41 @@ class TestCancelConflictingStops:
         assert result["status"] == "filled"
         mock_client.get_pending_orders.assert_not_called()
         mock_client.cancel_order.assert_not_called()
+
+    def test_live_sell_clamps_quantity_to_broker_position(self, db_session):
+        """SELL quantity must not exceed broker-reported position (avoids T212 400)."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = []
+        mock_client.get_position.return_value = {"quantity": 1.0}
+        mock_client.place_market_order.return_value = {"id": "sell-clamp", "status": "FILLED"}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="VRTX_US_EQ",
+            action="SELL",
+            target_amount_gbp=600.0,
+            current_price=465.0,
+        )
+
+        assert result["status"] == "filled"
+        mock_client.place_market_order.assert_called_once_with("VRTX_US_EQ", -1.0)
+
+    def test_live_sell_zero_position_fails_before_place(self, db_session):
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = []
+        mock_client.get_position.return_value = {"quantity": 0}
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="VRTX_US_EQ",
+            action="SELL",
+            target_amount_gbp=600.0,
+            current_price=465.0,
+        )
+
+        assert result["status"] == "failed"
+        assert "No shares available" in result["error"]
+        mock_client.place_market_order.assert_not_called()
 
     def test_cancel_updates_local_db_record(self, db_session):
         """After cancelling a stop on T212, the local Order record should be updated."""
@@ -831,6 +880,25 @@ class TestCancelConflictingStopsRetryError:
 
         assert result["status"] == "failed"
         assert "stop-888" in result["error"]
+
+    def test_httpstatus_400_order_not_found_body_treated_as_success(self, db_session):
+        """400 with not-found style body should be idempotent (stop already gone)."""
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"ticker": "VRTX_US_EQ", "type": "STOP", "stopPrice": 431.0, "id": "stop-400nf"},
+        ]
+        resp_400 = MagicMock()
+        resp_400.status_code = 400
+        resp_400.text = '{"detail":"Order not found"}'
+        mock_client.cancel_order.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=MagicMock(), response=resp_400
+        )
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.cancel_conflicting_stops("VRTX_US_EQ")
+
+        assert result["status"] == "ok"
+        assert "stop-400nf" in result["cancelled"]
 
 
 class TestPendingStopReconciliation:

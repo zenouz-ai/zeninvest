@@ -261,7 +261,7 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
     <div className="space-y-6">
       <PageBrandHeader
         eyebrow="Dashboard"
-        title="Investment Agent Dashboard"
+        title="ZenInvest Agent"
         description="System health, positions, and recent activity at a glance."
       />
 

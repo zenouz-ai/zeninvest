@@ -224,10 +224,10 @@ Strategy (Claude) → conviction 0.8, action BUY
 **Summary cards:** Cash Balance, Investments (`invested_gbp`), Positions count, Last Updated.
 
 **Current positions (from `portfolio_snapshots.positions_json`; normalised from T212 `instrument.ticker` / `walletImpact`):**
-- Table: ticker, sector, quantity, value (GBP), P&L (GBP), P&L %
+- Table: ticker, sector, quantity, value (GBP), P&L (GBP), P&L % — **sortable** on desktop (click header; toggles asc/desc; numeric columns default to descending on first click). Mobile: “Sort by” dropdown (same ordering). Trend and Actions columns are not sort keys.
 - Sector allocation pie chart (from position values; zero-value sectors filtered)
 - Sector allocation tooltip uses explicit high-contrast text/background and GBP value formatting for dark-theme readability
-- Portfolio value history line chart (chronological: oldest left, newest right; rightmost point = latest snapshot)
+- Portfolio value history line chart (chronological: oldest left, newest right; rightmost point = latest snapshot). **Y-axis:** default *tight* scale (slightly below/above visible min–max); optional *wide context* (~£2k minimum span, legacy); optional *custom* min/max £ with Apply. **X-range:** Recharts brush under a full-series navigator — drag handles or band to focus dates; main chart and tight Y-axis follow the selected window; *Reset date range* restores full history.
 
 **Historical performance (from `performance_metrics`):**
 - Portfolio value over time (line chart, daily)

@@ -1,11 +1,11 @@
 """Trade outcome tracking: link BUY orders to SELL/REDUCE and record P&L with conviction and moderator linkage."""
 
-from datetime import timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from src.data.models import Order, TradeOutcome
+from src.utils.datetime_utils import ensure_utc_datetime
 from src.utils.logger import get_logger
 
 logger = get_logger("trade_outcome_tracker")
@@ -61,10 +61,14 @@ def _match_sell_to_buys(session: Session, sell_order: Order) -> TradeOutcome | N
     ticker = sell_order.ticker
     sell_qty = abs(float(sell_order.quantity))
     sell_value = float(sell_order.value_gbp or 0)
-    sell_ts = sell_order.timestamp
-
     if sell_qty <= 0:
         return None
+
+    sell_ts_utc = ensure_utc_datetime(sell_order.timestamp)
+    if sell_ts_utc is None:
+        return None
+    # SQLite stores naive UTC; ORM compare is consistent with naive cutoff from the same instant.
+    sell_cutoff = sell_ts_utc.replace(tzinfo=None)
 
     # BUY orders for this ticker, filled/dry_run, chronological
     buys = (
@@ -73,7 +77,7 @@ def _match_sell_to_buys(session: Session, sell_order: Order) -> TradeOutcome | N
             Order.ticker == ticker,
             Order.action == "BUY",
             Order.status.in_(["filled", "dry_run"]),
-            Order.timestamp < sell_ts,
+            Order.timestamp < sell_cutoff,
         )
         .order_by(Order.timestamp.asc())
         .all()
@@ -113,14 +117,17 @@ def _match_sell_to_buys(session: Session, sell_order: Order) -> TradeOutcome | N
 
     pnl_gbp = sell_value - buy_value_total
     pnl_pct = (pnl_gbp / buy_value_total * 100) if buy_value_total else 0
-    holding_days = (sell_ts - first_buy_ts).total_seconds() / 86400.0 if first_buy_ts else None
+    first_buy_utc = ensure_utc_datetime(first_buy_ts) if first_buy_ts else None
+    holding_days = (
+        (sell_ts_utc - first_buy_utc).total_seconds() / 86400.0 if first_buy_utc else None
+    )
 
     return TradeOutcome(
         buy_order_id=first_buy.id if first_buy else None,
         sell_order_id=sell_order.id,
         ticker=ticker,
         buy_timestamp=first_buy_ts,
-        sell_timestamp=sell_ts,
+        sell_timestamp=sell_order.timestamp,
         holding_days=holding_days,
         buy_value_gbp=buy_value_total,
         sell_value_gbp=sell_value,

@@ -16,7 +16,7 @@ import click
 
 from src.agents.execution.order_manager import OrderManager
 from src.agents.execution.stop_loss_manager import StopLossManager
-from src.agents.execution.t212_client import T212Client
+from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.brave_enrichment import (
     get_news_sentiment_fallback,
@@ -1595,6 +1595,10 @@ class Orchestrator:
                 except Exception as e:
                     logger.error(f"Failed to place stop-loss for {ticker}: {e}")
 
+        notify_qty = exec_result.get("quantity")
+        if notify_qty is None and current_price > 0:
+            notify_qty = calculate_quantity(trade_value, current_price)
+
         self.notification_service.emit_trade_execution_result(
             cycle_id=cycle_id,
             payload={
@@ -1604,7 +1608,7 @@ class Orchestrator:
                 "action": action,
                 "target_allocation_pct": final_alloc,
                 "execution_status": exec_result.get("status"),
-                "quantity": exec_result.get("quantity"),
+                "quantity": notify_qty,
                 "price": current_price,
                 "value_gbp": exec_result.get("value_gbp", trade_value),
                 "stop_loss_pct": stop_loss_pct,

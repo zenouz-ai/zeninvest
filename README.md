@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 347 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router, search API tracker, daily/weekly reports, market holidays, opportunity optimizer edge cases), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite + UX Phase 1 complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) and [UX Audit](docs/UX_AUDIT.md).
+**Status:** POC — 352 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router, search API tracker, daily/weekly reports, market holidays, opportunity optimizer edge cases), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite + UX Phase 1 complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) and [UX Audit](docs/UX_AUDIT.md).
 
 ## Architecture
 
@@ -264,7 +264,7 @@ s.close()
 ```bash
 poetry run pytest -v                          # All tests
 poetry run pytest tests/test_risk_manager.py  # Risk agent (43 tests)
-poetry run pytest tests/test_execution.py     # Execution (22 tests)
+poetry run pytest tests/test_execution.py     # Execution (52 tests)
 poetry run pytest tests/test_strategy.py      # Strategy (17 tests)
 poetry run pytest tests/test_moderation.py    # Moderation (21 tests)
 poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)

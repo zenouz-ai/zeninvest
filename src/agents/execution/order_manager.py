@@ -1,9 +1,10 @@
 """Order management with deduplication and execution logic."""
 
 import json
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
+
+import httpx
 
 from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.data.database import get_session
@@ -24,6 +25,41 @@ except ImportError:
     log_event = None
 
 DEDUP_WINDOW_MINUTES = 5
+
+
+def _unwrap_order_http_error(exc: BaseException) -> tuple[BaseException, int | None, str]:
+    """Resolve RetryError (tenacity) to inner exception; return status/body snippet if HTTPStatusError."""
+    e: BaseException = exc
+    inner = getattr(exc, "last_attempt", None)
+    if inner is not None and callable(getattr(inner, "exception", None)):
+        inner_exc = inner.exception()
+        if inner_exc is not None:
+            e = inner_exc
+    if isinstance(e, httpx.HTTPStatusError):
+        text = (e.response.text or "")[:500]
+        return e, e.response.status_code, text
+    return e, None, str(e)[:500]
+
+
+def _stop_cancel_is_idempotent_success(status_code: int | None, response_text: str) -> bool:
+    """Treat as success when the stop is already gone or not cancelable (idempotent)."""
+    if status_code == 404:
+        return True
+    if status_code in (400, 409):
+        low = response_text.lower()
+        needles = (
+            "not found",
+            "no longer",
+            "already",
+            "cancelled",
+            "canceled",
+            "not pending",
+            "invalid state",
+            "does not exist",
+            "unknown order",
+        )
+        return any(n in low for n in needles)
+    return False
 
 
 class OrderManager:
@@ -186,48 +222,31 @@ class OrderManager:
                         pass  # Fail-open
 
             except Exception as e:
-                error_str = str(e).lower()
-                # Unwrap tenacity RetryError to inspect the underlying exception
-                inner = getattr(e, "last_attempt", None)
-                if inner is not None and callable(getattr(inner, "exception", None)):
-                    inner_exc = inner.exception()
-                    if inner_exc is not None:
-                        error_str = str(inner_exc).lower()
-                # If stop already gone (triggered or cancelled), treat as success
-                if "404" in error_str or "not found" in error_str:
+                inner_exc, status_code, body_snip = _unwrap_order_http_error(e)
+                if _stop_cancel_is_idempotent_success(status_code, body_snip):
+                    logger.info(
+                        f"Stop-loss {order_id} for {ticker} already gone or not cancelable "
+                        f"(HTTP {status_code}): {body_snip[:120]!r}"
+                    )
+                    cancelled.append(str(order_id))
+                    continue
+                err_flat = f"{inner_exc} {body_snip}".lower()
+                if "404" in err_flat or "not found" in err_flat:
                     logger.info(
                         f"Stop-loss {order_id} for {ticker} already gone (triggered or cancelled)"
                     )
                     cancelled.append(str(order_id))
                     continue
                 error_msg = f"Failed to cancel stop-loss {order_id} for {ticker}: {e}"
-                logger.error(error_msg)
+                logger.error(
+                    "%s | http_status=%s body_snippet=%r",
+                    error_msg,
+                    status_code,
+                    body_snip[:200],
+                )
                 return {"status": "failed", "error": error_msg}
 
         return {"status": "ok", "cancelled": cancelled}
-
-    def _place_with_retry(
-        self,
-        ticker: str,
-        quantity: float,
-        max_retries: int = 2,
-        backoff_sec: float = 5.0,
-    ) -> dict[str, Any]:
-        """Place order via T212 with retry for transient failures (timeouts, 429s)."""
-        last_error: Exception | None = None
-        for attempt in range(1 + max_retries):
-            try:
-                return self.client.place_market_order(ticker, quantity)
-            except Exception as e:
-                last_error = e
-                err_str = str(e).lower()
-                is_transient = any(kw in err_str for kw in ("timeout", "429", "rate", "connection", "502", "503"))
-                if not is_transient or attempt >= max_retries:
-                    raise
-                wait = backoff_sec * (attempt + 1)
-                logger.warning(f"T212 transient error (attempt {attempt + 1}/{1 + max_retries}): {e}. Retrying in {wait}s")
-                time.sleep(wait)
-        raise last_error  # type: ignore[misc]
 
     def _log_order(
         self,
@@ -330,16 +349,159 @@ class OrderManager:
         quantity = calculate_quantity(target_amount_gbp, current_price)
         if quantity <= 0:
             logger.warning(f"Calculated quantity is 0 for {ticker} @ {current_price}")
-            return {"status": "skipped", "reason": "zero_quantity"}
+            return {
+                "status": "skipped",
+                "reason": "zero_quantity",
+                "ticker": ticker,
+                "action": action,
+                "quantity": 0.0,
+                "price": current_price,
+                "value_gbp": 0.0,
+            }
 
         if action in ("SELL", "REDUCE"):
             quantity = -quantity
+
+        # SELL/REDUCE: cancel stops first, then clamp to broker position (reduces T212 400 oversell).
+        if action in ("SELL", "REDUCE"):
+            cancel_result = self.cancel_conflicting_stops(ticker)
+            if cancel_result.get("status") == "failed":
+                error_msg = (
+                    f"Cannot {action} {ticker}: failed to cancel conflicting "
+                    f"stop-loss: {cancel_result.get('error', 'unknown')}"
+                )
+                logger.error(error_msg)
+                pre_dedup = self._make_dedup_key(ticker, quantity)
+                fail_row = self._log_order(
+                    ticker=ticker,
+                    action=action,
+                    order_type="market",
+                    quantity=quantity,
+                    price=current_price,
+                    value_gbp=abs(quantity) * current_price,
+                    status="failed",
+                    strategy=strategy,
+                    conviction=conviction,
+                    moderation_result=moderation_result,
+                    risk_result=risk_result,
+                    error_message=error_msg,
+                    dedup_key=pre_dedup,
+                )
+                return {
+                    "status": "failed",
+                    "error": error_msg,
+                    "order_id": fail_row.id,
+                    "ticker": ticker,
+                    "action": action,
+                    "quantity": abs(quantity),
+                    "price": current_price,
+                    "value_gbp": abs(quantity) * current_price,
+                }
+            if cancel_result.get("cancelled"):
+                logger.info(
+                    f"Cancelled {len(cancel_result['cancelled'])} stop-loss order(s) "
+                    f"for {ticker} before {action}"
+                )
+
+            try:
+                pos = self.client.get_position(ticker)
+            except Exception as e:
+                error_msg = f"Cannot {action} {ticker}: failed to fetch position for quantity clamp: {e}"
+                logger.error(error_msg)
+                pre_dedup = self._make_dedup_key(ticker, quantity)
+                fail_row = self._log_order(
+                    ticker=ticker,
+                    action=action,
+                    order_type="market",
+                    quantity=quantity,
+                    price=current_price,
+                    value_gbp=abs(quantity) * current_price,
+                    status="failed",
+                    strategy=strategy,
+                    conviction=conviction,
+                    moderation_result=moderation_result,
+                    risk_result=risk_result,
+                    error_message=error_msg,
+                    dedup_key=pre_dedup,
+                )
+                return {
+                    "status": "failed",
+                    "error": error_msg,
+                    "order_id": fail_row.id,
+                    "ticker": ticker,
+                    "action": action,
+                    "quantity": abs(quantity),
+                    "price": current_price,
+                    "value_gbp": abs(quantity) * current_price,
+                }
+
+            available = float(pos.get("quantity", 0) or 0)
+            if available <= 0:
+                error_msg = (
+                    f"No shares available to {action} {ticker} "
+                    "(broker position quantity is 0 or instrument not held)"
+                )
+                logger.error(error_msg)
+                pre_dedup = self._make_dedup_key(ticker, quantity)
+                fail_row = self._log_order(
+                    ticker=ticker,
+                    action=action,
+                    order_type="market",
+                    quantity=quantity,
+                    price=current_price,
+                    value_gbp=abs(quantity) * current_price,
+                    status="failed",
+                    strategy=strategy,
+                    conviction=conviction,
+                    moderation_result=moderation_result,
+                    risk_result=risk_result,
+                    error_message=error_msg,
+                    dedup_key=pre_dedup,
+                )
+                return {
+                    "status": "failed",
+                    "error": error_msg,
+                    "order_id": fail_row.id,
+                    "ticker": ticker,
+                    "action": action,
+                    "quantity": abs(quantity),
+                    "price": current_price,
+                    "value_gbp": abs(quantity) * current_price,
+                }
+
+            abs_req = abs(quantity)
+            if abs_req > available:
+                logger.warning(
+                    f"Clamping {action} quantity for {ticker} from {abs_req} to {available} "
+                    "(broker-reported position)"
+                )
+                quantity = -available
+
+            if abs(quantity) <= 0:
+                return {
+                    "status": "skipped",
+                    "reason": "zero_quantity",
+                    "ticker": ticker,
+                    "action": action,
+                    "quantity": 0.0,
+                    "price": current_price,
+                    "value_gbp": 0.0,
+                }
 
         dedup_key = self._make_dedup_key(ticker, quantity)
 
         if self._is_duplicate(dedup_key):
             logger.warning(f"Duplicate order detected: {dedup_key}")
-            return {"status": "skipped", "reason": "duplicate"}
+            computed_dup = abs(quantity) * current_price
+            return {
+                "status": "skipped",
+                "reason": "duplicate",
+                "ticker": ticker,
+                "action": action,
+                "quantity": abs(quantity),
+                "price": current_price,
+                "value_gbp": float(abs(target_amount_gbp)) if action == "BUY" else computed_dup,
+            }
 
         computed_value_gbp = abs(quantity) * current_price
         # Min-order policy is based on the *target* trade value (pre quantity flooring)
@@ -360,38 +522,15 @@ class OrderManager:
                 f"Order skipped: {action} {ticker} value £{value_gbp:.2f} below minimum "
                 f"£{self.settings.min_order_value_gbp:.2f}"
             )
-            return {"status": "skipped", "reason": reject_reason}
-
-        # Cancel conflicting stop-loss orders before SELL/REDUCE
-        if action in ("SELL", "REDUCE"):
-            cancel_result = self.cancel_conflicting_stops(ticker)
-            if cancel_result.get("status") == "failed":
-                error_msg = (
-                    f"Cannot {action} {ticker}: failed to cancel conflicting "
-                    f"stop-loss: {cancel_result.get('error', 'unknown')}"
-                )
-                logger.error(error_msg)
-                self._log_order(
-                    ticker=ticker,
-                    action=action,
-                    order_type="market",
-                    quantity=quantity,
-                    price=current_price,
-                    value_gbp=value_gbp,
-                    status="failed",
-                    strategy=strategy,
-                    conviction=conviction,
-                    moderation_result=moderation_result,
-                    risk_result=risk_result,
-                    error_message=error_msg,
-                    dedup_key=dedup_key,
-                )
-                return {"status": "failed", "error": error_msg}
-            if cancel_result.get("cancelled"):
-                logger.info(
-                    f"Cancelled {len(cancel_result['cancelled'])} stop-loss order(s) "
-                    f"for {ticker} before {action}"
-                )
+            return {
+                "status": "skipped",
+                "reason": reject_reason,
+                "ticker": ticker,
+                "action": action,
+                "quantity": abs(quantity),
+                "price": current_price,
+                "value_gbp": value_gbp,
+            }
 
         if self.dry_run:
             logger.info(f"[DRY RUN] Would execute: {action} {abs(quantity)} x {ticker} @ {current_price}")
@@ -481,7 +620,7 @@ class OrderManager:
                 except Exception:
                     pass  # Fail-open
 
-            result = self._place_with_retry(ticker, quantity)
+            result = self.client.place_market_order(ticker, quantity)
             t212_order_id = result.get("id") or result.get("orderId")
             t212_status = (result.get("status") or "").upper()
 
@@ -543,7 +682,16 @@ class OrderManager:
             logger.error(f"Order failed for {ticker}: {error_msg}")
             # Update the pre-written record to failed
             self._update_order_status(order.id, "failed", error_message=error_msg)
-            return {"status": "failed", "error": error_msg}
+            return {
+                "status": "failed",
+                "error": error_msg,
+                "order_id": order.id,
+                "ticker": ticker,
+                "action": action,
+                "quantity": abs(quantity),
+                "price": current_price,
+                "value_gbp": value_gbp,
+            }
 
     def sync_order_status_from_t212(self) -> int:
         """Sync pending orders with T212 order history. Updates local Order.status to filled when T212 reports FILLED.

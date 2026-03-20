@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { portfolioApi, systemApi } from '../api/client'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
 import { Sparkline } from '../components/Sparkline'
 import { TableSkeleton } from '../components/Skeleton'
-import type { PortfolioSnapshot } from '../types'
+import type { PortfolioSnapshot, Position } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
 import { PageBrandHeader } from '../components/PageBrandHeader'
@@ -15,11 +15,93 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Brush,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
 } from 'recharts'
+
+type PositionSortKey = 'ticker' | 'sector' | 'quantity' | 'value_gbp' | 'pnl_gbp' | 'pnl_pct'
+
+function comparePositions(a: Position, b: Position, key: PositionSortKey, dir: 'asc' | 'desc'): number {
+  const mul = dir === 'asc' ? 1 : -1
+  if (key === 'ticker' || key === 'sector') {
+    const sa = (a[key] ?? '').toString().toLowerCase()
+    const sb = (b[key] ?? '').toString().toLowerCase()
+    const c = sa.localeCompare(sb, undefined, { numeric: true, sensitivity: 'base' })
+    if (c !== 0) return mul * c
+    return a.ticker.localeCompare(b.ticker)
+  }
+  const va = Number(a[key])
+  const vb = Number(b[key])
+  if (va !== vb) return mul * (va < vb ? -1 : va > vb ? 1 : 0)
+  return a.ticker.localeCompare(b.ticker)
+}
+
+function SortableTh({
+  label,
+  sortKey,
+  active,
+  dir,
+  onSort,
+  className = '',
+}: {
+  label: string
+  sortKey: PositionSortKey
+  active: boolean
+  dir: 'asc' | 'desc' | null
+  onSort: (k: PositionSortKey) => void
+  className?: string
+}) {
+  const ariaSort = active && dir ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'
+  return (
+    <th scope="col" className={className} aria-sort={ariaSort}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 font-semibold text-terminal-text-dim hover:text-terminal-text transition-colors text-left max-w-full group"
+      >
+        <span>{label}</span>
+        <span className="font-mono text-[10px] opacity-50 group-hover:opacity-90 tabular-nums" aria-hidden>
+          {active && dir === 'asc' ? '▲' : active && dir === 'desc' ? '▼' : '·'}
+        </span>
+      </button>
+    </th>
+  )
+}
+
+/** Y-axis: pad slightly below min / above max so the line uses most of the chart height. */
+function computeTightYDomain(values: number[]): [number, number] {
+  if (values.length === 0) return [0, 1]
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min
+  if (range === 0) {
+    const pad = Math.max(Math.abs(min) * 0.004, 40)
+    return [min - pad, max + pad]
+  }
+  const pad = Math.max(range * 0.06, max * 0.0015, 30)
+  const low = min - pad
+  const high = max + pad
+  const step = range < 400 ? 5 : range < 4000 ? 10 : 50
+  return [Math.floor(low / step) * step, Math.ceil(high / step) * step]
+}
+
+/** Wider context (legacy): minimum vertical span so flat portfolios are not misleadingly zoomed in the other direction. */
+function computeContextYDomain(values: number[]): [number, number] {
+  if (values.length === 0) return [0, 1]
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min
+  const minVisibleSpan = 2000
+  const paddedSpan = range > 0 ? range * 1.35 : 0
+  const span = Math.max(minVisibleSpan, paddedSpan)
+  const center = (min + max) / 2
+  const rawLow = center - span / 2
+  const rawHigh = center + span / 2
+  return [Math.floor(rawLow / 100) * 100, Math.ceil(rawHigh / 100) * 100]
+}
 
 export default function Portfolio() {
   const [currentPortfolio, setCurrentPortfolio] = useState<PortfolioSnapshot | null>(null)
@@ -30,6 +112,13 @@ export default function Portfolio() {
   const [forceSellLoading, setForceSellLoading] = useState(false)
   const [forceSellResult, setForceSellResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
   const forceSellModalRef = useFocusTrap(forceSellTicker != null, () => setForceSellTicker(null))
+
+  /** X-range for portfolio value chart (indices into `valueHistoryRows`). */
+  const [valueHistoryBrush, setValueHistoryBrush] = useState<{ startIndex: number; endIndex: number } | null>(null)
+  const [valueHistoryYMode, setValueHistoryYMode] = useState<'tight' | 'context' | 'custom'>('tight')
+  const [valueHistoryYCustomMin, setValueHistoryYCustomMin] = useState('')
+  const [valueHistoryYCustomMax, setValueHistoryYCustomMax] = useState('')
+  const [valueHistoryYCustomApplied, setValueHistoryYCustomApplied] = useState<[number, number] | null>(null)
 
   const fetchPortfolio = async () => {
     setError(null)
@@ -55,6 +144,26 @@ export default function Portfolio() {
   }, [])
 
   const positions = currentPortfolio?.positions ?? []
+
+  const [positionSort, setPositionSort] = useState<{ key: PositionSortKey; dir: 'asc' | 'desc' } | null>(null)
+
+  const sortedPositions = useMemo(() => {
+    const list = [...positions]
+    if (!positionSort) return list
+    const { key, dir } = positionSort
+    list.sort((a, b) => comparePositions(a, b, key, dir))
+    return list
+  }, [positions, positionSort])
+
+  const handlePositionSort = (key: PositionSortKey) => {
+    setPositionSort((prev) => {
+      if (!prev || prev.key !== key) {
+        const defaultDir: 'asc' | 'desc' = key === 'ticker' || key === 'sector' ? 'asc' : 'desc'
+        return { key, dir: defaultDir }
+      }
+      return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+    })
+  }
 
   // Build per-position sparkline data from history snapshots (3A bonus)
   const positionSparklines = useMemo(() => {
@@ -83,35 +192,65 @@ export default function Portfolio() {
       value: Number(value.toFixed(2)),
     }))
 
-  const chartData = [...history]
-    .reverse()
-    .map((snapshot) => ({
-      date: safeFormat(snapshot.timestamp, 'MMM dd', ''),
-      value: snapshot.total_value_gbp,
-    }))
-    .filter((d) => d.date)
+  const chartData = useMemo(
+    () =>
+      [...history]
+        .reverse()
+        .map((snapshot) => ({
+          date: safeFormat(snapshot.timestamp, 'MMM dd', ''),
+          value: snapshot.total_value_gbp,
+        }))
+        .filter((d) => d.date),
+    [history],
+  )
 
-  const chartYDomain = useMemo<[number, number]>(() => {
-    if (chartData.length === 0) return [0, 1]
-    const values = chartData.map((d) => d.value)
-    const min = Math.min(...values)
-    const max = Math.max(...values)
-    const range = max - min
-
-    // Keep axis dynamic and readable (avoid 0-baseline flattening for tight ranges).
-    // For near-flat data, enforce a minimum visible span around the current level.
-    const minVisibleSpan = 2000 // e.g. around 9k-11k for ~10k portfolio
-    const paddedSpan = range > 0 ? range * 1.3 : 0
-    const span = Math.max(minVisibleSpan, paddedSpan)
-    const center = (min + max) / 2
-    const rawLow = center - span / 2
-    const rawHigh = center + span / 2
-
-    // Round to neat £100 bounds.
-    const low = Math.floor(rawLow / 100) * 100
-    const high = Math.ceil(rawHigh / 100) * 100
-    return [low, high]
+  useEffect(() => {
+    const n = chartData.length
+    if (n === 0) return
+    const last = n - 1
+    setValueHistoryBrush((b) => {
+      if (b == null) return { startIndex: 0, endIndex: last }
+      const s = Math.max(0, Math.min(b.startIndex, last))
+      const e = Math.max(s, Math.min(b.endIndex, last))
+      if (s === b.startIndex && e === b.endIndex) return b
+      return { startIndex: s, endIndex: e }
+    })
   }, [chartData])
+
+  const displayedValueHistory = useMemo(() => {
+    if (chartData.length === 0) return []
+    const b = valueHistoryBrush ?? { startIndex: 0, endIndex: chartData.length - 1 }
+    return chartData.slice(b.startIndex, b.endIndex + 1)
+  }, [chartData, valueHistoryBrush])
+
+  const valueHistoryYDomain = useMemo((): [number, number] => {
+    if (valueHistoryYMode === 'custom' && valueHistoryYCustomApplied) {
+      const [a, b] = valueHistoryYCustomApplied
+      if (Number.isFinite(a) && Number.isFinite(b) && a < b) return [a, b]
+    }
+    const values = displayedValueHistory.map((d) => d.value)
+    if (values.length === 0) return [0, 1]
+    if (valueHistoryYMode === 'context') return computeContextYDomain(values)
+    return computeTightYDomain(values)
+  }, [displayedValueHistory, valueHistoryYMode, valueHistoryYCustomApplied])
+
+  const onValueHistoryBrushChange = useCallback((e: { startIndex?: number; endIndex?: number }) => {
+    if (e.startIndex == null || e.endIndex == null) return
+    setValueHistoryBrush({ startIndex: e.startIndex, endIndex: e.endIndex })
+  }, [])
+
+  const resetValueHistoryRange = useCallback(() => {
+    const last = chartData.length - 1
+    if (last >= 0) setValueHistoryBrush({ startIndex: 0, endIndex: last })
+  }, [chartData.length])
+
+  const applyValueHistoryCustomY = useCallback(() => {
+    const lo = parseFloat(valueHistoryYCustomMin.replace(/,/g, ''))
+    const hi = parseFloat(valueHistoryYCustomMax.replace(/,/g, ''))
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi) return
+    setValueHistoryYCustomApplied([lo, hi])
+    setValueHistoryYMode('custom')
+  }, [valueHistoryYCustomMin, valueHistoryYCustomMax])
 
   const COLORS = ['#00d4ff', '#00ffa3', '#6332ff', '#ff4466', '#f7c948']
 
@@ -137,10 +276,11 @@ export default function Portfolio() {
     }
   }
 
-  // Auto-dismiss result toast after 5s
-  if (forceSellResult) {
-    setTimeout(() => setForceSellResult(null), 5000)
-  }
+  useEffect(() => {
+    if (!forceSellResult) return
+    const t = setTimeout(() => setForceSellResult(null), 5000)
+    return () => clearTimeout(t)
+  }, [forceSellResult])
 
   if (loading) {
     return <TableSkeleton rows={6} cols={5} />
@@ -246,44 +386,136 @@ export default function Portfolio() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Portfolio Value Chart */}
         <div className="card">
-          <h3 className="text-lg font-semibold tracking-wide mb-4">Portfolio Value History</h3>
+          <h3 className="text-lg font-semibold tracking-wide mb-2">Portfolio Value History</h3>
+          <p className="text-xs text-terminal-text-dim mb-3">
+            Y-axis defaults to a tight fit around the visible points. Use the scale control for a wider context or fixed £ bounds; drag the range bar under the navigator to pick a date window (like Plotly).
+          </p>
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
-                <XAxis dataKey="date" stroke="#8b949e" />
-                <YAxis
-                  type="number"
-                  stroke="#8b949e"
-                  domain={chartYDomain}
-                  allowDataOverflow
-                  tickCount={6}
-                  tickFormatter={(v) => `£${Math.round(v).toLocaleString()}`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#06060a',
-                    border: '1px solid #00d4ff66',
-                    borderRadius: '8px',
-                    boxShadow: '0 6px 20px rgba(0, 0, 0, 0.45)',
-                    color: '#e6edf3',
-                  }}
-                  itemStyle={{ color: '#e6edf3' }}
-                  labelStyle={{ color: '#00d4ff', fontWeight: 600 }}
-                  formatter={(value: number, name: string) => [
-                    `£${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                    name,
-                  ]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#00d4ff"
-                  strokeWidth={2}
-                  dot={{ fill: '#00d4ff', r: 4 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            <>
+              <div className="flex flex-wrap gap-3 items-end mb-3">
+                <label className="flex flex-col gap-0.5 text-xs min-w-0">
+                  <span className="text-terminal-text-dim">Y-axis scale</span>
+                  <select
+                    value={valueHistoryYMode}
+                    onChange={(e) => {
+                      const m = e.target.value as 'tight' | 'context' | 'custom'
+                      setValueHistoryYMode(m)
+                      if (m !== 'custom') setValueHistoryYCustomApplied(null)
+                    }}
+                    className="rounded-md bg-terminal-bg border border-terminal-border px-2 py-1.5 text-sm font-mono text-terminal-text w-full max-w-[14rem]"
+                  >
+                    <option value="tight">Tight (min–max + pad)</option>
+                    <option value="context">Wide context (~£2k min span)</option>
+                    <option value="custom">Custom min / max £</option>
+                  </select>
+                </label>
+                {valueHistoryYMode === 'custom' && (
+                  <>
+                    <label className="flex flex-col gap-0.5 text-xs">
+                      <span className="text-terminal-text-dim">Min £</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={valueHistoryYCustomMin}
+                        onChange={(e) => setValueHistoryYCustomMin(e.target.value)}
+                        placeholder="e.g. 9900"
+                        className="w-24 rounded-md bg-terminal-bg border border-terminal-border px-2 py-1.5 font-mono text-sm text-terminal-text"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-0.5 text-xs">
+                      <span className="text-terminal-text-dim">Max £</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={valueHistoryYCustomMax}
+                        onChange={(e) => setValueHistoryYCustomMax(e.target.value)}
+                        placeholder="e.g. 10100"
+                        className="w-24 rounded-md bg-terminal-bg border border-terminal-border px-2 py-1.5 font-mono text-sm text-terminal-text"
+                      />
+                    </label>
+                    <button type="button" onClick={applyValueHistoryCustomY} className="text-xs rounded-md border border-accent/50 text-accent hover:bg-accent/10 px-2 py-1.5">
+                      Apply Y
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={resetValueHistoryRange}
+                  className="text-xs rounded-md border border-terminal-border text-terminal-text-dim hover:text-terminal-text hover:border-terminal-text/40 px-2 py-1.5 sm:ml-auto"
+                >
+                  Reset date range
+                </button>
+              </div>
+              <ResponsiveContainer width="100%" height={268}>
+                <LineChart data={displayedValueHistory} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
+                  <XAxis dataKey="date" stroke="#8b949e" interval="preserveStartEnd" minTickGap={24} />
+                  <YAxis
+                    type="number"
+                    stroke="#8b949e"
+                    domain={valueHistoryYDomain}
+                    allowDataOverflow
+                    tickCount={6}
+                    tickFormatter={(v) => `£${Math.round(v).toLocaleString()}`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#06060a',
+                      border: '1px solid #00d4ff66',
+                      borderRadius: '8px',
+                      boxShadow: '0 6px 20px rgba(0, 0, 0, 0.45)',
+                      color: '#e6edf3',
+                    }}
+                    itemStyle={{ color: '#e6edf3' }}
+                    labelStyle={{ color: '#00d4ff', fontWeight: 600 }}
+                    formatter={(value: number, name: string) => [
+                      `£${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                      name,
+                    ]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    name="Portfolio value"
+                    stroke="#00d4ff"
+                    strokeWidth={2}
+                    dot={{ fill: '#00d4ff', r: 4 }}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+              {chartData.length >= 2 ? (
+                <div className="mt-1">
+                  <ResponsiveContainer width="100%" height={76}>
+                    <LineChart data={chartData} margin={{ top: 2, right: 12, left: 4, bottom: 2 }}>
+                      <XAxis dataKey="date" tick={{ fontSize: 9 }} stroke="#8b949e" interval="preserveStartEnd" minTickGap={32} />
+                      <YAxis hide domain={['auto', 'auto']} />
+                      <Line
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#00d4ff66"
+                        strokeWidth={1.25}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                      <Brush
+                        dataKey="date"
+                        height={28}
+                        stroke="#00d4ff"
+                        fill="rgba(0, 212, 255, 0.12)"
+                        travellerWidth={10}
+                        startIndex={valueHistoryBrush?.startIndex ?? 0}
+                        endIndex={valueHistoryBrush?.endIndex ?? chartData.length - 1}
+                        onChange={onValueHistoryBrushChange}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <p className="text-[11px] text-terminal-text-dim mt-1" id="portfolio-value-brush-hint">
+                    Drag the handles or shaded band to change the date range in the chart above. Y-axis (tight mode) uses only points in that range.
+                  </p>
+                </div>
+              ) : null}
+            </>
           ) : (
             <div className="h-64 flex items-center justify-center text-terminal-text-dim">
               No history data available
@@ -347,9 +579,38 @@ export default function Portfolio() {
           </div>
         ) : (
           <>
+            <label className="sm:hidden flex flex-col gap-1 mb-3 text-sm">
+              <span className="text-terminal-text-dim text-xs">Sort by</span>
+              <select
+                value={positionSort ? `${positionSort.key}:${positionSort.dir}` : ''}
+                onChange={(e) => {
+                  const v = e.target.value
+                  if (!v) setPositionSort(null)
+                  else {
+                    const [key, dir] = v.split(':') as [PositionSortKey, 'asc' | 'desc']
+                    setPositionSort({ key, dir })
+                  }
+                }}
+                className="w-full rounded-md bg-terminal-bg border border-terminal-border px-3 py-2 text-terminal-text font-mono text-sm"
+              >
+                <option value="">Default (API order)</option>
+                <option value="ticker:asc">Ticker A–Z</option>
+                <option value="ticker:desc">Ticker Z–A</option>
+                <option value="sector:asc">Sector A–Z</option>
+                <option value="sector:desc">Sector Z–A</option>
+                <option value="quantity:desc">Quantity (high → low)</option>
+                <option value="quantity:asc">Quantity (low → high)</option>
+                <option value="value_gbp:desc">Value £ (high → low)</option>
+                <option value="value_gbp:asc">Value £ (low → high)</option>
+                <option value="pnl_gbp:desc">P&amp;L £ (high → low)</option>
+                <option value="pnl_gbp:asc">P&amp;L £ (low → high)</option>
+                <option value="pnl_pct:desc">P&amp;L % (high → low)</option>
+                <option value="pnl_pct:asc">P&amp;L % (low → high)</option>
+              </select>
+            </label>
             {/* Mobile card layout */}
             <div className="sm:hidden space-y-3">
-              {positions.map((pos) => (
+              {sortedPositions.map((pos) => (
                 <div key={pos.ticker} className="border border-terminal-border rounded-lg p-3 bg-terminal-surface/30">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
@@ -392,18 +653,60 @@ export default function Portfolio() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-terminal-border">
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Ticker</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden md:table-cell">Sector</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Quantity</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Value</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">P&L</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">P&L %</th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Trend</th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>
+                    <SortableTh
+                      label="Ticker"
+                      sortKey="ticker"
+                      active={positionSort?.key === 'ticker'}
+                      dir={positionSort?.key === 'ticker' ? positionSort.dir : null}
+                      onSort={handlePositionSort}
+                      className="px-4 py-3 text-left text-sm"
+                    />
+                    <SortableTh
+                      label="Sector"
+                      sortKey="sector"
+                      active={positionSort?.key === 'sector'}
+                      dir={positionSort?.key === 'sector' ? positionSort.dir : null}
+                      onSort={handlePositionSort}
+                      className="px-4 py-3 text-left text-sm hidden md:table-cell"
+                    />
+                    <SortableTh
+                      label="Quantity"
+                      sortKey="quantity"
+                      active={positionSort?.key === 'quantity'}
+                      dir={positionSort?.key === 'quantity' ? positionSort.dir : null}
+                      onSort={handlePositionSort}
+                      className="px-4 py-3 text-left text-sm hidden lg:table-cell"
+                    />
+                    <SortableTh
+                      label="Value"
+                      sortKey="value_gbp"
+                      active={positionSort?.key === 'value_gbp'}
+                      dir={positionSort?.key === 'value_gbp' ? positionSort.dir : null}
+                      onSort={handlePositionSort}
+                      className="px-4 py-3 text-left text-sm"
+                    />
+                    <SortableTh
+                      label="P&L"
+                      sortKey="pnl_gbp"
+                      active={positionSort?.key === 'pnl_gbp'}
+                      dir={positionSort?.key === 'pnl_gbp' ? positionSort.dir : null}
+                      onSort={handlePositionSort}
+                      className="px-4 py-3 text-left text-sm"
+                    />
+                    <SortableTh
+                      label="P&L %"
+                      sortKey="pnl_pct"
+                      active={positionSort?.key === 'pnl_pct'}
+                      dir={positionSort?.key === 'pnl_pct' ? positionSort.dir : null}
+                      onSort={handlePositionSort}
+                      className="px-4 py-3 text-left text-sm"
+                    />
+                    <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Trend</th>
+                    <th scope="col" className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.map((pos) => (
+                  {sortedPositions.map((pos) => (
                     <tr key={pos.ticker} className="border-b border-terminal-border hover:bg-terminal-surface/50">
                       <td className="px-4 py-3 font-mono font-semibold">{cleanTicker(pos.ticker)}</td>
                       <td className="px-4 py-3 text-sm hidden md:table-cell">{pos.sector ?? '—'}</td>
