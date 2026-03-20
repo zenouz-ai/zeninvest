@@ -595,6 +595,21 @@ class Orchestrator:
             pending_buys: list[dict[str, Any]] = []
             projected_num_positions = len(existing_tickers)
 
+            # Deduplicate decisions by ticker — keep first occurrence (audit fix)
+            seen_tickers: set[str] = set()
+            deduped_decisions: list[dict[str, Any]] = []
+            for d in decisions:
+                t = str(d.get("ticker", "")).strip().upper()
+                if t and t in seen_tickers:
+                    logger.warning(f"Duplicate decision for {t} — keeping first, dropping duplicate")
+                    continue
+                if t:
+                    seen_tickers.add(t)
+                deduped_decisions.append(d)
+            if len(deduped_decisions) < len(decisions):
+                logger.info(f"Deduplicated {len(decisions)} -> {len(deduped_decisions)} decisions")
+            decisions = deduped_decisions
+
             for decision in decisions:
                 raw_ticker = str(decision.get("ticker", "")).strip().upper()
                 ticker = self._normalize_decision_ticker(raw_ticker, stocks_data)

@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-This audit focuses on **agent decision-making logic** — how LLM outputs are parsed, validated, and flow through the Strategy → Moderation → Risk → Opportunity → Execution pipeline. While the codebase is well-structured with defence-in-depth, this audit identified **5 Critical, 6 High, 9 Medium, and 6 Low** findings, primarily around:
+This audit focuses on **agent decision-making logic** — how LLM outputs are parsed, validated, and flow through the Strategy → Moderation → Risk → Opportunity → Execution pipeline. While the codebase is well-structured with defence-in-depth, this audit identified **5 Critical, 7 High, 9 Medium, and 6 Low** findings, primarily around:
 
 - **MODIFY verdicts** requested by moderators but silently discarded
 - **CAUTION consensus** treated identically to APPROVED (no downstream differentiation)
@@ -22,7 +22,7 @@ This audit focuses on **agent decision-making logic** — how LLM outputs are pa
 | Severity | Count | Fixed (this PR) |
 |----------|-------|-----------------|
 | Critical | 5 | 5 |
-| High | 6 | 6 |
+| High | 7 | 7 |
 | Medium | 9 | 0 (backlog) |
 | Low | 6 | 0 (backlog) |
 
@@ -161,6 +161,19 @@ The JSON repair function finds the last `}` and tries to close the structure. If
 **Impact:** A truncated response could produce ghost decisions — ticker+action with all other fields missing. A BUY with conviction 0 and allocation 0 would be harmless (zero value), but could still create confusing log entries and dashboard noise.
 
 **Fix:** After repair, validate each decision has at minimum: `ticker`, `action`, and `conviction > 0`. Drop decisions that fail validation.
+
+### H-6: No deduplication of strategy decisions by ticker
+
+**File:** `src/orchestrator/main.py:598`
+**Component:** Orchestrator
+
+The strategy prompt instructs Claude to output "exactly one decision for EVERY ticker", but no validation enforces this. If Claude outputs duplicate tickers (e.g., AAPL_US_EQ with BUY and then AAPL_US_EQ with SELL), both would be processed. The first might go into `pending_buys`, and the second could execute as a SELL — resulting in conflicting trades on the same security in the same cycle.
+
+**Impact:** Duplicate BUY orders or contradictory BUY+SELL in the same cycle. The 5-minute dedup window might not catch cross-phase duplicates (SELL executes immediately, BUY deferred to UOV phase).
+
+**Fix:** Deduplicate decisions by ticker before the moderation/risk loop, keeping the first occurrence.
+
+**Status:** Fixed — dedup step added before the decision processing loop.
 
 ---
 
@@ -302,6 +315,7 @@ The function name suggests it parses JSON and raises on failure. Instead, it ret
 7. **H-3**: Increase strategy tool-use timeout to 120s
 8. **H-4**: Record consensus on all moderator log rows
 9. **H-5**: Validate repaired decisions have required fields
+10. **H-6**: Deduplicate strategy decisions by ticker before moderation/risk
 
 ### Backlog
 

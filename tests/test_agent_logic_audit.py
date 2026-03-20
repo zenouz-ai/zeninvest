@@ -351,3 +351,65 @@ class TestConvictionClamping:
         max_pct = 15.0
         val = max(0.0, min(max_pct, -5.0))
         assert val == 0.0
+
+
+# ── Decision deduplication ─────────────────────────────────────────────────
+
+class TestDecisionDeduplication:
+    """Verify that duplicate tickers in strategy output are deduplicated."""
+
+    def test_duplicate_tickers_keep_first(self):
+        """Only the first decision per ticker should survive."""
+        decisions = [
+            {"ticker": "AAPL_US_EQ", "action": "BUY", "conviction": 80},
+            {"ticker": "MSFT_US_EQ", "action": "HOLD", "conviction": 50},
+            {"ticker": "AAPL_US_EQ", "action": "SELL", "conviction": 90},
+        ]
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for d in decisions:
+            t = str(d.get("ticker", "")).strip().upper()
+            if t and t in seen:
+                continue
+            if t:
+                seen.add(t)
+            deduped.append(d)
+        assert len(deduped) == 2
+        assert deduped[0]["ticker"] == "AAPL_US_EQ"
+        assert deduped[0]["action"] == "BUY"  # first one kept
+        assert deduped[1]["ticker"] == "MSFT_US_EQ"
+
+    def test_no_duplicates_unchanged(self):
+        """Decisions without duplicates pass through unchanged."""
+        decisions = [
+            {"ticker": "AAPL_US_EQ", "action": "BUY", "conviction": 80},
+            {"ticker": "MSFT_US_EQ", "action": "SELL", "conviction": 70},
+        ]
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for d in decisions:
+            t = str(d.get("ticker", "")).strip().upper()
+            if t and t in seen:
+                continue
+            if t:
+                seen.add(t)
+            deduped.append(d)
+        assert len(deduped) == 2
+
+    def test_empty_ticker_not_tracked(self):
+        """Decisions with empty tickers are not deduplicated against each other."""
+        decisions = [
+            {"ticker": "", "action": "HOLD"},
+            {"ticker": "", "action": "BUY"},
+        ]
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for d in decisions:
+            t = str(d.get("ticker", "")).strip().upper()
+            if t and t in seen:
+                continue
+            if t:
+                seen.add(t)
+            deduped.append(d)
+        # Both empty-ticker decisions pass through (will be filtered by H-5 validation)
+        assert len(deduped) == 2
