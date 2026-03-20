@@ -1,48 +1,48 @@
-<svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 220 170" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="c3g" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#00d4ff"/>
       <stop offset="100%" stop-color="#00ffa3"/>
     </linearGradient>
-    <linearGradient id="edge" x1="100%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#00d4ff"/>
-      <stop offset="100%" stop-color="#00ffa3"/>
-    </linearGradient>
+    <filter id="c3gl">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
 
-  <!-- Top bar — 4 nodes -->
-  <line x1="35" y1="45" x2="70" y2="45" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="70" y1="45" x2="110" y2="45" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="110" y1="45" x2="150" y2="45" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <!-- Top bar -->
+  <circle cx="55" cy="45" r="6" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <circle cx="90" cy="45" r="5" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <circle cx="125" cy="45" r="5" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <circle cx="160" cy="45" r="6" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <line x1="55" y1="45" x2="90" y2="45" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="90" y1="45" x2="125" y2="45" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="125" y1="45" x2="160" y2="45" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
 
-  <circle cx="35" cy="45" r="6" fill="url(#grad)"/>
-  <circle cx="70" cy="45" r="5" fill="url(#grad)"/>
-  <circle cx="110" cy="45" r="5" fill="url(#grad)"/>
-  <circle cx="150" cy="45" r="6" fill="url(#grad)"/>
+  <!-- Diagonal -->
+  <circle cx="140" cy="72" r="4.5" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <circle cx="110" cy="97" r="5.5" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <circle cx="80" cy="122" r="4.5" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <line x1="160" y1="45" x2="140" y2="72" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="140" y1="72" x2="110" y2="97" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="110" y1="97" x2="80" y2="122" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="80" y1="122" x2="55" y2="150" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
 
-  <!-- Diagonal — 2 intermediate nodes -->
-  <line x1="150" y1="45" x2="125" y2="75" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="125" y1="75" x2="95" y2="110" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="95" y1="110" x2="65" y2="140" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="65" y1="140" x2="35" y2="170" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
+  <!-- Bottom bar -->
+  <circle cx="55" cy="150" r="6" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <circle cx="90" cy="150" r="5" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <circle cx="125" cy="150" r="5" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <circle cx="160" cy="150" r="6" fill="url(#c3g)" filter="url(#c3gl)"/>
+  <line x1="55" y1="150" x2="90" y2="150" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="90" y1="150" x2="125" y2="150" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
+  <line x1="125" y1="150" x2="160" y2="150" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
 
-  <circle cx="125" cy="75" r="5" fill="url(#grad)"/>
-  <circle cx="95" cy="110" r="5.5" fill="url(#grad)"/>
-  <circle cx="65" cy="140" r="5" fill="url(#grad)"/>
-
-  <!-- Bottom bar — 4 nodes -->
-  <line x1="35" y1="170" x2="70" y2="170" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="70" y1="170" x2="110" y2="170" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="110" y1="170" x2="150" y2="170" stroke="url(#edge)" stroke-width="2.5" opacity="0.7"/>
-
-  <circle cx="35" cy="170" r="6" fill="url(#grad)"/>
-  <circle cx="70" cy="170" r="5" fill="url(#grad)"/>
-  <circle cx="110" cy="170" r="5" fill="url(#grad)"/>
-  <circle cx="150" cy="170" r="6" fill="url(#grad)"/>
-
-  <!-- Cross-connections -->
-  <line x1="70" y1="45" x2="125" y2="75" stroke="url(#edge)" stroke-width="0.8" opacity="0.15"/>
-  <line x1="110" y1="45" x2="95" y2="110" stroke="url(#edge)" stroke-width="0.8" opacity="0.15"/>
-  <line x1="65" y1="140" x2="70" y2="170" stroke="url(#edge)" stroke-width="0.8" opacity="0.15"/>
-  <line x1="95" y1="110" x2="110" y2="170" stroke="url(#edge)" stroke-width="0.8" opacity="0.15"/>
+  <!-- Cross connections -->
+  <line x1="90" y1="45" x2="140" y2="72" stroke="url(#c3g)" stroke-width="0.8" opacity="0.15"/>
+  <line x1="125" y1="45" x2="110" y2="97" stroke="url(#c3g)" stroke-width="0.8" opacity="0.15"/>
+  <line x1="80" y1="122" x2="90" y2="150" stroke="url(#c3g)" stroke-width="0.8" opacity="0.15"/>
+  <line x1="110" y1="97" x2="125" y2="150" stroke="url(#c3g)" stroke-width="0.8" opacity="0.15"/>
 </svg>

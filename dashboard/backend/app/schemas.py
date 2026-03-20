@@ -132,8 +132,37 @@ class OrderSchema(BaseModel):
     status: str
     strategy: str | None
     conviction: int | None
+    t212_order_id: str | None = None
+    error_message: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FailedOrderHealthSchema(BaseModel):
+    """Failed order entry used for unresolved health alerts."""
+
+    id: int
+    timestamp: datetime
+    ticker: str
+    action: str
+    order_type: str
+    error_message: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OrdersHealthSchema(BaseModel):
+    """Orders health summary for dashboard alerts and troubleshooting."""
+
+    failed_open_count: int
+    failed_recent: list[FailedOrderHealthSchema]
+    pending_local_count: int
+    pending_live_count: int
+    stale_pending_count: int
+    reconciled_pending_count: int = 0
+    unresolved_window_days: int = 7
+    last_reconciled_at: datetime
+    live_fetch_error: str | None = None
 
 
 # --- Decisions / Moderation / Risk ---

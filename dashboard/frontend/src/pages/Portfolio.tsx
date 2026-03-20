@@ -91,6 +91,28 @@ export default function Portfolio() {
     }))
     .filter((d) => d.date)
 
+  const chartYDomain = useMemo<[number, number]>(() => {
+    if (chartData.length === 0) return [0, 1]
+    const values = chartData.map((d) => d.value)
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    const range = max - min
+
+    // Keep axis dynamic and readable (avoid 0-baseline flattening for tight ranges).
+    // For near-flat data, enforce a minimum visible span around the current level.
+    const minVisibleSpan = 2000 // e.g. around 9k-11k for ~10k portfolio
+    const paddedSpan = range > 0 ? range * 1.3 : 0
+    const span = Math.max(minVisibleSpan, paddedSpan)
+    const center = (min + max) / 2
+    const rawLow = center - span / 2
+    const rawHigh = center + span / 2
+
+    // Round to neat £100 bounds.
+    const low = Math.floor(rawLow / 100) * 100
+    const high = Math.ceil(rawHigh / 100) * 100
+    return [low, high]
+  }, [chartData])
+
   const COLORS = ['#00d4ff', '#00ffa3', '#6332ff', '#ff4466', '#f7c948']
 
   const handleForceSell = async () => {
@@ -230,13 +252,28 @@ export default function Portfolio() {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#30363d" />
                 <XAxis dataKey="date" stroke="#8b949e" />
-                <YAxis stroke="#8b949e" />
+                <YAxis
+                  type="number"
+                  stroke="#8b949e"
+                  domain={chartYDomain}
+                  allowDataOverflow
+                  tickCount={6}
+                  tickFormatter={(v) => `£${Math.round(v).toLocaleString()}`}
+                />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#0d1117',
-                    border: '1px solid #30363d',
+                    backgroundColor: '#06060a',
+                    border: '1px solid #00d4ff66',
+                    borderRadius: '8px',
+                    boxShadow: '0 6px 20px rgba(0, 0, 0, 0.45)',
                     color: '#e6edf3',
                   }}
+                  itemStyle={{ color: '#e6edf3' }}
+                  labelStyle={{ color: '#00d4ff', fontWeight: 600 }}
+                  formatter={(value: number, name: string) => [
+                    `£${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    name,
+                  ]}
                 />
                 <Line
                   type="monotone"
@@ -278,10 +315,18 @@ export default function Portfolio() {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: '#0d1117',
-                    border: '1px solid #30363d',
+                    backgroundColor: '#06060a',
+                    border: '1px solid #00d4ff66',
+                    borderRadius: '8px',
+                    boxShadow: '0 6px 20px rgba(0, 0, 0, 0.45)',
                     color: '#e6edf3',
                   }}
+                  itemStyle={{ color: '#e6edf3' }}
+                  labelStyle={{ color: '#00d4ff', fontWeight: 600 }}
+                  formatter={(value: number, name: string) => [
+                    `£${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    name,
+                  ]}
                 />
               </PieChart>
             </ResponsiveContainer>

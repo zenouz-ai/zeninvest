@@ -9,6 +9,7 @@ import numpy as np
 
 from src.data.database import get_session
 from src.data.models import Order, RiskDecision
+from src.utils.datetime_utils import ensure_utc_datetime
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -245,11 +246,13 @@ class RiskManager:
         """Check if daily loss halt is active."""
         max_loss = self.settings.daily_loss_halt_pct
 
-        if halt_until and datetime.now(timezone.utc) < halt_until:
+        halt_until_utc = ensure_utc_datetime(halt_until)
+        now_utc = datetime.now(timezone.utc)
+        if halt_until_utc is not None and now_utc < halt_until_utc:
             return RuleResult(
                 rule_name="daily_loss_halt",
                 passed=False,
-                message=f"Daily loss halt active until {halt_until.isoformat()}",
+                message=f"Daily loss halt active until {halt_until_utc.isoformat()}",
             )
 
         if daily_pnl_pct < -max_loss:
@@ -340,7 +343,17 @@ class RiskManager:
                     passed=True,
                     message=f"No BUY history for {ticker}, allowing REDUCE/SELL",
                 )
-            elapsed = (datetime.now(timezone.utc) - last_buy.timestamp).total_seconds() / 3600
+            last_buy_ts_utc = ensure_utc_datetime(last_buy.timestamp)
+            now_utc = datetime.now(timezone.utc)
+            # If the DB row has no timestamp (unexpected), allow the action.
+            if last_buy_ts_utc is None:
+                return RuleResult(
+                    rule_name="min_holding_period",
+                    passed=True,
+                    message=f"No timestamp for last BUY of {ticker}, allowing REDUCE/SELL",
+                )
+
+            elapsed = (now_utc - last_buy_ts_utc).total_seconds() / 3600
             if elapsed >= min_hours:
                 return RuleResult(
                     rule_name="min_holding_period",

@@ -46,7 +46,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 
 Based on `docs/UX_AUDIT.md`, resolved 10 of 28 findings (2 Critical, 5 Major, 3 Minor):
 
-- **AlertBanner** (`AlertBanner.tsx`): persistent alert aggregation bar below navbar on all pages. Checks 5 sources independently: system state, SSE connectivity, cost degradation, losing positions (>5%), failed orders. Severity-coded (red critical, amber warning), dismissible, auto-refresh 30s.
+- **AlertBanner** (`AlertBanner.tsx`): persistent alert aggregation bar below navbar on all pages. Checks 5 sources independently: system state, SSE connectivity, cost degradation, losing positions (>5%), unresolved failed orders from `/api/orders/health`. Severity-coded (red critical, amber warning), dismissible, auto-refresh 30s.
 - **Dashboard home restructure**: replaced collapsed sections with always-visible layout. Two-column grid: positions + activity (left), cumulative stats + cost breakdown (right). Last cycle summary always visible above the fold.
 - **Independent section loading** (`useAsyncData` hook): each dashboard section fetches and error-handles independently — one failing endpoint no longer takes down the whole page.
 - **Positions on home page**: top 5 positions by |P&L| shown on Dashboard with inline bar chart, linking to Portfolio page.
@@ -67,6 +67,7 @@ Resolved 9 more findings (6 Major, 3 Minor) from `docs/UX_AUDIT.md`:
 - **Focus trap** (`useFocusTrap.ts`): all modals (Live Run, Reset Peak, Pause, Force Sell) trap Tab/Shift+Tab, Escape closes.
 - **Colour accessibility** (`PnlDisplay.tsx`): `PnlCurrency` and `PnlValue` components render directional arrows (▲/▼) alongside colour, with `aria-label` for screen readers. Applied to Dashboard + Portfolio.
 - **Chart colour alignment**: Portfolio line chart and pie chart now use design tokens (#00d4ff accent, #30363d grid, #8b949e axis). Costs chart API colour aligned to #ff4466 (loss token). Tooltip backgrounds aligned.
+- **Pie tooltip readability fix** (`Portfolio.tsx`, 2026-03-19): Sector Allocation hover tooltip now forces high-contrast styling (dark surface, cyan border, explicit light item text + cyan label text) and value formatter (`£` with decimals) to avoid black-on-dark clashes on slices like Energy.
 
 ### UX Phase 3 — Final Polish + Bonus Features (delivered 2026-03-19)
 
@@ -137,7 +138,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 **Alert banner (persistent, all pages):**
 - AlertBanner component renders below navbar on every page
-- Aggregates 5 alert sources independently: system state (CAUTIOUS/HALTED), SSE disconnect, cost degradation, losing positions (>5% loss), failed orders
+- Aggregates 5 alert sources independently: system state (CAUTIOUS/HALTED), SSE disconnect, cost degradation, losing positions (>5% loss), unresolved failed orders (`/api/orders/health`)
 - Severity-coded: red (critical), amber (warning). Dismissible per-alert, auto-refresh 30s
 
 **Control bar:**
@@ -225,6 +226,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 **Current positions (from `portfolio_snapshots.positions_json`; normalised from T212 `instrument.ticker` / `walletImpact`):**
 - Table: ticker, sector, quantity, value (GBP), P&L (GBP), P&L %
 - Sector allocation pie chart (from position values; zero-value sectors filtered)
+- Sector allocation tooltip uses explicit high-contrast text/background and GBP value formatting for dark-theme readability
 - Portfolio value history line chart (chronological: oldest left, newest right; rightmost point = latest snapshot)
 
 **Historical performance (from `performance_metrics`):**
@@ -255,13 +257,15 @@ Strategy (Claude) → conviction 0.8, action BUY
 **Recent orders (from `orders`):**
 - Table of all recent orders: time, ticker, action, quantity, order type, status (filled/pending/dry_run/failed)
 - Market orders (BUY/SELL/REDUCE) and stop orders in one view
-- Order-value floor behavior is visible in execution outcomes: BUY/REDUCE/limit/stop below £500 are skipped, while explicit market SELL can still execute for full exits
+- Failed rows expose error details directly in the table (drill-down with full error message and broker order ID when available)
+- Order-value floor behavior is visible in execution outcomes: BUY/REDUCE/limit/stop below £500 are skipped (for MARKET BUYs, floor check uses target trade value to avoid rounding dips), while explicit market SELL can still execute for full exits
 - REDUCE decisions that would leave a residual position below £500 appear as executed SELL actions in the orders stream
 - Status reflects T212 API response when live (FILLED→filled, NEW→pending, REJECTED→failed)
 - `pending` has two common meanings in this table:
   - market order accepted but not yet executed (`type=MARKET`, typically `status=NEW`, common outside market hours)
   - working protective stop (`type=STOP`, remains `NEW` until stop price is hit or order is cancelled/replaced)
 - Local DB statuses are reconciled at the start of each non-dry-run cycle via `sync_order_status_from_t212()` (pending -> filled when T212 reports FILLED/PARTIALLY_FILLED).
+- Dashboard health endpoint (`/api/orders/health`) also reconciles stale local pending stop orders against live T212 pending orders and reports local/live/stale counts.
 
 **Current stop-loss levels (from `orders` + `stop_loss_adjustments`):**
 - Current stop-loss levels for all positions with distance from current price
@@ -486,7 +490,7 @@ GET /api/events/stream              # Server-Sent Events (SSE) stream of activit
 | Run History | `runs` + `events_log` | Run metadata + per-run events ✅ |
 | Stock Universe | `instruments` | Sector, industry, market_cap, business_summary, last_screened_at, data_available |
 | Committee Decisions | `strategy_decisions` + `moderation_logs` + `risk_decisions` | Full pipeline trail per ticker per cycle |
-| Portfolio | `portfolio_snapshots` + `orders` | Snapshots for history, orders for current state. `positions_json` stores **normalized** positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) — orchestrator converts from T212 `instrument.ticker` and `walletImpact` before saving. Dashboard router supports both normalized and legacy T212 format for backward compatibility. |
+| Portfolio | `portfolio_snapshots` + `orders` | Snapshots for history, orders for current state. `positions_json` stores **normalized** positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) — orchestrator converts from T212 `instrument.ticker`, uses `walletImpact` when present, and falls back to account-level GBP scaling (`account_summary.investments.currentValue`) when per-position wallet fields are absent. Dashboard router supports both normalized and legacy T212 format for backward compatibility. |
 | P&L / Trade Outcomes | `trade_outcomes` | Links BUY→SELL with P&L, conviction, moderator scores |
 | UOV Scoring | `opportunity_score_snapshots` + `opportunity_queue` | Per-cycle UOV components, queue state |
 | Order Management | `orders` + `stop_loss_adjustments` | Stop-loss audit trail, trailing stops, limit orders |

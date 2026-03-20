@@ -527,6 +527,7 @@ sequenceDiagram
 
 Execution floor guardrails:
 - `min_order_value_gbp` is enforced for BUY, REDUCE, and limit BUY order paths.
+- For MARKET BUYs, the floor check uses the target trade value (pre share flooring) to avoid rounding creating tiny sub-£500 logged orders.
 - Explicit market SELL decisions are exempt from the floor so small positions can be fully exited.
 - Protective stop-loss SELL orders are also exempt so small positions remain risk-protected.
 - If a REDUCE would leave a residual position below the floor, the orchestrator converts it to full SELL before execution.
