@@ -266,6 +266,7 @@ Strategy (Claude) → conviction 0.8, action BUY
   - working protective stop (`type=STOP`, remains `NEW` until stop price is hit or order is cancelled/replaced)
 - Local DB statuses are reconciled at the start of each non-dry-run cycle via `sync_order_status_from_t212()` (pending -> filled when T212 reports FILLED/PARTIALLY_FILLED).
 - Dashboard health endpoint (`/api/orders/health`) also reconciles stale local pending stop orders against live T212 pending orders and reports local/live/stale counts.
+- **Route ordering:** `GET /api/orders/health` must be declared *before* `GET /api/orders/{order_id}` in the orders router. If the parameterized route is registered first, requests to `/health` match `{order_id}` and FastAPI returns **422** (cannot coerce `"health"` to `int`).
 
 **Current stop-loss levels (from `orders` + `stop_loss_adjustments`):**
 - Current stop-loss levels for all positions with distance from current price
