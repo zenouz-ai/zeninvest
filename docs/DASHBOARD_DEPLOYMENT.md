@@ -167,7 +167,15 @@ When the operator has run the steps above on a VPS:
 
 With VPS IP and HTTP:
 - Use firewall to restrict access (e.g. only your IP) if desired.
-- Consider basic auth or API key for the dashboard later.
+- **API Key Authentication (US-7.1, delivered):** Set `DASHBOARD_API_KEY` in your `.env` before exposing the dashboard. When set, all `/api/*` endpoints require a matching `X-API-Key` header. Generate a key with:
+  ```bash
+  python -c "import secrets; print(secrets.token_hex(32))"
+  ```
+  Add to `.env`:
+  ```
+  DASHBOARD_API_KEY=<your-generated-key>
+  ```
+  The frontend automatically picks up `VITE_API_KEY` at build time (passed as Docker build arg). When `DASHBOARD_API_KEY` is not set, the dashboard runs in unauthenticated mode with a startup warning — acceptable for localhost-only dev.
 - **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: localhost only. For VPS, add your IP:
   ```yaml
   dashboard:

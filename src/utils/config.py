@@ -676,6 +676,11 @@ class Settings:
             return origins
         return None
 
+    @property
+    def dashboard_api_key(self) -> str | None:
+        """DASHBOARD_API_KEY from environment. None when not set (unauthenticated dev mode)."""
+        return os.environ.get("DASHBOARD_API_KEY") or None
+
 
 # Singleton
 _settings: Settings | None = None

@@ -661,7 +661,7 @@ Setup deployment for the dashboard on the existing Hetzner VPS:
    - /* → React frontend static files
    - /events/stream → SSE with proper proxy buffering disabled
 
-3. Add basic auth or API key protection
+3. ✅ API key authentication via `DASHBOARD_API_KEY` env var (`APIKeyMiddleware` on all `/api/*` routes; US-7.1 delivered 2026-03-21)
 
 4. Create a deploy.sh script that builds the frontend, copies to the backend static dir, and restarts services
 

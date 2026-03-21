@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **14** · Pipeline **19** (order by priority and feasibility below)
+**At a glance:** Delivered **15** · Pipeline **18** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -38,6 +38,7 @@ timeline
         US-7.0 : Production Audit & Safety Fixes
         US-7.0a : Agent Logic Audit Fixes
         US-7.0b : Formal Verification Fixes
+        US-7.1 : Dashboard Authentication
     section Pipeline (priority order)
         US-4.5 : Proactive Macro News Intelligence
         US-1.6 : Slack NL Trade Commands
@@ -53,7 +54,6 @@ timeline
         US-3.3 : Correlation Screening
         US-4.2 : Earnings Calendar
         US-4.3 : Sector Rotation
-        US-7.1 : Dashboard Authentication
         US-7.2 : Partial Fill Resubmission
         US-7.3 : Execution Quality & Slippage
         US-7.4 : Integration Test Coverage
@@ -81,6 +81,7 @@ timeline
 | | 12 | US-7.0 | Production Audit & Safety Fixes (34 findings; Phase 1+2: 12 fixed) |
 | | 13 | US-7.0a | Agent Logic Audit Fixes (27 findings; 5C+7H all fixed, 36 tests) |
 | | 14 | US-7.0b | Formal Verification Fixes (18 findings; Phase 1+2: scheduler safety, crash recovery, DB atomicity, 18 tests) |
+| | 15 | US-7.1 | Dashboard Authentication (X-API-Key middleware, 21 tests) |
 | **Pipeline** | 1 | US-4.5 | Proactive Macro News Intelligence |
 | | 2 | US-1.6 | Slack NL Trade Commands |
 | | 3 | US-1.9 | Conversational Trading Workflow |
@@ -95,11 +96,10 @@ timeline
 | | 12 | US-3.3 | Correlation Screening |
 | | 13 | US-4.2 | Earnings Calendar |
 | | 14 | US-4.3 | Sector Rotation |
-| | 15 | US-7.1 | Dashboard Authentication (audit finding C1) |
-| | 16 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
-| | 17 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
-| | 18 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
-| | 19 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
+| | 15 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
+| | 16 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
+| | 17 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
+| | 18 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
 | | 20 | US-6.1 | ML Trade Scoring (investigation) |
 | | 21 | US-6.2 | Journal Embeddings |
 | | 22 | US-6.3 | RL Investigation |
@@ -140,7 +140,7 @@ timeline
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Planned** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
-| **US-7.1** | Dashboard Authentication | API key or token-based auth on all dashboard endpoints; required before exposing beyond localhost | Critical security hardening; prevents unauthorized live cycle triggers | **Planned** |
+| **US-7.1** | Dashboard Authentication | API key or token-based auth on all dashboard endpoints; required before exposing beyond localhost | Critical security hardening; prevents unauthorized live cycle triggers | **Delivered** |
 | **US-7.2** | Partial Fill Resubmission | Detect partial fills and resubmit unfilled remainder in next cycle | Ensures intended position sizes are achieved | **Planned** |
 | **US-7.3** | Execution Quality & Slippage | VWAP/TWAP awareness, execution timing, slippage tracking; pre-live prerequisite | Required before transitioning from practice to live account | **Planned** |
 | **US-7.0** | Production Audit & Safety Fixes | Full codebase audit (34 findings: 3C+6H+12M+13L). Phase 1: no-retry on POST, write-before-execute, liquidate_all status mapping, stop atomicity, moderator parse-failure safety, session leaks. Phase 2: committed cash tracking, correlation/daily-loss activation, cycle timeout, exception safety, HALTED data. 12 of 34 fixed. See `docs/TRADING_SYSTEM_AUDIT.md`. | Eliminates 3 critical + 6 high severity financial-risk bugs; activates 2 previously disabled risk rules | **Delivered** |
@@ -663,20 +663,24 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 ### Operational Hardening (from March 2026 audit)
 
 **US-7.1: Dashboard Authentication**
-**Value:** Critical — currently all 20 API endpoints are unauthenticated, including `POST /api/runs/trigger-live` which can trigger a live trading cycle
-**Effort:** Small (1–2 days)
+**Value:** Critical — all 20 API endpoints were unauthenticated, including `POST /api/runs/trigger-live` which can trigger a live trading cycle
+**Effort:** Small (1 day)
 **Data Sources:** None
-**Stage:** Planned
+**Stage:** Delivered (2026-03-21)
 **Audit finding:** C1
 
 **Acceptance Criteria:**
-- [ ] API key or Bearer token authentication on all `/api/*` endpoints
-- [ ] Auth middleware with configurable secret in `.env` (`DASHBOARD_API_KEY`)
-- [ ] Health check (`/health`) remains unauthenticated
-- [ ] Frontend includes auth token in requests (cookie or header)
-- [ ] Existing CORS settings still apply; auth is additive
+- [x] `X-API-Key` header authentication on all `/api/*` endpoints via `APIKeyMiddleware`
+- [x] Auth middleware reads `DASHBOARD_API_KEY` from env; no-op when unset (backward-compatible dev mode)
+- [x] Health check (`/health`), `/docs`, `/openapi.json`, `/redoc` remain unauthenticated
+- [x] Frontend Axios client attaches `X-API-Key` via request interceptor (build-time `VITE_API_KEY` → `localStorage` fallback)
+- [x] Existing CORS settings unchanged; `X-API-Key` added to `allow_headers`
+- [x] 21 unit tests covering: no-key mode, correct key, wrong key, empty key, public paths, `get_api_key()`, startup warning
+- [x] `DASHBOARD_API_KEY` documented in `config/.env.example` with generation command
+- [x] Docker build arg `DASHBOARD_API_KEY` → Vite `VITE_API_KEY` in `Dockerfile` stage 1; runtime env in `docker-compose.yml`
 
-**Note:** Required before exposing dashboard beyond localhost/VPS IP.
+**Implementation:** `dashboard/backend/app/middleware/auth.py` (`APIKeyMiddleware`, `get_api_key`, `warn_if_unauthenticated`); wired in `main.py`.
+**Note:** When `DASHBOARD_API_KEY` is not set the dashboard runs in unauthenticated mode with a startup warning — safe for localhost-only dev. Set it in `.env` before VPS exposure.
 
 ---
 

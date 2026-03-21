@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from src.utils.config import get_settings
 
 from .database import init_dashboard_tables
+from .middleware.auth import APIKeyMiddleware, get_api_key, warn_if_unauthenticated
 from .routers import (
     api_usage,
     costs,
@@ -46,6 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup: Initialize dashboard tables
     if settings.dashboard_enabled:
         init_dashboard_tables()
+    warn_if_unauthenticated()
     yield
     # Shutdown: cleanup if needed
 
@@ -70,8 +72,11 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "X-API-Key"],
 )
+
+# API key auth — guards all /api/* routes; no-op when DASHBOARD_API_KEY unset
+app.add_middleware(APIKeyMiddleware, api_key=get_api_key())
 
 # Register routers (must be before static mount so /api/* takes precedence)
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])

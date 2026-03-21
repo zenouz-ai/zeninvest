@@ -171,3 +171,7 @@ dashboard:
   # cors_origins:
   #   - "http://YOUR_VPS_IP:8000"
   #   - "http://localhost:3000"
+  # API key authentication — set DASHBOARD_API_KEY in .env to enable
+  # When set, all /api/* endpoints require X-API-Key header matching this value.
+  # When not set, endpoints are unauthenticated (local dev only).
+  # Required before exposing dashboard beyond localhost/VPS firewall.
