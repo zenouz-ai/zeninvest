@@ -13,6 +13,7 @@ export const TOPICS = [
   'Validation',
   'Hardening',
   'ML / Advanced',
+  'Open-Source / Community',
 ] as const
 
 export type Topic = (typeof TOPICS)[number]
@@ -223,6 +224,19 @@ export const MILESTONES: Milestone[] = [
       '18 findings (3C+7W+8I). Phase 1: scheduler max_instances=1, resume warnings. Phase 2: trade_without_stop alert, OpportunityQueue QUEUED→EXECUTING→EXECUTED lifecycle, portfolio re-query before BUY, decision chain integrity check. 18 new tests. 12 invariants verified.',
     architectureComponents: ['Scheduler', 'Orchestrator', 'Opportunity Optimizer', 'Notifications'],
   },
+  {
+    id: 'US-7.1',
+    name: 'Dashboard Authentication',
+    topic: 'Hardening',
+    status: 'delivered',
+    start: '2026-03-21',
+    end: '2026-03-21',
+    effort: 'S',
+    priority: 'P0',
+    description:
+      'APIKeyMiddleware on all /api/* endpoints; DASHBOARD_API_KEY env var; configurable public_routes for GET-only demo exposure; write endpoints always protected; 33 tests',
+    architectureComponents: ['Dashboard', 'FastAPI'],
+  },
   // --- Pipeline (19) ---
   {
     id: 'US-4.5',
@@ -412,17 +426,6 @@ export const MILESTONES: Milestone[] = [
     architectureComponents: ['Future ML layer'],
   },
   {
-    id: 'US-7.1',
-    name: 'Dashboard Authentication',
-    topic: 'Hardening',
-    status: 'pipeline',
-    effort: 'S',
-    priority: 'P1',
-    description:
-      'API key or token-based auth on dashboard endpoints before broader exposure',
-    architectureComponents: ['Dashboard', 'FastAPI'],
-  },
-  {
     id: 'US-7.2',
     name: 'Partial Fill Resubmission',
     topic: 'Hardening',
@@ -465,6 +468,17 @@ export const MILESTONES: Milestone[] = [
     description:
       'Consolidated backlog: 15 medium/low (agent logic), 22 medium/low (trading system), 7 phase 3+4 (formal verification). Includes HALTED auto-recovery, market hours check, DB constraints, atomic cost budget.',
     architectureComponents: ['Orchestrator', 'Order Manager', 'Risk Agent', 'Scheduler'],
+  },
+  {
+    id: 'US-8.1',
+    name: 'Open-Source Launch Preparation',
+    topic: 'Open-Source / Community',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P0',
+    description:
+      'Remove nested repo, clean git remotes, add MIT LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GitHub issue/PR templates, and GitHub Actions CI (pytest + mypy). Prerequisite for zenouz-ai/zeninvest going public.',
+    architectureComponents: ['CI/CD', 'GitHub Actions'],
   },
 ]
 
