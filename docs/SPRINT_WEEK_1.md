@@ -1,8 +1,15 @@
+---
+tags: [sprint, planning, week-1, delivery, zeninvest]
+status: active
+created: 2026-03-21
+last_updated: 2026-03-21
+---
+
 # Sprint Plan — Week 1 (ZenInvest)
 
-> **Created:** 2026-03-21
-> **Branch:** `claude/review-roadmap-priorities-9F67J`
-> **Goal:** Deliver 7 user stories across 8 days in priority order.
+> Planned delivery of 8 user stories across 8 days in priority order.
+> Branch: `claude/review-roadmap-priorities-9F67J`
+> See `docs/SOPHISTICATION_ROADMAP.md` for full backlog context.
 
 ---
 

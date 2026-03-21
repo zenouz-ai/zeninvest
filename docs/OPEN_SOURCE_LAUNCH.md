@@ -1,6 +1,17 @@
+---
+tags: [open-source, launch, zeninvest, community, ci, legal, us-8.1]
+status: planned
+created: 2026-03-21
+last_updated: 2026-03-21
+---
+
 # US-8.1 Open-Source Launch Preparation
 
 > **Status:** Planned | **Priority:** P0 (prerequisite for repo going public) | **Effort:** Medium (2–3 days)
+> Sprint delivery: Day 8 — see `docs/SPRINT_WEEK_1.md`.
+> Roadmap entry: `docs/SOPHISTICATION_ROADMAP.md` § US-8.1 (Open-Source / Community).
+
+## Purpose
 
 This document is the detailed specification for **US-8.1**, which covers the full set of repository hygiene, legal, community, and CI infrastructure tasks required before the ZenInvest repo is flipped from Private → Public on GitHub.
 

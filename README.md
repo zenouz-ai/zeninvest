@@ -4,6 +4,8 @@ Autonomous investment agent that trades via the Trading 212 API (Practice/Demo m
 
 **Status:** POC — 441 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router, search API tracker, daily/weekly reports, market holidays, opportunity optimizer edge cases, agent logic audit fixes, formal verification phase 2, dashboard authentication + public demo routes), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite + UX Phase 1 complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). US-7.1 Dashboard Authentication implemented (`APIKeyMiddleware`, `DASHBOARD_API_KEY`, configurable `public_routes`). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) and [UX Audit](docs/UX_AUDIT.md).
 
+**Active sprint:** Week 1 — delivering US-4.1, US-7.4, US-3.1, US-4.5, US-1.6, US-1.9 (skeleton), US-8.1 across 8 days. See [`docs/SPRINT_WEEK_1.md`](docs/SPRINT_WEEK_1.md).
+
 ## Architecture
 
 ```

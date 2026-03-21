@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **15** · Pipeline **18** (order by priority and feasibility below)
+**At a glance:** Delivered **15** · Pipeline **19** (order by priority and feasibility below)
 
 ### Timeline view
 
