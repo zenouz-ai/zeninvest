@@ -22,11 +22,19 @@ services:
       start_period: 30s
 
   dashboard:
-    build: .
+    build:
+      context: .
+      # DASHBOARD_API_KEY is forwarded as a build arg so the frontend bundle
+      # can embed it as VITE_API_KEY at compile time.
+      args:
+        - DASHBOARD_API_KEY
     container_name: investment-dashboard
     restart: always
     env_file:
       - .env
+    # DASHBOARD_API_KEY must also be present at runtime for the backend middleware.
+    environment:
+      - DASHBOARD_API_KEY=${DASHBOARD_API_KEY:-}
     volumes:
       - ./data:/app/data
       - ./journals:/app/journals

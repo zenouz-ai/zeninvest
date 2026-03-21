@@ -676,6 +676,24 @@ class Settings:
             return origins
         return None
 
+    @property
+    def dashboard_api_key(self) -> str | None:
+        """DASHBOARD_API_KEY from environment. None when not set (unauthenticated dev mode)."""
+        return os.environ.get("DASHBOARD_API_KEY") or None
+
+    @property
+    def dashboard_public_routes(self) -> list[str]:
+        """API path prefixes exposed without auth for demo purposes (GET only).
+
+        Configured via ``dashboard.public_routes`` in settings.yaml.
+        Write endpoints (/api/system/*, /api/runs/trigger*) are always protected
+        regardless of this list.
+        """
+        routes = self.dashboard.get("public_routes")
+        if isinstance(routes, list):
+            return [str(r) for r in routes if r]
+        return []
+
 
 # Singleton
 _settings: Settings | None = None

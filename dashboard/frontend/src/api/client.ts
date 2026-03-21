@@ -4,11 +4,34 @@ import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order
 // Use relative paths when VITE_API_URL unset: same-origin in prod (FastAPI serves frontend)
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
 
+// API key for dashboard authentication (US-7.1).
+// Resolution order: build-time VITE_API_KEY env var → localStorage 'dashboard_api_key'
+// localStorage allows operators to set the key at runtime in dev without a rebuild:
+//   localStorage.setItem('dashboard_api_key', 'your-key')
+const _buildTimeKey: string = import.meta.env.VITE_API_KEY ?? ''
+function getApiKey(): string {
+  if (_buildTimeKey) return _buildTimeKey
+  try {
+    return localStorage.getItem('dashboard_api_key') ?? ''
+  } catch {
+    return ''
+  }
+}
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
+})
+
+// Attach X-API-Key on every request when a key is available.
+api.interceptors.request.use((config) => {
+  const key = getApiKey()
+  if (key) {
+    config.headers['X-API-Key'] = key
+  }
+  return config
 })
 
 // Events API

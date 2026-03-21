@@ -171,3 +171,20 @@ dashboard:
   # cors_origins:
   #   - "http://YOUR_VPS_IP:8000"
   #   - "http://localhost:3000"
+  # API key authentication — set DASHBOARD_API_KEY in .env to enable
+  # When set, all /api/* endpoints require X-API-Key header matching this value.
+  # When not set, endpoints are unauthenticated (local dev only).
+  # Required before exposing dashboard beyond localhost/VPS firewall.
+  #
+  # Public demo routes — GET requests to these prefixes bypass auth (write
+  # endpoints /api/system/* and /api/runs/trigger* are always protected).
+  # Uncomment and extend for demo/public exposure:
+  # public_routes:
+  #   - "/api/docs/"           # Roadmap & architecture — safe
+  #   - "/api/costs/"          # API spend totals — safe
+  #   - "/api/runs/"           # Cycle history (timestamps + status) — safe
+  #   - "/api/performance/metrics"  # Aggregate Sharpe/win-rate — safe
+  #   # Caution: exposes which stocks are under consideration (alpha leakage risk):
+  #   # - "/api/universe/"
+  #   # Caution: exposes current holdings (front-running risk):
+  #   # - "/api/portfolio/"
