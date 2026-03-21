@@ -12,8 +12,8 @@ This audit complements the [Agent Logic Audit](AGENT_LOGIC_AUDIT.md) (which focu
 
 | Severity | Count | Category |
 |----------|-------|----------|
-| CRITICAL | 2 | Scheduler concurrency, decision deduplication |
-| WARNING | 6 | State machine gaps, race conditions, stale data |
+| CRITICAL | 3 | Scheduler concurrency, decision deduplication, stop-loss atomicity |
+| WARNING | 7 | State machine gaps, race conditions, stale data, DB constraints |
 | INFO | 8 | Boundary conditions, design notes |
 
 ---
@@ -135,6 +135,8 @@ These invariants should NEVER be violated. For each, the enforcement mechanism a
 | I-8 | No duplicate orders within 5 minutes | `_is_duplicate()` check before execution | TOCTOU at 5-min boundary (INFO). Concurrent cycles (if 1.1 unfixed) could bypass. |
 | I-9 | Moderation consensus required for BUY | Moderation panel runs before risk for BUY/SELL/REDUCE | No bypass in normal flow. Skipped when cost-degraded (NO_GPT4O/NO_GEMINI). |
 | I-10 | Cost budget respected | `check_budget()` before each LLM call | TOCTOU if concurrent (Finding 3.2). Single-threaded model is safe. |
+| I-11 | Every BUY has a stop-loss | `place_stop_loss()` after BUY; `place_missing_stops()` at cycle start | Crash between BUY and stop creates 4-12h unprotected window (Finding 6.3). |
+| I-12 | Queue promotions execute or re-queue | `_update_queue()` commits before execution | Queue deletion before order placement; crash loses ticker (Finding 6.4). |
 
 ---
 
@@ -187,7 +189,33 @@ Orders written with `status="submitting"` before T212 API call. If crash between
 
 **Impact:** Dashboard shows phantom pending order until next cycle sync. Low financial risk (T212 never received the order).
 
-### 6.3 INFO: WAL mode enables concurrent reads
+### 6.3 CRITICAL: Stop-loss placement not atomic with BUY execution
+
+**File:** `src/orchestrator/main.py:1559-1630`
+
+Market order execution and stop-loss placement are separate operations with separate sessions. If the process crashes after the BUY is filled but before the stop-loss is placed, the position exists on T212 without downside protection. `place_missing_stops()` runs at the start of each cycle and would eventually place the missing stop, but there's a 4-12h window where the position is unprotected.
+
+**Preconditions:** Process crash or T212 API failure between BUY fill and stop-loss placement.
+**Impact:** Position vulnerable to unlimited downside for up to one cycle duration.
+**Fix (roadmap):** `place_missing_stops()` already mitigates this. Consider adding a `TRADE_WITHOUT_STOP` alert notification when a BUY completes without an accompanying stop.
+
+### 6.4 WARNING: OpportunityQueue deletion committed before order execution
+
+**File:** `src/agents/opportunity/optimizer.py:201-269`, `src/orchestrator/main.py:1026`
+
+When a queued ticker is promoted, the OpportunityQueue row is deleted and committed before the BUY order is placed. If crash occurs between queue commit and order execution, the ticker is silently lost — removed from the queue but never executed.
+
+**Preconditions:** Process crash between optimizer commit and order execution.
+**Impact:** Promoted opportunity lost without audit trail. Low probability but violates the principle of atomic state transitions.
+**Fix (roadmap):** Add status field to OpportunityQueue (QUEUED → EXECUTING → EXECUTED) and reconcile orphaned EXECUTING rows at cycle start.
+
+### 6.5 WARNING: Minimal database-level constraints
+
+All trading invariants (allocation limits, quantity signs, conviction ranges) are enforced only in Python code. The database has no `CHECK` constraints, no foreign keys linking decisions to orders. If application validation is bypassed (bug, manual DB edit), malformed data can persist.
+
+**Impact:** No safety net beyond application code. Acceptable given thorough test coverage, but worth noting.
+
+### 6.6 INFO: WAL mode enables concurrent reads
 
 `PRAGMA journal_mode=WAL` is set in `database.py`. Dashboard API can read while orchestrator writes without blocking. Reads may see slightly stale data (last committed state), which is acceptable for dashboard display.
 
@@ -203,7 +231,7 @@ Orders written with `status="submitting"` before T212 API call. If crash between
 | P1-2 | 1.2: Decision dedup (H-6) | **DONE** — committed and pushed | — |
 | P1-3 | 2.2: PAUSED+HALTED warning | Add log warning when resuming a HALTED system | 10 min |
 
-### Phase 2 — Next Sprint (WARNING fixes, state machine hardening)
+### Phase 2 — Next Sprint (WARNING fixes, state machine hardening, crash safety)
 
 | # | Finding | Fix | Effort |
 |---|---------|-----|--------|
@@ -211,6 +239,8 @@ Orders written with `status="submitting"` before T212 API call. If crash between
 | P2-2 | 5.1: Market hours check | Add `is_market_open()` utility; log warning if off-hours | 1h |
 | P2-3 | 6.1: Atomic decision writes | Wrap StrategyDecision + ModerationLog + RiskDecision + Order in single transaction | 2h |
 | P2-4 | 1.3: Re-query portfolio before BUY | Refresh portfolio state between SELL/REDUCE and BUY phases | 1h |
+| P2-5 | 6.3: BUY without stop-loss alert | Emit `TRADE_WITHOUT_STOP` notification if stop-loss placement fails after BUY fill | 1h |
+| P2-6 | 6.4: OpportunityQueue atomicity | Add status field (QUEUED → EXECUTING → EXECUTED); reconcile orphans at cycle start | 2h |
 
 ### Phase 3 — Roadmap (hardening for future concurrency)
 
@@ -220,6 +250,7 @@ Orders written with `status="submitting"` before T212 API call. If crash between
 | P3-2 | DB thread safety | Add threading.Lock around session factory if async features added | 1h |
 | P3-3 | Peak inflation detection | Warn if peak > 2× recent average; guide operator on reset-peak | 2h |
 | P3-4 | Halted ticker denial list | Cache T212 400/403 rejections; skip for 24h | 1h |
+| P3-5 | 6.5: DB-level constraints | Add CHECK constraints for quantity signs, conviction range, allocation bounds | 1h |
 
 ---
 
@@ -237,5 +268,7 @@ Orders written with `status="submitting"` before T212 API call. If crash between
 | I-8: No duplicate orders | **HOLDS** (with caveat) | 5-min window; concurrent cycles could bypass |
 | I-9: Moderation required | **HOLDS** (with caveat) | Skipped under cost degradation (by design) |
 | I-10: Cost budget respected | **HOLDS** (single-threaded) | TOCTOU if concurrent |
+| I-11: Every BUY has a stop-loss | **HOLDS** (with caveat) | Crash between BUY and stop creates 4-12h gap; `place_missing_stops()` recovers |
+| I-12: Queue promotions execute | **WEAK** | Queue deletion committed before execution; crash loses ticker silently |
 
-**Overall Assessment:** The system's core safety invariants hold under normal operation. The primary risk is concurrent cycle execution (Finding 1.1), which could violate I-2, I-8, and I-10. Fix P1-1 (`max_instances=1`) is the highest-priority action.
+**Overall Assessment:** The system's core safety invariants hold under normal operation. The primary risk is concurrent cycle execution (Finding 1.1), which could violate I-2, I-8, and I-10. Fix P1-1 (`max_instances=1`) is the highest-priority action. The secondary risk is non-atomic multi-step operations (Findings 6.1, 6.3, 6.4), which could leave partial state on crash — mitigated by next-cycle reconciliation for most cases, but OpportunityQueue (I-12) has no recovery path.
