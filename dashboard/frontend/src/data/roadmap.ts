@@ -11,6 +11,7 @@ export const TOPICS = [
   'Portfolio & Risk',
   'Signals',
   'Validation',
+  'Hardening',
   'ML / Advanced',
 ] as const
 
@@ -39,7 +40,7 @@ export interface Milestone {
 
 /** All milestones from SOPHISTICATION_ROADMAP shown in dashboard roadmap */
 export const MILESTONES: Milestone[] = [
-  // --- Delivered (11) ---
+  // --- Delivered (14) ---
   {
     id: 'US-1.1',
     name: 'Performance Tracking',
@@ -183,7 +184,46 @@ export const MILESTONES: Milestone[] = [
       '5 tools (web_search, news_search, sector_search, sec_search, macro_search); all 3 members (Strategy, GPT-4o Skeptic, Gemini Risk) have tool-use loops; shared pipeline-wide budget (35/cycle); Brave primary, Tavily fallback; 37 unit tests',
     architectureComponents: ['Strategy Engine', 'Moderation Panel', 'Research Executor'],
   },
-  // --- Pipeline (17) ---
+  {
+    id: 'US-7.0',
+    name: 'Production Audit & Safety Fixes',
+    topic: 'Hardening',
+    status: 'delivered',
+    start: '2026-03-19',
+    end: '2026-03-20',
+    effort: 'M',
+    priority: 'P0',
+    description:
+      '34 findings (3C+6H+12M+13L). Phase 1: no-retry on POST/DELETE, write-before-execute, liquidate_all status mapping, stop atomicity, parse-failure safety, session leaks. Phase 2: committed cash tracking, cycle timeout, exception safety. 12 of 34 fixed.',
+    architectureComponents: ['Order Manager', 'Execution', 'Risk Agent', 'Orchestrator'],
+  },
+  {
+    id: 'US-7.0a',
+    name: 'Agent Logic Audit Fixes',
+    topic: 'Hardening',
+    status: 'delivered',
+    start: '2026-03-20',
+    end: '2026-03-20',
+    effort: 'M',
+    priority: 'P0',
+    description:
+      '27 findings (5C+7H+9M+6L). All Critical+High fixed: MODIFY verdicts as conditional AGREE, CAUTION 25% allocation reduction, conviction/allocation clamping, Gemini score bounds, orphaned "submitting" sync, ticker dedup. 36 new tests.',
+    architectureComponents: ['Strategy Engine', 'Moderation Panel', 'Order Manager', 'Orchestrator'],
+  },
+  {
+    id: 'US-7.0b',
+    name: 'Formal Verification Fixes',
+    topic: 'Hardening',
+    status: 'delivered',
+    start: '2026-03-21',
+    end: '2026-03-21',
+    effort: 'M',
+    priority: 'P0',
+    description:
+      '18 findings (3C+7W+8I). Phase 1: scheduler max_instances=1, resume warnings. Phase 2: trade_without_stop alert, OpportunityQueue QUEUED→EXECUTING→EXECUTED lifecycle, portfolio re-query before BUY, decision chain integrity check. 18 new tests. 12 invariants verified.',
+    architectureComponents: ['Scheduler', 'Orchestrator', 'Opportunity Optimizer', 'Notifications'],
+  },
+  // --- Pipeline (19) ---
   {
     id: 'US-4.5',
     name: 'Proactive Macro News Intelligence',
@@ -374,7 +414,7 @@ export const MILESTONES: Milestone[] = [
   {
     id: 'US-7.1',
     name: 'Dashboard Authentication',
-    topic: 'Foundation',
+    topic: 'Hardening',
     status: 'pipeline',
     effort: 'S',
     priority: 'P1',
@@ -385,7 +425,7 @@ export const MILESTONES: Milestone[] = [
   {
     id: 'US-7.2',
     name: 'Partial Fill Resubmission',
-    topic: 'Portfolio & Risk',
+    topic: 'Hardening',
     status: 'pipeline',
     effort: 'M',
     priority: 'P2',
@@ -396,7 +436,7 @@ export const MILESTONES: Milestone[] = [
   {
     id: 'US-7.3',
     name: 'Execution Quality & Slippage',
-    topic: 'Portfolio & Risk',
+    topic: 'Hardening',
     status: 'pipeline',
     effort: 'M',
     priority: 'P2',
@@ -407,13 +447,24 @@ export const MILESTONES: Milestone[] = [
   {
     id: 'US-7.4',
     name: 'Integration Test Coverage',
-    topic: 'Validation',
+    topic: 'Hardening',
     status: 'pipeline',
     effort: 'M',
     priority: 'P1',
     description:
       'End-to-end run_cycle and state machine transition coverage as a release gate',
     architectureComponents: ['Orchestrator', 'State Machine', 'Testing'],
+  },
+  {
+    id: 'US-7.5',
+    name: 'Remaining Audit Backlog',
+    topic: 'Hardening',
+    status: 'pipeline',
+    effort: 'L',
+    priority: 'P2',
+    description:
+      'Consolidated backlog: 15 medium/low (agent logic), 22 medium/low (trading system), 7 phase 3+4 (formal verification). Includes HALTED auto-recovery, market hours check, DB constraints, atomic cost budget.',
+    architectureComponents: ['Orchestrator', 'Order Manager', 'Risk Agent', 'Scheduler'],
   },
 ]
 
