@@ -534,6 +534,8 @@ Execution floor guardrails:
 - Explicit market SELL decisions are exempt from the floor so small positions can be fully exited.
 - Protective stop-loss SELL orders are also exempt so small positions remain risk-protected.
 - If a REDUCE would leave a residual position below the floor, the orchestrator converts it to full SELL before execution.
+- **Market orders:** `OrderManager` calls T212 `POST /equity/orders/market` once per decision (no retry wrapper). Mutating POSTs are never auto-retried; only safe GETs use tenacity retries in `T212Client`.
+- **SELL/REDUCE:** After cancelling conflicting stop orders, execution clamps share quantity to `GET /equity/portfolio/{ticker}` so a value/price-derived size cannot exceed the broker-reported position (reduces spurious 400 responses). Stop cancel failures with HTTP 404/400/409 “already gone” style bodies are treated as idempotent success.
 
 ### Cycle Output Structure
 

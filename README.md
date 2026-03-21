@@ -264,7 +264,7 @@ s.close()
 ```bash
 poetry run pytest -v                          # All tests
 poetry run pytest tests/test_risk_manager.py  # Risk agent (43 tests)
-poetry run pytest tests/test_execution.py     # Execution (22 tests)
+poetry run pytest tests/test_execution.py     # Execution (52 tests)
 poetry run pytest tests/test_strategy.py      # Strategy (17 tests)
 poetry run pytest tests/test_moderation.py    # Moderation (21 tests)
 poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)

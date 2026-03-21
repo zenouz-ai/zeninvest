@@ -55,22 +55,6 @@ async def get_orders(
         session.close()
 
 
-@router.get("/{order_id}", response_model=OrderSchema)
-async def get_order(order_id: int):
-    """Get a specific order by ID."""
-    if not settings.dashboard_enabled:
-        raise HTTPException(status_code=503, detail="Dashboard is disabled")
-
-    session = get_session()
-    try:
-        order = session.query(Order).filter(Order.id == order_id).first()
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
-        return order
-    finally:
-        session.close()
-
-
 def _is_failed_order_unresolved(failed_order: Order, window_days: int) -> bool:
     """Return True when a failed order should still appear as unresolved."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
@@ -166,3 +150,23 @@ async def get_orders_health(
         last_reconciled_at=datetime.now(timezone.utc),
         live_fetch_error=reconciled.get("live_fetch_error"),
     )
+
+
+@router.get("/{order_id}", response_model=OrderSchema)
+async def get_order(order_id: int):
+    """Get a specific order by ID.
+
+    Declared after static paths like ``/health`` so ``GET /orders/health`` is not
+    matched as ``order_id=\"health\"`` (which would yield 422).
+    """
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    session = get_session()
+    try:
+        order = session.query(Order).filter(Order.id == order_id).first()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        return order
+    finally:
+        session.close()
