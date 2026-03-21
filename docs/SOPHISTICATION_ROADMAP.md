@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **15** · Pipeline **18** (order by priority and feasibility below)
+**At a glance:** Delivered **15** · Pipeline **22** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -61,6 +61,7 @@ timeline
         US-6.1 : ML Trade Scoring (investigation)
         US-6.2 : Journal Embeddings
         US-6.3 : RL Investigation
+        US-8.1 : Open-Source Launch Preparation
 ```
 
 ### Scannable roadmap (no diagram needed)
@@ -103,6 +104,7 @@ timeline
 | | 20 | US-6.1 | ML Trade Scoring (investigation) |
 | | 21 | US-6.2 | Journal Embeddings |
 | | 22 | US-6.3 | RL Investigation |
+| **Open-Source / Community** | 1 | US-8.1 | Open-Source Launch Preparation |
 
 ---
 
@@ -148,6 +150,7 @@ timeline
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
 | **US-6.2** | Trade Journal Embeddings | Embeddings for journals; similarity search on new proposals | "Have we seen this pattern before?" context | **Planned** |
 | **US-6.3** | RL Investigation | Literature + data assessment; decision gate before any implementation | Evidence-based decision on RL; document findings | **Planned** |
+| **US-8.1** | Open-Source Launch Preparation | Remove nested repo, clean remotes, add MIT LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GitHub issue/PR templates, and GitHub Actions CI (pytest + mypy); see `docs/OPEN_SOURCE_LAUNCH.md` | Community-ready infrastructure; prerequisite for repo going public as ZenInvest by Zenouz.ai | **Planned** |
 
 ---
 
@@ -930,6 +933,40 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - `docs/archived/DASHBOARD_VISUALISATION_PROJECT.md`
 - `docs/archived/AGENTIC_RESEARCH_PROJECT.md`, `docs/archived/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md`
 - `docs/Nemotron_3_Super_Integration_Investigation.md`
+
+---
+
+## 8. Open-Source / Community
+
+**US-8.1: Open-Source Launch Preparation**
+**Value:** Community-ready infrastructure enabling the repo to go public as ZenInvest by Zenouz.ai with clear onboarding, legal clarity, and automated quality gates
+**Effort:** Medium (2–3 days, 8 discrete deliverables across 3 phases)
+**Data Sources:** N/A — repo hygiene and doc files only
+**Stage:** Planned (P0 — prerequisite for Private → Public flip)
+
+**Detailed plan:** `docs/OPEN_SOURCE_LAUNCH.md`.
+
+**Phase A — Repo hygiene:** Remove nested `Investment-agent/` subdirectory; remove `old-origin` remote (KayvanNejabati); confirm `origin → https://github.com/zenouz-ai/zeninvest.git`. All tests must still pass.
+
+**Phase B — Legal & community files:** `LICENSE` (MIT, copyright Zenouz.ai 2026), `CONTRIBUTING.md` (poetry install, alembic, pytest, mypy, black/isort, absolute imports, PR process), `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1, contact zenouz.ai@gmail.com), `SECURITY.md` (responsible disclosure, email-only reporting, 48h SLA).
+
+**Phase C — GitHub infrastructure:** `.github/ISSUE_TEMPLATE/bug_report.md`, `.github/ISSUE_TEMPLATE/feature_request.md`, `.github/PULL_REQUEST_TEMPLATE.md` (checklist: tests, docs, no secrets, disable switch, migration), `.github/workflows/ci.yml` (ubuntu-latest, python 3.11, poetry install → pytest -v → mypy src/, `INVESTMENT_AGENT_USE_INMEMORY_DB=1` so no API keys needed in CI).
+
+**Acceptance Criteria:**
+- [ ] No nested `Investment-agent/` directory at project root; all tests pass
+- [ ] `git remote -v` shows only `origin → https://github.com/zenouz-ai/zeninvest.git`
+- [ ] `LICENSE` (MIT, copyright Zenouz.ai) present at project root
+- [ ] `CONTRIBUTING.md` covers dev setup, code style, in-memory SQLite test pattern, absolute import rule, PR process
+- [ ] `CODE_OF_CONDUCT.md` is Contributor Covenant v2.1 with zenouz.ai@gmail.com contact
+- [ ] `SECURITY.md` covers responsible disclosure (email-only, 48h acknowledge, 7-day assessment SLA)
+- [ ] `.github/ISSUE_TEMPLATE/bug_report.md` and `feature_request.md` present and usable
+- [ ] `.github/PULL_REQUEST_TEMPLATE.md` present with checklist (tests, docs, no secrets, disable switch, migration)
+- [ ] `.github/workflows/ci.yml` runs pytest + mypy on push/PR to main; green on first run without external API keys
+
+**Dependencies:**
+- No code dependencies; pure repo hygiene + community infrastructure
+- Must complete before repo is flipped Private → Public on GitHub
+- VPS migration (fresh clone from zenouz-ai/zeninvest) should follow US-8.1 completion
 
 ---
 
