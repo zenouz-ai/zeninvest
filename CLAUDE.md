@@ -284,6 +284,7 @@ Research tools use a provider abstraction: Brave (primary) + Tavily (fallback, o
   - `state_transition` -> `["slack", "email"]`
   - `critical_cycle_failure` -> `["slack", "email"]`
   - `order_adjustment` -> `["slack"]`
+  - `trade_without_stop` -> `["slack", "email"]`
   - `include_dry_run_alerts: false`
 - SendGrid SMTP convention:
   - `SMTP_HOST=smtp.sendgrid.net`
@@ -300,7 +301,7 @@ Research tools use a provider abstraction: Brave (primary) + Tavily (fallback, o
 - **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y, or "—" when committee not invoked e.g. HOLD), reasoning excerpt, and structured stage reason for queued/filtered decisions (e.g. "Awaiting 2nd cycle for promotion", "Capacity gated (no slot or cash)", "Below UOV queue threshold").
 - **service.py** — `NotificationService` with `emit_*` methods. Fail-open: all exceptions caught, logged with `exc_info`, and never propagated. Retries with backoff; failed attempts recorded in `notification_logs`.
 - **providers/** — Slack webhook, SMTP email. Providers implement `send(subject, body)` and raise on failure.
-- **Event types**: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`
+- **Event types**: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`
 
 ### Macro intelligence module (`src/agents/market_data/macro_intelligence.py`)
 
@@ -336,7 +337,7 @@ Gathers macro-level market intelligence to inform trading decisions:
 | `MarketDataCache` | `market_data_cache` | OHLCV + indicators + fundamentals (configurable TTL: lite_analysis 4h, full_analysis 4h) |
 | `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state. `positions_json` stores normalised positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) converted from T212 `instrument.ticker`; uses `walletImpact` when available, otherwise applies account-level GBP scaling from `account_summary.investments.currentValue` |
 | `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
-| `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities awaiting execution |
+| `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities; `queue_status`: QUEUED → EXECUTING → EXECUTED |
 | `PerformanceMetric` | `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy, alpha |
 | `TradeOutcome` | `trade_outcomes` | Per-trade P&L linking BUY to SELL/REDUCE with conviction and moderator linkage |
 | `StopLossAdjustment` | `stop_loss_adjustments` | Audit trail for stop-loss reassessments, trailing ratchets, and limit orders |
@@ -433,6 +434,6 @@ Files to check on every feature:
 4. **Finnhub timeouts in cloud VMs** — Finnhub API calls may time out in VPS/cloud environments due to network latency. Pipeline handles gracefully: analyst recommendations and insider sentiment are missing but cycle completes. See AGENTS.md.
 5. **T212 DELETE empty-body causing SELL abort** — Fixed. T212 `DELETE /equity/orders/{id}` returns 200 with empty body; `response.json()` threw `JSONDecodeError`, tenacity retried into 404, `RetryError` blocked the SELL. Fix: `_request` returns `{}` for empty bodies; retry predicate skips 4xx; `cancel_conflicting_stops` unwraps `RetryError`.
 6. **Agent logic audit (2026-03-20)** — `docs/AGENT_LOGIC_AUDIT.md`: 5 Critical + 7 High + 9 Medium + 6 Low findings. Phase 1 fixes delivered: MODIFY verdicts now count as conditional AGREE in consensus (C-1); CAUTION consensus applies 25% allocation reduction (C-2); conviction clamped [0,100], allocation clamped [0,max_single_stock_pct] (C-3); Gemini scores clamped [1,10] (C-4); orphaned "submitting" orders synced (C-5); risk-driven exits bypass min_positions (H-1); `entry_type` added to strategy prompt schema (H-2); strategy tool-use timeout increased to 120s (H-3); consensus logged on all moderator rows (H-4); repaired decisions validated for required fields (H-5); strategy decisions deduplicated by ticker (H-6). 36 new tests.
-7. **Formal verification audit (2026-03-21)** — `docs/FORMAL_VERIFICATION_AUDIT.md`: State machine completeness, race conditions, invariants, crash recovery. 2 Critical + 6 Warning + 8 Info findings. Phase 1 fixes: scheduler `max_instances=1` on all jobs (prevents concurrent cycles), resume warns about HALTED/CAUTIOUS state. Phase 2 roadmap: HALTED auto-recovery, market hours check, atomic decision writes, portfolio re-query before BUY. 10 invariants verified.
+7. **Formal verification audit (2026-03-21)** — `docs/FORMAL_VERIFICATION_AUDIT.md`: State machine completeness, race conditions, invariants, crash recovery, DB atomicity. 3 Critical + 7 Warning + 8 Info findings. Phase 1 fixes: scheduler `max_instances=1` on all jobs (prevents concurrent cycles), resume warns about HALTED/CAUTIOUS state. Phase 2 fixes: `trade_without_stop` alert notification (P2-5); OpportunityQueue `queue_status` field with QUEUED→EXECUTING→EXECUTED lifecycle + orphan reconciliation at cycle start (P2-6); portfolio re-query before BUY phase after SELL/REDUCE (P2-4); decision chain integrity check at cycle end (P2-3). 18 new tests. Phase 3 roadmap: HALTED auto-recovery, market hours check. 12 invariants verified.
 
 When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD.md`, and `docs/DASHBOARD_DEPLOYMENT.md` synchronized.

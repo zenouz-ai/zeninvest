@@ -36,6 +36,8 @@ def _render_slack(event: NotificationEvent, *, slack_max_chars: int) -> list[Not
         body = _slack_critical_failure(event.payload, prefix=prefix)
     elif event.event_type == "order_adjustment":
         body = _slack_order_adjustment(event.payload, prefix=prefix)
+    elif event.event_type == "trade_without_stop":
+        body = _slack_trade_without_stop(event.payload, prefix=prefix)
     else:
         body = _fallback_body(event)
 
@@ -59,6 +61,8 @@ def _render_email(event: NotificationEvent) -> list[NotificationMessage]:
         body = _email_critical_failure(event.payload, prefix=prefix)
     elif event.event_type == "order_adjustment":
         body = _email_order_adjustment(event.payload, prefix=prefix)
+    elif event.event_type == "trade_without_stop":
+        body = _email_trade_without_stop(event.payload, prefix=prefix)
     else:
         body = _fallback_body(event)
 
@@ -73,6 +77,7 @@ def _title_for_event(event: NotificationEvent) -> str:
         "state_transition": "State Transition",
         "critical_cycle_failure": "Critical Cycle Failure",
         "order_adjustment": "Order Adjustment",
+        "trade_without_stop": "Trade Without Stop-Loss",
     }
     return mapping.get(event.event_type, event.event_type)
 
@@ -409,6 +414,40 @@ def _email_order_adjustment(payload: dict[str, Any], *, prefix: str) -> str:
         lines.append(f"Status: {payload.get('status', 'N/A')}")
 
     return "\n".join(lines)
+
+
+def _slack_trade_without_stop(payload: dict[str, Any], *, prefix: str) -> str:
+    ticker = payload.get("ticker", "N/A")
+    qty = payload.get("quantity", "N/A")
+    price = payload.get("price", "N/A")
+    stop_pct = payload.get("stop_loss_pct", "N/A")
+    error = _excerpt(payload.get("error_message", ""), 200)
+    return (
+        f"{prefix} [TRADE-WITHOUT-STOP]\n"
+        f"Ticker: {ticker} | Qty: {qty} | Price: {price}\n"
+        f"Stop-loss %: {stop_pct}\n"
+        f"Error: {error}\n"
+        f"ACTION REQUIRED: Position has no stop-loss protection. "
+        f"Check place_missing_stops on next cycle or manually place stop."
+    )
+
+
+def _email_trade_without_stop(payload: dict[str, Any], *, prefix: str) -> str:
+    return (
+        f"{prefix} Trade Without Stop-Loss\n"
+        f"Timestamp UTC: {payload.get('occurred_at', 'N/A')}\n"
+        f"Cycle: {payload.get('cycle_id', 'N/A')}\n"
+        f"Dry-run: {payload.get('dry_run', False)}\n\n"
+        f"Ticker: {payload.get('ticker', 'N/A')}\n"
+        f"Action: {payload.get('action', 'N/A')}\n"
+        f"Quantity: {payload.get('quantity', 'N/A')}\n"
+        f"Price: {payload.get('price', 'N/A')}\n"
+        f"Stop-loss %: {payload.get('stop_loss_pct', 'N/A')}\n"
+        f"Error: {payload.get('error_message', 'N/A')}\n\n"
+        f"ACTION REQUIRED: This position has no stop-loss protection.\n"
+        f"The next cycle's place_missing_stops() should auto-place the stop,\n"
+        f"but verify manually if this is a live position.\n"
+    )
 
 
 def _fallback_body(event: NotificationEvent) -> str:

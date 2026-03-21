@@ -194,6 +194,20 @@ class Orchestrator:
             result["num_rejected"] = len(rejected)
             result["rejected_by_action"] = dict(Counter(r.get("action", "HOLD") for r in rejected))
             result["cost_summary"] = get_cost_summary(days=1)
+
+            # P2-3: Decision chain integrity check — detect orphaned decisions
+            traded_tickers = {t.get("ticker") for t in result["trades"] if t.get("ticker")}
+            rejected_tickers = {r.get("ticker") for r in rejected if r.get("ticker")}
+            accounted = traded_tickers | rejected_tickers
+            decided_tickers = {str(d.get("ticker", "")).strip().upper() for d in strategy_decisions if d.get("ticker")}
+            orphaned_decisions = decided_tickers - accounted
+            if orphaned_decisions:
+                logger.warning(
+                    f"Decision chain integrity: {len(orphaned_decisions)} strategy decisions "
+                    f"have no corresponding trade or rejection record: {orphaned_decisions}"
+                )
+                result["orphaned_decisions"] = list(orphaned_decisions)
+
             _emit_cycle_summary()
             
             # Log run_completed event (when called directly, not via scheduler)
@@ -335,6 +349,15 @@ class Orchestrator:
                     self.order_manager.sync_order_status_from_t212()
                 except Exception as sync_err:
                     logger.warning(f"Order status sync skipped: {sync_err}")
+
+            # Reconcile orphaned EXECUTING queue entries (P2-6 crash recovery)
+            if self.settings.opportunity_enabled:
+                try:
+                    orphaned = self.opportunity_optimizer.reconcile_orphaned_executing()
+                    if orphaned:
+                        logger.info(f"Reconciled {len(orphaned)} orphaned EXECUTING queue entries: {orphaned}")
+                except Exception as recon_err:
+                    logger.warning(f"Queue reconciliation skipped: {recon_err}")
 
             # Update peak and check drawdown
             practice_skips_state_machine = self.settings.is_practice_account
@@ -888,6 +911,27 @@ class Orchestrator:
                     if action == "SELL" and trade_entry.get("execution", {}).get("status") in ("filled", "dry_run"):
                         projected_num_positions = max(0, projected_num_positions - 1)
 
+            # Re-query portfolio before BUY phase (P2-4: avoid stale data after SELL/REDUCE)
+            sells_executed = any(
+                t.get("action") in ("SELL", "REDUCE")
+                and t.get("execution", {}).get("status") in ("filled", "dry_run")
+                for t in result.get("trades", [])
+            )
+            if sells_executed and pending_buys and not self.dry_run:
+                try:
+                    refreshed = self._get_portfolio_state()
+                    current_value = refreshed["total_value"]
+                    cash_gbp = refreshed["cash"]
+                    cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
+                    committed_cash = 0.0  # Reset — fresh portfolio state
+                    portfolio_data = refreshed
+                    logger.info(
+                        f"Portfolio refreshed before BUY phase: cash=£{cash_gbp:.2f} "
+                        f"({cash_pct:.1f}%), total=£{current_value:.2f}"
+                    )
+                except Exception as refresh_err:
+                    logger.warning(f"Portfolio refresh before BUY skipped: {refresh_err}")
+
             # --- STEP 6: UOV scoring + BUY optimization ---
             selected_buy_order = [b["ticker"] for b in pending_buys]
             if self.settings.opportunity_enabled:
@@ -1050,6 +1094,20 @@ class Orchestrator:
                     exec_result = trade_entry.get("execution", {})
                     if exec_result.get("status") in ("filled", "pending", "dry_run"):
                         committed_cash += exec_result.get("value_gbp", buy_value)
+
+            # Dequeue executed BUY tickers from opportunity queue (P2-6)
+            if self.settings.opportunity_enabled:
+                executed_buy_tickers = [
+                    t.get("ticker")
+                    for t in result.get("trades", [])
+                    if t.get("action") == "BUY"
+                    and t.get("execution", {}).get("status") in ("filled", "pending", "dry_run")
+                ]
+                if executed_buy_tickers:
+                    try:
+                        self.opportunity_optimizer.dequeue_executed(executed_buy_tickers)
+                    except Exception as dq_err:
+                        logger.warning(f"Failed to dequeue executed tickers: {dq_err}")
 
             # --- STEP 7: Intelligent order management (stop-loss reassessment) ---
             if self.settings.order_management_enabled:
@@ -1640,6 +1698,45 @@ class Orchestrator:
                     )
                 except Exception as e:
                     logger.error(f"Failed to place stop-loss for {ticker}: {e}")
+                    # P2-5: Alert when BUY fills but stop-loss fails
+                    self.notification_service.emit_trade_without_stop(
+                        cycle_id=cycle_id,
+                        payload={
+                            "cycle_id": cycle_id,
+                            "dry_run": self.dry_run,
+                            "ticker": ticker,
+                            "action": action,
+                            "quantity": exec_result.get("quantity", 0),
+                            "price": current_price,
+                            "stop_loss_pct": stop_loss_pct,
+                            "error_message": str(e),
+                            "occurred_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+
+        # Also alert if BUY filled but no stop_loss_pct was provided
+        if (
+            action == "BUY"
+            and exec_result.get("status") in ("filled", "pending")
+            and stop_loss_result is None
+            and not self.dry_run
+        ):
+            if not stop_loss_pct or stop_loss_pct >= 0:
+                logger.warning(f"BUY {ticker} filled without stop-loss (no stop_loss_pct in decision)")
+                self.notification_service.emit_trade_without_stop(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": self.dry_run,
+                        "ticker": ticker,
+                        "action": action,
+                        "quantity": exec_result.get("quantity", 0),
+                        "price": current_price,
+                        "stop_loss_pct": stop_loss_pct,
+                        "error_message": "No stop_loss_pct in strategy decision",
+                        "occurred_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
 
         self.notification_service.emit_trade_execution_result(
             cycle_id=cycle_id,

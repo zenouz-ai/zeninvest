@@ -231,26 +231,31 @@ All trading invariants (allocation limits, quantity signs, conviction ranges) ar
 | P1-2 | 1.2: Decision dedup (H-6) | **DONE** — committed and pushed | — |
 | P1-3 | 2.2: PAUSED+HALTED warning | Add log warning when resuming a HALTED system | 10 min |
 
-### Phase 2 — Next Sprint (WARNING fixes, state machine hardening, crash safety)
+### Phase 2 — Crash Safety & DB Atomicity (DELIVERED)
+
+| # | Finding | Fix | Status |
+|---|---------|-----|--------|
+| P2-3 | 6.1: Decision chain integrity | Decision chain integrity check at cycle end: logs orphaned decisions (no trade or rejection record) | **DONE** |
+| P2-4 | 1.3: Re-query portfolio before BUY | Refresh portfolio state between SELL/REDUCE and BUY phases (`_get_portfolio_state()` re-called when sells executed) | **DONE** |
+| P2-5 | 6.3: BUY without stop-loss alert | `emit_trade_without_stop()` notification when BUY fills but stop-loss placement fails (warning severity, Slack + email) | **DONE** |
+| P2-6 | 6.4: OpportunityQueue atomicity | `queue_status` field (QUEUED → EXECUTING → EXECUTED); `_mark_executing()` before orders; `dequeue_executed()` after success; `reconcile_orphaned_executing()` at cycle start | **DONE** |
+
+### Phase 3 — Next Sprint (state machine hardening)
 
 | # | Finding | Fix | Effort |
 |---|---------|-----|--------|
-| P2-1 | 2.1: HALTED auto-recovery | Add configurable auto-recovery after N cycles below threshold | 2h |
-| P2-2 | 5.1: Market hours check | Add `is_market_open()` utility; log warning if off-hours | 1h |
-| P2-3 | 6.1: Atomic decision writes | Wrap StrategyDecision + ModerationLog + RiskDecision + Order in single transaction | 2h |
-| P2-4 | 1.3: Re-query portfolio before BUY | Refresh portfolio state between SELL/REDUCE and BUY phases | 1h |
-| P2-5 | 6.3: BUY without stop-loss alert | Emit `TRADE_WITHOUT_STOP` notification if stop-loss placement fails after BUY fill | 1h |
-| P2-6 | 6.4: OpportunityQueue atomicity | Add status field (QUEUED → EXECUTING → EXECUTED); reconcile orphans at cycle start | 2h |
+| P3-1 | 2.1: HALTED auto-recovery | Add configurable auto-recovery after N cycles below threshold | 2h |
+| P3-2 | 5.1: Market hours check | Add `is_market_open()` utility; log warning if off-hours | 1h |
 
-### Phase 3 — Roadmap (hardening for future concurrency)
+### Phase 4 — Roadmap (hardening for future concurrency)
 
 | # | Finding | Fix | Effort |
 |---|---------|-----|--------|
-| P3-1 | 3.2: Atomic cost budget | SQL-level check-and-increment for budget enforcement | 2h |
-| P3-2 | DB thread safety | Add threading.Lock around session factory if async features added | 1h |
-| P3-3 | Peak inflation detection | Warn if peak > 2× recent average; guide operator on reset-peak | 2h |
-| P3-4 | Halted ticker denial list | Cache T212 400/403 rejections; skip for 24h | 1h |
-| P3-5 | 6.5: DB-level constraints | Add CHECK constraints for quantity signs, conviction range, allocation bounds | 1h |
+| P4-1 | 3.2: Atomic cost budget | SQL-level check-and-increment for budget enforcement | 2h |
+| P4-2 | DB thread safety | Add threading.Lock around session factory if async features added | 1h |
+| P4-3 | Peak inflation detection | Warn if peak > 2× recent average; guide operator on reset-peak | 2h |
+| P4-4 | Halted ticker denial list | Cache T212 400/403 rejections; skip for 24h | 1h |
+| P4-5 | 6.5: DB-level constraints | Add CHECK constraints for quantity signs, conviction range, allocation bounds | 1h |
 
 ---
 

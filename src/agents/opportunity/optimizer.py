@@ -104,7 +104,7 @@ class OpportunityOptimizer:
 
         executed = immediate_exec + promoted_exec
         if executed:
-            self._dequeue_executed(executed)
+            self._mark_executing(executed)
 
         swap_candidates = self._build_swap_suggestions(
             approved_buys=ranked,
@@ -292,12 +292,16 @@ class OpportunityOptimizer:
             return {}
 
     @staticmethod
-    def _dequeue_executed(tickers: list[str]) -> None:
+    def _mark_executing(tickers: list[str]) -> None:
+        """Mark promoted/immediate tickers as EXECUTING before order placement."""
         if not tickers:
             return
         session = get_session()
         try:
-            session.query(OpportunityQueue).filter(OpportunityQueue.ticker.in_(tickers)).delete(  # noqa: E712
+            session.query(OpportunityQueue).filter(
+                OpportunityQueue.ticker.in_(tickers),
+            ).update(
+                {"queue_status": "EXECUTING"},
                 synchronize_session="fetch",
             )
             session.commit()
@@ -305,6 +309,50 @@ class OpportunityOptimizer:
             session.rollback()
         finally:
             session.close()
+
+    @staticmethod
+    def dequeue_executed(tickers: list[str]) -> None:
+        """Remove executed tickers from queue after order placement succeeds."""
+        if not tickers:
+            return
+        session = get_session()
+        try:
+            session.query(OpportunityQueue).filter(OpportunityQueue.ticker.in_(tickers)).delete(
+                synchronize_session="fetch",
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
+
+    @staticmethod
+    def reconcile_orphaned_executing() -> list[str]:
+        """Reset orphaned EXECUTING rows back to QUEUED at cycle start.
+
+        If a previous cycle crashed between marking EXECUTING and order placement,
+        these tickers would be silently lost. This resets them so they re-enter
+        the promotion pipeline next cycle.
+        """
+        session = get_session()
+        orphaned: list[str] = []
+        try:
+            rows = session.query(OpportunityQueue).filter(
+                OpportunityQueue.queue_status == "EXECUTING",
+            ).all()
+            for row in rows:
+                orphaned.append(row.ticker)
+                row.queue_status = "QUEUED"
+                logger.warning(
+                    f"Reconciled orphaned EXECUTING queue entry: {row.ticker} → QUEUED"
+                )
+            if orphaned:
+                session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
+        return orphaned
 
     def _build_swap_suggestions(
         self,
