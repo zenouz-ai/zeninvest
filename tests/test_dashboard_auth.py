@@ -12,17 +12,26 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from dashboard.backend.app.middleware.auth import APIKeyMiddleware, get_api_key, warn_if_unauthenticated
+from dashboard.backend.app.middleware.auth import (
+    APIKeyMiddleware,
+    SAFE_PUBLIC_PREFIXES,
+    _ALWAYS_PRIVATE_PREFIXES,
+    get_api_key,
+    warn_if_unauthenticated,
+)
 
 
 # ---------------------------------------------------------------------------
 # Minimal app fixture — tests middleware logic without the full dashboard stack
 # ---------------------------------------------------------------------------
 
-def _make_app(api_key: str | None) -> FastAPI:
+def _make_app(
+    api_key: str | None,
+    public_prefixes: tuple[str, ...] = (),
+) -> FastAPI:
     """Return a tiny FastAPI app with the auth middleware and a few test routes."""
     app = FastAPI()
-    app.add_middleware(APIKeyMiddleware, api_key=api_key)
+    app.add_middleware(APIKeyMiddleware, api_key=api_key, public_prefixes=public_prefixes)
 
     @app.get("/health")
     async def health():
@@ -47,6 +56,31 @@ def _make_app(api_key: str | None) -> FastAPI:
     @app.get("/")
     async def spa_root():
         return {"app": "frontend"}
+
+    # Routes that mirror real dashboard endpoints used in public-route tests.
+    @app.get("/api/costs/daily")
+    async def costs_daily():
+        return []
+
+    @app.get("/api/runs/")
+    async def runs_list():
+        return []
+
+    @app.post("/api/runs/trigger-live")
+    async def trigger_live_write():
+        return {"triggered": True}
+
+    @app.post("/api/system/pause")
+    async def system_pause():
+        return {"paused": True}
+
+    @app.get("/api/portfolio/")
+    async def portfolio():
+        return {}
+
+    @app.get("/api/opportunity/queue/")
+    async def opportunity_queue():
+        return []
 
     return app
 
@@ -229,3 +263,107 @@ class TestFullAppIntegration:
         resp = self.client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: public demo routes (operator-configured, GET-only bypass)
+# ---------------------------------------------------------------------------
+
+_DEMO_PREFIXES = ("/api/costs/", "/api/runs/")
+
+
+class TestPublicDemoRoutes:
+    """When public_prefixes is set, GET requests to those prefixes bypass auth."""
+
+    def setup_method(self):
+        self.client = TestClient(
+            _make_app(api_key=_TEST_KEY, public_prefixes=_DEMO_PREFIXES)
+        )
+
+    # --- Configured public prefix: GET allowed without key ---
+
+    def test_public_get_allowed_without_key(self):
+        resp = self.client.get("/api/costs/daily")
+        assert resp.status_code == 200
+
+    def test_public_runs_list_allowed_without_key(self):
+        resp = self.client.get("/api/runs/")
+        assert resp.status_code == 200
+
+    def test_public_get_also_allowed_with_correct_key(self):
+        resp = self.client.get("/api/costs/daily", headers={"X-API-Key": _TEST_KEY})
+        assert resp.status_code == 200
+
+    # --- POST to same prefix still requires key (write endpoint protection) ---
+
+    def test_post_to_public_prefix_blocked_without_key(self):
+        """POST /api/runs/trigger-live must be protected even if /api/runs/ is public."""
+        resp = self.client.post("/api/runs/trigger-live")
+        assert resp.status_code == 403
+
+    def test_post_to_public_prefix_allowed_with_key(self):
+        resp = self.client.post("/api/runs/trigger-live", headers={"X-API-Key": _TEST_KEY})
+        assert resp.status_code == 200
+
+    # --- Routes NOT in public_prefixes still require key ---
+
+    def test_non_public_api_route_blocked(self):
+        resp = self.client.get("/api/data")
+        assert resp.status_code == 403
+
+    def test_portfolio_not_public_blocked(self):
+        resp = self.client.get("/api/portfolio/")
+        assert resp.status_code == 403
+
+    def test_opportunity_not_public_blocked(self):
+        resp = self.client.get("/api/opportunity/queue/")
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Tests: always-private prefix guard
+# ---------------------------------------------------------------------------
+
+class TestAlwaysPrivateGuard:
+    """_ALWAYS_PRIVATE_PREFIXES cannot be bypassed even if listed in public_prefixes."""
+
+    def test_system_prefix_always_blocked(self):
+        """Attempting to make /api/system/ public is silently ignored."""
+        client = TestClient(
+            _make_app(api_key=_TEST_KEY, public_prefixes=("/api/system/",))
+        )
+        resp = client.post("/api/system/pause")
+        assert resp.status_code == 403
+
+    def test_trigger_prefix_always_blocked(self):
+        client = TestClient(
+            _make_app(api_key=_TEST_KEY, public_prefixes=("/api/runs/trigger",))
+        )
+        resp = client.post("/api/runs/trigger-live")
+        assert resp.status_code == 403
+
+    def test_safe_public_prefixes_constant_does_not_include_private(self):
+        """SAFE_PUBLIC_PREFIXES must not contain any always-private prefix."""
+        for safe in SAFE_PUBLIC_PREFIXES:
+            for priv in _ALWAYS_PRIVATE_PREFIXES:
+                assert not safe.startswith(priv), (
+                    f"SAFE_PUBLIC_PREFIXES contains {safe!r} which starts with "
+                    f"always-private prefix {priv!r}"
+                )
+
+    def test_mixed_config_private_filtered_out(self, caplog):
+        """A config mixing safe and always-private prefixes logs a warning and filters."""
+        import logging
+        with caplog.at_level(logging.WARNING, logger="dashboard.backend.app.middleware.auth"):
+            middleware_app = _make_app(
+                api_key=_TEST_KEY,
+                public_prefixes=("/api/costs/", "/api/system/"),
+            )
+        client = TestClient(middleware_app)
+        # /api/costs/ GET is public
+        assert client.get("/api/costs/daily").status_code == 200
+        # /api/system/ POST is still blocked
+        assert client.post("/api/system/pause").status_code == 403
+        # Warning was logged
+        assert any("always" in r.message.lower() or "protected" in r.message.lower()
+                   for r in caplog.records)

@@ -176,6 +176,16 @@ With VPS IP and HTTP:
   DASHBOARD_API_KEY=<your-generated-key>
   ```
   The frontend automatically picks up `VITE_API_KEY` at build time (passed as Docker build arg). When `DASHBOARD_API_KEY` is not set, the dashboard runs in unauthenticated mode with a startup warning — acceptable for localhost-only dev.
+- **Public demo routes:** To expose read-only pages (e.g. Roadmap, Costs, Run History) without sharing the API key, add `public_routes` to `config/settings.yaml`:
+  ```yaml
+  dashboard:
+    public_routes:
+      - "/api/docs/"           # Roadmap & architecture — safe
+      - "/api/costs/"          # API spend totals — safe
+      - "/api/runs/"           # Cycle history (timestamps + status) — safe
+      - "/api/performance/metrics"  # Aggregate Sharpe/win-rate — safe
+  ```
+  GET requests to listed prefixes bypass auth. Write endpoints (`POST /api/runs/trigger-live`, `POST /api/system/*`) remain protected regardless. Never list `/api/portfolio/` (position data) or `/api/opportunity/` (pending buys) — these leak alpha.
 - **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: localhost only. For VPS, add your IP:
   ```yaml
   dashboard:

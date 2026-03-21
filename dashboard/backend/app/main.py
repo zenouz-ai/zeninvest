@@ -75,8 +75,13 @@ app.add_middleware(
     allow_headers=["*", "X-API-Key"],
 )
 
-# API key auth — guards all /api/* routes; no-op when DASHBOARD_API_KEY unset
-app.add_middleware(APIKeyMiddleware, api_key=get_api_key())
+# API key auth — guards all /api/* routes; no-op when DASHBOARD_API_KEY unset.
+# Public demo routes (GET only) bypass auth when configured in settings.yaml.
+app.add_middleware(
+    APIKeyMiddleware,
+    api_key=get_api_key(),
+    public_prefixes=_settings.dashboard_public_routes,
+)
 
 # Register routers (must be before static mount so /api/* takes precedence)
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
