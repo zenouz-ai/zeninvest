@@ -178,6 +178,13 @@ class StateMachine:
             state = session.query(SystemState).first()
             if state is None:
                 return
+            if state.state in ("HALTED", "CAUTIOUS"):
+                logger.warning(
+                    f"Resuming system that is in {state.state} state. "
+                    f"Drawdown: {state.current_drawdown_pct:.1f}%. "
+                    f"Next cycle will {'liquidate all positions' if state.state == 'HALTED' else 'block new BUYs'}. "
+                    f"Use --reset-peak to clear state if drawdown was triggered incorrectly."
+                )
             state.paused = False
             state.updated_at = datetime.now(timezone.utc)
             session.commit()

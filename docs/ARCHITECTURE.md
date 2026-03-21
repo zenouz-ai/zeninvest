@@ -241,10 +241,13 @@ React frontend (SPA, served by FastAPI when dist/ exists)
   Strategy (always AGREE)  +  GPT-4o Verdict  +  Gemini Verdict
   ========================    ==============      ==============
 
-  3/3 AGREE                    --> APPROVED (proceed normally)
-  2/3 AGREE, 1 DISAGREE       --> CAUTION  (proceed with flag)
-  2/3 DISAGREE                 --> BLOCKED  (do not trade)
-  HIGH_RISK + any DISAGREE     --> BLOCKED  (do not trade)
+  3/3 AGREE (MODIFY = conditional AGREE) --> APPROVED (proceed normally)
+  2/3 AGREE, 1 DISAGREE                 --> CAUTION  (proceed with 25% allocation reduction)
+  2/3 DISAGREE                           --> BLOCKED  (do not trade)
+  HIGH_RISK + any DISAGREE               --> BLOCKED  (do not trade)
+
+  MODIFY verdicts: count as AGREE in consensus vote; their modifications.target_allocation_pct
+  is applied as an allocation cap on the final trade (most conservative suggestion wins).
 
   Fallback (1 moderator):
     AGREE + conviction >= 75   --> APPROVED
@@ -699,11 +702,12 @@ graph TB
 
 For the full prioritised backlog and detailed user story specifications, see [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md). Key delivered extensions that interact with the architecture above:
 
-- **Chat & Notifications (US-1.5)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. See [Chat & Commands](CHAT_AND_COMMANDS.md).
+- **Chat & Notifications (US-1.5)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. Events: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`. See [Chat & Commands](CHAT_AND_COMMANDS.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
 - **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (8 pages). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
 - **Agentic Research (US-4.4)** — *Delivered.* All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have tool-use loops with 5 tools (web_search, news_search, sector_search, sec_search, macro_search). Pipeline shares a single ResearchExecutor/ResearchBudget for pipeline-wide cap enforcement. Dashboard displays per-ticker research trail: which member used which tool, queries, results, cache hits, latency, and cost. `GET /api/research/ticker/{ticker}` provides historical research per ticker. Universe table includes a `Research` column. See [Agentic Research](AGENTIC_RESEARCH.md).
 - **Nemotron Integration Investigation (US-2.4)** — *Investigation only.* Candidate risk/moderation model evaluated via smoke testing and shadow-mode comparison before any promotion to live committee roles. See [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md).
+- **Formal Verification (US-7.0 Phase 2)** — Crash safety fixes: OpportunityQueue `queue_status` lifecycle (QUEUED→EXECUTING→EXECUTED) with orphan reconciliation; `trade_without_stop` alert; portfolio re-query before BUY after SELL/REDUCE; decision chain integrity check. See [Formal Verification Audit](FORMAL_VERIFICATION_AUDIT.md).
 
 ---
 

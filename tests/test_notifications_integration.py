@@ -42,6 +42,12 @@ class CaptureNotifications:
     def emit_critical_cycle_failure(self, *, cycle_id, payload, source="orchestrator") -> None:
         self.critical_payloads.append(payload)
 
+    def emit_order_adjustment(self, *, cycle_id, payload, source="stop_loss_manager") -> None:
+        pass
+
+    def emit_trade_without_stop(self, *, cycle_id, payload, source="orchestrator") -> None:
+        pass
+
 
 @pytest.fixture
 def db_session():
@@ -206,6 +212,7 @@ def test_orchestrator_emits_instruction_and_summary(monkeypatch) -> None:
 
     class DummyMod:
         consensus = "APPROVED"
+        modifications = None
 
         @staticmethod
         def to_dict() -> dict:

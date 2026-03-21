@@ -148,6 +148,23 @@ class NotificationService:
             ],
         )
 
+    def emit_trade_without_stop(
+        self,
+        *,
+        cycle_id: str | None,
+        payload: dict[str, Any],
+        source: str = "orchestrator",
+    ) -> None:
+        """Alert when a BUY fills but stop-loss placement fails (P2-5)."""
+        self._emit(
+            event_type="trade_without_stop",
+            severity="warning",
+            cycle_id=cycle_id,
+            payload=payload,
+            source=source,
+            dedup_parts=[cycle_id, payload.get("ticker"), payload.get("action")],
+        )
+
     def emit_critical_cycle_failure(
         self,
         *,

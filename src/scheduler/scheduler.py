@@ -277,6 +277,7 @@ def create_scheduler() -> BlockingScheduler:
             id=f"analysis_cycle_{hour:02d}{minute:02d}",
             replace_existing=True,
             misfire_grace_time=3600,
+            max_instances=1,
         )
 
     # Daily snapshot: 21:30 UTC
@@ -288,6 +289,7 @@ def create_scheduler() -> BlockingScheduler:
         id="daily_snapshot",
         replace_existing=True,
         misfire_grace_time=3600,
+        max_instances=1,
     )
 
     # Weekly report: Friday 22:00 UTC
@@ -300,6 +302,7 @@ def create_scheduler() -> BlockingScheduler:
         id="weekly_report",
         replace_existing=True,
         misfire_grace_time=3600,
+        max_instances=1,
     )
 
     # Instrument refresh: Sunday 12:00 UTC
@@ -312,6 +315,7 @@ def create_scheduler() -> BlockingScheduler:
         id="instrument_refresh",
         replace_existing=True,
         misfire_grace_time=3600,
+        max_instances=1,
     )
 
     # Batch enrichment: daily 06:00 UTC (enriches instruments missing sector/market_cap)
@@ -324,6 +328,7 @@ def create_scheduler() -> BlockingScheduler:
             id="enrich_universe",
             replace_existing=True,
             misfire_grace_time=3600,
+            max_instances=1,
         )
 
     return scheduler

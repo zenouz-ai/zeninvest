@@ -268,7 +268,8 @@ class StrategyEngine:
                 else:
                     raise
 
-            # Log decisions
+            # Validate and log decisions (audit fix H-5)
+            result = self._validate_decisions(result)
             self._log_decisions(result, cycle_id, content)
 
             return result
@@ -335,7 +336,7 @@ class StrategyEngine:
         tools = get_research_tool_definitions()
         messages: list[dict] = [{"role": "user", "content": prompt}]
         max_iterations = 8
-        timeout_sec = 30
+        timeout_sec = 120  # 2 minutes (audit fix H-3: 30s was too aggressive for tool-use)
         start = time.perf_counter()
 
         for iteration in range(max_iterations):
@@ -382,6 +383,7 @@ class StrategyEngine:
                             return {"error": "json_truncated", "decisions": []}
                     else:
                         return {"error": "json_parse_error", "decisions": [], "raw": content}
+                result = self._validate_decisions(result)
                 self._log_decisions(result, cycle_id, content)
                 return result
 
@@ -460,6 +462,31 @@ class StrategyEngine:
                     continue
 
         return None
+
+    @staticmethod
+    def _validate_decisions(result: dict[str, Any]) -> dict[str, Any]:
+        """Validate and filter decisions — drop any with missing required fields (audit fix H-5)."""
+        valid_actions = {"BUY", "SELL", "HOLD", "REDUCE", "QUEUED"}
+        validated = []
+        for d in result.get("decisions", []):
+            ticker = d.get("ticker", "").strip()
+            action = d.get("action", "").strip().upper()
+            conviction = d.get("conviction")
+            if not ticker:
+                logger.warning(f"Dropping decision with empty ticker: {d}")
+                continue
+            if action not in valid_actions:
+                logger.warning(f"Dropping decision with invalid action '{action}' for {ticker}")
+                continue
+            if action in ("BUY", "SELL", "REDUCE") and (conviction is None or conviction == 0):
+                logger.warning(f"Dropping {action} decision for {ticker}: conviction is {conviction}")
+                continue
+            validated.append(d)
+        dropped = len(result.get("decisions", [])) - len(validated)
+        if dropped > 0:
+            logger.warning(f"Dropped {dropped} invalid decisions after validation")
+        result["decisions"] = validated
+        return result
 
     def _log_decisions(self, result: dict[str, Any], cycle_id: str, raw_json: str) -> None:
         """Log strategy decisions to database."""

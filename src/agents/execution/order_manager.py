@@ -728,7 +728,7 @@ class OrderManager:
                     try:
                         row = (
                             session.query(Order)
-                            .filter(Order.t212_order_id == t212_id, Order.status == "pending")
+                            .filter(Order.t212_order_id == t212_id, Order.status.in_(["pending", "submitting"]))
                             .first()
                         )
                         if row:
@@ -777,7 +777,7 @@ class OrderManager:
             local_pending = (
                 session.query(Order)
                 .filter(
-                    Order.status == "pending",
+                    Order.status.in_(["pending", "submitting"]),
                     Order.order_type == "stop",
                     Order.t212_order_id.isnot(None),
                 )

@@ -194,6 +194,20 @@ class Orchestrator:
             result["num_rejected"] = len(rejected)
             result["rejected_by_action"] = dict(Counter(r.get("action", "HOLD") for r in rejected))
             result["cost_summary"] = get_cost_summary(days=1)
+
+            # P2-3: Decision chain integrity check — detect orphaned decisions
+            traded_tickers = {t.get("ticker") for t in result["trades"] if t.get("ticker")}
+            rejected_tickers = {r.get("ticker") for r in rejected if r.get("ticker")}
+            accounted = traded_tickers | rejected_tickers
+            decided_tickers = {str(d.get("ticker", "")).strip().upper() for d in strategy_decisions if d.get("ticker")}
+            orphaned_decisions = decided_tickers - accounted
+            if orphaned_decisions:
+                logger.warning(
+                    f"Decision chain integrity: {len(orphaned_decisions)} strategy decisions "
+                    f"have no corresponding trade or rejection record: {orphaned_decisions}"
+                )
+                result["orphaned_decisions"] = list(orphaned_decisions)
+
             _emit_cycle_summary()
             
             # Log run_completed event (when called directly, not via scheduler)
@@ -335,6 +349,15 @@ class Orchestrator:
                     self.order_manager.sync_order_status_from_t212()
                 except Exception as sync_err:
                     logger.warning(f"Order status sync skipped: {sync_err}")
+
+            # Reconcile orphaned EXECUTING queue entries (P2-6 crash recovery)
+            if self.settings.opportunity_enabled:
+                try:
+                    orphaned = self.opportunity_optimizer.reconcile_orphaned_executing()
+                    if orphaned:
+                        logger.info(f"Reconciled {len(orphaned)} orphaned EXECUTING queue entries: {orphaned}")
+                except Exception as recon_err:
+                    logger.warning(f"Queue reconciliation skipped: {recon_err}")
 
             # Update peak and check drawdown
             practice_skips_state_machine = self.settings.is_practice_account
@@ -595,6 +618,21 @@ class Orchestrator:
             pending_buys: list[dict[str, Any]] = []
             projected_num_positions = len(existing_tickers)
 
+            # Deduplicate decisions by ticker — keep first occurrence (audit fix)
+            seen_tickers: set[str] = set()
+            deduped_decisions: list[dict[str, Any]] = []
+            for d in decisions:
+                t = str(d.get("ticker", "")).strip().upper()
+                if t and t in seen_tickers:
+                    logger.warning(f"Duplicate decision for {t} — keeping first, dropping duplicate")
+                    continue
+                if t:
+                    seen_tickers.add(t)
+                deduped_decisions.append(d)
+            if len(deduped_decisions) < len(decisions):
+                logger.info(f"Deduplicated {len(decisions)} -> {len(deduped_decisions)} decisions")
+            decisions = deduped_decisions
+
             for decision in decisions:
                 raw_ticker = str(decision.get("ticker", "")).strip().upper()
                 ticker = self._normalize_decision_ticker(raw_ticker, stocks_data)
@@ -602,8 +640,20 @@ class Orchestrator:
                     logger.warning(f"Normalized strategy ticker '{raw_ticker}' -> '{ticker}'")
                     decision["ticker"] = ticker
                 action = decision.get("action", "HOLD")
-                conviction = decision.get("conviction", 0)
-                target_alloc = decision.get("target_allocation_pct", 0)
+
+                # Clamp LLM-produced numeric fields (audit fix C-3)
+                raw_conviction = decision.get("conviction", 0)
+                conviction = max(0, min(100, int(raw_conviction) if raw_conviction else 0))
+                if conviction != raw_conviction:
+                    logger.warning(f"Clamped conviction for {ticker}: {raw_conviction} -> {conviction}")
+                    decision["conviction"] = conviction
+
+                raw_alloc = decision.get("target_allocation_pct", 0)
+                max_alloc = self.settings.max_single_stock_pct
+                target_alloc = max(0.0, min(float(max_alloc), float(raw_alloc) if raw_alloc else 0.0))
+                if target_alloc != raw_alloc:
+                    logger.warning(f"Clamped target_allocation_pct for {ticker}: {raw_alloc} -> {target_alloc}")
+                    decision["target_allocation_pct"] = target_alloc
 
                 if action in ("HOLD", "QUEUED"):
                     hold_reason = decision.get("reasoning", f"{action} — no action this cycle")
@@ -727,8 +777,10 @@ class Orchestrator:
                     system_state=current_state,
                     is_existing_winner=ticker in existing_tickers,
                     cycle_id=cycle_id,
+                    conviction=conviction,
+                    is_losing_position=self._is_losing_position(ticker, portfolio_data),
                 )
-                
+
                 # Log risk decision
                 if DASHBOARD_AVAILABLE and log_event is not None:
                     try:
@@ -775,6 +827,23 @@ class Orchestrator:
                     continue
 
                 final_alloc = risk_verdict.adjusted_allocation_pct or target_alloc
+
+                # Apply moderator modifications — use most conservative allocation cap (audit fix C-1)
+                mod_modifications = mod_result.modifications
+                if mod_modifications and mod_modifications.get("target_allocation_pct"):
+                    mod_cap = float(mod_modifications["target_allocation_pct"])
+                    if mod_cap < final_alloc:
+                        logger.info(f"MODIFY cap applied for {ticker}: {final_alloc:.1f}% -> {mod_cap:.1f}%")
+                        final_alloc = mod_cap
+
+                # CAUTION consensus: reduce allocation by 25% (audit fix C-2)
+                if mod_result.consensus == "CAUTION" and action == "BUY":
+                    caution_alloc = round(final_alloc * 0.75, 2)
+                    logger.info(
+                        f"CAUTION allocation reduction for {ticker}: {final_alloc:.1f}% -> {caution_alloc:.1f}%"
+                    )
+                    final_alloc = caution_alloc
+
                 stage = "risk_resize" if (action == "BUY" and risk_verdict.verdict == "RESIZE") else "approved"
                 opportunity_evaluations.append({
                     "ticker": ticker,
@@ -841,6 +910,27 @@ class Orchestrator:
                     result["trades"].append(trade_entry)
                     if action == "SELL" and trade_entry.get("execution", {}).get("status") in ("filled", "dry_run"):
                         projected_num_positions = max(0, projected_num_positions - 1)
+
+            # Re-query portfolio before BUY phase (P2-4: avoid stale data after SELL/REDUCE)
+            sells_executed = any(
+                t.get("action") in ("SELL", "REDUCE")
+                and t.get("execution", {}).get("status") in ("filled", "dry_run")
+                for t in result.get("trades", [])
+            )
+            if sells_executed and pending_buys and not self.dry_run:
+                try:
+                    refreshed = self._get_portfolio_state()
+                    current_value = refreshed["total_value"]
+                    cash_gbp = refreshed["cash"]
+                    cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
+                    committed_cash = 0.0  # Reset — fresh portfolio state
+                    portfolio_data = refreshed
+                    logger.info(
+                        f"Portfolio refreshed before BUY phase: cash=£{cash_gbp:.2f} "
+                        f"({cash_pct:.1f}%), total=£{current_value:.2f}"
+                    )
+                except Exception as refresh_err:
+                    logger.warning(f"Portfolio refresh before BUY skipped: {refresh_err}")
 
             # --- STEP 6: UOV scoring + BUY optimization ---
             selected_buy_order = [b["ticker"] for b in pending_buys]
@@ -1004,6 +1094,20 @@ class Orchestrator:
                     exec_result = trade_entry.get("execution", {})
                     if exec_result.get("status") in ("filled", "pending", "dry_run"):
                         committed_cash += exec_result.get("value_gbp", buy_value)
+
+            # Dequeue executed BUY tickers from opportunity queue (P2-6)
+            if self.settings.opportunity_enabled:
+                executed_buy_tickers = [
+                    t.get("ticker")
+                    for t in result.get("trades", [])
+                    if t.get("action") == "BUY"
+                    and t.get("execution", {}).get("status") in ("filled", "pending", "dry_run")
+                ]
+                if executed_buy_tickers:
+                    try:
+                        self.opportunity_optimizer.dequeue_executed(executed_buy_tickers)
+                    except Exception as dq_err:
+                        logger.warning(f"Failed to dequeue executed tickers: {dq_err}")
 
             # --- STEP 7: Intelligent order management (stop-loss reassessment) ---
             if self.settings.order_management_enabled:
@@ -1594,6 +1698,45 @@ class Orchestrator:
                     )
                 except Exception as e:
                     logger.error(f"Failed to place stop-loss for {ticker}: {e}")
+                    # P2-5: Alert when BUY fills but stop-loss fails
+                    self.notification_service.emit_trade_without_stop(
+                        cycle_id=cycle_id,
+                        payload={
+                            "cycle_id": cycle_id,
+                            "dry_run": self.dry_run,
+                            "ticker": ticker,
+                            "action": action,
+                            "quantity": exec_result.get("quantity", 0),
+                            "price": current_price,
+                            "stop_loss_pct": stop_loss_pct,
+                            "error_message": str(e),
+                            "occurred_at": datetime.now(timezone.utc).isoformat(),
+                        },
+                    )
+
+        # Also alert if BUY filled but no stop_loss_pct was provided
+        if (
+            action == "BUY"
+            and exec_result.get("status") in ("filled", "pending")
+            and stop_loss_result is None
+            and not self.dry_run
+        ):
+            if not stop_loss_pct or stop_loss_pct >= 0:
+                logger.warning(f"BUY {ticker} filled without stop-loss (no stop_loss_pct in decision)")
+                self.notification_service.emit_trade_without_stop(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": self.dry_run,
+                        "ticker": ticker,
+                        "action": action,
+                        "quantity": exec_result.get("quantity", 0),
+                        "price": current_price,
+                        "stop_loss_pct": stop_loss_pct,
+                        "error_message": "No stop_loss_pct in strategy decision",
+                        "occurred_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
 
         notify_qty = exec_result.get("quantity")
         if notify_qty is None and current_price > 0:
@@ -1820,6 +1963,16 @@ class Orchestrator:
                 fund = s.get("fundamentals", {})
                 return fund.get("sector", "Unknown")
         return "Unknown"
+
+    @staticmethod
+    def _is_losing_position(ticker: str, portfolio_data: dict) -> bool:
+        """Check if a position is currently at a loss (audit fix H-1)."""
+        for pos in portfolio_data.get("positions", []):
+            pos_ticker = pos.get("ticker") or pos.get("instrument", {}).get("ticker", "")
+            if pos_ticker == ticker:
+                pnl = pos.get("pnl_pct") or pos.get("ppl", 0)
+                return float(pnl) < 0
+        return False
 
     def _get_current_price(self, ticker: str, stocks_data: list[dict]) -> float:
         for s in stocks_data:

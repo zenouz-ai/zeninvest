@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-17
+last_updated: 2026-03-21
 ---
 
 # Sophistication Roadmap
@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **10** · Pipeline **22** (order by priority and feasibility below)
+**At a glance:** Delivered **14** · Pipeline **19** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -34,8 +34,11 @@ timeline
         US-1.8 : Dashboard VPS Deployment
         US-1.7 : Dashboard & Visualisation
         US-1.4 : Deploy POC to VPS
-    section Pipeline (priority order)
         US-4.4 : Agentic Research
+        US-7.0 : Production Audit & Safety Fixes
+        US-7.0a : Agent Logic Audit Fixes
+        US-7.0b : Formal Verification Fixes
+    section Pipeline (priority order)
         US-4.5 : Proactive Macro News Intelligence
         US-1.6 : Slack NL Trade Commands
         US-1.9 : Conversational Trading Workflow
@@ -54,6 +57,7 @@ timeline
         US-7.2 : Partial Fill Resubmission
         US-7.3 : Execution Quality & Slippage
         US-7.4 : Integration Test Coverage
+        US-7.5 : Remaining Audit Backlog
         US-6.1 : ML Trade Scoring (investigation)
         US-6.2 : Journal Embeddings
         US-6.3 : RL Investigation
@@ -73,25 +77,29 @@ timeline
 | | 8 | US-1.8 | Dashboard VPS Deployment |
 | | 9 | US-1.7 | Dashboard & Visualisation (full API + 8 pages) |
 | | 10 | US-1.4 | Deploy POC to VPS |
-| **Pipeline** | 1 | US-4.4 | Agentic Research (complete: Strategy, Skeptic, and Risk tool-use loops; 5 tools; shared budget; 37 tests) |
-| | 2 | US-4.5 | Proactive Macro News Intelligence |
-| | 3 | US-1.6 | Slack NL Trade Commands |
-| | 4 | US-1.9 | Conversational Trading Workflow |
-| | 5 | US-2.1 | Conviction Calibration |
-| | 6 | US-2.2 | Dynamic Strategy Weighting |
-| | 7 | US-3.1 | Risk-Parity Sizing |
-| | 8 | US-2.3 | Moderator Effectiveness |
-| | 9 | US-2.4 | Nemotron Integration Investigation |
-| | 10 | US-4.1 | Volume Signals |
-| | 11 | US-5.2 | Parameter Sensitivity |
-| | 12 | US-3.2 | Regime Detection |
-| | 13 | US-3.3 | Correlation Screening |
-| | 14 | US-4.2 | Earnings Calendar |
-| | 15 | US-4.3 | Sector Rotation |
-| | 16 | US-7.1 | Dashboard Authentication (audit finding C1) |
-| | 17 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
-| | 18 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
-| | 19 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
+| | 11 | US-4.4 | Agentic Research (5 tools, all 3 members, shared budget, 37 tests) |
+| | 12 | US-7.0 | Production Audit & Safety Fixes (34 findings; Phase 1+2: 12 fixed) |
+| | 13 | US-7.0a | Agent Logic Audit Fixes (27 findings; 5C+7H all fixed, 36 tests) |
+| | 14 | US-7.0b | Formal Verification Fixes (18 findings; Phase 1+2: scheduler safety, crash recovery, DB atomicity, 18 tests) |
+| **Pipeline** | 1 | US-4.5 | Proactive Macro News Intelligence |
+| | 2 | US-1.6 | Slack NL Trade Commands |
+| | 3 | US-1.9 | Conversational Trading Workflow |
+| | 4 | US-2.1 | Conviction Calibration |
+| | 5 | US-2.2 | Dynamic Strategy Weighting |
+| | 6 | US-3.1 | Risk-Parity Sizing |
+| | 7 | US-2.3 | Moderator Effectiveness |
+| | 8 | US-2.4 | Nemotron Integration Investigation |
+| | 9 | US-4.1 | Volume Signals |
+| | 10 | US-5.2 | Parameter Sensitivity |
+| | 11 | US-3.2 | Regime Detection |
+| | 12 | US-3.3 | Correlation Screening |
+| | 13 | US-4.2 | Earnings Calendar |
+| | 14 | US-4.3 | Sector Rotation |
+| | 15 | US-7.1 | Dashboard Authentication (audit finding C1) |
+| | 16 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
+| | 17 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
+| | 18 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
+| | 19 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
 | | 20 | US-6.1 | ML Trade Scoring (investigation) |
 | | 21 | US-6.2 | Journal Embeddings |
 | | 22 | US-6.3 | RL Investigation |
@@ -126,13 +134,16 @@ timeline
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
 | **US-4.4** | Agentic Research | 5 tools (web_search, news_search, sector_search, sec_search, macro_search) with caps 20/8/7 (total 35/cycle). All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have full tool-use loops. Pipeline-wide shared budget enforcement. Brave primary, Tavily fallback. SEC EDGAR free. Latency/cost recorded. 37 unit tests. Phase 0/0.2 notebooks validated. | Stale context mitigation, follow-up ability, broader coverage | **Delivered** |
+| **US-7.0a** | Agent Logic Audit Fixes | 27 findings (5C+7H+9M+6L). All Critical + High fixed: MODIFY verdicts as conditional AGREE (C-1), CAUTION 25% allocation reduction (C-2), conviction/allocation clamping (C-3), Gemini score bounds (C-4), orphaned "submitting" sync (C-5), risk-driven exit bypass (H-1), entry_type in schema (H-2), strategy timeout 120s (H-3), consensus on all moderator rows (H-4), repaired-decision validation (H-5), ticker dedup (H-6). 36 new tests. See `docs/AGENT_LOGIC_AUDIT.md`. | Eliminates 5 critical + 7 high LLM output parsing and consensus bugs | **Delivered** |
+| **US-7.0b** | Formal Verification Fixes | 18 findings (3C+7W+8I). Phase 1: scheduler `max_instances=1` (concurrent cycle prevention), resume warns HALTED/CAUTIOUS. Phase 2: `trade_without_stop` alert (P2-5), OpportunityQueue `queue_status` lifecycle QUEUED→EXECUTING→EXECUTED + orphan reconciliation (P2-6), portfolio re-query before BUY after SELL/REDUCE (P2-4), decision chain integrity check (P2-3). 18 new tests. 12 invariants verified. See `docs/FORMAL_VERIFICATION_AUDIT.md`. | Crash safety, state machine correctness, DB atomicity | **Delivered** |
+| **US-7.5** | Remaining Audit Backlog | Consolidated backlog from three audits: 15 medium/low findings (agent logic), 22 medium/low (trading system), 7 phase 3+4 items (formal verification). Includes: HALTED auto-recovery, market hours check, DB CHECK constraints, atomic cost budget, peak inflation detection, halted ticker denial list. | Hardening for eventual live-account transition | **Planned** |
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Planned** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
 | **US-7.1** | Dashboard Authentication | API key or token-based auth on all dashboard endpoints; required before exposing beyond localhost | Critical security hardening; prevents unauthorized live cycle triggers | **Planned** |
 | **US-7.2** | Partial Fill Resubmission | Detect partial fills and resubmit unfilled remainder in next cycle | Ensures intended position sizes are achieved | **Planned** |
 | **US-7.3** | Execution Quality & Slippage | VWAP/TWAP awareness, execution timing, slippage tracking; pre-live prerequisite | Required before transitioning from practice to live account | **Planned** |
-| **US-7.0** | Production Audit & Safety Fixes | Full codebase audit (34 findings). Phase 1: no-retry on POST, write-before-execute, liquidate_all status mapping, stop atomicity, moderator parse-failure safety, session leaks. Phase 2: committed cash tracking, correlation/daily-loss activation, cycle timeout, exception safety, HALTED data. See `docs/TRADING_SYSTEM_AUDIT.md`. | Eliminates 3 critical + 6 high severity financial-risk bugs; activates 2 previously disabled risk rules | **Delivered** |
+| **US-7.0** | Production Audit & Safety Fixes | Full codebase audit (34 findings: 3C+6H+12M+13L). Phase 1: no-retry on POST, write-before-execute, liquidate_all status mapping, stop atomicity, moderator parse-failure safety, session leaks. Phase 2: committed cash tracking, correlation/daily-loss activation, cycle timeout, exception safety, HALTED data. 12 of 34 fixed. See `docs/TRADING_SYSTEM_AUDIT.md`. | Eliminates 3 critical + 6 high severity financial-risk bugs; activates 2 previously disabled risk rules | **Delivered** |
 | **US-7.4** | Integration Test Coverage | End-to-end orchestrator run_cycle test, state machine transition tests | Catch pipeline regressions early; quality gate for new features | **Planned** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
 | **US-6.2** | Trade Journal Embeddings | Embeddings for journals; similarity search on new proposals | "Have we seen this pattern before?" context | **Planned** |
@@ -202,6 +213,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 | 7.2 | Partial fill resubmission | Medium | Easy | S | Existing orders | **P2** |
 | 7.3 | Execution quality & slippage | High | Medium | M | Trade data | **P1** (pre-live) |
 | 7.4 | Integration test coverage | High | Easy | M | None | **P1** |
+| 7.5 | Remaining audit backlog | Medium | Easy–Med | L | None | **P2** |
 | 4.3 | Sector rotation signal | Low–Med | Easy | M | ETF data (free) | **P3** |
 | 6.2 | Journal embeddings | Low | Medium | M | Trade journals | **P3** |
 | 6.3 | RL investigation | Low | Hard | M | Academic lit | **P3** |
@@ -720,6 +732,79 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [ ] Concurrent cycle safety test (verify dedup and scheduler guards)
 - [x] Opportunity optimizer edge cases: TTL expiry, capacity gating, cash floor, dequeue (added in audit)
 - [x] Holiday calendar tests: 7 tests covering observation rules, year range (added in audit)
+
+---
+
+**US-7.0a: Agent Logic Audit Fixes**
+**Value:** Critical — 5 critical + 7 high LLM output parsing and consensus logic bugs; moderation verdicts silently ignored, allocation scores unbounded, orphaned orders
+**Effort:** Medium (delivered in one session)
+**Data Sources:** None (code audit)
+**Stage:** Delivered (2026-03-20)
+**Audit doc:** `docs/AGENT_LOGIC_AUDIT.md`
+
+**Delivered Fixes (12/27):**
+- [x] C-1: MODIFY verdicts now count as conditional AGREE; allocation cap applied
+- [x] C-2: CAUTION consensus applies 25% allocation reduction for BUY
+- [x] C-3: Conviction clamped [0,100], allocation clamped [0, max_single_stock_pct]
+- [x] C-4: Gemini scores clamped [1,10]
+- [x] C-5: Orphaned "submitting" orders synced by including in status query
+- [x] H-1: Risk-driven exits bypass min_positions
+- [x] H-2: `entry_type` added to strategy prompt JSON schema
+- [x] H-3: Strategy tool-use timeout increased to 120s
+- [x] H-4: Consensus logged on all moderator rows
+- [x] H-5: Repaired JSON decisions validated for required fields
+- [x] H-6: Strategy decisions deduplicated by ticker before moderation/risk
+- [x] 36 new tests
+
+**Remaining (backlog → US-7.5):** 9 Medium + 6 Low findings
+
+---
+
+**US-7.0b: Formal Verification Fixes**
+**Value:** Critical — state machine completeness, race conditions, crash recovery, DB atomicity
+**Effort:** Medium (delivered across two sessions)
+**Data Sources:** None (formal verification audit)
+**Stage:** Delivered (2026-03-21)
+**Audit doc:** `docs/FORMAL_VERIFICATION_AUDIT.md`
+
+**Phase 1 Delivered:**
+- [x] P1-1: `max_instances=1` on all scheduler jobs (prevents concurrent cycles)
+- [x] P1-2: Strategy decision dedup by ticker (cross-ref with H-6)
+- [x] P1-3: Resume warns about HALTED/CAUTIOUS state
+
+**Phase 2 Delivered (crash safety & DB atomicity):**
+- [x] P2-3: Decision chain integrity check at cycle end (logs orphaned decisions)
+- [x] P2-4: Portfolio re-query before BUY phase after SELL/REDUCE
+- [x] P2-5: `trade_without_stop` notification (warning, Slack + email)
+- [x] P2-6: OpportunityQueue `queue_status` lifecycle (QUEUED→EXECUTING→EXECUTED) with orphan reconciliation
+- [x] 18 new tests; 12 invariants catalogued
+
+**Remaining (backlog → US-7.5):** Phase 3 (HALTED auto-recovery, market hours check) + Phase 4 (5 items: atomic cost budget, DB thread safety, peak inflation detection, halted ticker denial list, DB CHECK constraints)
+
+---
+
+**US-7.5: Remaining Audit Backlog**
+**Value:** Medium — hardening items required before live-account transition
+**Effort:** Large (estimated 15–20 hours across multiple sprints)
+**Data Sources:** None
+**Stage:** Planned
+
+**From Agent Logic Audit (15 findings):**
+- [ ] 9 Medium findings (M-1 through M-9)
+- [ ] 6 Low findings (L-1 through L-6)
+
+**From Trading System Audit (22 findings):**
+- [ ] ~8 Medium findings (M-1 through M-12 minus 4 fixed in Phase 2)
+- [ ] 13 Low findings (L-1 through L-13)
+
+**From Formal Verification Audit (7 items):**
+- [ ] P3-1: HALTED auto-recovery after N cycles below threshold
+- [ ] P3-2: Market hours check before order placement
+- [ ] P4-1: SQL-level atomic cost budget
+- [ ] P4-2: DB thread safety (threading.Lock if async added)
+- [ ] P4-3: Peak inflation detection
+- [ ] P4-4: Halted ticker denial list (cache T212 rejections)
+- [ ] P4-5: DB-level CHECK constraints
 
 ---
 

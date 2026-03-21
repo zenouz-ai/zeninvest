@@ -567,7 +567,7 @@ The system maintains a comprehensive audit trail across at least 14 database tab
 | `system_state` | Current state machine state, peak value, drawdown, pause status | `state`, `peak_portfolio_value`, `current_drawdown_pct`, `paused` |
 | `orders` | Every order placed or attempted | `ticker`, `action`, `quantity`, `price`, `status`, `strategy`, `conviction`, `moderation_result`, `risk_result`, `dedup_key` |
 | `strategy_decisions` | Every strategy proposal from Claude | `cycle_id`, `ticker`, `action`, `conviction`, `reasoning`, `raw_response_json` |
-| `moderation_logs` | Every moderation verdict from GPT-4o and Gemini | `cycle_id`, `ticker`, `moderator`, `verdict`, `reasoning`, `growth_score`, `risk_score`, `consensus` |
+| `moderation_logs` | Every moderation verdict from GPT-4o and Gemini | `cycle_id`, `ticker`, `moderator`, `verdict`, `reasoning`, `growth_score`, `risk_score`, `consensus` (recorded on all rows including individual moderators, not just strategy row) |
 | `risk_decisions` | Every risk evaluation | `cycle_id`, `ticker`, `verdict`, `rules_checked_json`, `triggered_rules_json`, `reasoning` |
 | `cost_logs` | Every LLM API call cost | `provider`, `model`, `input_tokens`, `output_tokens`, `cost_gbp`, `cycle_id`, `purpose` |
 | `api_logs` | Every external API call (T212, Finnhub, Alpha Vantage, brave_search, brave_answers, tavily) | `service`, `method`, `endpoint`, `status_code`, `duration_ms`, `error`; search APIs have monthly limits (2k Brave Search, 2k Brave Answers, 1k Tavily) via `search_api_tracker`. Web search fallback (Brave/Tavily for analyst/news when Finnhub/AV fail) is logged here. |

@@ -259,6 +259,7 @@ class OpportunityQueue(Base):
     action = Column(String(10), nullable=False, default="BUY")
     reason = Column(Text, nullable=True)
     metadata_json = Column(Text, nullable=True)
+    queue_status = Column(String(20), nullable=False, default="QUEUED")  # QUEUED | EXECUTING | EXECUTED
 
 
 class ApiLog(Base):

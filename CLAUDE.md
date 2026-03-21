@@ -186,7 +186,7 @@ Execution guardrail: strategy output may occasionally return plain symbols (`AAP
 ## Architecture Rules
 
 1. **Risk rules are deterministic Python** — never call an LLM from `RiskManager`. Its VETO is final.
-2. **Defense in depth** — every trade passes Strategy → Moderation → Risk → Execution. Any layer can block.
+2. **Defense in depth** — every trade passes Strategy → Moderation → Risk → Execution. Any layer can block. Moderation consensus has three tiers: APPROVED (full allocation), CAUTION (25% allocation reduction for BUY), BLOCKED (rejected). Moderator MODIFY verdicts count as conditional AGREE and their `modifications.target_allocation_pct` is applied as an allocation cap.
 3. **State machine** — ACTIVE → CAUTIOUS (config `cautious_drawdown_pct`, default 30%) → HALTED (config `halt_drawdown_pct`, default 40%). HALTED requires manual recovery. Drawdown uses `totalValue` from T212 account summary (includes reserved/pending orders); fallback: cash + invested + reservedForOrders. **Practice account** (`trading.account_type: practice`): state machine is relaxed — always stays ACTIVE; drawdown is logged but never triggers CAUTIOUS/HALTED. Use `account_type: live` for real money to enable full state machine.
 4. **Screening cooldown & mix** — Universe screening runs every cycle regardless of state (including CAUTIOUS); Risk blocks new BUYs in CAUTIOUS. `Instrument.last_screened_at` is stamped after each screen. Cooldown: `effective_screening_cooldown_hours` = `effective_screening_cooldown_override` if set (e.g. 12h); else for intraday `min(screening_cooldown_hours, cycle_hours)` (e.g. 4h); for standard uses `screening_cooldown_hours` (12h). The screener uses time-based buckets: **review** = investigated 24–48h ago (last StrategyDecision in `review_window_hours`); **new** = never investigated or last >48h ago. Targets 50% from each pool via `uninvestigated_target_pct` (new share). When the pool is exhausted (all instruments in cooldown), the fallback orders by `last_screened_at ASC` (least recently screened first) to rotate. **Proactive seed**: when eligible pool &lt; 2×max_candidates, seed instruments are merged to ensure rotation headroom.
 5. **Curated seed universe & enrichment cascade** — `seed_universe.py` is derived from T212's instrument list (~6900 US equities, 100% tradeable). Regenerate with `poetry run python scripts/generate_seed_from_t212.py --from-db`. **Bulk enrichment:** one-off `poetry run python scripts/bulk_enrich_instruments.py` (parallel yfinance) to populate sector, market_cap, industry, business_summary, exchange, currency, name. **Backfill:** `poetry run python scripts/backfill_industry_summary.py` for instruments that already have sector+market_cap but lack industry/summary/name. Used as fallback when instruments table lacks enriched data; only enriches instruments present in DB (T212-available). Scheduled batch enrichment (`enrich_instruments_batch`) cascades: yfinance → Finnhub → Alpha Vantage OVERVIEW → BRAVE_ANSWERS; saves industry and business_summary when available. Tickers that fail yfinance OHLCV fetch are flagged `data_available=False` and permanently excluded.
@@ -284,6 +284,7 @@ Research tools use a provider abstraction: Brave (primary) + Tavily (fallback, o
   - `state_transition` -> `["slack", "email"]`
   - `critical_cycle_failure` -> `["slack", "email"]`
   - `order_adjustment` -> `["slack"]`
+  - `trade_without_stop` -> `["slack", "email"]`
   - `include_dry_run_alerts: false`
 - SendGrid SMTP convention:
   - `SMTP_HOST=smtp.sendgrid.net`
@@ -300,7 +301,7 @@ Research tools use a provider abstraction: Brave (primary) + Tavily (fallback, o
 - **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y, or "—" when committee not invoked e.g. HOLD), reasoning excerpt, and structured stage reason for queued/filtered decisions (e.g. "Awaiting 2nd cycle for promotion", "Capacity gated (no slot or cash)", "Below UOV queue threshold").
 - **service.py** — `NotificationService` with `emit_*` methods. Fail-open: all exceptions caught, logged with `exc_info`, and never propagated. Retries with backoff; failed attempts recorded in `notification_logs`.
 - **providers/** — Slack webhook, SMTP email. Providers implement `send(subject, body)` and raise on failure.
-- **Event types**: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`
+- **Event types**: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`
 
 ### Macro intelligence module (`src/agents/market_data/macro_intelligence.py`)
 
@@ -336,7 +337,7 @@ Gathers macro-level market intelligence to inform trading decisions:
 | `MarketDataCache` | `market_data_cache` | OHLCV + indicators + fundamentals (configurable TTL: lite_analysis 4h, full_analysis 4h) |
 | `PortfolioSnapshot` | `portfolio_snapshots` | End-of-cycle portfolio state. `positions_json` stores normalised positions (ticker, quantity, value_gbp, pnl_gbp, pnl_pct) converted from T212 `instrument.ticker`; uses `walletImpact` when available, otherwise applies account-level GBP scaling from `account_summary.investments.currentValue` |
 | `OpportunityScoreSnapshot` | `opportunity_score_snapshots` | Per-cycle UOV components and final/ewma scores per ticker |
-| `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities awaiting execution |
+| `OpportunityQueue` | `opportunity_queue` | Active queued BUY opportunities; `queue_status`: QUEUED → EXECUTING → EXECUTED |
 | `PerformanceMetric` | `performance_metrics` | Daily/rolling Sharpe, Sortino, drawdown, win rates by strategy, alpha |
 | `TradeOutcome` | `trade_outcomes` | Per-trade P&L linking BUY to SELL/REDUCE with conviction and moderator linkage |
 | `StopLossAdjustment` | `stop_loss_adjustments` | Audit trail for stop-loss reassessments, trailing ratchets, and limit orders |
@@ -425,12 +426,14 @@ Files to check on every feature:
 - US-5.2 Parameter sensitivity harness
 - US-1.6 Slack NL trade commands
 
-## Known issues (2026-03-19)
+## Known issues (2026-03-20)
 
 1. **Dashboard VPS deployment** — US-1.8 delivered; deployment checklist in `docs/DASHBOARD_DEPLOYMENT.md`. Operator runs: pull, `ufw allow 8000/tcp`, `docker compose up -d --build` → dashboard running at `http://VPS_IP:8000`. Phase 1.5 Analytics Lite delivered (Decision Explorer, run diff, next-run countdown, P&L). Activity feed SSE uses relative URL.
 2. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
 3. **Duplicate Run per scheduled cycle** — Fixed. Scheduler now passes `scheduled_cycle_id` to orchestrator; one Run per cycle (scheduler creates, orchestrator updates).
 4. **Finnhub timeouts in cloud VMs** — Finnhub API calls may time out in VPS/cloud environments due to network latency. Pipeline handles gracefully: analyst recommendations and insider sentiment are missing but cycle completes. See AGENTS.md.
 5. **T212 DELETE empty-body causing SELL abort** — Fixed. T212 `DELETE /equity/orders/{id}` returns 200 with empty body; `response.json()` threw `JSONDecodeError`, tenacity retried into 404, `RetryError` blocked the SELL. Fix: `_request` returns `{}` for empty bodies; retry predicate skips 4xx; `cancel_conflicting_stops` unwraps `RetryError`.
+6. **Agent logic audit (2026-03-20)** — `docs/AGENT_LOGIC_AUDIT.md`: 5 Critical + 7 High + 9 Medium + 6 Low findings. Phase 1 fixes delivered: MODIFY verdicts now count as conditional AGREE in consensus (C-1); CAUTION consensus applies 25% allocation reduction (C-2); conviction clamped [0,100], allocation clamped [0,max_single_stock_pct] (C-3); Gemini scores clamped [1,10] (C-4); orphaned "submitting" orders synced (C-5); risk-driven exits bypass min_positions (H-1); `entry_type` added to strategy prompt schema (H-2); strategy tool-use timeout increased to 120s (H-3); consensus logged on all moderator rows (H-4); repaired decisions validated for required fields (H-5); strategy decisions deduplicated by ticker (H-6). 36 new tests.
+7. **Formal verification audit (2026-03-21)** — `docs/FORMAL_VERIFICATION_AUDIT.md`: State machine completeness, race conditions, invariants, crash recovery, DB atomicity. 3 Critical + 7 Warning + 8 Info findings. Phase 1 fixes: scheduler `max_instances=1` on all jobs (prevents concurrent cycles), resume warns about HALTED/CAUTIOUS state. Phase 2 fixes: `trade_without_stop` alert notification (P2-5); OpportunityQueue `queue_status` field with QUEUED→EXECUTING→EXECUTED lifecycle + orphan reconciliation at cycle start (P2-6); portfolio re-query before BUY phase after SELL/REDUCE (P2-4); decision chain integrity check at cycle end (P2-3). 18 new tests. Phase 3 roadmap: HALTED auto-recovery, market hours check. 12 invariants verified.
 
 When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD.md`, and `docs/DASHBOARD_DEPLOYMENT.md` synchronized.
