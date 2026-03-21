@@ -8,7 +8,7 @@ interface Alert {
   message: string
 }
 
-export function AlertBanner({ sseConnected }: { sseConnected: boolean }) {
+export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: boolean }) {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState(false)
@@ -29,8 +29,8 @@ export function AlertBanner({ sseConnected }: { sseConnected: boolean }) {
       }
     } catch { /* silent */ }
 
-    // 2. SSE disconnected
-    if (!sseConnected) {
+    // 2. SSE disconnected (stable: avoids false positive on load / brief reconnect gaps)
+    if (sseDisconnectedAlert) {
       newAlerts.push({ id: 'sse-disconnected', severity: 'warning', message: 'Real-time event stream disconnected' })
     }
 
@@ -72,7 +72,7 @@ export function AlertBanner({ sseConnected }: { sseConnected: boolean }) {
     } catch { /* silent */ }
 
     setAlerts(newAlerts)
-  }, [sseConnected])
+  }, [sseDisconnectedAlert])
 
   useEffect(() => {
     fetchAlerts()

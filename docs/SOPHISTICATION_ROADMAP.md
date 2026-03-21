@@ -82,7 +82,7 @@ timeline
 | | 12 | US-7.0 | Production Audit & Safety Fixes (34 findings; Phase 1+2: 12 fixed) |
 | | 13 | US-7.0a | Agent Logic Audit Fixes (27 findings; 5C+7H all fixed, 36 tests) |
 | | 14 | US-7.0b | Formal Verification Fixes (18 findings; Phase 1+2: scheduler safety, crash recovery, DB atomicity, 18 tests) |
-| | 15 | US-7.1 | Dashboard Authentication (X-API-Key middleware, 21 tests) |
+| | 15 | US-7.1 | Dashboard Authentication (X-API-Key middleware, `hmac.compare_digest`, auth banner + API key modal, SSE 403 alignment; 36 tests in `test_dashboard_auth.py`) |
 | **Pipeline** | 1 | US-4.5 | Proactive Macro News Intelligence |
 | | 2 | US-1.6 | Slack NL Trade Commands |
 | | 3 | US-1.9 | Conversational Trading Workflow |

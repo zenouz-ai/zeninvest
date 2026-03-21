@@ -1,22 +1,10 @@
 import axios from 'axios'
 import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order, UniverseBubbleItem } from '../types'
+import { getDashboardApiKey } from '../utils/apiKey'
+import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
 
 // Use relative paths when VITE_API_URL unset: same-origin in prod (FastAPI serves frontend)
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
-
-// API key for dashboard authentication (US-7.1).
-// Resolution order: build-time VITE_API_KEY env var → localStorage 'dashboard_api_key'
-// localStorage allows operators to set the key at runtime in dev without a rebuild:
-//   localStorage.setItem('dashboard_api_key', 'your-key')
-const _buildTimeKey: string = import.meta.env.VITE_API_KEY ?? ''
-function getApiKey(): string {
-  if (_buildTimeKey) return _buildTimeKey
-  try {
-    return localStorage.getItem('dashboard_api_key') ?? ''
-  } catch {
-    return ''
-  }
-}
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -27,12 +15,36 @@ const api = axios.create({
 
 // Attach X-API-Key on every request when a key is available.
 api.interceptors.request.use((config) => {
-  const key = getApiKey()
+  const key = getDashboardApiKey()
   if (key) {
     config.headers['X-API-Key'] = key
   }
   return config
 })
+
+function isApiPath(url: string | undefined): boolean {
+  return typeof url === 'string' && url.includes('/api/')
+}
+
+api.interceptors.response.use(
+  (response) => {
+    const url = response.config.url ?? ''
+    if (isApiPath(url) && response.status >= 200 && response.status < 300) {
+      clearDashboardAuthRequired()
+    }
+    return response
+  },
+  (error: unknown) => {
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status
+      const url = error.config?.url ?? ''
+      if (status === 403 && isApiPath(url)) {
+        setDashboardAuthRequired(true)
+      }
+    }
+    return Promise.reject(error)
+  }
+)
 
 // Events API
 export const eventsApi = {

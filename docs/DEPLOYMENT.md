@@ -1,7 +1,7 @@
 ---
 tags: [deployment, vps, docker, monitoring, operations]
 status: current
-last_updated: 2026-03-11
+last_updated: 2026-03-21
 ---
 
 # Deployment & Monitoring Guide
@@ -1049,7 +1049,30 @@ sudo systemctl restart investment-agent
 journalctl -u investment-agent -f --since "1 minute ago"
 ```
 
-### 8.3 Rollback
+### 8.3 Mirror `main` to zenouz-ai/zeninvest (manual, current default)
+
+When development uses **KayvanNejabati/Investment-agent** as source of truth and **`zenouz-ai/zeninvest`** should stay aligned, push **`main`** to both remotes from your machine after each release of changes you want on the org repo.
+
+**One-time (local clone):**
+
+```bash
+git remote add zeninvest https://github.com/zenouz-ai/zeninvest.git
+# or: git@github.com:zenouz-ai/zeninvest.git
+```
+
+**Each sync (after `git push origin main`):**
+
+```bash
+git push zeninvest main
+```
+
+If Git reports **non-fast-forward** (divergent histories), inspect with `git fetch zeninvest` and `git log --oneline main..zeninvest/main` / `zeninvest/main..main`, then either merge or reconcile. To make org **`main`** exactly match local **`main`** (overwriting the org tip), use **`git push zeninvest main:main --force-with-lease`** only when you accept discarding unique commits on **`zeninvest/main`**.
+
+**Optional (deferred): GitHub Action**
+
+The workflow **`.github/workflows/sync-to-zeninvest.yml`** exists for **manual** runs only (**Actions → Sync main to zenouz-ai/zeninvest → Run workflow**) until **`ZENINVEST_SYNC_TOKEN`** is configured and **`push: branches: [main]`** is re-added under **`on:`** in that file. The token must be a PAT with **Contents: Read and write** on **`zenouz-ai/zeninvest`**; paste the generated **`github_pat_…` / `ghp_…`** string into the repo secret, not a permission description.
+
+### 8.4 Rollback
 
 If an update causes issues:
 

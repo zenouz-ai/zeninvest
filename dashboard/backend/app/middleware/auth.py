@@ -15,6 +15,7 @@ When DASHBOARD_API_KEY is not set the middleware allows all requests through wit
 a startup warning — this preserves backward-compatible local development behaviour.
 """
 
+import hmac
 import logging
 import os
 
@@ -116,15 +117,28 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if self._is_public_demo_route(path, method):
             return await call_next(request)
 
-        # Validate the supplied key.
+        # Validate the supplied key (timing-safe compare when lengths match).
         supplied = request.headers.get("X-API-Key", "")
-        if supplied != self._api_key:
+        expected = self._api_key or ""
+        if not _api_keys_match(supplied, expected):
             return JSONResponse(
                 status_code=403,
                 content={"detail": "Invalid or missing API key. Supply X-API-Key header."},
             )
 
         return await call_next(request)
+
+
+def _api_keys_match(supplied: str, expected: str) -> bool:
+    """Constant-time comparison for UTF-8 API keys (avoids trivial timing leaks)."""
+    try:
+        sa = supplied.encode("utf-8")
+        eb = expected.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    if len(sa) != len(eb):
+        return False
+    return hmac.compare_digest(sa, eb)
 
 
 def get_api_key() -> str | None:

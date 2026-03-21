@@ -67,6 +67,7 @@ def _is_failed_order_unresolved(failed_order: Order, window_days: int) -> bool:
 
     session = get_session()
     try:
+        # Do not treat a later dry_run as resolving a live broker failure.
         later_success = (
             session.query(Order.id)
             .filter(
@@ -74,7 +75,7 @@ def _is_failed_order_unresolved(failed_order: Order, window_days: int) -> bool:
                 Order.action == failed_order.action,
                 Order.order_type == failed_order.order_type,
                 Order.timestamp > failed_order.timestamp,
-                Order.status.in_(["filled", "dry_run", "cancelled"]),
+                Order.status.in_(["filled", "cancelled"]),
             )
             .first()
         )

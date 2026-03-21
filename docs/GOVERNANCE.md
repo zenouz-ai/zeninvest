@@ -580,6 +580,10 @@ The system maintains a comprehensive audit trail across at least 14 database tab
 | `runs` | Run metadata per cycle | `cycle_id`, `run_type`, `started_at`, `completed_at`, `status`, `summary_json` |
 | `stop_loss_adjustments` | Audit trail for stop-loss reassessments, trailing ratchets, limit orders | `order_id`, `adjustment_type`, `old_price`, `new_price`, `reason` |
 
+**Dashboard unresolved failures:** `GET /api/orders/health` counts a `failed` row as unresolved until a later **`filled`** or **`cancelled`** order exists for the same `(ticker, action, order_type)`. A later **`dry_run`** order does **not** clear the unresolved state (simulation does not repair a live broker failure).
+
+**Dashboard API key:** When `DASHBOARD_API_KEY` is set, `APIKeyMiddleware` rejects mismatched keys with 403; supplied vs expected values are compared with **`hmac.compare_digest`** on UTF-8 bytes when lengths match (timing-safe for equal-length secrets).
+
 ### 7.2 Traceability
 
 Every cycle generates a unique `cycle_id`. Scheduled cycles use `scheduled_YYYYMMDD_HHMMSS` (scheduler creates Run; orchestrator receives and updates it—one Run per cycle). Manual/dashboard-triggered cycles use `cycle_YYYYMMDD_HHMM_<6-hex>`. The cycle_id links all decisions, costs, and orders from that cycle across all tables, enabling end-to-end traceability for any trade:

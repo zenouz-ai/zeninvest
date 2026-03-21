@@ -2,7 +2,7 @@
 
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
-**Status:** POC — 441 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router, search API tracker, daily/weekly reports, market holidays, opportunity optimizer edge cases, agent logic audit fixes, formal verification phase 2, dashboard authentication + public demo routes), deployment-ready for VPS. Dashboard Phase 1 + Phase 1.5 Analytics Lite + UX Phase 1 complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). US-7.1 Dashboard Authentication implemented (`APIKeyMiddleware`, `DASHBOARD_API_KEY`, configurable `public_routes`). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) and [UX Audit](docs/UX_AUDIT.md).
+**Status:** POC — 447 tests passing (performance/trade-outcome, backtesting, order management, notifications, macro intelligence, 3-cycle scheduler, dry-run state isolation, dashboard backend, research router, search API tracker, daily/weekly reports, market holidays, opportunity optimizer edge cases, agent logic audit fixes, formal verification phase 2, dashboard authentication + public demo routes, dashboard orders health semantics), deployment-ready for VPS. Dashboard frontend: `npm test` (Vitest) for SSE utilities. Dashboard Phase 1 + Phase 1.5 Analytics Lite + UX Phase 1 complete. US-1.8 Dashboard VPS Deployment implemented (Docker, multi-stage frontend build, SPA fallback). US-7.1 Dashboard Authentication implemented (`APIKeyMiddleware`, `DASHBOARD_API_KEY`, configurable `public_routes`). See [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) and [UX Audit](docs/UX_AUDIT.md).
 
 **Active sprint:** Week 1 — delivering US-4.1, US-7.4, US-3.1, US-4.5, US-1.6, US-1.9 (skeleton), US-8.1 across 8 days. See [`docs/SPRINT_WEEK_1.md`](docs/SPRINT_WEEK_1.md).
 
@@ -328,7 +328,7 @@ notebooks/
 - [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
 - [Governance](docs/GOVERNANCE.md) — 9 risk rules, security guardrails, cost controls, audit trail
 - [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
-- [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts
+- [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts; manual mirror of `main` to `zenouz-ai/zeninvest` (see “Mirror main to zenouz-ai/zeninvest” in that doc)
 - [Dashboard](docs/DASHBOARD.md) — web dashboard architecture, phases, frontend/backend design
 - [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) — VPS deployment: Docker, port 8000, SPA fallback
 - [Chat & Commands](docs/CHAT_AND_COMMANDS.md) — trade alerts, notification routing, planned inbound commands

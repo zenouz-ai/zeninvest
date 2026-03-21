@@ -9,6 +9,7 @@ import { DashboardSkeleton } from '../components/Skeleton'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { FreshnessIndicator } from '../components/FreshnessIndicator'
+import type { SseConnectionState } from '../hooks/useSSE'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
 
@@ -61,10 +62,10 @@ function SectionError({ error, onRetry }: { error: string; onRetry: () => void }
 
 interface DashboardProps {
   sseEvents: Event[]
-  sseConnected: boolean
+  sseConnectionState: SseConnectionState
 }
 
-export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
+export default function Dashboard({ sseEvents, sseConnectionState }: DashboardProps) {
   // --- Independent data sections ---
   const fetchStatus = useCallback(() => statusApi.get(), [])
   const statusResult = useAsyncData(fetchStatus)
@@ -271,8 +272,21 @@ export default function Dashboard({ sseEvents, sseConnected }: DashboardProps) {
           {stateBadgeText}
         </span>
         {/* SSE indicator — small dot, not a full card */}
-        <span className="flex items-center gap-1.5 text-xs text-terminal-text-dim" title={sseConnected ? 'Event stream connected' : 'Event stream disconnected'}>
-          <span className={`inline-block w-2 h-2 rounded-full ${sseConnected ? 'bg-gain' : 'bg-loss'}`} />
+        <span
+          className="flex items-center gap-1.5 text-xs text-terminal-text-dim"
+          title={
+            sseConnectionState === 'open'
+              ? 'Event stream connected'
+              : sseConnectionState === 'connecting'
+                ? 'Event stream connecting…'
+                : 'Event stream disconnected'
+          }
+        >
+          <span
+            className={`inline-block w-2 h-2 rounded-full ${
+              sseConnectionState === 'open' ? 'bg-gain' : sseConnectionState === 'connecting' ? 'bg-warning' : 'bg-loss'
+            }`}
+          />
           SSE
         </span>
         {/* Pause/Resume toggle */}

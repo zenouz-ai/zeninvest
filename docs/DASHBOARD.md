@@ -46,13 +46,13 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 
 Based on `docs/UX_AUDIT.md`, resolved 10 of 28 findings (2 Critical, 5 Major, 3 Minor):
 
-- **AlertBanner** (`AlertBanner.tsx`): persistent alert aggregation bar below navbar on all pages. Checks 5 sources independently: system state, SSE connectivity, cost degradation, losing positions (>5%), unresolved failed orders from `/api/orders/health`. Severity-coded (red critical, amber warning), dismissible, auto-refresh 30s.
+- **AlertBanner** (`AlertBanner.tsx`): persistent alert aggregation bar below navbar on all pages. Checks 5 sources independently: system state, SSE down (warning only after ~10s continuous disconnect to avoid false positives on load/reconnect), cost degradation, losing positions (>5%), unresolved failed orders from `/api/orders/health`. Severity-coded (red critical, amber warning), dismissible, auto-refresh 30s.
 - **Dashboard home restructure**: replaced collapsed sections with always-visible layout. Two-column grid: positions + activity (left), cumulative stats + cost breakdown (right). Last cycle summary always visible above the fold.
 - **Independent section loading** (`useAsyncData` hook): each dashboard section fetches and error-handles independently — one failing endpoint no longer takes down the whole page.
 - **Positions on home page**: top 5 positions by |P&L| shown on Dashboard with inline bar chart, linking to Portfolio page.
 - **Performance card**: replaces SSE status card with Sharpe (30d), win rate, max drawdown, trade count from `/api/performance/metrics`.
 - **Pause/Resume toggle**: wired `systemApi.pause()` / `resume()` to Dashboard UI with confirmation modal.
-- **SSE lifted to App level**: SSE connection shared between AlertBanner and Dashboard via props (single EventSource).
+- **SSE lifted to App level**: SSE connection shared between AlertBanner and Dashboard via props. The client uses **`fetch()` + `ReadableStream`** (not `EventSource`) so **`X-API-Key`** can be sent when `DASHBOARD_API_KEY` / `VITE_API_KEY` / `localStorage.dashboard_api_key` is set; reconnect uses exponential backoff.
 - **PAUSED badge colour**: distinct cyan badge instead of reusing ACTIVE green.
 - **aria-expanded** on all collapsible sections, **aria-live** on activity feed.
 - **Mobile nav fix**: hamburger menu closes on link click.
@@ -138,12 +138,12 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 **Alert banner (persistent, all pages):**
 - AlertBanner component renders below navbar on every page
-- Aggregates 5 alert sources independently: system state (CAUTIOUS/HALTED), SSE disconnect, cost degradation, losing positions (>5% loss), unresolved failed orders (`/api/orders/health`)
+- Aggregates 5 alert sources independently: system state (CAUTIOUS/HALTED), SSE disconnect (after sustained outage), cost degradation, losing positions (>5% loss), unresolved failed orders (`/api/orders/health`)
 - Severity-coded: red (critical), amber (warning). Dismissible per-alert, auto-refresh 30s
 
 **Control bar:**
 - System state badge: ACTIVE (green) / CAUTIOUS (amber) / HALTED (red) / PAUSED (cyan — distinct colour). When CAUTIOUS, "Reset Peak" button appears.
-- SSE indicator: small coloured dot (green connected, red disconnected) — no longer a full KPI card
+- SSE indicator: small coloured dot (green = stream open, amber = connecting/reconnecting, red = disconnected) — no longer a full KPI card
 - Pause/Resume toggle button with confirmation modal for Pause
 - Dry Run + Live Run buttons (Live requires confirmation)
 
@@ -265,7 +265,7 @@ Strategy (Claude) → conviction 0.8, action BUY
   - market order accepted but not yet executed (`type=MARKET`, typically `status=NEW`, common outside market hours)
   - working protective stop (`type=STOP`, remains `NEW` until stop price is hit or order is cancelled/replaced)
 - Local DB statuses are reconciled at the start of each non-dry-run cycle via `sync_order_status_from_t212()` (pending -> filled when T212 reports FILLED/PARTIALLY_FILLED).
-- Dashboard health endpoint (`/api/orders/health`) also reconciles stale local pending stop orders against live T212 pending orders and reports local/live/stale counts.
+- Dashboard health endpoint (`/api/orders/health`) also reconciles stale local pending stop orders against live T212 pending orders and reports local/live/stale counts. **Unresolved failed orders** are those with `status=failed` that still lack a later **filled** or **cancelled** row for the same `(ticker, action, order_type)`; a later **`dry_run` row does not** clear the alert (dry run does not fix a live broker failure).
 - **Route ordering:** `GET /api/orders/health` must be declared *before* `GET /api/orders/{order_id}` in the orders router. If the parameterized route is registered first, requests to `/health` match `{order_id}` and FastAPI returns **422** (cannot coerce `"health"` to `int`).
 
 **Current stop-loss levels (from `orders` + `stop_loss_adjustments`):**
@@ -661,7 +661,7 @@ Setup deployment for the dashboard on the existing Hetzner VPS:
    - /* → React frontend static files
    - /events/stream → SSE with proper proxy buffering disabled
 
-3. ✅ API key authentication via `DASHBOARD_API_KEY` env var (`APIKeyMiddleware` on all `/api/*` routes; US-7.1 delivered 2026-03-21)
+3. ✅ API key authentication via `DASHBOARD_API_KEY` env var (`APIKeyMiddleware` on all `/api/*` routes; US-7.1 delivered 2026-03-21). **Operator UX:** any `/api/*` **403** raises a top **auth banner** (Retry / Dismiss / open **API key** modal). Nav includes an **API key** control: masked input, save to `localStorage.dashboard_api_key`, **Save & reload** or **Clear stored key** (same shared-secret model as build-time `VITE_API_KEY`). Server compares keys with **timing-safe** `hmac.compare_digest` when lengths match.
 
 4. Create a deploy.sh script that builds the frontend, copies to the backend static dir, and restarts services
 
@@ -787,6 +787,7 @@ def db_session():
 
 - `poetry run pytest -v` — all 326 tests pass ✅
 - `cd dashboard/frontend && npm run build` — no TypeScript errors ✅
+- `cd dashboard/frontend && npm test` — Vitest (SSE parser utilities) ✅
 - `poetry run python -m src.orchestrator.main --dry-run` — produces stocks ✅
 - Dashboard backend starts and endpoints return correct shapes ✅
 
@@ -797,6 +798,10 @@ def db_session():
 ### Why Server-Sent Events (SSE) over WebSockets
 
 The data flow is primarily server → client (push updates). SSE is simpler, works over HTTP/2, and plays nicely with nginx. WebSockets can be added later if two-way communication is needed.
+
+### Authenticated SSE (`DASHBOARD_API_KEY`)
+
+Native browser **`EventSource` cannot send custom headers**, so it always failed against `APIKeyMiddleware` when an API key was configured. The dashboard frontend therefore opens **`GET /api/events/stream`** with **`fetch()`**, sets **`X-API-Key`** via the same resolution as Axios (`VITE_API_KEY` → `localStorage.dashboard_api_key`), parses `text/event-stream` incrementally, and reconnects with backoff. A **403** on the stream sets the same global auth banner as Axios (no reconnect spam). Nginx: keep `X-Accel-Buffering: no` on the stream response (already set in the FastAPI router).
 
 ### Why SQLite First
 

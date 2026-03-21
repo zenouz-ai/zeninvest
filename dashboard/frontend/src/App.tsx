@@ -9,6 +9,9 @@ import OrderManagement from './pages/OrderManagement'
 import Costs from './pages/Costs'
 import Roadmap from './pages/Roadmap'
 import { AlertBanner } from './components/AlertBanner'
+import { DashboardAuthBanner } from './components/DashboardAuthBanner'
+import { DashboardApiKeyModal } from './components/DashboardApiKeyModal'
+import { useDashboardAuthRequired } from './hooks/useDashboardAuthRequired'
 import { useSSE } from './hooks/useSSE'
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -64,9 +67,31 @@ function MoreDropdown() {
   )
 }
 
+function ApiKeyNavButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-terminal-text-dim border border-terminal-border rounded hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-neutral"
+      title="Set dashboard API key (localStorage)"
+    >
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+      </svg>
+      API key
+    </button>
+  )
+}
+
 function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const { events: sseEvents, isConnected: sseConnected } = useSSE({ enabled: true })
+  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false)
+  const [sseReconnectNonce, setSseReconnectNonce] = useState(0)
+  const authRequired = useDashboardAuthRequired()
+  const { events: sseEvents, connectionState: sseConnectionState, sseDisconnectedAlert } = useSSE({
+    enabled: true,
+    reconnectNonce: sseReconnectNonce,
+  })
 
   return (
     <BrowserRouter>
@@ -89,6 +114,9 @@ function App() {
                   {/* Secondary nav — collapsed into dropdown */}
                   <MoreDropdown />
                 </div>
+              </div>
+              <div className="hidden sm:flex items-center pr-2">
+                <ApiKeyNavButton onClick={() => setApiKeyModalOpen(true)} />
               </div>
               <div className="flex items-center sm:hidden">
                 <button
@@ -124,15 +152,25 @@ function App() {
                 <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>
                 <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>
                 <NavLink to="/roadmap" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Roadmap</NavLink>
+                <div className="px-3 py-2">
+                  <ApiKeyNavButton onClick={() => { setMobileMenuOpen(false); setApiKeyModalOpen(true) }} />
+                </div>
               </div>
             </div>
           )}
         </nav>
-        <AlertBanner sseConnected={sseConnected} />
+        {authRequired && (
+          <DashboardAuthBanner
+            onRetry={() => setSseReconnectNonce((n) => n + 1)}
+            onOpenApiKey={() => setApiKeyModalOpen(true)}
+          />
+        )}
+        <DashboardApiKeyModal open={apiKeyModalOpen} onClose={() => setApiKeyModalOpen(false)} />
+        <AlertBanner sseDisconnectedAlert={sseDisconnectedAlert} />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Routes>
-            <Route path="/" element={<Dashboard sseEvents={sseEvents} sseConnected={sseConnected} />} />
+            <Route path="/" element={<Dashboard sseEvents={sseEvents} sseConnectionState={sseConnectionState} />} />
             <Route path="/universe" element={<Universe />} />
             <Route path="/universe/:ticker" element={<Universe />} />
             <Route path="/runs" element={<RunHistory />} />

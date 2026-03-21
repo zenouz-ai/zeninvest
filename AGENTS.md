@@ -18,6 +18,7 @@ This is an autonomous investment agent (Python 3.11+, Poetry, SQLite). All comma
 | Reset peak (clear CAUTIOUS) | `poetry run python -m src.orchestrator.main --reset-peak` |
 | Dry-run cycle | `poetry run python -m src.orchestrator.main --dry-run` |
 | Start dashboard backend | `poetry run uvicorn dashboard.backend.app.main:app --host 0.0.0.0 --port 8000` (from project root) |
+| Dashboard frontend unit tests | `cd dashboard/frontend && npm test` |
 
 ### Non-obvious caveats
 

@@ -6,6 +6,7 @@ against the full dashboard app.
 """
 
 import os
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +17,7 @@ from dashboard.backend.app.middleware.auth import (
     APIKeyMiddleware,
     SAFE_PUBLIC_PREFIXES,
     _ALWAYS_PRIVATE_PREFIXES,
+    _api_keys_match,
     get_api_key,
     warn_if_unauthenticated,
 )
@@ -178,6 +180,12 @@ class TestKeyConfigured:
         resp = self.client.get("/api/data", headers={"X-API-Key": _TEST_KEY})
         assert resp.status_code == 200
 
+    def test_api_keys_match_helper(self):
+        assert _api_keys_match(_TEST_KEY, _TEST_KEY)
+        assert not _api_keys_match("wrong", _TEST_KEY)
+        assert not _api_keys_match("", _TEST_KEY)
+        assert not _api_keys_match(_TEST_KEY, _TEST_KEY + "x")
+
     def test_post_trigger_live_correct_key_allowed(self):
         resp = self.client.post("/api/runs/trigger-live", headers={"X-API-Key": _TEST_KEY})
         assert resp.status_code == 200
@@ -263,6 +271,55 @@ class TestFullAppIntegration:
         resp = self.client.get("/health")
         assert resp.status_code == 200
         assert resp.json() == {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: SSE stream + middleware (events router, real generator + DB)
+# ---------------------------------------------------------------------------
+
+
+class TestEventsStreamAuth:
+    """GET /api/events/stream is protected like any other /api/* route."""
+
+    def setup_method(self):
+        import dashboard.backend.app.routers.events as events_mod
+
+        self._settings_patch = patch.object(
+            events_mod,
+            "settings",
+            SimpleNamespace(dashboard_enabled=True, dashboard_events_enabled=True),
+        )
+        self._settings_patch.start()
+
+        from fastapi import FastAPI
+
+        self.app = FastAPI()
+        self.app.add_middleware(APIKeyMiddleware, api_key=_TEST_KEY, public_prefixes=())
+        self.app.include_router(events_mod.router, prefix="/api/events", tags=["events"])
+        self.client = TestClient(self.app, raise_server_exceptions=False)
+
+    def teardown_method(self):
+        self._settings_patch.stop()
+
+    def test_stream_forbidden_without_key(self):
+        resp = self.client.get("/api/events/stream")
+        assert resp.status_code == 403
+
+    def test_stream_ok_with_key_first_chunk(self):
+        with self.client.stream(
+            "GET",
+            "/api/events/stream",
+            headers={"X-API-Key": _TEST_KEY},
+        ) as resp:
+            assert resp.status_code == 200
+            ctype = resp.headers.get("content-type", "")
+            assert "text/event-stream" in ctype
+            buf = b""
+            for chunk in resp.iter_bytes(chunk_size=512):
+                buf += chunk
+                if len(buf) >= 30:
+                    break
+            assert b"data:" in buf
 
 
 # ---------------------------------------------------------------------------

@@ -175,7 +175,7 @@ With VPS IP and HTTP:
   ```
   DASHBOARD_API_KEY=<your-generated-key>
   ```
-  The frontend automatically picks up `VITE_API_KEY` at build time (passed as Docker build arg). When `DASHBOARD_API_KEY` is not set, the dashboard runs in unauthenticated mode with a startup warning — acceptable for localhost-only dev.
+  The frontend automatically picks up `VITE_API_KEY` at build time (passed as Docker build arg). Operators can also set the key in the browser via **API key** in the nav (stored in `localStorage`); after save the SPA reloads. If the key is wrong or missing, a red **auth banner** explains the 403 and links to that flow. When `DASHBOARD_API_KEY` is not set, the dashboard runs in unauthenticated mode with a startup warning — acceptable for localhost-only dev.
 - **Public demo routes:** To expose read-only pages (e.g. Roadmap, Costs, Run History) without sharing the API key, add `public_routes` to `config/settings.yaml`:
   ```yaml
   dashboard:

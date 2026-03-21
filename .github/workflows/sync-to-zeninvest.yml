@@ -1,0 +1,60 @@
+# Optional: mirror this repo's `main` to https://github.com/zenouz-ai/zeninvest
+# Deferred: automatic sync on push is disabled until secret ZENINVEST_SYNC_TOKEN is set.
+# Until then, push manually (see docs/DEPLOYMENT.md §8.3).
+#
+# To enable CI sync after configuring the PAT + Actions secret, add under `on:`:
+#   push:
+#     branches: [main]
+
+name: Sync main to zenouz-ai/zeninvest
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_push:
+        description: Force-push to zeninvest (overwrites org main if histories diverged)
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: sync-zeninvest
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward push to zeninvest
+        if: ${{ !inputs.force_push }}
+        env:
+          TOKEN: ${{ secrets.ZENINVEST_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::Secret ZENINVEST_SYNC_TOKEN is not set. See docs/DEPLOYMENT.md (zeninvest mirror)."
+            exit 1
+          fi
+          git remote add zeninvest "https://x-access-token:${TOKEN}@github.com/zenouz-ai/zeninvest.git"
+          git push zeninvest "HEAD:main"
+
+      - name: Force push to zeninvest
+        if: ${{ inputs.force_push }}
+        env:
+          TOKEN: ${{ secrets.ZENINVEST_SYNC_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN}" ]; then
+            echo "::error::Secret ZENINVEST_SYNC_TOKEN is not set."
+            exit 1
+          fi
+          git remote add zeninvest "https://x-access-token:${TOKEN}@github.com/zenouz-ai/zeninvest.git"
+          git push zeninvest "HEAD:main" --force
