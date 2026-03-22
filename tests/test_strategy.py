@@ -42,6 +42,10 @@ def _good_momentum_indicators():
         "below_lower_bb": False,
         "above_50ma": True,
         "ma_20": 170.0,
+        "obv": 25000000.0,
+        "obv_rising_5d": False,
+        "volume_sma_20": 1500000.0,
+        "volume_sma_ratio_20": 1.0,
     }
 
 
@@ -56,6 +60,10 @@ def _oversold_indicators():
         "below_lower_bb": True,
         "above_50ma": False,
         "ma_20": 130.0,
+        "obv": -12000000.0,
+        "obv_rising_5d": False,
+        "volume_sma_20": 900000.0,
+        "volume_sma_ratio_20": 1.0,
     }
 
 
@@ -108,6 +116,25 @@ class TestMomentum:
         assert signal.action == "HOLD"
         assert signal.score == 0
 
+    def test_high_volume_breakout_can_promote_hold_to_buy(self):
+        indicators = _good_momentum_indicators()
+        indicators["macd_bullish_crossover"] = False
+        indicators["volume_sma_ratio_20"] = 1.8
+        indicators["obv_rising_5d"] = True
+        signal = evaluate_momentum("AAPL", indicators, 0.8)
+        assert signal.action == "BUY"
+        assert "High-volume breakout" in signal.reasoning
+        assert "OBV rising" in signal.reasoning
+
+    def test_low_volume_penalizes_momentum_score(self):
+        indicators = _good_momentum_indicators()
+        indicators["macd_bullish_crossover"] = False
+        indicators["volume_sma_ratio_20"] = 0.4
+        signal = evaluate_momentum("AAPL", indicators, 0.95)
+        assert signal.action == "HOLD"
+        assert signal.score == 60
+        assert "Volume below 50% avg" in signal.reasoning
+
 
 class TestMeanReversion:
     def test_buy_oversold_good_fundamentals(self):
@@ -139,6 +166,17 @@ class TestMeanReversion:
             "XYZ", indicators, _good_fundamentals(), current_holding=True,
         )
         assert signal.action == "SELL"
+
+    def test_volume_confirmation_can_promote_mean_reversion_buy(self):
+        indicators = _oversold_indicators()
+        indicators["volume_sma_ratio_20"] = 1.4
+        fundamentals = _good_fundamentals()
+        fundamentals["earnings_growth"] = None
+        fundamentals["trailing_pe"] = None
+        signal = evaluate_mean_reversion("XYZ", indicators, fundamentals, sector_avg_pe=None)
+        assert signal.action == "BUY"
+        assert signal.score == 75
+        assert "above-average volume" in signal.reasoning
 
 
 class TestFactor:

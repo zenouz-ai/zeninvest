@@ -230,6 +230,11 @@ class Settings:
         """Whether to fetch sector performance and economic headlines for committee context."""
         return bool(self.data_providers.get("macro_intelligence_enabled", True))
 
+    @property
+    def volume_signals_enabled(self) -> bool:
+        """Whether to compute and expose OBV / volume ratio signals in indicators."""
+        return bool(self.data_providers.get("volume_signals_enabled", True))
+
     def cache_ttl_hours(self, data_type: str) -> int:
         """Cache TTL in hours for a data type (ohlcv_indicators, fundamentals, etc.)."""
         defaults = {

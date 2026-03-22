@@ -10,7 +10,10 @@ import pandas as pd
 import ta
 
 
-def calculate_indicators(df: pd.DataFrame) -> dict[str, Any]:
+def calculate_indicators(
+    df: pd.DataFrame,
+    volume_signals_enabled: bool = True,
+) -> dict[str, Any]:
     """Calculate technical indicators from OHLCV data.
 
     Returns only indicators consumed by sub-strategies:
@@ -20,6 +23,7 @@ def calculate_indicators(df: pd.DataFrame) -> dict[str, Any]:
     - 50-day MA position: momentum BUY gate
     - 20-day MA: mean reversion exit target
     - Current price: mean reversion exit check
+    - OBV + 20-day volume ratio: optional volume confirmation (US-4.1)
 
     Args:
         df: DataFrame with columns: Open, High, Low, Close, Volume
@@ -61,7 +65,7 @@ def calculate_indicators(df: pd.DataFrame) -> dict[str, Any]:
     # 20-day MA — mean reversion exit target (price reaching MA-20 triggers SELL)
     ma_20 = close.rolling(window=20).mean().iloc[-1]
 
-    return {
+    indicators = {
         "current_price": float(current_price),
         "rsi_14": float(rsi),
         "macd_histogram": float(macd_histogram),
@@ -71,6 +75,27 @@ def calculate_indicators(df: pd.DataFrame) -> dict[str, Any]:
         "above_50ma": above_50ma,
         "ma_20": float(ma_20),
     }
+
+    if volume_signals_enabled and "Volume" in df.columns:
+        volume = df["Volume"].fillna(0.0)
+        direction = close.diff().apply(lambda change: 1 if change > 0 else -1 if change < 0 else 0)
+        direction.iloc[0] = 1
+        obv_series = (direction * volume).cumsum()
+        volume_sma_20 = volume.rolling(window=20).mean().iloc[-1]
+        volume_ratio_20 = None
+        if pd.notna(volume_sma_20) and float(volume_sma_20) > 0:
+            volume_ratio_20 = float(volume.iloc[-1] / volume_sma_20)
+
+        indicators.update(
+            {
+                "obv": float(obv_series.iloc[-1]),
+                "obv_rising_5d": bool(obv_series.iloc[-1] > obv_series.iloc[-6]),
+                "volume_sma_20": float(volume_sma_20),
+                "volume_sma_ratio_20": volume_ratio_20,
+            }
+        )
+
+    return indicators
 
 
 def calculate_relative_strength(

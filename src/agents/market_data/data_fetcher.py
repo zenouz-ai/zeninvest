@@ -223,7 +223,10 @@ class DataFetcher:
         # OHLCV + Technical Indicators
         df = self.get_ohlcv(yf_ticker, period="1y")
         if not df.empty:
-            result["indicators"] = calculate_indicators(df)
+            result["indicators"] = calculate_indicators(
+                df,
+                volume_signals_enabled=self.settings.volume_signals_enabled,
+            )
             benchmark_df = self.get_benchmark_data()
             if not benchmark_df.empty:
                 result["relative_strength_6m"] = calculate_relative_strength(df, benchmark_df)
@@ -254,7 +257,10 @@ class DataFetcher:
         # OHLCV + Technical Indicators
         df = self.get_ohlcv(yf_ticker, period="1y")
         if not df.empty:
-            result["indicators"] = calculate_indicators(df)
+            result["indicators"] = calculate_indicators(
+                df,
+                volume_signals_enabled=self.settings.volume_signals_enabled,
+            )
 
             # Relative strength vs S&P 500
             benchmark_df = self.get_benchmark_data()

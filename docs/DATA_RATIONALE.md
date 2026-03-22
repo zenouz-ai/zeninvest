@@ -39,14 +39,14 @@ Only paths 1-4 matter for decision quality. Path 5 is for post-hoc analysis only
 | High | yfinance `download()` | Per cycle | Path 1 | Feeds Bollinger Bands |
 | Low | yfinance `download()` | Per cycle | Path 1 | Feeds Bollinger Bands |
 | Close | yfinance `download()` | Per cycle | Path 1 | Core input for all indicators |
-| Volume | yfinance `download()` | Per cycle | **NONE** | Fetched but never used |
+| Volume | yfinance `download()` | Per cycle | Path 1 | Feeds OBV and 20-day volume ratio confirmation (US-4.1) |
 
 **Period:** 1 year daily (needed for 200-day MA calculation, ~252 trading days).
 
 **Rationale:** OHLCV is the foundation of technical analysis. Close prices drive RSI, MACD,
-moving averages, and Bollinger Bands. High/Low feed Bollinger Bands. Volume is not currently
-used — a potential future enhancement for confirming price moves, but omitting it keeps the
-model simpler.
+moving averages, and Bollinger Bands. High/Low feed Bollinger Bands. Volume now supports
+breakout / oversold confirmation via OBV and the current-volume-to-20-day-average ratio,
+giving the strategy layer a low-cost confirmation signal without adding a new data source.
 
 **Backtesting:** The backtest engine (`src/backtesting/`) uses the same OHLCV schema. When
 `data/backtest/<TICKER>.csv` is missing, it fetches from yfinance for the config date range
@@ -67,8 +67,14 @@ and caches to CSV. This enables historical validation without pre-downloading da
 | `macd_bearish_crossover` | Momentum | True = SELL trigger for existing holdings. | Triggers SELL |
 | `above_50ma` | Momentum | True = +25, also required for BUY action. | +25 + gate |
 | `below_lower_bb` | Mean Rev | True = +25 (price at statistical extreme). | +25 points |
+| `volume_sma_ratio_20` | Momentum | High-volume breakout (>=1.5x avg) = +10. <0.5x avg = -10. | +/-10 points |
+| `volume_sma_ratio_20` | Mean Rev | Oversold on above-average volume (>=1.2x avg) = +10. <0.5x avg = -10. | +/-10 points |
+| `obv_rising_5d` | Momentum | Rising OBV confirms accumulation and adds conviction. | +5 points |
 | `current_price` | Mean Rev | Compared to MA-20 for exit signal. | Triggers SELL |
 | `ma_20` | Mean Rev | Price reaching MA-20 = SELL exit for mean rev trades. | Triggers SELL |
+
+`volume_sma_20` is also logged in the indicator payload as the denominator behind `volume_sma_ratio_20`,
+but it is not scored directly.
 
 ### REMOVED — Never consumed by any strategy or rule
 
@@ -87,9 +93,10 @@ and caches to CSV. This enables historical validation without pre-downloading da
 | `death_cross` | Same as golden cross — too rare and never used. |
 | `atr_14` | Average True Range. Not used in any strategy, risk rule, or prompt. |
 
-**Simplification rationale:** Reducing from 20 to 8 output fields. The removed indicators
-were computed but never read, creating a false sense of thoroughness. The 8 kept indicators
-fully cover the three active strategies (momentum, mean reversion, factor via relative strength).
+**Simplification rationale:** The indicator set remains intentionally compact. After US-4.1,
+the active output contains 12 fields when volume signals are enabled: the original 8 core
+signals plus 4 volume-aware fields (`obv`, `obv_rising_5d`, `volume_sma_20`,
+`volume_sma_ratio_20`). Each additional field now maps to a concrete scoring or review path.
 
 ---
 
@@ -494,4 +501,4 @@ Used for batch universe enrichment and Agentic Research. Limits: Brave Search 2,
 - [Architecture](ARCHITECTURE.md) — system diagrams and full pipeline flow
 - [Governance](GOVERNANCE.md) — risk rules that consume these data points
 - [Competitive Analysis](COMPETITIVE_ANALYSIS.md) — how our data choices compare to alternatives
-- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — planned data enhancements (volume, earnings, sector rotation)
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — delivered and planned data enhancements (volume delivered; earnings and sector rotation still planned)

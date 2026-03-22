@@ -52,6 +52,12 @@ def format_market_context(market_context: dict[str, Any]) -> str:
             lines.append(f"- Below Lower Bollinger Band: {'Yes (oversold)' if ind['below_lower_bb'] else 'No'}")
         if "ma_20" in ind:
             lines.append(f"- 20-day MA: ${ind['ma_20']:.2f}")
+        if ind.get("obv") is not None:
+            lines.append(f"- OBV: {ind['obv']:.0f}")
+        if ind.get("volume_sma_ratio_20") is not None:
+            lines.append(f"- Volume vs 20-day avg: {ind['volume_sma_ratio_20']:.2f}x")
+        if "obv_rising_5d" in ind:
+            lines.append(f"- OBV Rising (5d): {'Yes' if ind['obv_rising_5d'] else 'No'}")
         sections.append("\n".join(lines))
 
     # --- Fundamentals ---

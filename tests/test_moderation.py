@@ -58,6 +58,9 @@ def sample_market_context():
             "above_50ma": True,
             "below_lower_bb": False,
             "ma_20": 183.20,
+            "obv": 24500000.0,
+            "obv_rising_5d": True,
+            "volume_sma_ratio_20": 1.65,
         },
         "fundamentals": {
             "trailing_pe": 28.5,
@@ -306,6 +309,8 @@ class TestContextFormatter:
         text = format_market_context(sample_market_context)
         assert "Technical Indicators" in text
         assert "RSI(14): 55.3" in text
+        assert "OBV: 24500000" in text
+        assert "Volume vs 20-day avg: 1.65x" in text
         assert "Fundamentals" in text
         assert "P/E: 28.5" in text
         assert "Market Conditions" in text

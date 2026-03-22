@@ -50,6 +50,7 @@ data_providers:
   finnhub_base_url: https://finnhub.io/api/v1
   alpha_vantage_base_url: https://www.alphavantage.co/query
   macro_intelligence_enabled: true
+  volume_signals_enabled: true   # US-4.1: compute OBV + 20-day volume ratio for signal confirmation
   sector_fallback_yfinance: true  # Use SPDR ETFs when Alpha Vantage SECTOR fails
   cache_ttl_hours:
     ohlcv_indicators: 4

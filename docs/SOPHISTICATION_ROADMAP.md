@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-21
+last_updated: 2026-03-22
 ---
 
 # Sophistication Roadmap
@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **15** · Pipeline **22** (order by priority and feasibility below)
+**At a glance:** Delivered **16** · Pipeline **21** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -35,6 +35,7 @@ timeline
         US-1.7 : Dashboard & Visualisation
         US-1.4 : Deploy POC to VPS
         US-4.4 : Agentic Research
+        US-4.1 : Volume Signals
         US-7.0 : Production Audit & Safety Fixes
         US-7.0a : Agent Logic Audit Fixes
         US-7.0b : Formal Verification Fixes
@@ -48,7 +49,6 @@ timeline
         US-3.1 : Risk-Parity Sizing
         US-2.3 : Moderator Effectiveness
         US-2.4 : Nemotron Integration Investigation
-        US-4.1 : Volume Signals
         US-5.2 : Parameter Sensitivity
         US-3.2 : Regime Detection
         US-3.3 : Correlation Screening
@@ -83,6 +83,7 @@ timeline
 | | 13 | US-7.0a | Agent Logic Audit Fixes (27 findings; 5C+7H all fixed, 36 tests) |
 | | 14 | US-7.0b | Formal Verification Fixes (18 findings; Phase 1+2: scheduler safety, crash recovery, DB atomicity, 18 tests) |
 | | 15 | US-7.1 | Dashboard Authentication (X-API-Key middleware, `hmac.compare_digest`, auth banner + API key modal, SSE 403 alignment; 36 tests in `test_dashboard_auth.py`) |
+| | 16 | US-4.1 | Volume Signals (OBV + 20-day volume ratio, `volume_signals_enabled` flag, momentum/mean-reversion scoring, moderation context, 6 tests) |
 | **Pipeline** | 1 | US-4.5 | Proactive Macro News Intelligence |
 | | 2 | US-1.6 | Slack NL Trade Commands |
 | | 3 | US-1.9 | Conversational Trading Workflow |
@@ -91,19 +92,18 @@ timeline
 | | 6 | US-3.1 | Risk-Parity Sizing |
 | | 7 | US-2.3 | Moderator Effectiveness |
 | | 8 | US-2.4 | Nemotron Integration Investigation |
-| | 9 | US-4.1 | Volume Signals |
-| | 10 | US-5.2 | Parameter Sensitivity |
-| | 11 | US-3.2 | Regime Detection |
-| | 12 | US-3.3 | Correlation Screening |
-| | 13 | US-4.2 | Earnings Calendar |
-| | 14 | US-4.3 | Sector Rotation |
-| | 15 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
-| | 16 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
-| | 17 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
-| | 18 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
-| | 20 | US-6.1 | ML Trade Scoring (investigation) |
-| | 21 | US-6.2 | Journal Embeddings |
-| | 22 | US-6.3 | RL Investigation |
+| | 9 | US-5.2 | Parameter Sensitivity |
+| | 10 | US-3.2 | Regime Detection |
+| | 11 | US-3.3 | Correlation Screening |
+| | 12 | US-4.2 | Earnings Calendar |
+| | 13 | US-4.3 | Sector Rotation |
+| | 14 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
+| | 15 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
+| | 16 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
+| | 17 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
+| | 18 | US-6.1 | ML Trade Scoring (investigation) |
+| | 19 | US-6.2 | Journal Embeddings |
+| | 20 | US-6.3 | RL Investigation |
 | **Open-Source / Community** | 1 | US-8.1 | Open-Source Launch Preparation |
 
 ---
@@ -132,7 +132,7 @@ timeline
 | **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; soft signal to committee | **Planned** |
 | **US-3.4** | UOV Ranking & Queueing | Hybrid score, z-score, EWMA; ranked BUY execution; queue + swap suggestions | Solves capital saturation; deterministic opportunity ranking | **Delivered** |
 | **US-3.5** | Intelligent Order Management | Stop-loss (GTC) after BUY, ATR-based stop reassessment, software trailing stops, and limit dip-buy orders | More robust downside protection and smarter entries without manual intervention | **Delivered** |
-| **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Planned** |
+| **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Delivered** |
 | **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
 | **US-4.4** | Agentic Research | 5 tools (web_search, news_search, sector_search, sec_search, macro_search) with caps 20/8/7 (total 35/cycle). All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have full tool-use loops. Pipeline-wide shared budget enforcement. Brave primary, Tavily fallback. SEC EDGAR free. Latency/cost recorded. 37 unit tests. Phase 0/0.2 notebooks validated. | Stale context mitigation, follow-up ability, broader coverage | **Delivered** |
@@ -609,12 +609,14 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Volume confirms price moves; zero-cost enhancement  
 **Effort:** Small (2–3 days)  
 **Data Sources:** Existing yfinance OHLCV (volume already fetched)  
-**Stage:** Planned  
+**Stage:** Delivered  
+
+**Status (2026-03-22):** Delivered
 
 **Acceptance Criteria:**
-- [ ] OBV; volume SMA ratio (current / 20-day avg)
-- [ ] Sub-strategy: high-volume breakouts +10; volume < 50% avg = -10
-- [ ] Logged in indicators output
+- [x] OBV; volume SMA ratio (current / 20-day avg)
+- [x] Sub-strategy: high-volume breakouts +10; volume < 50% avg = -10
+- [x] Logged in indicators output
 
 ---
 

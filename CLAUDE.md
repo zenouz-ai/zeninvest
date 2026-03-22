@@ -410,7 +410,7 @@ Files to check on every feature:
 - **Key docs:** `docs/SOPHISTICATION_ROADMAP.md` (backlog), `docs/COMPETITIVE_ANALYSIS.md` (positioning)
 
 
-## Near-term delivery focus (updated 2026-03-21)
+## Near-term delivery focus (updated 2026-03-22)
 
 **Delivered:**
 - **US-1.5** Chat Interface & Real-Time Trade Alerts
@@ -421,9 +421,9 @@ Files to check on every feature:
 - **US-4.4** Agentic Research — 5 tools, all 3 members have tool-use loops, shared pipeline-wide budget, 37 tests
 - **US-7.0** Production Audit & Safety Fixes — 34 findings (3C/6H/12M/13L); Phase 1+2 delivered, see `docs/TRADING_SYSTEM_AUDIT.md`
 - **US-7.1** Dashboard Authentication — `APIKeyMiddleware` on all `/api/*` endpoints; `DASHBOARD_API_KEY` env var; frontend `X-API-Key` interceptor; public demo routes (`public_routes` config); 33 tests
+- **US-4.1** Volume Signals — `data_providers.volume_signals_enabled`; OBV + 20-day volume ratio in indicator output; momentum/mean-reversion scoring; moderator context surfaced; 6 new tests
 
 **Week 1 sprint (in-progress — see `docs/SPRINT_WEEK_1.md` for full detail):**
-- **US-4.1** Volume Signals — OBV + volume SMA ratio → sub-strategy scoring (Days 1–2)
 - **US-7.4** Integration Test Coverage — `run_cycle()` dry-run + state machine transition tests (Days 2–4, parallel)
 - **US-3.1** Risk-Parity Position Sizing — inverse-vol sizing, configurable lookback and floor (Days 2–5)
 - **US-4.5** Proactive Macro Intelligence — daily scan, second-order reasoning, pipeline injection, audit trail (Days 3–7)

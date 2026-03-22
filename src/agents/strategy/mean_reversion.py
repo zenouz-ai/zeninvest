@@ -39,6 +39,7 @@ def evaluate_mean_reversion(
     below_lower_bb = indicators.get("below_lower_bb", False)
     current_price = indicators.get("current_price", 0)
     ma_20 = indicators.get("ma_20", 0)
+    volume_ratio_20 = indicators.get("volume_sma_ratio_20")
 
     # Fundamentals
     pe = fundamentals.get("trailing_pe")
@@ -77,6 +78,14 @@ def evaluate_mean_reversion(
     if below_lower_bb:
         score += 25
         reasons.append("Below lower Bollinger Band")
+
+    if volume_ratio_20 is not None:
+        if below_lower_bb and volume_ratio_20 >= 1.2:
+            score += 10
+            reasons.append(f"Oversold on above-average volume ({volume_ratio_20:.2f}x avg)")
+        elif volume_ratio_20 < 0.5:
+            score -= 10
+            reasons.append(f"Volume below 50% avg ({volume_ratio_20:.2f}x)")
 
     # Fundamental checks
     fundamental_ok = True

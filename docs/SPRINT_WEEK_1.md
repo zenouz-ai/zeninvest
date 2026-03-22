@@ -2,7 +2,7 @@
 tags: [sprint, planning, week-1, delivery, zeninvest]
 status: active
 created: 2026-03-21
-last_updated: 2026-03-21
+last_updated: 2026-03-22
 ---
 
 # Sprint Plan — Week 1 (ZenInvest)
@@ -18,7 +18,7 @@ last_updated: 2026-03-21
 | Days  | ID      | Story                        | Status     | Notes                                          |
 |-------|---------|------------------------------|------------|------------------------------------------------|
 | 1     | US-7.1  | Dashboard Authentication     | ✅ Done     | Already delivered; unblocks safe VPS exposure  |
-| 1–2   | US-4.1  | Volume Signals               | ⬜ Pending  | Small, self-contained, ~1 day                  |
+| 1–2   | US-4.1  | Volume Signals               | ✅ Done     | Delivered: indicators, scoring, config, tests  |
 | 2–4   | US-7.4  | Integration Test Coverage    | ⬜ Pending  | Can run in parallel with US-3.1                |
 | 2–5   | US-3.1  | Risk-Parity Sizing           | ⬜ Pending  | No deps, ~3 days                               |
 | 3–7   | US-4.5  | Proactive Macro Intelligence | ⬜ Pending  | Largest; phased delivery                       |
@@ -49,28 +49,31 @@ docker compose up -d --build
 ---
 
 ## US-4.1 — Volume-Weighted Signals
+**Status:** ✅ Delivered (2026-03-22)
 **Days:** 1–2 | **Effort:** Small (~1 day) | **Priority:** P1
 **Roadmap:** `docs/SOPHISTICATION_ROADMAP.md` § US-4.1
 
-**What to build:**
+**What was done:**
 - OBV (On-Balance Volume) and volume SMA ratio indicators
-- Feed into sub-strategy scoring (momentum / mean-reversion / factor)
+- Feed into sub-strategy scoring (momentum / mean-reversion)
 - No new DB tables needed; indicators added to existing `market_data_cache` OHLCV payload
 - Disable switch: `data_providers.volume_signals_enabled` in `settings.yaml`
+- Surface the new fields in moderator context formatting for review transparency
 
 **Key files to touch:**
 - `src/agents/strategy/momentum.py` — add OBV signal
 - `src/agents/strategy/mean_reversion.py` — add volume SMA ratio
 - `src/agents/market_data/` — compute indicators during OHLCV fetch
+- `src/agents/moderation/context.py` — expose OBV / volume ratio in committee context
 - `config/settings.yaml` — `volume_signals_enabled: true`
 - Tests: `tests/test_volume_signals.py` (new)
 
 **Acceptance criteria:**
-- [ ] OBV computed from OHLCV and included in strategy context
-- [ ] Volume SMA ratio (current vol / 20-day avg) computed and included
-- [ ] Both signals feed into at least one sub-strategy score
-- [ ] `volume_signals_enabled: false` disables both with no behaviour change
-- [ ] Unit tests for indicator computation with synthetic OHLCV data
+- [x] OBV computed from OHLCV and included in strategy context
+- [x] Volume SMA ratio (current vol / 20-day avg) computed and included
+- [x] Both signals feed into at least one sub-strategy score
+- [x] `volume_signals_enabled: false` disables both with no behaviour change
+- [x] Unit tests for indicator computation with synthetic OHLCV data
 
 ---
 

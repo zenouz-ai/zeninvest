@@ -23,6 +23,7 @@ def evaluate_momentum(
     """Evaluate momentum signals for a stock.
 
     BUY: above 50-day MA, RSI 50-70, positive MACD crossover, RS>1.0 vs S&P.
+    Volume can confirm breakouts via OBV and 20-day average volume ratio.
     SELL: RSI>80 OR below 50-day MA OR MACD bearish crossover.
     """
     if "error" in indicators:
@@ -36,6 +37,8 @@ def evaluate_momentum(
     macd_bullish = indicators.get("macd_bullish_crossover", False)
     macd_bearish = indicators.get("macd_bearish_crossover", False)
     macd_histogram = indicators.get("macd_histogram", 0)
+    volume_ratio_20 = indicators.get("volume_sma_ratio_20")
+    obv_rising_5d = indicators.get("obv_rising_5d", False)
     rs = relative_strength or 0.0
 
     score = 0.0
@@ -87,6 +90,18 @@ def evaluate_momentum(
     elif rs > 0.9:
         score += 10
         reasons.append(f"RS near benchmark: {rs:.2f}")
+
+    if volume_ratio_20 is not None:
+        if above_50ma and volume_ratio_20 >= 1.5:
+            score += 10
+            reasons.append(f"High-volume breakout ({volume_ratio_20:.2f}x avg)")
+        elif volume_ratio_20 < 0.5:
+            score -= 10
+            reasons.append(f"Volume below 50% avg ({volume_ratio_20:.2f}x)")
+
+    if obv_rising_5d:
+        score += 5
+        reasons.append("OBV rising over 5 days")
 
     score = max(0, min(100, score))
     action = "BUY" if score >= 75 and above_50ma else "HOLD"
