@@ -9,9 +9,11 @@ from src.agents.execution.order_manager import OrderManager
 from src.data.database import get_session
 from src.data.models import Order
 from src.utils.config import get_settings
+from src.utils.logger import get_logger
 
 from ..schemas import FailedOrderHealthSchema, OrderSchema, OrdersHealthSchema
 
+logger = get_logger("dashboard.orders")
 router = APIRouter()
 settings = get_settings()
 
@@ -101,7 +103,11 @@ async def get_orders_health(
         "live_fetch_error": None,
     }
     if reconcile_pending:
-        reconciled = OrderManager(dry_run=False).reconcile_pending_stop_orders_with_t212()
+        try:
+            reconciled = OrderManager(dry_run=False).reconcile_pending_stop_orders_with_t212()
+        except Exception as e:
+            logger.error("Failed to reconcile pending stops: %s", e)
+            reconciled["live_fetch_error"] = str(e)
     else:
         session = get_session()
         try:

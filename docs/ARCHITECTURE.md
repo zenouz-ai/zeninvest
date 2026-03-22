@@ -233,7 +233,34 @@ React frontend (SPA, served by FastAPI when dist/ exists)
 
 **CORS:** Dashboard API uses configurable CORS origins via `dashboard.cors_origins` in `config/settings.yaml`. Defaults to localhost (`:3000`, `:8000`) when absent. For VPS deployment, set to the VPS IP or domain. Individual moderators self-check budgets, so the degradation level is primarily for reporting.
 
+**Authentication (US-7.1):** All `/api/*` endpoints are protected by `APIKeyMiddleware` when `DASHBOARD_API_KEY` env var is set. The middleware validates the `X-API-Key` header using `hmac.compare_digest` (constant-time, UTF-8 encoded). Configurable `public_routes` (list of `/api/*` path prefixes) allows GET requests to bypass auth for public/demo exposure; write endpoints (`/api/system/*`, `/api/runs/trigger*`) are always protected. When `DASHBOARD_API_KEY` is unset, the API runs in unauthenticated dev mode with a startup warning. Frontend reads `VITE_API_KEY` at build time or falls back to `localStorage.getItem('dashboard_api_key')`; a nav "API key" modal saves/clears the key. Axios response interceptor + SSE 403 detection set a global auth banner. SSE uses `fetch()` + stream parsing (not native `EventSource`) so the `X-API-Key` header can be sent; exponential backoff on disconnect, no reconnect on 403.
+
 **Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. The orchestrator **normalises T212 positions** before saving to `portfolio_snapshots.positions_json` — converting `instrument.ticker` and `walletImpact` (currentValue, unrealizedProfitLoss, totalCost) into flat fields (ticker, value_gbp, pnl_gbp, pnl_pct) for dashboard display. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL when the SPA is same-origin (e.g. `http://VPS_IP:8000`). With `DASHBOARD_API_KEY` set, the browser opens the stream via **`fetch()`** and **`X-API-Key`** (native `EventSource` cannot send that header).
+
+## Risk-Parity Position Sizing (US-3.1)
+
+When `risk.risk_parity_enabled: true`, BUY allocations are computed using 60-day inverse-volatility weighting instead of relying solely on Claude's target allocation. The pipeline:
+
+1. **Volatility estimation** — `RiskParitySizer.compute_annualized_volatility()` computes realized vol from close prices over `risk_parity_lookback_days` (default 60), floored at `risk_parity_vol_floor` (default 0.05).
+2. **Inverse-vol weighting** — Each ticker's ideal allocation is proportional to `1/vol`, giving lower-volatility stocks larger positions.
+3. **Three-tier scaling** — The ideal allocation is scaled down by: (a) deployable cash budget, (b) target portfolio vol budget (`risk_parity_target_vol`, default 0.15), and (c) `max_single_stock_pct` cap.
+4. **Delta-to-target execution** — BUY size is the increment from current allocation to the risk-parity target, not the full target. This avoids over-buying existing positions.
+5. **Fallback** — When a ticker has insufficient price history, Claude's original target (capped at `max_single_stock_pct`) is used with `applied=False`.
+
+Config validation: `lookback_days >= 2`, `vol_floor >= 0`, `target_vol > vol_floor` (clamped with warning if violated). Strategy/risk waterfall exposes `claude_target_pct` vs `risk_parity_target_pct` for audit.
+
+## Volume Signals (US-4.1)
+
+When `data_providers.volume_signals_enabled: true`, two volume indicators are computed in `indicators.py` alongside price-based signals:
+
+1. **OBV (On-Balance Volume)** — Cumulative volume flow: adds volume on up-days, subtracts on down-days. Included in indicator output as `obv`.
+2. **20-day volume ratio** — Current volume divided by 20-day average volume. Included as `volume_ratio_20d`.
+
+**Sub-strategy integration:**
+- **Momentum** (`momentum.py`): +10 score for breakout confirmation (price above SMA-20 + volume ratio > 1.5); -10 for price weakness on high volume (price below SMA-20 + volume ratio > 1.5).
+- **Mean-reversion** (`mean_reversion.py`): +10 for oversold + volume confirmation (RSI < 35 + volume ratio > 1.3); -10 for overbought + high volume (RSI > 70 + volume ratio > 1.5).
+
+Moderator context receives volume signal summaries for qualitative reasoning. Feature flag ensures zero impact when disabled.
 
 ## Moderation Consensus Logic
 
