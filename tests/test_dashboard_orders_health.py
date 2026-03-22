@@ -53,16 +53,16 @@ def test_orders_health_excludes_resolved_old_failures():
     with patch("dashboard.backend.app.routers.orders.get_session", side_effect=lambda: Session()), patch(
         "dashboard.backend.app.routers.orders.settings"
     ) as mock_settings, patch(
-        "dashboard.backend.app.routers.orders.OrderManager.reconcile_pending_stop_orders_with_t212",
-        return_value={
+        "dashboard.backend.app.routers.orders.OrderManager"
+    ) as mock_om_cls:
+        mock_settings.dashboard_enabled = True
+        mock_om_cls.return_value.reconcile_pending_stop_orders_with_t212.return_value = {
             "pending_local_count": 3,
             "pending_live_count": 1,
             "stale_pending_count": 2,
             "reconciled_pending_count": 2,
             "live_fetch_error": None,
-        },
-    ):
-        mock_settings.dashboard_enabled = True
+        }
         result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
 
     assert result.failed_open_count == 1
@@ -98,16 +98,16 @@ def test_orders_health_fail_open_when_live_fetch_fails():
     with patch("dashboard.backend.app.routers.orders.get_session", side_effect=lambda: Session()), patch(
         "dashboard.backend.app.routers.orders.settings"
     ) as mock_settings, patch(
-        "dashboard.backend.app.routers.orders.OrderManager.reconcile_pending_stop_orders_with_t212",
-        return_value={
+        "dashboard.backend.app.routers.orders.OrderManager"
+    ) as mock_om_cls:
+        mock_settings.dashboard_enabled = True
+        mock_om_cls.return_value.reconcile_pending_stop_orders_with_t212.return_value = {
             "pending_local_count": 5,
             "pending_live_count": 0,
             "stale_pending_count": 0,
             "reconciled_pending_count": 0,
             "live_fetch_error": "rate limited",
-        },
-    ):
-        mock_settings.dashboard_enabled = True
+        }
         result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
 
     assert result.failed_open_count == 1
@@ -148,16 +148,16 @@ def test_orders_health_dry_run_does_not_resolve_failed():
     with patch("dashboard.backend.app.routers.orders.get_session", side_effect=lambda: Session()), patch(
         "dashboard.backend.app.routers.orders.settings"
     ) as mock_settings, patch(
-        "dashboard.backend.app.routers.orders.OrderManager.reconcile_pending_stop_orders_with_t212",
-        return_value={
+        "dashboard.backend.app.routers.orders.OrderManager"
+    ) as mock_om_cls:
+        mock_settings.dashboard_enabled = True
+        mock_om_cls.return_value.reconcile_pending_stop_orders_with_t212.return_value = {
             "pending_local_count": 0,
             "pending_live_count": 0,
             "stale_pending_count": 0,
             "reconciled_pending_count": 0,
             "live_fetch_error": None,
-        },
-    ):
-        mock_settings.dashboard_enabled = True
+        }
         result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
 
     assert result.failed_open_count == 1

@@ -1285,9 +1285,9 @@ class Orchestrator:
         else:
             # Fallback: piece together from cash + positions (cash endpoint may omit reserved)
             if isinstance(cash_data, dict):
-                cash = float(cash_data.get("free", cash_data.get("availableToTrade", 0)))
+                cash = float(cash_data.get("free") or cash_data.get("availableToTrade") or 0)
                 reserved = float(
-                    cash_data.get("reservedForOrders", cash_data.get("blocked", cash_data.get("reserved", 0)))
+                    cash_data.get("reservedForOrders") or cash_data.get("blocked") or cash_data.get("reserved") or 0
                 )
             else:
                 cash = float(cash_data)
@@ -1302,7 +1302,7 @@ class Orchestrator:
 
         # Cash for allocation logic: free/available only
         if isinstance(cash_data, dict):
-            cash = float(cash_data.get("free", cash_data.get("availableToTrade", 0)))
+            cash = float(cash_data.get("free") or cash_data.get("availableToTrade") or 0)
         else:
             cash = float(cash_data)
         invested = float((summary.get("investments") or {}).get("currentValue", 0) or 0)

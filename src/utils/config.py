@@ -1,11 +1,14 @@
 """Configuration loader for the investment agent."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
 
 import yaml
 from dotenv import load_dotenv
+
+_config_logger = logging.getLogger("investment_agent.config")
 
 
 # Load .env from project root
@@ -167,15 +170,25 @@ class Settings:
 
     @property
     def risk_parity_lookback_days(self) -> int:
-        return int(self.risk.get("risk_parity_lookback_days", 60))
+        val = int(self.risk.get("risk_parity_lookback_days", 60))
+        return max(val, 2)
 
     @property
     def risk_parity_vol_floor(self) -> float:
-        return float(self.risk.get("risk_parity_vol_floor", 0.05))
+        val = float(self.risk.get("risk_parity_vol_floor", 0.05))
+        return max(val, 0.0)
 
     @property
     def risk_parity_target_vol(self) -> float:
-        return float(self.risk.get("risk_parity_target_vol", 0.15))
+        val = float(self.risk.get("risk_parity_target_vol", 0.15))
+        floor = self.risk_parity_vol_floor
+        if val <= floor:
+            _config_logger.warning(
+                "risk_parity_target_vol (%.4f) <= vol_floor (%.4f); clamping to vol_floor + 0.01",
+                val, floor,
+            )
+            return floor + 0.01
+        return val
 
     # --- Strategy ---
     @property

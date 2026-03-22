@@ -50,15 +50,12 @@ class RiskParitySizer:
     @staticmethod
     def _risk_load(weights_pct: dict[str, float], vols: dict[str, float]) -> float:
         """Approximate portfolio volatility from weighted vols, assuming zero correlation."""
-        return float(
-            sqrt(
-                sum(
-                    ((float(weight_pct) / 100.0) * float(vols[ticker])) ** 2
-                    for ticker, weight_pct in weights_pct.items()
-                    if ticker in vols and weight_pct > 0
-                )
-            )
+        total = sum(
+            ((float(weight_pct) / 100.0) * float(vols[ticker])) ** 2
+            for ticker, weight_pct in weights_pct.items()
+            if ticker in vols and weight_pct > 0
         )
+        return float(sqrt(max(0.0, total)))
 
     def size_buys(
         self,
@@ -133,7 +130,7 @@ class RiskParitySizer:
                     ticker=ticker,
                     claude_target_pct=claude_target,
                     risk_parity_target_pct=fallback_targets[ticker],
-                    trailing_vol_pct=(vols.get(ticker) * 100.0) if ticker in vols else None,
+                    trailing_vol_pct=round(vols[ticker] * 100.0, 4) if ticker in vols else None,
                     applied=False,
                     sizing_reason="fallback_missing_history",
                 )
