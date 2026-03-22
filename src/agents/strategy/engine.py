@@ -502,6 +502,9 @@ class StrategyEngine:
                     ticker=decision.get("ticker", ""),
                     action=decision.get("action", ""),
                     target_allocation_pct=decision.get("target_allocation_pct"),
+                    risk_parity_target_allocation_pct=decision.get("risk_parity_target_allocation_pct"),
+                    risk_parity_trailing_vol_pct=decision.get("risk_parity_trailing_vol_pct"),
+                    risk_parity_applied=decision.get("risk_parity_applied"),
                     conviction=decision.get("conviction"),
                     primary_strategy=decision.get("primary_strategy"),
                     reasoning=decision.get("reasoning"),
@@ -521,6 +524,34 @@ class StrategyEngine:
             session.commit()
         except Exception as e:
             logger.error(f"Failed to log strategy decisions: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
+    def apply_risk_parity_metadata(self, cycle_id: str, decisions: list[dict[str, Any]]) -> None:
+        """Persist risk-parity fields after strategy rows are initially logged."""
+        session = get_session()
+        try:
+            by_ticker = {
+                str(decision.get("ticker", "")).strip().upper(): decision
+                for decision in decisions
+                if decision.get("ticker")
+            }
+            rows = (
+                session.query(StrategyDecision)
+                .filter(StrategyDecision.cycle_id == cycle_id)
+                .all()
+            )
+            for row in rows:
+                decision = by_ticker.get(str(row.ticker).strip().upper())
+                if decision is None:
+                    continue
+                row.risk_parity_target_allocation_pct = decision.get("risk_parity_target_allocation_pct")
+                row.risk_parity_trailing_vol_pct = decision.get("risk_parity_trailing_vol_pct")
+                row.risk_parity_applied = decision.get("risk_parity_applied")
+            session.commit()
+        except Exception as e:
+            logger.error(f"Failed to apply risk-parity metadata: {e}")
             session.rollback()
         finally:
             session.close()

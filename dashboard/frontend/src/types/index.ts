@@ -65,6 +65,10 @@ export interface ModerationEntry {
 export interface StrategyFull {
   action: string
   conviction?: number
+  target_allocation_pct?: number
+  risk_parity_target_allocation_pct?: number
+  risk_parity_trailing_vol_pct?: number
+  risk_parity_applied?: boolean
   primary_strategy?: string
   reasoning?: string
   timestamp: string
@@ -84,6 +88,7 @@ export interface StrategyFull {
 export interface RiskFull {
   verdict: string
   reasoning?: string
+  proposed_allocation_pct?: number
   adjusted_allocation_pct?: number
   triggered_rules_json?: string
   rules_checked_json?: string

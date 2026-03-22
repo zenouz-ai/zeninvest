@@ -1,7 +1,7 @@
 ---
 tags: [dashboard, frontend, api]
 status: current
-last_updated: 2026-03-18
+last_updated: 2026-03-22
 ---
 
 # Dashboard System
@@ -81,6 +81,33 @@ Resolved final 9 findings + 2 bonus features, completing all 28/28 UX audit item
 - **Position sparklines** (`Sparkline.tsx`, `Portfolio.tsx`): Inline SVG sparkline per position showing P&L % trend across portfolio history snapshots. Directional colouring (green up, red down). Desktop + mobile (3A bonus).
 - **Decision pipeline waterfall** (`PipelineWaterfall.tsx`, `LLMOutputBlocks.tsx`): Horizontal Strategy → Moderation → Risk → Execution flow with colour-coded stage nodes (pass/block/skip/pending). Shown at top of every LLM Output Panel (3B bonus).
 
+### Visual Design System — US-1.7.3 (delivered 2026-03-22)
+
+Formalised the ZENOUZ.ai visual language from `dashboard/frontend/dashboard-style-guide.md`:
+
+- **Syne font** added (`index.html`) — headings and KPI values globally use Syne; body stays Outfit; tickers use JetBrains Mono
+- **Full CSS token system** (`index.css`): `--color-bg/surface/surface-strong/surface-soft`, `--color-text/text-muted/text-dim`, `--color-border/border-strong`, soft accent fills (`--color-violet-soft/cyan-soft/emerald-soft`), shadow system (`--shadow-panel/glow/glow-strong/card-hover`), radius tokens (`--radius-xs` 0.75rem → `--radius-lg` 2rem), transition tokens (`--transition-fast/base`)
+- **Brand gradient** updated to violet→cyan→emerald (previously cyan→emerald only)
+- **Glass-dark `.card`** treatment: `radial-gradient` highlight at top + dark fill + 1.5rem radius + `--shadow-panel`; hover lifts to `--shadow-card-hover`
+- **`.dashboard-panel`** hero variant: atmospheric cyan/violet glow, 2rem radius, stronger border
+- **`.btn-primary`** now uses gradient fill + `--shadow-glow`; dark text for contrast
+- **Pill classes** (`.pill`, `.pill-cyan/emerald/violet/loss/warning/dim`) — base for `StatusPill`
+- **72px violet atmospheric grid** — replaces 24px white grid; fades at edges
+- **Tailwind extensions**: `font-heading` (Syne), `borderRadius.panel` (1.5rem) / `hero` (2rem), `boxShadow.panel/glow/glow-strong/card-hover`, `animate-fade-up` keyframe
+- **App shell** (`App.tsx`): sticky blurred nav (`backdrop-blur: 16px`, `rgba(6,6,10,0.80)`), `border-terminal-border-strong`, pill active state (`bg-cyan/10 text-cyan border-cyan/25`) replacing `border-b-2` underline
+- **`prefers-reduced-motion`** respected globally
+
+**Four new shared primitives** (drop-in replacements for ad-hoc card/badge/heading markup):
+
+| Component | Props | Notes |
+|-----------|-------|-------|
+| `Panel` | `children`, `hero?`, `className?` | Glass-dark surface (1.5rem radius) or hero (atmospheric glow, 2rem) |
+| `MetricCard` | `label`, `value`, `subtitle?`, `delta?`, `deltaColor?` | Syne bold value, mono label, optional delta chip |
+| `StatusPill` | `label`, `variant?`, `dot?` | `live/active/draft/alert/warning/dim` variants |
+| `SectionHeader` | `eyebrow?`, `title`, `subtitle?` | Syne title + mono uppercase eyebrow |
+
+Next: migrate 8 existing pages to use these primitives in place of ad-hoc markup.
+
 ### Deployment (delivered)
 
 See `docs/DASHBOARD_DEPLOYMENT.md` — Docker service, multi-stage frontend build, SPA fallback, port 8000. Activity feed (SSE) uses relative URL — works when accessing at `http://VPS_IP:8000`. CORS origins are configurable via `dashboard.cors_origins` in `config/settings.yaml` (defaults to localhost for local dev; set to VPS IP/domain for production). Deploy to VPS.
@@ -102,7 +129,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 │  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Costs  │ Roadmap│ │
 │  │ (state) │         │         │           │ Pipeline  │ Mgmt    │        │ & Arch │ │
 │  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┴────────┘ │
-│         Recharts / TanStack Table / ZENOUZ.ai brand (dark #06060a, cyan→emerald)     │
+│       Recharts / TanStack Table / ZENOUZ.ai brand (dark #06060a, violet→cyan→emerald)    │
 └──────────────────┬──────────────────────────────────────────────────────────┘
                     │ REST + Server-Sent Events (SSE)
 ┌──────────────────┴──────────────────────────────────┐

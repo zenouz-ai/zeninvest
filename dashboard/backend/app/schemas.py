@@ -177,6 +177,9 @@ class StrategyDecisionSchema(BaseModel):
     ticker: str
     action: str
     target_allocation_pct: float | None
+    risk_parity_target_allocation_pct: float | None = None
+    risk_parity_trailing_vol_pct: float | None = None
+    risk_parity_applied: bool | None = None
     conviction: int | None
     primary_strategy: str | None
     reasoning: str | None

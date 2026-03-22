@@ -31,6 +31,7 @@ from src.agents.opportunity.scorer import OpportunityScorer
 from src.agents.reporting.journal import generate_trade_journal
 from src.agents.reporting.performance_tracker import update_performance_metrics
 from src.agents.reporting.trade_outcome_tracker import update_trade_outcomes
+from src.agents.risk.risk_parity import RiskParitySizer
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
@@ -67,6 +68,7 @@ class Orchestrator:
         self.moderation_panel = ModerationPanel()
         self.notification_service = NotificationService()
         self.risk_manager = RiskManager()
+        self.risk_parity_sizer = RiskParitySizer()
         self.opportunity_scorer = OpportunityScorer()
         self.opportunity_optimizer = OpportunityOptimizer()
 
@@ -639,9 +641,7 @@ class Orchestrator:
                 if raw_ticker and ticker != raw_ticker:
                     logger.warning(f"Normalized strategy ticker '{raw_ticker}' -> '{ticker}'")
                     decision["ticker"] = ticker
-                action = decision.get("action", "HOLD")
 
-                # Clamp LLM-produced numeric fields (audit fix C-3)
                 raw_conviction = decision.get("conviction", 0)
                 conviction = max(0, min(100, int(raw_conviction) if raw_conviction else 0))
                 if conviction != raw_conviction:
@@ -653,7 +653,43 @@ class Orchestrator:
                 target_alloc = max(0.0, min(float(max_alloc), float(raw_alloc) if raw_alloc else 0.0))
                 if target_alloc != raw_alloc:
                     logger.warning(f"Clamped target_allocation_pct for {ticker}: {raw_alloc} -> {target_alloc}")
-                    decision["target_allocation_pct"] = target_alloc
+                decision["target_allocation_pct"] = target_alloc
+                if decision.get("action") == "BUY":
+                    decision["claude_target_allocation_pct"] = target_alloc
+
+            risk_parity_rejections: list[dict[str, Any]] = []
+            if self.settings.risk_parity_enabled:
+                decisions, risk_parity_rejections = self._apply_risk_parity_sizing(
+                    decisions=decisions,
+                    stocks_data=stocks_data,
+                    portfolio_data=portfolio_data,
+                    cash_pct=cash_pct,
+                )
+            parity_logged_decisions = decisions + [
+                rejected["decision"] for rejected in risk_parity_rejections if rejected.get("decision")
+            ]
+            if hasattr(self.strategy_engine, "apply_risk_parity_metadata"):
+                self.strategy_engine.apply_risk_parity_metadata(cycle_id, parity_logged_decisions)
+            strategy_decisions = decisions
+
+            for rejected in risk_parity_rejections:
+                result["rejected_stocks"].append(rejected)
+                opportunity_evaluations.append({
+                    "ticker": rejected["ticker"],
+                    "action": rejected["action"],
+                    "stage": rejected["stage"],
+                    "decision": rejected.get("decision"),
+                    "reason": rejected["reason"],
+                    "moderation_consensus": "not invoked",
+                    "risk_verdict": "not invoked",
+                    "final_allocation_pct": None,
+                })
+
+            for decision in decisions:
+                ticker = str(decision.get("ticker", "")).strip().upper()
+                action = decision.get("action", "HOLD")
+                conviction = int(decision.get("conviction", 0) or 0)
+                target_alloc = float(decision.get("target_allocation_pct", 0.0) or 0.0)
 
                 if action in ("HOLD", "QUEUED"):
                     hold_reason = decision.get("reasoning", f"{action} — no action this cycle")
@@ -1499,7 +1535,37 @@ class Orchestrator:
         trade_value: float
 
         if action == "BUY":
-            trade_value = current_value * final_alloc / 100
+            portfolio = portfolio_data or {}
+            allocs = self._get_position_allocations(portfolio)
+            current_position_pct = allocs.get(ticker, 0.0)
+            current_position_value = (current_position_pct / 100) * current_value
+            target_position_value = current_value * final_alloc / 100
+            trade_value = max(0.0, target_position_value - current_position_value)
+            if trade_value <= 0:
+                logger.info(
+                    f"BUY skipped for {ticker}: target {final_alloc:.2f}% already met "
+                    f"(current {current_position_pct:.2f}%)"
+                )
+                self.notification_service.emit_trade_execution_result(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": self.dry_run,
+                        "ticker": ticker,
+                        "action": action,
+                        "execution_status": "skipped",
+                        "quantity": 0,
+                        "price": current_price,
+                        "value_gbp": trade_value,
+                        "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                        "stop_loss_status": None,
+                        "error_message": "target_already_met",
+                        "reasoning_summary": decision.get("reasoning", ""),
+                        "target_allocation_pct": final_alloc,
+                        "occurred_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                )
+                return None
             if trade_value < min_order:
                 logger.info(f"BUY skipped: trade value £{trade_value:.2f} below minimum £{min_order}")
                 self.notification_service.emit_trade_execution_result(
@@ -1791,6 +1857,70 @@ class Orchestrator:
         for score in sub_results.get("top_factor", []):
             tickers.add(score.ticker)
         return list(tickers)
+
+    def _apply_risk_parity_sizing(
+        self,
+        *,
+        decisions: list[dict[str, Any]],
+        stocks_data: list[dict[str, Any]],
+        portfolio_data: dict[str, Any],
+        cash_pct: float,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Apply risk-parity sizing to BUY decisions before moderation/risk."""
+        current_allocations = self._get_position_allocations(portfolio_data)
+        close_prices_by_ticker = self._get_close_prices_by_ticker(stocks_data)
+        sell_tickers = {
+            str(decision.get("ticker", "")).strip().upper()
+            for decision in decisions
+            if decision.get("action") == "SELL"
+        }
+        buy_decisions = [decision for decision in decisions if decision.get("action") == "BUY"]
+        sizings = self.risk_parity_sizer.size_buys(
+            approved_buys=buy_decisions,
+            current_allocations=current_allocations,
+            close_prices_by_ticker=close_prices_by_ticker,
+            sell_tickers=sell_tickers,
+            cash_pct=cash_pct,
+        )
+
+        adjusted_decisions: list[dict[str, Any]] = []
+        rejections: list[dict[str, Any]] = []
+        for decision in decisions:
+            if decision.get("action") != "BUY":
+                adjusted_decisions.append(decision)
+                continue
+
+            ticker = str(decision.get("ticker", "")).strip().upper()
+            sizing = sizings.get(ticker)
+            if sizing is None:
+                adjusted_decisions.append(decision)
+                continue
+
+            decision["risk_parity_target_allocation_pct"] = sizing.risk_parity_target_pct
+            decision["risk_parity_trailing_vol_pct"] = sizing.trailing_vol_pct
+            decision["risk_parity_applied"] = sizing.applied
+            decision["risk_parity_sizing_reason"] = sizing.sizing_reason
+            decision["target_allocation_pct"] = sizing.risk_parity_target_pct
+
+            if not sizing.applied and sizing.sizing_reason == "already_at_or_above_target":
+                rejections.append({
+                    "ticker": ticker,
+                    "action": "BUY",
+                    "stage": "risk_parity_filtered",
+                    "reason": (
+                        f"Risk parity target {sizing.risk_parity_target_pct:.2f}% is already met by "
+                        f"current allocation"
+                    ),
+                    "conviction": decision.get("conviction", 0),
+                    "moderation_consensus": "not invoked",
+                    "decision": decision,
+                    **self._get_stock_metadata(ticker, stocks_data),
+                })
+                continue
+
+            adjusted_decisions.append(decision)
+
+        return adjusted_decisions, rejections
 
     @staticmethod
     def _build_company_profiles(
@@ -2303,6 +2433,21 @@ class Orchestrator:
             norm = self._normalize_position_for_snapshot(pos, value_scale=value_scale)
             value = float(norm.get("value_gbp", 0) or 0)
             result[ticker] = (value / total) * 100
+        return result
+
+    @staticmethod
+    def _get_close_prices_by_ticker(stocks_data: list[dict[str, Any]]) -> dict[str, list[float]]:
+        """Extract close-price history per ticker for risk-parity sizing."""
+        result: dict[str, list[float]] = {}
+        for stock in stocks_data:
+            ticker = str(stock.get("ticker", "")).strip().upper()
+            if not ticker:
+                continue
+            closes = stock.get("indicators", {}).get("close_prices", [])
+            if not closes:
+                closes = stock.get("ohlcv", {}).get("close", [])
+            if closes:
+                result[ticker] = [float(value) for value in closes if value is not None]
         return result
 
     @staticmethod

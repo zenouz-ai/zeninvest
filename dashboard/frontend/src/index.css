@@ -2,12 +2,76 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ZENOUZ.ai design tokens — see /branding/BRAND.md */
+/* ZENOUZ.ai design tokens — see /branding/BRAND.md and dashboard-style-guide.md */
 :root {
+  /* Backgrounds */
+  --color-bg: #06060a;
+  --color-surface: rgba(13, 14, 24, 0.88);
+  --color-surface-strong: rgba(17, 19, 31, 0.94);
+  --color-surface-soft: rgba(255, 255, 255, 0.04);
+
+  /* Text */
+  --color-text: #f1f3fb;
+  --color-text-muted: #adb3cb;
+  --color-text-dim: #7c8299;
+
+  /* Borders */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Brand accents */
+  --color-violet: #6332ff;
+  --color-cyan: #00d4ff;
+  --color-emerald: #00ffa3;
+  --color-loss: #ff4466;
+  --color-warning: #f7c948;
+
+  /* Soft accent fills */
+  --color-violet-soft: rgba(99, 50, 255, 0.16);
+  --color-cyan-soft: rgba(0, 212, 255, 0.16);
+  --color-emerald-soft: rgba(0, 255, 163, 0.16);
+  --color-loss-soft: rgba(255, 68, 102, 0.16);
+
+  /* Gradients */
+  --gradient-brand: linear-gradient(135deg, #6332ff 0%, #00d4ff 48%, #00ffa3 100%);
+  --gradient-panel: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+
+  /* Shadows */
+  --shadow-panel: 0 30px 80px rgba(0, 0, 0, 0.28);
+  --shadow-glow: 0 16px 48px rgba(0, 212, 255, 0.18);
+  --shadow-glow-strong: 0 8px 32px rgba(0, 212, 255, 0.28), 0 0 64px rgba(99, 50, 255, 0.12);
+  --shadow-card-hover: 0 24px 64px rgba(0, 0, 0, 0.32), 0 8px 24px rgba(0, 212, 255, 0.08);
+
+  /* Typography */
+  --font-heading: 'Syne', sans-serif;
+  --font-body: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Border radius */
+  --radius-xs: 0.75rem;
+  --radius-sm: 1rem;
+  --radius-md: 1.5rem;
+  --radius-lg: 2rem;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* Transitions */
+  --transition-fast: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 280ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Legacy aliases — keep for backward compat with Tailwind classes */
   --bg-primary: #06060a;
-  --bg-card: #0c0c14;
-  --bg-elevated: #12121c;
-  --border: rgba(255, 255, 255, 0.06);
+  --bg-card: rgba(13, 14, 24, 0.88);
+  --bg-elevated: rgba(17, 19, 31, 0.94);
+  --border: rgba(255, 255, 255, 0.08);
   --cyan: #00d4ff;
   --emerald: #00ffa3;
   --violet: #6332ff;
@@ -17,11 +81,10 @@
   --negative: #ff4466;
   --warning: #f7c948;
   --neutral: rgba(255, 255, 255, 0.4);
-  --text-primary: #ffffff;
-  --text-secondary: rgba(255, 255, 255, 0.5);
-  --text-muted: rgba(255, 255, 255, 0.25);
+  --text-primary: #f1f3fb;
+  --text-secondary: #adb3cb;
+  --text-muted: #7c8299;
   --font-display: 'Outfit', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
 }
 
 @layer base {
@@ -29,60 +92,169 @@
     @apply border-terminal-border;
   }
   input, select {
-    @apply focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg;
+    @apply focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-offset-2 focus:ring-offset-terminal-bg;
   }
   body {
     @apply bg-terminal-bg text-terminal-text font-sans antialiased;
-    /* Subtle grid texture for depth */
+    /* Atmospheric grid — 72px violet lines with radial fade */
     background-image:
-      linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
-    background-size: 24px 24px;
+      linear-gradient(rgba(99, 50, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(99, 50, 255, 0.05) 1px, transparent 1px);
+    background-size: 72px 72px;
+    -webkit-mask-image: none;
+  }
+
+  /* Atmospheric grid mask overlay via pseudo is not possible on body — handled in App shell */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
   }
 }
 
 @layer components {
+  /* Glass-dark panel — primary surface */
   .card {
-    @apply bg-terminal-surface border border-terminal-border rounded-lg p-4;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--color-border);
+    background:
+      radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 42%),
+      rgba(14, 16, 28, 0.86);
+    box-shadow: var(--shadow-panel);
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+    transition: box-shadow var(--transition-base);
+  }
+  .card:hover {
+    box-shadow: var(--shadow-card-hover);
   }
 
+  /* Hero panel — for key decision areas */
+  .dashboard-panel {
+    border: 1px solid var(--color-border-strong);
+    background:
+      radial-gradient(ellipse at top left, rgba(99, 50, 255, 0.08), transparent 50%),
+      radial-gradient(circle at top right, rgba(0, 212, 255, 0.06), transparent 40%),
+      rgba(14, 16, 28, 0.92);
+    box-shadow: var(--shadow-glow-strong);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+  }
+
+  /* Nested / soft surface */
+  .panel-soft {
+    border: 1px solid var(--color-surface-soft);
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: var(--radius-sm);
+    padding: var(--space-4);
+  }
+
+  /* Buttons */
   .btn-primary {
-    @apply bg-neutral hover:bg-neutral/80 text-white px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg;
+    background: var(--gradient-brand);
+    color: #06060a;
+    font-weight: 600;
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--radius-xs);
+    border: none;
+    box-shadow: var(--shadow-glow);
+    transition: opacity var(--transition-fast), box-shadow var(--transition-fast);
+    @apply focus:outline-none focus:ring-2 focus:ring-cyan/50 focus:ring-offset-2 focus:ring-offset-terminal-bg;
+  }
+  .btn-primary:hover {
+    opacity: 0.92;
+    box-shadow: var(--shadow-glow-strong);
   }
 
   .btn-secondary {
-    @apply bg-terminal-surface border border-terminal-border hover:bg-elevated text-terminal-text px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-weight: 500;
+    padding: 0.5rem 1.25rem;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--color-border-strong);
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+    @apply focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-offset-2 focus:ring-offset-terminal-bg;
+  }
+  .btn-secondary:hover {
+    background: var(--color-surface-soft);
+    color: var(--color-text);
+    border-color: var(--color-cyan);
   }
 
   .btn-danger {
-    @apply bg-loss/20 hover:bg-loss/30 text-terminal-text border border-loss/50 px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-loss focus:ring-offset-2 focus:ring-offset-terminal-bg;
+    @apply bg-loss/20 hover:bg-loss/30 text-terminal-text border border-loss/50 px-4 py-2 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-loss focus:ring-offset-2 focus:ring-offset-terminal-bg;
+    border-radius: var(--radius-xs);
   }
 
   .btn-danger-solid {
-    @apply bg-loss hover:bg-loss/90 text-white px-4 py-2 rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-loss focus:ring-offset-2 focus:ring-offset-terminal-bg;
+    @apply bg-loss hover:bg-loss/90 text-white px-4 py-2 font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-loss focus:ring-offset-2 focus:ring-offset-terminal-bg;
+    border-radius: var(--radius-xs);
   }
 
+  /* Mono label — uppercase tracking for tickers, IDs, labels */
   .mono {
     @apply font-mono;
+  }
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-dim);
   }
 
   /* Brand gradient utilities */
   .brand-gradient {
-    background: linear-gradient(135deg, #00d4ff, #00ffa3);
+    background: var(--gradient-brand);
   }
 
   .brand-gradient-text {
-    background: linear-gradient(135deg, #00d4ff, #00ffa3);
+    background: var(--gradient-brand);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  /* Status pill base */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    border-width: 1px;
+    border-style: solid;
+    line-height: 1.4;
+  }
+  .pill-cyan  { background: var(--color-cyan-soft);    border-color: rgba(0, 212, 255, 0.32);    color: var(--color-cyan); }
+  .pill-emerald { background: var(--color-emerald-soft); border-color: rgba(0, 255, 163, 0.32);  color: var(--color-emerald); }
+  .pill-violet  { background: var(--color-violet-soft);  border-color: rgba(99, 50, 255, 0.32);  color: var(--color-violet); }
+  .pill-loss    { background: var(--color-loss-soft);    border-color: rgba(255, 68, 102, 0.32); color: var(--color-loss); }
+  .pill-warning { background: rgba(247, 201, 72, 0.16);  border-color: rgba(247, 201, 72, 0.32); color: var(--color-warning); }
+  .pill-dim     { background: rgba(255,255,255,0.04);    border-color: var(--color-border);       color: var(--color-text-dim); }
 }
 
-/* Focus styles for interactive elements */
 @layer utilities {
   .focus-ring {
-    @apply focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg;
+    @apply focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-offset-2 focus:ring-offset-terminal-bg;
+  }
+
+  /* Typography role helpers */
+  .font-heading { font-family: var(--font-heading); }
+  .font-body    { font-family: var(--font-body); }
+
+  /* Text level helpers */
+  .text-dim   { color: var(--color-text-dim); }
+  .text-muted-brand { color: var(--color-text-muted); }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

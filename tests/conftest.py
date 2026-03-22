@@ -105,7 +105,7 @@ def _make_stock(
     sector: str = "Technology",
     industry: str = "Software",
 ) -> dict:
-    close_prices = [round(current_price * (0.85 + 0.01 * idx), 2) for idx in range(30)]
+    close_prices = [round(current_price * (0.70 + 0.005 * idx), 2) for idx in range(90)]
     return {
         "ticker": ticker,
         "name": name,

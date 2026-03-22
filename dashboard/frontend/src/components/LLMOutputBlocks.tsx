@@ -54,6 +54,13 @@ export function LLMStrategyBlock({
         {strategy.conviction != null && ` @ conviction ${strategy.conviction}`}
         {strategy.primary_strategy && ` · ${strategy.primary_strategy}`}
       </div>
+      {(strategy.target_allocation_pct != null || strategy.risk_parity_target_allocation_pct != null) && (
+        <div className="text-terminal-text-dim text-xs mt-1">
+          Claude size: {strategy.target_allocation_pct ?? '—'}%
+          {strategy.risk_parity_target_allocation_pct != null &&
+            ` · Risk parity: ${strategy.risk_parity_target_allocation_pct}%`}
+        </div>
+      )}
       {strategy.reasoning && (
         <div className="text-terminal-text-dim text-xs mt-1 whitespace-pre-wrap">
           {strategy.reasoning}
@@ -93,6 +100,13 @@ export function LLMStrategyBlock({
           )}
           {strategy.stop_loss_pct != null && (
             <div>Stop loss: {strategy.stop_loss_pct}%</div>
+          )}
+          {strategy.risk_parity_applied != null && (
+            <div>
+              Risk parity applied: {strategy.risk_parity_applied ? 'yes' : 'no'}
+              {strategy.risk_parity_trailing_vol_pct != null &&
+                ` · trailing vol ${strategy.risk_parity_trailing_vol_pct}%`}
+            </div>
           )}
           {strategy.expected_holding_period && (
             <div>Holding period: {strategy.expected_holding_period}</div>

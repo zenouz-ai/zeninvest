@@ -161,6 +161,22 @@ class Settings:
         """Block REDUCE/SELL on positions held less than this many hours unless risk limit exceeded."""
         return int(self.risk.get("min_holding_hours_before_reduce", 24))
 
+    @property
+    def risk_parity_enabled(self) -> bool:
+        return bool(self.risk.get("risk_parity_enabled", False))
+
+    @property
+    def risk_parity_lookback_days(self) -> int:
+        return int(self.risk.get("risk_parity_lookback_days", 60))
+
+    @property
+    def risk_parity_vol_floor(self) -> float:
+        return float(self.risk.get("risk_parity_vol_floor", 0.05))
+
+    @property
+    def risk_parity_target_vol(self) -> float:
+        return float(self.risk.get("risk_parity_target_vol", 0.15))
+
     # --- Strategy ---
     @property
     def strategy(self) -> dict[str, Any]:

@@ -28,6 +28,10 @@ risk:
   vix_high: 25
   vix_extreme: 35
   min_positions: 5
+  risk_parity_enabled: false
+  risk_parity_lookback_days: 60
+  risk_parity_vol_floor: 0.05
+  risk_parity_target_vol: 0.15
 
 strategy:
   momentum_weight: 0.35

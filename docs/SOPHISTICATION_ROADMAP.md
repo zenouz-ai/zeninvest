@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **16** · Pipeline **21** (order by priority and feasibility below)
+**At a glance:** Delivered **17** · Pipeline **21** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -40,13 +40,13 @@ timeline
         US-7.0a : Agent Logic Audit Fixes
         US-7.0b : Formal Verification Fixes
         US-7.1 : Dashboard Authentication
+        US-1.7.3 : Dashboard Visual Design System
     section Pipeline (priority order)
         US-4.5 : Proactive Macro News Intelligence
         US-1.6 : Slack NL Trade Commands
         US-1.9 : Conversational Trading Workflow
         US-2.1 : Conviction Calibration
         US-2.2 : Dynamic Strategy Weighting
-        US-3.1 : Risk-Parity Sizing
         US-2.3 : Moderator Effectiveness
         US-2.4 : Nemotron Integration Investigation
         US-5.2 : Parameter Sensitivity
@@ -84,20 +84,21 @@ timeline
 | | 14 | US-7.0b | Formal Verification Fixes (18 findings; Phase 1+2: scheduler safety, crash recovery, DB atomicity, 18 tests) |
 | | 15 | US-7.1 | Dashboard Authentication (X-API-Key middleware, `hmac.compare_digest`, auth banner + API key modal, SSE 403 alignment; 36 tests in `test_dashboard_auth.py`) |
 | | 16 | US-4.1 | Volume Signals (OBV + 20-day volume ratio, `volume_signals_enabled` flag, momentum/mean-reversion scoring, moderation context, 6 tests) |
+| | 17 | US-3.1 | Risk-Parity Position Sizing (60-day inverse-vol BUY overlay, strategy/risk waterfall audit fields, delta-to-target BUY execution, 10 tests) |
+| | 18 | US-1.7.3 | Dashboard Visual Design System (Syne font, full CSS token system, glass-dark panels, 72px violet grid, shadow/radius tokens, brand gradient, blurred nav, pill active state, 4 new shared primitives) |
 | **Pipeline** | 1 | US-4.5 | Proactive Macro News Intelligence |
 | | 2 | US-1.6 | Slack NL Trade Commands |
 | | 3 | US-1.9 | Conversational Trading Workflow |
 | | 4 | US-2.1 | Conviction Calibration |
 | | 5 | US-2.2 | Dynamic Strategy Weighting |
-| | 6 | US-3.1 | Risk-Parity Sizing |
-| | 7 | US-2.3 | Moderator Effectiveness |
-| | 8 | US-2.4 | Nemotron Integration Investigation |
-| | 9 | US-5.2 | Parameter Sensitivity |
-| | 10 | US-3.2 | Regime Detection |
-| | 11 | US-3.3 | Correlation Screening |
-| | 12 | US-4.2 | Earnings Calendar |
-| | 13 | US-4.3 | Sector Rotation |
-| | 14 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
+| | 6 | US-2.3 | Moderator Effectiveness |
+| | 7 | US-2.4 | Nemotron Integration Investigation |
+| | 8 | US-5.2 | Parameter Sensitivity |
+| | 9 | US-3.2 | Regime Detection |
+| | 10 | US-3.3 | Correlation Screening |
+| | 11 | US-4.2 | Earnings Calendar |
+| | 12 | US-4.3 | Sector Rotation |
+| | 13 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
 | | 15 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
 | | 16 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
 | | 17 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
@@ -121,13 +122,14 @@ timeline
 | **US-1.7** | Dashboard & Visualisation | Web dashboard: 8 pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs, Roadmap); full API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system). | Full operational visibility; personal quant experience | **Delivered** |
 | **US-1.7.1** | Dashboard UX Phase 1 | AlertBanner (alert aggregation on all pages), Dashboard Home restructure (positions on home, always-visible activity + cycle summary, independent section loading, performance card, pause/resume toggle, PAUSED badge), accessibility (`aria-expanded`, `aria-live`), mobile nav fix. See `docs/UX_AUDIT.md`. | Reduces time-to-insight from 4 clicks to 0; surfaces anomalies proactively | **Delivered** |
 | **US-1.7.2** | Dashboard UX Phase 2 | Force Sell from Portfolio, data freshness indicators, keyboard-accessible tables, focus trap on modals, colour accessibility (▲/▼ arrows + aria-labels), chart colour alignment. See `docs/UX_AUDIT.md`. | 19/28 audit findings resolved; full keyboard + screen reader accessibility | **Delivered** |
+| **US-1.7.3** | Dashboard Visual Design System | Formalised ZENOUZ.ai visual language from `dashboard-style-guide.md`: Syne heading font, full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`), violet soft-fill accents, glass-dark card treatment (radial-gradient + panel shadow + 1.5rem radius), brand gradient updated to violet→cyan→emerald, 72px violet atmospheric grid, blurred sticky nav bar, pill active state. Tailwind: `font-heading`, `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`. Four new shared primitives: `Panel` (glass-dark surface), `MetricCard` (Syne KPI), `StatusPill` (brand pill/badge), `SectionHeader` (Syne heading + mono eyebrow). | Unified, polished visual identity across the entire dashboard; primitives unblock consistent page migration | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_DEPLOYMENT.md` | Operational visibility on live VPS | **Delivered** |
 | **US-1.9** | Conversational Trading Workflow | Multi-turn, session-based Slack + dashboard chat workflow with shared session backend, explicit confirmation gate, deterministic risk veto, and full conversation/research/action audit trail; see `docs/CONVERSATIONAL_TRADING_WORKFLOW.md` | Human-in-the-loop collaborative trading with traceable decisions and safer execution control | **Planned** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
 | **US-2.4** | Nemotron Integration Investigation | Investigate NVIDIA Nemotron 3 Super as candidate risk scorer using shadow-mode evaluation, provider/cost comparison, and promotion gates | Potential cost/latency gains, provider diversification, and stronger long-context risk analysis if validated | **Planned (investigation)** |
-| **US-3.1** | Risk-Parity Position Sizing | Size positions inversely to trailing volatility; equal risk contribution | Reduces volatility without reducing returns; strong academic evidence | **Planned** |
+| **US-3.1** | Risk-Parity Position Sizing | Size positions inversely to trailing volatility; equal risk contribution | Reduces volatility without reducing returns; strong academic evidence | **Delivered** |
 | **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Regime-aware strategy selection improves hit rate | **Planned** |
 | **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; soft signal to committee | **Planned** |
 | **US-3.4** | UOV Ranking & Queueing | Hybrid score, z-score, EWMA; ranked BUY execution; queue + swap suggestions | Solves capital saturation; deterministic opportunity ranking | **Delivered** |
@@ -330,17 +332,18 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 **Value:** High — reduces volatility without reducing returns; strong academic evidence  
 **Effort:** Medium (4–5 days)  
 **Data Sources:** Historical returns from market_data_cache  
-**Stage:** Planned  
+**Stage:** Delivered  
 
 **Acceptance Criteria:**
-- [ ] Position sized inversely to trailing 60-day volatility
-- [ ] Target: equal risk contribution per position
-- [ ] Replaces Claude ad-hoc allocation for BUY sizing; Claude still decides what; risk-parity how much
-- [ ] Existing risk limits (15% per stock, etc.) remain hard caps
-- [ ] A/B log: risk-parity size vs Claude proposed size
+- [x] Position sized inversely to trailing 60-day volatility
+- [x] Target: equal risk contribution per position
+- [x] Replaces Claude ad-hoc allocation for BUY sizing; Claude still decides what; risk-parity how much
+- [x] Existing risk limits (15% per stock, etc.) remain hard caps
+- [x] A/B log: risk-parity size vs Claude proposed size
 
 **Technical Approach:** `weight_i = (1/vol_i) / sum(1/vol_j)`.  
 **Literature:** Maillard, Roncalli & Teiletche (2010) "The Properties of Equally Weighted Risk Contribution Portfolios"
+**Status (2026-03):** Delivered — `risk.risk_parity_enabled` gate, 60-day configurable realized vol, vol floor + target-vol scaler, persisted `strategy_decisions` audit fields, dashboard/API waterfall exposure, and delta-to-target BUY execution semantics.
 
 ---
 

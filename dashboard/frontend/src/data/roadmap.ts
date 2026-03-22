@@ -41,7 +41,7 @@ export interface Milestone {
 
 /** All milestones from SOPHISTICATION_ROADMAP shown in dashboard roadmap */
 export const MILESTONES: Milestone[] = [
-  // --- Delivered (14) ---
+  // --- Delivered ---
   {
     id: 'US-1.1',
     name: 'Performance Tracking',
@@ -237,7 +237,7 @@ export const MILESTONES: Milestone[] = [
       'APIKeyMiddleware on all /api/* endpoints; DASHBOARD_API_KEY env var; configurable public_routes for GET-only demo exposure; write endpoints always protected; 33 tests',
     architectureComponents: ['Dashboard', 'FastAPI'],
   },
-  // --- Pipeline (19) ---
+  // --- Pipeline ---
   {
     id: 'US-4.5',
     name: 'Proactive Macro News Intelligence',
@@ -319,12 +319,14 @@ export const MILESTONES: Milestone[] = [
     id: 'US-3.1',
     name: 'Risk-Parity Position Sizing',
     topic: 'Portfolio & Risk',
-    status: 'pipeline',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-22',
     effort: 'M',
     priority: 'P1',
     description:
-      'Size positions inversely to trailing volatility; equal risk contribution',
-    architectureComponents: ['Order Manager', 'Risk Agent'],
+      '60-day inverse-vol BUY overlay with vol floor + target-vol scaler; persist Claude size vs risk-parity size; BUY execution uses delta-to-target semantics',
+    architectureComponents: ['Strategy Engine', 'Risk Agent', 'Order Manager', 'Dashboard'],
   },
   {
     id: 'US-3.2',
@@ -352,12 +354,14 @@ export const MILESTONES: Milestone[] = [
     id: 'US-4.1',
     name: 'Volume-Weighted Signals',
     topic: 'Signals',
-    status: 'pipeline',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-22',
     effort: 'S',
     priority: 'P2',
     description:
-      'OBV, volume SMA ratio; feed into sub-strategy scoring',
-    architectureComponents: ['Data Fetcher', 'Strategy Engine'],
+      'OBV + 20-day volume ratio in indicator output; momentum and mean-reversion scoring; moderator context surfaced',
+    architectureComponents: ['Data Fetcher', 'Strategy Engine', 'Moderation Panel'],
   },
   {
     id: 'US-4.2',
@@ -451,11 +455,13 @@ export const MILESTONES: Milestone[] = [
     id: 'US-7.4',
     name: 'Integration Test Coverage',
     topic: 'Hardening',
-    status: 'pipeline',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-22',
     effort: 'M',
     priority: 'P1',
     description:
-      'End-to-end run_cycle and state machine transition coverage as a release gate',
+      'Shared in-memory orchestrator harness; end-to-end run_cycle coverage, orphaned-decision detection, live state transitions, and manual reset recovery',
     architectureComponents: ['Orchestrator', 'State Machine', 'Testing'],
   },
   {

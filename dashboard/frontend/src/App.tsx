@@ -14,17 +14,24 @@ import { DashboardApiKeyModal } from './components/DashboardApiKeyModal'
 import { useDashboardAuthRequired } from './hooks/useDashboardAuthRequired'
 import { useSSE } from './hooks/useSSE'
 
+// Pill-style nav link — soft gradient pill active, dim text inactive
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 transition-colors rounded focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface ${
-    isActive ? 'border-accent text-accent' : 'border-transparent text-terminal-text hover:text-accent hover:border-accent'
+  `inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-offset-2 focus:ring-offset-transparent ${
+    isActive
+      ? 'bg-cyan/10 text-cyan border border-cyan/25 shadow-glow/30'
+      : 'text-terminal-text-muted hover:text-terminal-text hover:bg-white/5 border border-transparent'
   }`
 
-const mobileBase = 'block px-3 py-2 text-base font-medium'
+const mobileBase = 'block px-3 py-2 text-base font-medium rounded-panel'
 const mobileLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `${mobileBase} rounded-md focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-inset ${isActive ? 'bg-terminal-bg text-accent' : 'text-terminal-text hover:bg-terminal-bg hover:text-accent'}`
+  `${mobileBase} focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-inset ${
+    isActive ? 'bg-cyan/10 text-cyan' : 'text-terminal-text-muted hover:bg-white/5 hover:text-terminal-text'
+  }`
 
 const dropdownLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `block px-4 py-2 text-sm transition-colors ${isActive ? 'text-accent bg-terminal-bg' : 'text-terminal-text hover:text-accent hover:bg-terminal-bg'}`
+  `block px-4 py-2 text-sm transition-colors rounded-xs ${
+    isActive ? 'text-cyan bg-cyan/10' : 'text-terminal-text-muted hover:text-terminal-text hover:bg-white/5'
+  }`
 
 /** Desktop "More" dropdown for secondary nav items */
 function MoreDropdown() {
@@ -46,8 +53,10 @@ function MoreDropdown() {
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
-        className={`inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 transition-colors rounded focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface ${
-          open ? 'border-accent text-accent' : 'border-transparent text-terminal-text hover:text-accent hover:border-accent'
+        className={`inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-offset-2 focus:ring-offset-transparent border ${
+          open
+            ? 'bg-cyan/10 text-cyan border-cyan/25'
+            : 'text-terminal-text-muted hover:text-terminal-text hover:bg-white/5 border-transparent'
         }`}
       >
         More
@@ -56,7 +65,14 @@ function MoreDropdown() {
         </svg>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-44 bg-terminal-surface border border-terminal-border rounded-md shadow-lg py-1 z-50">
+        <div
+          className="absolute top-full left-0 mt-2 w-44 border border-terminal-border-strong rounded-panel py-1 z-50"
+          style={{
+            background: 'rgba(14, 16, 28, 0.96)',
+            boxShadow: 'var(--shadow-panel)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
           <NavLink to="/opportunity" className={dropdownLinkClass} onClick={() => setOpen(false)}>Opportunity</NavLink>
           <NavLink to="/orders" className={dropdownLinkClass} onClick={() => setOpen(false)}>Order Mgmt</NavLink>
           <NavLink to="/costs" className={dropdownLinkClass} onClick={() => setOpen(false)}>Costs</NavLink>
@@ -72,10 +88,10 @@ function ApiKeyNavButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-terminal-text-dim border border-terminal-border rounded hover:border-accent hover:text-accent focus:outline-none focus:ring-2 focus:ring-neutral"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-terminal-text-dim border border-terminal-border rounded-full hover:border-cyan/40 hover:text-cyan transition-all focus:outline-none focus:ring-2 focus:ring-cyan/40"
       title="Set dashboard API key (localStorage)"
     >
-      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
       </svg>
       API key
@@ -96,43 +112,52 @@ function App() {
   return (
     <BrowserRouter>
       <div className="min-h-screen bg-terminal-bg">
-        <nav className="border-b border-terminal-border bg-terminal-surface">
+        {/* Sticky blurred nav bar */}
+        <nav
+          className="sticky top-0 z-40 border-b border-terminal-border-strong"
+          style={{
+            background: 'rgba(6, 6, 10, 0.80)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+          }}
+        >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
-              <div className="flex">
-                <Link to="/" className="flex items-center gap-2.5 px-2 py-2 text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-surface rounded">
-                  <img src="/logo.svg" alt="ZENOUZ.ai" className="h-7 w-7" />
-                  <span className="text-white tracking-wide">ZENOUZ</span>
-                  <span className="brand-gradient-text font-normal">.ai</span>
+            <div className="flex justify-between h-14">
+              <div className="flex items-center gap-6">
+                <Link
+                  to="/"
+                  className="flex items-center gap-2.5 py-2 text-xl font-semibold focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-offset-2 focus:ring-offset-transparent rounded-xs"
+                >
+                  <img src="/logo.svg" alt="ZENOUZ.ai" className="h-6 w-6" />
+                  <span className="text-white tracking-wide font-heading font-semibold">ZENOUZ</span>
+                  <span className="brand-gradient-text font-body font-normal">.ai</span>
                 </Link>
-                <div className="hidden sm:ml-6 sm:flex sm:space-x-6 sm:items-center">
-                  {/* Primary nav — always visible */}
-                  <NavLink to="/" className={navLinkClass}>Dashboard</NavLink>
+                <div className="hidden sm:flex sm:items-center sm:gap-1">
+                  <NavLink to="/" end className={navLinkClass}>Dashboard</NavLink>
                   <NavLink to="/universe" className={navLinkClass}>Universe</NavLink>
                   <NavLink to="/portfolio" className={navLinkClass}>Portfolio</NavLink>
                   <NavLink to="/runs" className={navLinkClass}>Runs</NavLink>
-                  {/* Secondary nav — collapsed into dropdown */}
                   <MoreDropdown />
                 </div>
               </div>
-              <div className="hidden sm:flex items-center pr-2">
+              <div className="hidden sm:flex items-center">
                 <ApiKeyNavButton onClick={() => setApiKeyModalOpen(true)} />
               </div>
               <div className="flex items-center sm:hidden">
                 <button
                   type="button"
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                  className="inline-flex items-center justify-center p-2 rounded-md text-terminal-text hover:text-accent hover:bg-terminal-bg focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-inset"
+                  className="inline-flex items-center justify-center p-2 rounded-xs text-terminal-text-muted hover:text-terminal-text hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-inset transition-colors"
                   aria-expanded={mobileMenuOpen}
                   aria-label="Toggle navigation menu"
                 >
                   <span className="sr-only">Open main menu</span>
                   {mobileMenuOpen ? (
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   ) : (
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                   )}
@@ -140,11 +165,15 @@ function App() {
               </div>
             </div>
           </div>
-          {/* Mobile menu — all items flat */}
+
+          {/* Mobile menu */}
           {mobileMenuOpen && (
-            <div className="sm:hidden border-t border-terminal-border">
-              <div className="pt-2 pb-3 space-y-1">
-                <NavLink to="/" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Dashboard</NavLink>
+            <div
+              className="sm:hidden border-t border-terminal-border"
+              style={{ background: 'rgba(6, 6, 10, 0.95)' }}
+            >
+              <div className="pt-2 pb-3 space-y-0.5 px-3">
+                <NavLink to="/" end className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Dashboard</NavLink>
                 <NavLink to="/universe" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Universe</NavLink>
                 <NavLink to="/portfolio" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Portfolio</NavLink>
                 <NavLink to="/runs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Run History</NavLink>
@@ -152,13 +181,14 @@ function App() {
                 <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>
                 <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>
                 <NavLink to="/roadmap" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Roadmap</NavLink>
-                <div className="px-3 py-2">
+                <div className="pt-2 pb-1">
                   <ApiKeyNavButton onClick={() => { setMobileMenuOpen(false); setApiKeyModalOpen(true) }} />
                 </div>
               </div>
             </div>
           )}
         </nav>
+
         {authRequired && (
           <DashboardAuthBanner
             onRetry={() => setSseReconnectNonce((n) => n + 1)}

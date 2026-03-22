@@ -15,16 +15,17 @@ last_updated: 2026-03-22
 
 ## Schedule at a glance
 
-| Days  | ID      | Story                        | Status     | Notes                                          |
-|-------|---------|------------------------------|------------|------------------------------------------------|
-| 1     | US-7.1  | Dashboard Authentication     | ✅ Done     | Already delivered; unblocks safe VPS exposure  |
-| 1–2   | US-4.1  | Volume Signals               | ✅ Done     | Delivered: indicators, scoring, config, tests  |
-| 2–4   | US-7.4  | Integration Test Coverage    | ✅ Done     | Delivered: orchestrator + state transition coverage |
-| 2–5   | US-3.1  | Risk-Parity Sizing           | ⬜ Pending  | No deps, ~3 days                               |
-| 3–7   | US-4.5  | Proactive Macro Intelligence | ⬜ Pending  | Largest; phased delivery                       |
-| 5–7   | US-1.6  | Slack NL Commands            | ⬜ Pending  | Builds on existing notifications module        |
-| 6–7   | US-1.9  | Conversational WF            | ⬜ Pending  | Skeleton only this week; US-1.6 must land first|
-| 8     | US-8.1  | Open-Source Launch Prep      | ⬜ Pending  | Repo hygiene + legal + CI; roadmap doc done    |
+| Days  | ID        | Story                        | Status     | Notes                                          |
+|-------|-----------|------------------------------|------------|------------------------------------------------|
+| 1     | US-7.1    | Dashboard Authentication     | ✅ Done     | Already delivered; unblocks safe VPS exposure  |
+| 1–2   | US-4.1    | Volume Signals               | ✅ Done     | Delivered: indicators, scoring, config, tests  |
+| 2–4   | US-7.4    | Integration Test Coverage    | ✅ Done     | Delivered: orchestrator + state transition coverage |
+| 2–5   | US-3.1    | Risk-Parity Sizing           | ✅ Done     | Delivered: inverse-vol overlay, persistence, dashboard/API, tests |
+| 2–5   | US-1.7.3  | Dashboard Visual Design System | ✅ Done   | Syne font, token system, glass panels, 4 primitives |
+| 3–7   | US-4.5    | Proactive Macro Intelligence | ⬜ Pending  | Largest; phased delivery                       |
+| 5–7   | US-1.6    | Slack NL Commands            | ⬜ Pending  | Builds on existing notifications module        |
+| 6–7   | US-1.9    | Conversational WF            | ⬜ Pending  | Skeleton only this week; US-1.6 must land first|
+| 8     | US-8.1    | Open-Source Launch Prep      | ⬜ Pending  | Repo hygiene + legal + CI; roadmap doc done    |
 
 ---
 
@@ -106,31 +107,89 @@ docker compose up -d --build
 ---
 
 ## US-3.1 — Risk-Parity Position Sizing
+**Status:** ✅ Delivered (2026-03-22)
 **Days:** 2–5 | **Effort:** Large (~3 days) | **Priority:** P1
 **Roadmap:** `docs/SOPHISTICATION_ROADMAP.md` § US-3.1
 
-**What to build:**
-- Size positions inversely to trailing volatility (e.g. 20-day realised vol)
-- Equal risk contribution across positions: `weight_i = (1/vol_i) / Σ(1/vol_j)`
-- Applied as a cap/adjustment on top of existing `max_single_stock_pct` logic
-- Configurable: target portfolio vol, lookback window, vol floor
-- Disable switch: `risk.risk_parity_enabled` (defaults to false until calibrated)
-- No change to RiskManager VETO logic — sizing is pre-risk adjustment
+**What was delivered:**
+- New `src/agents/risk/risk_parity.py` engine for 60-day annualized inverse-vol BUY sizing
+- BUY-only overlay across current holdings + approved BUYs, treating existing positions as fixed background risk in v1
+- Configurable controls: `risk_parity_enabled`, `risk_parity_lookback_days`, `risk_parity_vol_floor`, `risk_parity_target_vol`
+- Strategy decisions now persist Claude size, risk-parity size, trailing vol, and whether the overlay was applied
+- Dashboard/API waterfall exposes Claude proposed size, risk-parity target, and final risk-adjusted size
+- BUY execution now uses total-target semantics and trades only the delta needed to reach the target weight
+- RiskManager remains the final veto/hard-cap layer; REDUCE/SELL behaviour unchanged
 
 **Key files to touch:**
 - `src/agents/risk/` — new `risk_parity.py` module
 - `src/orchestrator/main.py` — call risk-parity sizing after strategy, before RiskManager
+- `src/agents/strategy/engine.py` — persist risk-parity metadata on strategy decisions
+- `src/data/models.py` + Alembic migration — add risk-parity audit fields to `strategy_decisions`
+- `dashboard/backend/app/schemas.py` + `dashboard/backend/app/routers/universe.py` — expose new sizing fields
+- `dashboard/frontend/src/components/LLMOutputBlocks.tsx` — show Claude vs risk-parity sizing in the decision waterfall
 - `src/utils/config.py` — new `risk_parity_*` settings properties
-- `config/settings.yaml` — `risk_parity_enabled`, `risk_parity_lookback_days: 20`, `risk_parity_vol_floor: 0.05`, `risk_parity_target_vol: 0.15`
-- Tests: `tests/test_risk_parity.py` (new)
+- `config/settings.yaml` — `risk_parity_enabled`, `risk_parity_lookback_days: 60`, `risk_parity_vol_floor: 0.05`, `risk_parity_target_vol: 0.15`
+- Tests: `tests/test_risk_parity.py`, `tests/test_integration_orchestrator.py`, `tests/test_dashboard_decisions.py`
 
 **Acceptance criteria:**
-- [ ] Volatility computed from OHLCV close prices over configurable lookback
-- [ ] Position size adjusted proportionally to inverse volatility
-- [ ] Allocation capped at `max_single_stock_pct` regardless of risk-parity output
-- [ ] `risk_parity_enabled: false` reverts to current sizing with no behaviour change
-- [ ] Unit tests with synthetic price series (low-vol vs high-vol stock)
-- [ ] Integration: sizing adjustment visible in strategy decision context sent to moderation
+- [x] Volatility computed from OHLCV close prices over configurable lookback
+- [x] Position size adjusted proportionally to inverse volatility
+- [x] Allocation capped at `max_single_stock_pct` regardless of risk-parity output
+- [x] `risk_parity_enabled: false` reverts to current sizing with no behaviour change
+- [x] Unit tests with synthetic price series (low-vol vs high-vol stock)
+- [x] Integration: sizing adjustment visible in strategy decision context sent to moderation
+
+**Validation:**
+- `tests/test_risk_parity.py` covers inverse-vol sizing, lookback sensitivity, vol floor, missing-history fallback, target-vol scaling, and already-above-target filtering
+- Orchestrator integration confirms risk parity runs before moderation/risk, persists both Claude and risk-parity sizes, and BUY execution uses delta-to-target semantics for existing holdings
+- Dashboard/API coverage confirms the decision waterfall exposes the new risk-parity fields
+
+---
+
+## US-1.7.3 — Dashboard Visual Design System
+**Status:** ✅ Delivered (2026-03-22)
+**Days:** 2–5 (parallel with US-3.1) | **Effort:** Small (~1 day) | **Priority:** P2
+**Roadmap:** `docs/SOPHISTICATION_ROADMAP.md` § US-1.7.3
+**Spec:** `dashboard/frontend/dashboard-style-guide.md`
+
+**What was delivered:**
+
+- **Syne font** added to `index.html` (400/600/700); headings globally set to Syne via CSS layer
+- **Full CSS token system** in `index.css`:
+  - Background, surface, border, and text tokens aligned to style guide (`--color-bg`, `--color-surface`, `--color-text-muted`, `--color-text-dim`, `--color-border-strong`)
+  - Soft accent fills: `--color-violet-soft`, `--color-cyan-soft`, `--color-emerald-soft`
+  - Shadow system: `--shadow-panel`, `--shadow-glow`, `--shadow-glow-strong`, `--shadow-card-hover`
+  - Radius tokens: `--radius-xs` (0.75rem) through `--radius-lg` (2rem)
+  - Transition tokens: `--transition-fast`, `--transition-base`
+  - Brand gradient updated: violet→cyan→emerald (was cyan→emerald)
+- **Glass-dark panel treatment**: `.card` rebuilt with `radial-gradient` top highlight + dark fill + 1.5rem radius + `--shadow-panel`; hover lifts to `--shadow-card-hover`
+- **Atmospheric grid**: 72px violet lines (`rgba(99,50,255,0.05)`) — replaces 24px white grid
+- **Updated buttons**: `.btn-primary` uses brand gradient fill + `--shadow-glow`; `.btn-secondary` border-strong + hover cyan
+- **Pill classes**: `.pill` base + 6 variant classes (`pill-cyan/emerald/violet/loss/warning/dim`) for use by `StatusPill`
+- **Tailwind extensions**: `font-heading` (Syne), `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`, `animate-fade-up` keyframe
+- **App shell** (`App.tsx`): sticky blurred nav (`backdrop-blur: 16px`, 80% opacity dark), `border-terminal-border-strong`, pill active state (`bg-cyan/10 text-cyan border-cyan/25`) replacing `border-b-2`, dropdown uses panel shadow + blur
+- **`prefers-reduced-motion`** respected globally
+
+**New primitives created:**
+
+| File | Usage |
+|------|-------|
+| `src/components/Panel.tsx` | `<Panel>` (glass-dark, 1.5rem) or `<Panel hero>` (atmospheric glow, 2rem) |
+| `src/components/MetricCard.tsx` | `<MetricCard label="PORTFOLIO" value="£12,450" delta="+2.4%" deltaColor="emerald" />` |
+| `src/components/StatusPill.tsx` | `<StatusPill label="ACTIVE" variant="active" dot />` |
+| `src/components/SectionHeader.tsx` | `<SectionHeader eyebrow="Overview" title="Portfolio" subtitle="..." />` |
+
+**Key files changed:**
+- `dashboard/frontend/index.html` — Syne font
+- `dashboard/frontend/src/index.css` — token system + component classes
+- `dashboard/frontend/tailwind.config.js` — Tailwind extensions
+- `dashboard/frontend/src/App.tsx` — nav blur + pill active state + dropdown
+- `dashboard/frontend/src/components/Panel.tsx` (new)
+- `dashboard/frontend/src/components/MetricCard.tsx` (new)
+- `dashboard/frontend/src/components/StatusPill.tsx` (new)
+- `dashboard/frontend/src/components/SectionHeader.tsx` (new)
+
+**Next pass:** Migrate the 8 existing pages to use `Panel`, `MetricCard`, and `StatusPill` primitives in place of ad-hoc markup.
 
 ---
 
@@ -284,6 +343,6 @@ git remote remove old-origin     # remove KayvanNejabati remote
 - Run `poetry run pytest -v` before every push; 441 tests must pass (or higher)
 - Each story should be committed separately with a clear message
 - US-4.1 and US-7.4 can be started in parallel (independent)
-- US-3.1 can be started in parallel with US-7.4 from Day 2
+- US-3.1 delivered in parallel with US-7.4 on 2026-03-22
 - US-1.9 skeleton cannot start until US-1.6 is merged
 - US-8.1 is pure file work — no test impact expected

@@ -63,6 +63,10 @@ def _get_instrument_label(session: Session, ticker: str) -> tuple[str | None, di
     strategy_full: dict[str, Any] = {
         "action": strategy.action,
         "conviction": strategy.conviction,
+        "target_allocation_pct": strategy.target_allocation_pct,
+        "risk_parity_target_allocation_pct": strategy.risk_parity_target_allocation_pct,
+        "risk_parity_trailing_vol_pct": strategy.risk_parity_trailing_vol_pct,
+        "risk_parity_applied": strategy.risk_parity_applied,
         "primary_strategy": strategy.primary_strategy,
         "reasoning": strategy.reasoning,
         "timestamp": strategy.timestamp.isoformat(),
