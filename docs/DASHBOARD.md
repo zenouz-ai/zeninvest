@@ -110,7 +110,7 @@ Next: migrate 8 existing pages to use these primitives in place of ad-hoc markup
 
 ### Deployment (delivered)
 
-See `docs/DASHBOARD_DEPLOYMENT.md` — Docker service, multi-stage frontend build, SPA fallback, port 8000. Activity feed (SSE) uses relative URL — works when accessing at `http://VPS_IP:8000`. CORS origins are configurable via `dashboard.cors_origins` in `config/settings.yaml` (defaults to localhost for local dev; set to VPS IP/domain for production). Deploy to VPS.
+See `docs/DASHBOARD_DEPLOYMENT.md` — two Docker services: `investment-agent` (`Dockerfile.agent`, Python-only scheduler) and `dashboard` (`Dockerfile`, multi-stage Node + Python with frontend build). SPA fallback on port 8000. Activity feed (SSE) uses relative URL — works when accessing at `http://VPS_IP:8000`. CORS origins configurable via `dashboard.cors_origins` in `config/settings.yaml`. Authentication via `DASHBOARD_API_KEY` env var — write endpoints always protected.
 
 ### Stabilisation (done)
 

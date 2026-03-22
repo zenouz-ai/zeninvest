@@ -167,12 +167,17 @@ Set `cycle_frequency: intraday` in `config/settings.yaml` for 3 cycles during ma
 
 ### Docker
 
+Two Dockerfiles: `Dockerfile.agent` (Python-only, runs the scheduler) and `Dockerfile` (multi-stage Node + Python, builds the frontend and runs the dashboard). The `investment-agent` service uses `Dockerfile.agent`; the `dashboard` service uses `Dockerfile`. This avoids building the frontend twice and halves memory usage during builds on low-RAM VPS instances.
+
 ```bash
-# Build and run (agent + dashboard)
+# Build and run both services (agent + dashboard)
 docker compose up -d --build
 
-# Rebuild after code changes (e.g. dashboard updates)
-docker compose up -d --build   # or: docker compose up -d --build dashboard
+# Rebuild only the dashboard (e.g. after frontend changes)
+docker compose up -d --build dashboard
+
+# Rebuild only the agent (e.g. after strategy/risk changes)
+docker compose up -d --build investment-agent
 
 # View logs
 docker compose logs -f investment-agent
