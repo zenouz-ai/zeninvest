@@ -19,7 +19,7 @@ last_updated: 2026-03-22
 |-------|---------|------------------------------|------------|------------------------------------------------|
 | 1     | US-7.1  | Dashboard Authentication     | ✅ Done     | Already delivered; unblocks safe VPS exposure  |
 | 1–2   | US-4.1  | Volume Signals               | ✅ Done     | Delivered: indicators, scoring, config, tests  |
-| 2–4   | US-7.4  | Integration Test Coverage    | ⬜ Pending  | Can run in parallel with US-3.1                |
+| 2–4   | US-7.4  | Integration Test Coverage    | ✅ Done     | Delivered: orchestrator + state transition coverage |
 | 2–5   | US-3.1  | Risk-Parity Sizing           | ⬜ Pending  | No deps, ~3 days                               |
 | 3–7   | US-4.5  | Proactive Macro Intelligence | ⬜ Pending  | Largest; phased delivery                       |
 | 5–7   | US-1.6  | Slack NL Commands            | ⬜ Pending  | Builds on existing notifications module        |
@@ -59,6 +59,7 @@ docker compose up -d --build
 - No new DB tables needed; indicators added to existing `market_data_cache` OHLCV payload
 - Disable switch: `data_providers.volume_signals_enabled` in `settings.yaml`
 - Surface the new fields in moderator context formatting for review transparency
+- Runtime-validated after scoped refresh of `market_data_cache` `lite_analysis` / `full_analysis` rows; fresh cache payloads now include the new volume fields
 
 **Key files to touch:**
 - `src/agents/strategy/momentum.py` — add OBV signal
@@ -78,28 +79,29 @@ docker compose up -d --build
 ---
 
 ## US-7.4 — Integration Test Coverage
+**Status:** ✅ Delivered (2026-03-22)
 **Days:** 2–4 | **Effort:** Medium (~2 days) | **Priority:** P1 (can run parallel with US-3.1)
 **Roadmap:** `docs/SOPHISTICATION_ROADMAP.md` § US-7.4
 **Audit refs:** findings I4, I5 from `docs/TRADING_SYSTEM_AUDIT.md`
 
-**What to build:**
-- End-to-end `orchestrator.run_cycle()` integration test (dry-run, in-memory SQLite)
-- State machine transition tests: ACTIVE → CAUTIOUS → HALTED and manual recovery
-- Pipeline chain integrity test: strategy decision flows correctly through moderation → risk → execution
-- Stub all external API calls (T212, LLMs, yfinance) via `unittest.mock`
+**What was done:**
+- Added a shared orchestrator integration harness in `tests/conftest.py` using in-memory SQLite and broad `get_session()` patching
+- Added `tests/test_integration_orchestrator.py` covering happy-path `run_cycle(dry_run=True)` and orphaned decision detection
+- Added `tests/test_state_machine_transitions.py` covering live ACTIVE → CAUTIOUS, live HALTED liquidation path, and manual reset recovery
+- Kept production behavior unchanged: all external boundaries are mocked while the real orchestrator, strategy logging, moderation logging, risk logging, run records, and dry-run order logging execute normally
 
 **Key files to touch:**
 - `tests/test_integration_orchestrator.py` (new)
 - `tests/test_state_machine_transitions.py` (new)
-- May need a `conftest.py` fixture for a fully-mocked pipeline context
+- `tests/conftest.py` — shared mocked pipeline fixture / harness
 
 **Acceptance criteria:**
-- [ ] `run_cycle(dry_run=True)` completes without error against mocked deps
-- [ ] ACTIVE → CAUTIOUS transition triggers at correct drawdown threshold
-- [ ] CAUTIOUS → HALTED transition triggers at correct threshold
-- [ ] HALTED blocks new BUYs; SELL/REDUCE still allowed
-- [ ] Decision chain integrity: every approved BUY has a matching moderation + risk record
-- [ ] All new tests use in-memory SQLite (`INVESTMENT_AGENT_USE_INMEMORY_DB=1`)
+- [x] `run_cycle(dry_run=True)` completes without error against mocked deps
+- [x] ACTIVE → CAUTIOUS transition triggers at correct drawdown threshold
+- [x] CAUTIOUS → HALTED transition triggers at correct threshold
+- [x] HALTED blocks new BUYs; SELL/REDUCE still allowed
+- [x] Decision chain integrity: every approved BUY has a matching moderation + risk record
+- [x] All new tests use in-memory SQLite (`INVESTMENT_AGENT_USE_INMEMORY_DB=1`)
 
 ---
 

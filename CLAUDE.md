@@ -422,9 +422,9 @@ Files to check on every feature:
 - **US-7.0** Production Audit & Safety Fixes — 34 findings (3C/6H/12M/13L); Phase 1+2 delivered, see `docs/TRADING_SYSTEM_AUDIT.md`
 - **US-7.1** Dashboard Authentication — `APIKeyMiddleware` on all `/api/*` endpoints; `DASHBOARD_API_KEY` env var; frontend `X-API-Key` interceptor; public demo routes (`public_routes` config); 33 tests
 - **US-4.1** Volume Signals — `data_providers.volume_signals_enabled`; OBV + 20-day volume ratio in indicator output; momentum/mean-reversion scoring; moderator context surfaced; 6 new tests
+- **US-7.4** Integration Test Coverage — shared in-memory orchestrator harness; `run_cycle()` dry-run happy path; orphaned decision surfacing; live ACTIVE → CAUTIOUS and HALTED liquidation transitions; manual reset recovery; 5 new tests
 
 **Week 1 sprint (in-progress — see `docs/SPRINT_WEEK_1.md` for full detail):**
-- **US-7.4** Integration Test Coverage — `run_cycle()` dry-run + state machine transition tests (Days 2–4, parallel)
 - **US-3.1** Risk-Parity Position Sizing — inverse-vol sizing, configurable lookback and floor (Days 2–5)
 - **US-4.5** Proactive Macro Intelligence — daily scan, second-order reasoning, pipeline injection, audit trail (Days 3–7)
 - **US-1.6** Slack NL Trade Commands — inbound BUY/SELL/REVIEW; single-ticker pipeline; Risk VETO respected (Days 5–7)

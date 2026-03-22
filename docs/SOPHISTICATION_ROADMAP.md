@@ -146,7 +146,7 @@ timeline
 | **US-7.2** | Partial Fill Resubmission | Detect partial fills and resubmit unfilled remainder in next cycle | Ensures intended position sizes are achieved | **Planned** |
 | **US-7.3** | Execution Quality & Slippage | VWAP/TWAP awareness, execution timing, slippage tracking; pre-live prerequisite | Required before transitioning from practice to live account | **Planned** |
 | **US-7.0** | Production Audit & Safety Fixes | Full codebase audit (34 findings: 3C+6H+12M+13L). Phase 1: no-retry on POST, write-before-execute, liquidate_all status mapping, stop atomicity, moderator parse-failure safety, session leaks. Phase 2: committed cash tracking, correlation/daily-loss activation, cycle timeout, exception safety, HALTED data. 12 of 34 fixed. See `docs/TRADING_SYSTEM_AUDIT.md`. | Eliminates 3 critical + 6 high severity financial-risk bugs; activates 2 previously disabled risk rules | **Delivered** |
-| **US-7.4** | Integration Test Coverage | End-to-end orchestrator run_cycle test, state machine transition tests | Catch pipeline regressions early; quality gate for new features | **Planned** |
+| **US-7.4** | Integration Test Coverage | End-to-end orchestrator run_cycle test, state machine transition tests | Catch pipeline regressions early; quality gate for new features | **Delivered** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
 | **US-6.2** | Trade Journal Embeddings | Embeddings for journals; similarity search on new proposals | "Have we seen this pattern before?" context | **Planned** |
 | **US-6.3** | RL Investigation | Literature + data assessment; decision gate before any implementation | Evidence-based decision on RL; document findings | **Planned** |
@@ -730,15 +730,17 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** High — orchestrator run_cycle() has no end-to-end test; state machine transitions untested; opportunity optimizer was under-tested (fixed in audit)
 **Effort:** Medium (3–5 days)
 **Data Sources:** None
-**Stage:** Planned (partially addressed: +7 opportunity optimizer tests, +7 holiday tests added during audit)
+**Stage:** Delivered (2026-03-22)
 **Audit findings:** I4, I5
 
+**Status (2026-03-22):** Delivered. Added `tests/test_integration_orchestrator.py` and `tests/test_state_machine_transitions.py` on top of a shared in-memory harness in `tests/conftest.py`. Coverage now exercises the real `run_cycle()` control flow with mocked external services, asserts DB logging across strategy → moderation → risk → execution, checks orphaned-decision surfacing, verifies live ACTIVE → CAUTIOUS and HALTED liquidation transitions, and covers manual reset recovery. Existing pytest coverage already satisfied the dashboard endpoint and scheduler guard portions of this story (`tests/test_dashboard_auth.py`, `tests/test_scheduler_config.py`).
+
 **Acceptance Criteria:**
-- [ ] End-to-end `run_cycle()` test with all APIs mocked (T212, LLMs, data providers)
-- [ ] Test covers: data fetch → strategy → moderation → risk → execution → journal
-- [ ] State machine transition test: ACTIVE → CAUTIOUS → HALTED → manual reset
-- [ ] Dashboard API endpoint tests (pytest-based, not standalone scripts)
-- [ ] Concurrent cycle safety test (verify dedup and scheduler guards)
+- [x] End-to-end `run_cycle()` test with all APIs mocked (T212, LLMs, data providers)
+- [x] Test covers: data fetch → strategy → moderation → risk → execution → journal
+- [x] State machine transition test: ACTIVE → CAUTIOUS → HALTED → manual reset
+- [x] Dashboard API endpoint tests (pytest-based, not standalone scripts)
+- [x] Concurrent cycle safety test (verify dedup and scheduler guards)
 - [x] Opportunity optimizer edge cases: TTL expiry, capacity gating, cash floor, dequeue (added in audit)
 - [x] Holiday calendar tests: 7 tests covering observation rules, year range (added in audit)
 
