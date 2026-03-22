@@ -26,66 +26,30 @@ Deploy the dashboard backend (FastAPI + SSE) and frontend (built SPA) as a Docke
 
 ## Docker Architecture
 
-Current setup: one container (`investment-agent`) runs the scheduler. The dashboard needs:
-- Same SQLite DB (shared `./data` volume)
-- Dashboard backend (FastAPI) on port 8000
-- Built frontend (static files) served by FastAPI
+Two services in `docker-compose.yml`, each with its own Dockerfile:
 
-**Approach:** Add a second service `dashboard` in docker-compose. Same image, different command. Shares `./data` volume.
+| Service | Dockerfile | Purpose | Entry point |
+|---------|-----------|---------|-------------|
+| `investment-agent` | `Dockerfile.agent` | Python-only — runs scheduler | `alembic upgrade head && python -m src.scheduler.scheduler` |
+| `dashboard` | `Dockerfile` | Multi-stage (Node + Python) — builds frontend, runs FastAPI | `uvicorn dashboard.backend.app.main:app` |
 
----
+Both share the same SQLite DB via `./data` volume. The split avoids building the frontend twice and halves memory usage on low-RAM VPS instances.
 
-## Implementation Steps
+- `Dockerfile.agent`: Python 3.12-slim, Poetry deps, application code. No Node.js, no frontend build.
+- `Dockerfile`: Stage 1 (Node 20-slim) builds the React/Vite frontend with `DASHBOARD_API_KEY` baked in as `VITE_API_KEY`. Stage 2 (Python 3.12-slim) installs Poetry deps, copies app code + built frontend dist.
 
-### 1. Update Dockerfile
+**Frontend API URL:** The frontend is served from the same origin as the API. Requests use relative paths (`/api/*`). The SSE activity feed uses `/api/events/stream` (same-origin), so it works at `http://VPS_IP:8000`.
 
-- Add `COPY dashboard/ dashboard/` so the dashboard package is in the image.
-- Add multi-stage frontend build:
-  - Stage 1: Node image → `cd dashboard/frontend && npm ci && npm run build`
-  - Stage 2: Python image → copy `dashboard/frontend/dist` from stage 1
+**Authentication:** When `DASHBOARD_API_KEY` is set, all `/api/*` endpoints require `X-API-Key` header. Write endpoints (`/api/system/*`, `/api/runs/trigger*`) are always protected — they cannot be made public even via `public_routes` config.
 
-### 2. Update FastAPI to Serve Frontend
-
-In `dashboard/backend/app/main.py`:
-- Add `StaticFiles` for the built frontend.
-- Mount `/` to serve `dashboard/frontend/dist` with `html=True` (SPA fallback).
-- Keep `/api/*` and `/health` routes; they take precedence.
-
-### 3. Update docker-compose.yml
-
-Add `dashboard` service:
-
-```yaml
-dashboard:
-  build: .
-  container_name: investment-dashboard
-  restart: always
-  env_file: [.env]
-  volumes:
-    - ./data:/app/data
-    - ./journals:/app/journals
-    - ./logs:/app/logs
-  ports:
-    - "8000:8000"
-  command: ["uvicorn", "dashboard.backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-  depends_on:
-    - investment-agent
-```
-
-### 4. Frontend API URL
-
-The frontend is served from the same origin as the API. `VITE_API_URL` can stay unset — requests use relative paths. The SSE activity feed uses a relative URL (`/api/events/stream`) when `VITE_API_URL` is unset, so it works when accessing the dashboard at `http://VPS_IP:8000` (same-origin).
-
-### 5. VPS Firewall (operator step)
-
-Documented in [Deployment Commands (VPS)](#deployment-commands-vps). One-time per VPS:
+### VPS Firewall (one-time)
 
 ```bash
 sudo ufw allow 8000/tcp comment "Dashboard"
 sudo ufw reload
 ```
 
-### 6. Optional: nginx Reverse Proxy
+### Optional: nginx Reverse Proxy
 
 For port 80 or future HTTPS:
 - nginx listens on 80, proxies to `http://127.0.0.1:8000`
@@ -136,7 +100,7 @@ docker compose up -d --build dashboard
 
 Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser.
 
-**Local development:** Build the frontend with `cd dashboard/frontend && npm run build`. The Docker image runs a multi-stage build (Node → Python) that includes the built SPA.
+**Local development:** Build the frontend with `cd dashboard/frontend && npm run build`. The dashboard Docker image (`Dockerfile`) runs a multi-stage build (Node → Python) that includes the built SPA. The agent image (`Dockerfile.agent`) is Python-only and does not build the frontend.
 
 ---
 

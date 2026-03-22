@@ -293,11 +293,11 @@ docker compose up -d --build
 ```
 
 This will:
-1. Build the Docker image (Python 3.12-slim, Poetry dependencies, application code).
-2. Run Alembic database migrations on startup.
-3. Start the APScheduler-based scheduler as the main process.
-4. Mount `./data`, `./journals`, and `./logs` as volumes for persistence.
-5. Apply a 2 GB memory limit.
+1. Build two Docker images: `Dockerfile.agent` (Python-only, for the scheduler) and `Dockerfile` (multi-stage Node + Python, for the dashboard with frontend).
+2. Run Alembic database migrations on agent startup.
+3. Start the APScheduler-based scheduler as the agent's main process; start uvicorn as the dashboard's main process.
+4. Mount `./data`, `./journals`, and `./logs` as volumes for persistence (shared between both services).
+5. Apply a 2 GB memory limit to the agent container.
 6. Restart automatically on failure (`restart: always`).
 
 ### 3.6 Verify
@@ -1022,10 +1022,11 @@ git log --oneline HEAD@{1}..HEAD
 
 # Rebuild and restart (zero-downtime is not required since the agent is idle between cycles)
 docker compose down
-docker compose up -d --build
+docker compose up -d --build   # builds both: agent (Dockerfile.agent) + dashboard (Dockerfile)
 
 # Verify
 docker compose logs --tail=30 investment-agent
+docker compose logs --tail=30 dashboard
 docker compose ps
 ```
 
@@ -1749,10 +1750,10 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 
 1. Pull latest: `git pull origin main` (or your deployment branch)
 2. Allow firewall (one-time): `sudo ufw allow 8000/tcp comment "Dashboard"` then `sudo ufw reload`
-3. Build and run: `docker compose up -d --build`
+3. Build and run: `docker compose up -d --build` (builds agent from `Dockerfile.agent`, dashboard from `Dockerfile`)
 4. Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser
 
-**To rebuild after updates:** `git pull origin main` then `docker compose up -d --build` (or `docker compose up -d --build dashboard` for dashboard only). See [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md#updating--rebuilding-the-dashboard).
+**To rebuild after updates:** `git pull origin main` then `docker compose up -d --build` (or `docker compose up -d --build dashboard` for dashboard-only, `docker compose up -d --build investment-agent` for agent-only). See [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md#updating--rebuilding-the-dashboard).
 
 **Outcome:** Dashboard is running on VPS. All 8 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs, Roadmap), activity feed (SSE), and API at `http://YOUR_VPS_IP:8000`.
 
