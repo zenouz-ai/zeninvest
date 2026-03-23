@@ -51,7 +51,8 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 ### Trailing stops
 
 - HWM per ticker from latest `StopLossAdjustment` with `adjustment_type="trailing"` or from current price if first time.
-- When current price &gt; HWM, update HWM and set new stop = `HWM × (1 - trail_pct/100)`; cancel old stop, place new one.
+- When current price &gt; HWM, update HWM and set new stop = `HWM × (1 - trail_pct/100)`; **cancel old stop first, then place new one**. T212 only allows one pending stop per instrument — placing a second stop while the first is still active is rejected by T212. If the new stop placement fails after the old is cancelled, an emergency stop at the old price is immediately re-placed to restore protection.
+- **Guard:** If the computed new stop ≥ current price (price has fallen below HWM-stop level), the ratchet is skipped and recorded as `status=skipped, trigger_reason=trailing_ratchet_invalid`.
 - **Min profit gate:** Trailing stops are gated by `min_profit_pct: 10` — trailing only activates when the position is in profit by at least 10%. When enabled (`trailing_stops.enabled: true`), positions below this threshold do not get trailing adjustments.
 
 ### Limit dip-buy

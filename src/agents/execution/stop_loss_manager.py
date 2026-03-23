@@ -206,6 +206,25 @@ class StopLossManager:
             old_stop_info = pending_stops.get(ticker)
             old_stop_price = float(old_stop_info["stopPrice"]) if old_stop_info else None
 
+            # Guard: trailing stop must remain below current price
+            if new_stop >= current_price:
+                logger.warning(
+                    f"Trailing ratchet skipped for {ticker}: computed stop {new_stop} >= "
+                    f"current_price {current_price} (price may have fallen below HWM-stop level)"
+                )
+                self._record_adjustment(
+                    ticker=ticker,
+                    adjustment_type="trailing",
+                    old_stop_price=old_stop_price,
+                    new_stop_price=new_stop,
+                    current_price=current_price,
+                    high_water_mark=hwm,
+                    trigger_reason="trailing_ratchet_invalid",
+                    status="skipped",
+                    cycle_id=cycle_id,
+                )
+                continue
+
             # Only move stop up
             if old_stop_price is not None and new_stop <= old_stop_price:
                 # Still record HWM update even if stop doesn't move
@@ -416,14 +435,32 @@ class StopLossManager:
         high_water_mark: float | None = None,
         cycle_id: str | None = None,
     ) -> dict[str, Any]:
-        """Place new stop first, then cancel old one. This ensures the position
-        is never unprotected — if the new stop fails, the old one remains.
-        (Audit fix H-1: reversed order to prevent gap risk.)
+        """Cancel old stop first, then place new stop with emergency fallback.
+
+        T212 only allows one pending stop per instrument at a time, so the old stop
+        must be cancelled before placing the new one. If the new stop fails, an
+        emergency fallback stop is re-placed at the old price to keep protection.
         """
         old_stop_price = float(old_stop_info["stopPrice"]) if old_stop_info else None
         cancelled_order_id = None
 
-        # Place new stop FIRST — so position is never unprotected
+        # Cancel old stop FIRST — T212 only allows one pending stop per instrument.
+        # Accept a brief unprotected window (milliseconds) as the lesser risk vs.
+        # infinite ratchet failures from T212 rejecting two concurrent stops.
+        if old_stop_info and not self.dry_run:
+            old_order_id = old_stop_info.get("id") or old_stop_info.get("orderId")
+            if old_order_id:
+                try:
+                    self.client.cancel_order(str(old_order_id))
+                    cancelled_order_id = str(old_order_id)
+                    logger.info(f"Cancelled old stop for {ticker}: order_id={old_order_id}")
+                except Exception as e:
+                    logger.warning(
+                        f"Could not cancel old stop for {ticker} before ratchet: {e}. "
+                        f"Attempting new stop placement anyway."
+                    )
+
+        # Place new stop
         stop_result = self.order_manager.place_stop_loss(
             ticker=ticker,
             quantity=quantity,
@@ -435,24 +472,27 @@ class StopLossManager:
         new_order_id = stop_result.get("t212_order_id")
         status = stop_result.get("status", "failed")
 
-        # Cancel old stop AFTER new one is placed successfully
-        if old_stop_info and not self.dry_run:
-            new_stop_placed = status in ("placed", "pending", "dry_run")
-            if new_stop_placed:
-                old_order_id = old_stop_info.get("id") or old_stop_info.get("orderId")
-                if old_order_id:
-                    try:
-                        self.client.cancel_order(str(old_order_id))
-                        cancelled_order_id = str(old_order_id)
-                        logger.info(f"Cancelled old stop for {ticker}: order_id={old_order_id}")
-                    except Exception as e:
-                        # Old stop remains — position has two stops (over-protected), which is
-                        # safer than zero stops. Log for manual cleanup.
-                        logger.warning(f"Failed to cancel old stop for {ticker} (position has two stops): {e}")
+        # Emergency fallback: if new stop failed AND old stop was cancelled, re-place at old price
+        if status == "failed" and cancelled_order_id and old_stop_price:
+            logger.warning(
+                f"New stop at {new_stop_price} failed for {ticker} — "
+                f"re-placing emergency stop at old price {old_stop_price}"
+            )
+            fallback_pct = -((current_price - old_stop_price) / current_price * 100)
+            fallback_result = self.order_manager.place_stop_loss(
+                ticker=ticker,
+                quantity=quantity,
+                current_price=current_price,
+                stop_loss_pct=fallback_pct,
+                strategy="order_management",
+            )
+            fallback_status = fallback_result.get("status", "failed")
+            if fallback_status in ("placed", "pending"):
+                logger.info(f"Emergency fallback stop placed at {old_stop_price} for {ticker}")
             else:
-                logger.warning(
-                    f"New stop placement failed for {ticker} (status={status}), "
-                    f"keeping old stop at {old_stop_price} for protection"
+                logger.error(
+                    f"Emergency fallback stop also failed for {ticker} — "
+                    f"position is now unprotected!"
                 )
 
         self._record_adjustment(
