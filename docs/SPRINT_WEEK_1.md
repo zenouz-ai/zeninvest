@@ -22,7 +22,7 @@ last_updated: 2026-03-22
 | 2–4   | US-7.4    | Integration Test Coverage    | ✅ Done     | Delivered: orchestrator + state transition coverage |
 | 2–5   | US-3.1    | Risk-Parity Sizing           | ✅ Done     | Delivered: inverse-vol overlay, persistence, dashboard/API, tests |
 | 2–5   | US-1.7.3  | Dashboard Visual Design System | ✅ Done   | Syne font, token system, glass panels, 4 primitives |
-| 3–7   | US-4.5    | Proactive Macro Intelligence | ⬜ Pending  | Largest; phased delivery                       |
+| 3–7   | US-4.5    | Proactive Macro Intelligence | ✅ Done     | Scheduled scan + persisted context + action plan |
 | 5–7   | US-1.6    | Slack NL Commands            | ⬜ Pending  | Builds on existing notifications module        |
 | 6–7   | US-1.9    | Conversational WF            | ⬜ Pending  | Skeleton only this week; US-1.6 must land first|
 | 8     | US-8.1    | Open-Source Launch Prep      | ⬜ Pending  | Repo hygiene + legal + CI; roadmap doc done    |
@@ -197,62 +197,24 @@ docker compose up -d --build
 **Days:** 3–7 | **Effort:** Large (phased delivery) | **Priority:** P1
 **Roadmap:** `docs/SOPHISTICATION_ROADMAP.md` § US-4.5
 **Spec doc:** `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`
+**Status:** ✅ Delivered (2026-03-23)
 
-**Final optimal delivery cut (recommended):**
-- **Ship Phase 1 + Phase 3 first** — scheduled scan, persisted `macro_state`,
-  signal audit logs, and cycle-time strategy/moderation context injection.
-- **Keep rollout static-first** — prefer persisted macro state and current cached
-  macro intelligence; only use live research follow-up on materiality triggers.
-- **Provider policy:** Brave primary, Tavily fallback (same as US-4.4).
-- **Defer auto-actions** — macro output should remain review/context first in v1.
-
-**What to build (phased):**
-
-**Phase 1 — Scheduled macro scan:**
-- New `MacroIntelligenceAgent` that runs once per day (not per cycle)
-- Sources: Finnhub general news + Alpha Vantage sector + yfinance macro ETFs (TLT, GLD, VIX proxies)
-- Outputs: `macro_state` dict with regime (RISK_ON / RISK_OFF / NEUTRAL), top 3 signals, confidence score
-- Persisted to `macro_state` table (new Alembic migration)
-- Disable switch: `macro.proactive_scan_enabled`
-
-**Phase 2 — Second-order reasoning:**
-- Claude prompt receives `macro_state` + top signals
-- Prompt asks for second-order portfolio implications (e.g. "rising yields → REIT headwind")
-- Output: structured `macro_action_plan` with affected sectors, directional bias, confidence
-
-**Phase 3 — Pipeline integration:**
-- `macro_state` and `macro_action_plan` injected into strategy prompt context each cycle
-- Moderation committee receives `sector_headwind` and `economic_highlights` (already partially done via `macro_intelligence.py`)
-- Risk: macro regime feeds a soft signal (no hard VETO from macro alone)
-
-**Phase 4 — Audit trail:**
-- `macro_signal_logs` table: timestamp, signal source, signal text, confidence, regime classification
-- Dashboard Costs page: macro scan cost band (if LLM used)
-
-**Key files to touch:**
-- `src/agents/market_data/macro_intelligence.py` — extend existing module
-- `src/data/models.py` — new `MacroState`, `MacroSignalLog` models
-- `src/data/migrations/` — Alembic migration for new tables
-- `src/scheduler/scheduler.py` — add daily macro scan job
-- `config/settings.yaml` — `macro.proactive_scan_enabled`, `macro.scan_time_utc: "06:00"`
-- Tests: extend `tests/test_macro_intelligence.py` (new phases)
+**What was delivered:**
+- Dedicated daily `macro_scan` scheduler job gated by `macro.proactive_scan_enabled`
+- Persisted `macro_state` snapshots with regime, confidence, top signals, raw payload, and `macro_action_plan`
+- Normalized `macro_signal_logs` audit trail for each persisted top signal
+- Deterministic proactive state builder plus structured second-order `macro_action_plan` generation with Claude-backed path and deterministic fallback
+- Cycle-time injection of persisted macro context into both strategy prompt context and moderation market context
+- Static-first runtime behavior: existing cached `macro_intelligence` remains in place, while persisted proactive state is layered on when available
 
 **Acceptance criteria:**
-- [ ] Daily macro scan runs independently of trading cycles
-- [ ] Regime classification (RISK_ON/RISK_OFF/NEUTRAL) persisted to DB
-- [ ] Second-order reasoning prompt produces structured sector implications
-- [ ] `macro_state` injected into strategy context each cycle when enabled
-- [ ] Full audit trail: every signal logged with source, confidence, timestamp
-- [ ] `proactive_scan_enabled: false` leaves existing macro behaviour unchanged
-- [ ] All new tables created via Alembic migration
-
-**Suggested implementation order:**
-1. Config + `Settings` accessors (`macro.proactive_scan_enabled`, `scan_time_utc`, routing flags)
-2. `MacroState` + `MacroSignalLog` models and migration
-3. Deterministic scan/persistence path in `macro_intelligence.py`
-4. Scheduler job
-5. Orchestrator context injection with fallback to existing cached macro intelligence
-6. Optional `macro_action_plan` / second-order reasoning behind a feature flag
+- [x] Daily macro scan runs independently of trading cycles
+- [x] Regime classification (RISK_ON/RISK_OFF/NEUTRAL) persisted to DB
+- [x] Second-order reasoning prompt produces structured sector implications
+- [x] `macro_state` injected into strategy context each cycle when enabled
+- [x] Full audit trail: every signal logged with source, confidence, timestamp
+- [x] `proactive_scan_enabled: false` leaves existing macro behaviour unchanged
+- [x] All new tables created via Alembic migration
 
 ---
 

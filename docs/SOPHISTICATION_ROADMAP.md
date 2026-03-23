@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **17** · Pipeline **21** (order by priority and feasibility below)
+**At a glance:** Delivered **19** · Pipeline **17** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -35,14 +35,15 @@ timeline
         US-1.7 : Dashboard & Visualisation
         US-1.4 : Deploy POC to VPS
         US-4.4 : Agentic Research
+        US-4.5 : Proactive Macro News Intelligence
         US-4.1 : Volume Signals
         US-7.0 : Production Audit & Safety Fixes
         US-7.0a : Agent Logic Audit Fixes
         US-7.0b : Formal Verification Fixes
         US-7.1 : Dashboard Authentication
+        US-7.4 : Integration Test Coverage
         US-1.7.3 : Dashboard Visual Design System
     section Pipeline (priority order)
-        US-4.5 : Proactive Macro News Intelligence
         US-1.6 : Slack NL Trade Commands
         US-1.9 : Conversational Trading Workflow
         US-2.1 : Conviction Calibration
@@ -56,7 +57,6 @@ timeline
         US-4.3 : Sector Rotation
         US-7.2 : Partial Fill Resubmission
         US-7.3 : Execution Quality & Slippage
-        US-7.4 : Integration Test Coverage
         US-7.5 : Remaining Audit Backlog
         US-6.1 : ML Trade Scoring (investigation)
         US-6.2 : Journal Embeddings
@@ -86,25 +86,25 @@ timeline
 | | 16 | US-4.1 | Volume Signals (OBV + 20-day volume ratio, `volume_signals_enabled` flag, momentum/mean-reversion scoring, moderation context, 6 tests) |
 | | 17 | US-3.1 | Risk-Parity Position Sizing (60-day inverse-vol BUY overlay, strategy/risk waterfall audit fields, delta-to-target BUY execution, 10 tests) |
 | | 18 | US-1.7.3 | Dashboard Visual Design System (Syne font, full CSS token system, glass-dark panels, 72px violet grid, shadow/radius tokens, brand gradient, blurred nav, pill active state, 4 new shared primitives) |
-| **Pipeline** | 1 | US-4.5 | Proactive Macro News Intelligence |
-| | 2 | US-1.6 | Slack NL Trade Commands |
-| | 3 | US-1.9 | Conversational Trading Workflow |
-| | 4 | US-2.1 | Conviction Calibration |
-| | 5 | US-2.2 | Dynamic Strategy Weighting |
-| | 6 | US-2.3 | Moderator Effectiveness |
-| | 7 | US-2.4 | Nemotron Integration Investigation |
-| | 8 | US-5.2 | Parameter Sensitivity |
-| | 9 | US-3.2 | Regime Detection |
-| | 10 | US-3.3 | Correlation Screening |
-| | 11 | US-4.2 | Earnings Calendar |
-| | 12 | US-4.3 | Sector Rotation |
-| | 13 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
-| | 15 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
-| | 16 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
-| | 17 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
-| | 18 | US-6.1 | ML Trade Scoring (investigation) |
-| | 19 | US-6.2 | Journal Embeddings |
-| | 20 | US-6.3 | RL Investigation |
+| | 19 | US-4.5 | Proactive Macro News Intelligence (daily scheduled `macro_scan`, persisted `macro_state`, `macro_signal_logs`, structured `macro_action_plan`, strategy/moderation context injection) |
+| | 20 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
+| **Pipeline** | 1 | US-1.6 | Slack NL Trade Commands |
+| | 2 | US-1.9 | Conversational Trading Workflow |
+| | 3 | US-2.1 | Conviction Calibration |
+| | 4 | US-2.2 | Dynamic Strategy Weighting |
+| | 5 | US-2.3 | Moderator Effectiveness |
+| | 6 | US-2.4 | Nemotron Integration Investigation |
+| | 7 | US-5.2 | Parameter Sensitivity |
+| | 8 | US-3.2 | Regime Detection |
+| | 9 | US-3.3 | Correlation Screening |
+| | 10 | US-4.2 | Earnings Calendar |
+| | 11 | US-4.3 | Sector Rotation |
+| | 12 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
+| | 13 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
+| | 14 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
+| | 15 | US-6.1 | ML Trade Scoring (investigation) |
+| | 16 | US-6.2 | Journal Embeddings |
+| | 17 | US-6.3 | RL Investigation |
 | **Open-Source / Community** | 1 | US-8.1 | Open-Source Launch Preparation |
 
 ---
@@ -141,7 +141,7 @@ timeline
 | **US-7.0a** | Agent Logic Audit Fixes | 27 findings (5C+7H+9M+6L). All Critical + High fixed: MODIFY verdicts as conditional AGREE (C-1), CAUTION 25% allocation reduction (C-2), conviction/allocation clamping (C-3), Gemini score bounds (C-4), orphaned "submitting" sync (C-5), risk-driven exit bypass (H-1), entry_type in schema (H-2), strategy timeout 120s (H-3), consensus on all moderator rows (H-4), repaired-decision validation (H-5), ticker dedup (H-6). 36 new tests. See `docs/AGENT_LOGIC_AUDIT.md`. | Eliminates 5 critical + 7 high LLM output parsing and consensus bugs | **Delivered** |
 | **US-7.0b** | Formal Verification Fixes | 18 findings (3C+7W+8I). Phase 1: scheduler `max_instances=1` (concurrent cycle prevention), resume warns HALTED/CAUTIOUS. Phase 2: `trade_without_stop` alert (P2-5), OpportunityQueue `queue_status` lifecycle QUEUED→EXECUTING→EXECUTED + orphan reconciliation (P2-6), portfolio re-query before BUY after SELL/REDUCE (P2-4), decision chain integrity check (P2-3). 18 new tests. 12 invariants verified. See `docs/FORMAL_VERIFICATION_AUDIT.md`. | Crash safety, state machine correctness, DB atomicity | **Delivered** |
 | **US-7.5** | Remaining Audit Backlog | Consolidated backlog from three audits: 15 medium/low findings (agent logic), 22 medium/low (trading system), 7 phase 3+4 items (formal verification). Includes: HALTED auto-recovery, market hours check, DB CHECK constraints, atomic cost budget, peak inflation detection, halted ticker denial list. | Hardening for eventual live-account transition | **Planned** |
-| **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Planned** |
+| **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Delivered** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
 | **US-7.1** | Dashboard Authentication | API key or token-based auth on all dashboard endpoints; required before exposing beyond localhost | Critical security hardening; prevents unauthorized live cycle triggers | **Delivered** |
@@ -395,7 +395,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Position sizing by calibrated conviction can add 2–5% annually  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** trade_outcomes, strategy_decisions  
-**Stage:** Planned  
+**Stage:** Delivered  
 
 **Acceptance Criteria:**
 - [ ] Calibration curve: conviction vs win rate (bins 50–60, 60–70, 70–80, 80+)
@@ -476,13 +476,13 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Detailed plan:** `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`.
 
 **Acceptance Criteria:**
-- [ ] Independent macro scan schedule runs multiple times daily with persisted scan history
-- [ ] Macro events are classified into taxonomy and transformed into confidence-scored signals
-- [ ] Persistent macro state is maintained across scans (regime memory)
-- [ ] Committee receives macro state/signals as explicit context in decision flow
-- [ ] Macro action planner outputs review-first positioning recommendations with audit links
-- [ ] Optional auto-actions are gated by confidence thresholds, daily swing caps, and deterministic risk veto
-- [ ] Full signal-to-action audit trail exists (news -> reasoning -> signal -> recommendation -> outcome)
+- [x] Independent macro scan schedule runs daily with persisted state snapshots
+- [x] Deterministic regime classification and normalized macro signals are persisted
+- [x] Persistent macro state is maintained across scans and queryable at cycle time
+- [x] Strategy and moderation receive macro state/signals as explicit context in decision flow
+- [x] Macro action planner outputs structured, review-first positioning implications
+- [x] `proactive_scan_enabled: false` preserves prior runtime behavior
+- [x] Full macro-state and signal audit trail exists in the database
 
 **Dependencies:**
 - Can start now using existing macro intelligence and scheduler primitives

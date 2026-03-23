@@ -104,6 +104,25 @@ def format_market_context(market_context: dict[str, Any]) -> str:
         economic_highlights = macro.get("economic_highlights")
         if economic_highlights:
             lines.append(f"- Economic Highlights: {economic_highlights[:500]}")
+        proactive_regime = macro.get("proactive_regime")
+        if proactive_regime:
+            conf = macro.get("proactive_confidence")
+            if conf is not None:
+                lines.append(f"- Proactive Macro Regime: {proactive_regime} (confidence {float(conf):.2f})")
+            else:
+                lines.append(f"- Proactive Macro Regime: {proactive_regime}")
+        proactive_signals = macro.get("proactive_top_signals") or []
+        if proactive_signals:
+            lines.append(
+                "- Proactive Signals: "
+                + " | ".join(
+                    f"{sig.get('signal_type', 'macro')}: {sig.get('signal_text', '')}"
+                    for sig in proactive_signals[:3]
+                )[:500]
+            )
+        macro_action_plan = macro.get("macro_action_plan") or {}
+        if macro_action_plan.get("summary"):
+            lines.append(f"- Macro Action Plan: {macro_action_plan['summary'][:500]}")
         sections.append("\n".join(lines))
 
     # --- Sub-Strategy Signals ---

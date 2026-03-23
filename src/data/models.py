@@ -210,6 +210,38 @@ class NewsSentimentCache(Base):
     expires_at = Column(DateTime, nullable=True)
 
 
+class MacroState(Base):
+    """Persisted proactive macro scan snapshot for cycle-time context injection."""
+
+    __tablename__ = "macro_state"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    regime = Column(String(20), nullable=False)  # RISK_ON, RISK_OFF, NEUTRAL
+    confidence_score = Column(Float, nullable=False, default=0.0)
+    source = Column(String(50), nullable=False, default="scheduled_scan")
+    top_signals_json = Column(Text, nullable=False, default="[]")
+    action_plan_json = Column(Text, nullable=True)
+    sector_summary = Column(Text, nullable=True)
+    economic_highlights = Column(Text, nullable=True)
+    raw_payload_json = Column(Text, nullable=True)
+
+
+class MacroSignalLog(Base):
+    """Normalized audit log of proactive macro signals."""
+
+    __tablename__ = "macro_signal_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    state_id = Column(Integer, nullable=True, index=True)
+    signal_type = Column(String(50), nullable=False)
+    signal_text = Column(Text, nullable=False)
+    source = Column(String(50), nullable=False, default="scheduled_scan")
+    confidence_score = Column(Float, nullable=False, default=0.0)
+    regime = Column(String(20), nullable=False)
+
+
 class OpportunityScoreSnapshot(Base):
     """Per-cycle Universal Opportunity Value (UOV) scores per ticker."""
 

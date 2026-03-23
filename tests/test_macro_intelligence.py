@@ -4,15 +4,34 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from src.agents.market_data.macro_intelligence import (
+    build_proactive_macro_state,
+    generate_macro_action_plan,
     get_economic_headlines,
+    get_latest_macro_state,
     get_macro_intelligence,
     get_sector_headwind,
     get_sector_performance,
     get_sector_performance_yfinance,
+    persist_macro_state,
+    run_proactive_macro_scan,
     _parse_pct,
 )
+from src.agents.market_data.data_fetcher import DataFetcher
+from src.data.models import Base, MacroSignalLog, MacroState
+
+
+@pytest.fixture
+def db_session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    yield session
+    session.close()
 
 
 def test_parse_pct() -> None:
@@ -176,3 +195,139 @@ def test_get_macro_intelligence_uses_yfinance_fallback_when_av_fails() -> None:
     assert result["enabled"] is True
     assert len(result["sector_trends"]) > 0
     assert "Information Technology" in result["sector_trends"] or "Health Care" in result["sector_trends"]
+
+
+def test_build_proactive_macro_state_derives_regime_and_signals() -> None:
+    macro_state = build_proactive_macro_state(
+        {
+            "vix": 15.0,
+            "sp500_above_200ma": True,
+            "market_regime": "BULL",
+            "macro_intelligence": {
+                "sector_trends": {
+                    "Information Technology": {"trend": "outperform", "real_time_pct": 1.8},
+                },
+                "sector_summary": "Tech leadership intact",
+                "economic_highlights": "- Fed holds steady",
+                "headlines": [{"headline": "Fed holds rates steady", "source": "Reuters"}],
+            },
+        }
+    )
+
+    assert macro_state["regime"] == "RISK_ON"
+    assert macro_state["confidence_score"] > 0.5
+    assert len(macro_state["top_signals"]) >= 2
+
+
+def test_persist_macro_state_writes_state_and_signal_logs(db_session) -> None:
+    macro_state = {
+        "regime": "NEUTRAL",
+        "confidence_score": 0.8,
+        "source": "scheduled_scan",
+        "top_signals": [
+            {"signal_type": "volatility", "signal_text": "VIX at 19.20", "source": "market_data"},
+            {"signal_type": "headline", "signal_text": "Fed holds rates steady", "source": "Reuters"},
+        ],
+        "action_plan": {"summary": "Stay balanced", "sector_implications": []},
+        "sector_summary": "Sector summary",
+        "economic_highlights": "Economic highlights",
+        "raw_payload": {"vix": 19.2},
+    }
+
+    with patch("src.agents.market_data.macro_intelligence.get_session", return_value=db_session):
+        result = persist_macro_state(macro_state, signal_log_enabled=True)
+
+    assert result["status"] == "ok"
+    assert db_session.query(MacroState).count() == 1
+    assert db_session.query(MacroSignalLog).count() == 2
+
+
+def test_get_latest_macro_state_returns_newest_snapshot(db_session) -> None:
+    with patch("src.agents.market_data.macro_intelligence.get_session", return_value=db_session):
+        persist_macro_state(
+            {
+                "regime": "RISK_OFF",
+                "confidence_score": 0.9,
+                "source": "scheduled_scan",
+                "top_signals": [{"signal_type": "volatility", "signal_text": "VIX at 31.00"}],
+                "action_plan": {"summary": "Be defensive", "sector_implications": []},
+                "sector_summary": "Defensive tilt",
+                "economic_highlights": "Tariff headlines rising",
+                "raw_payload": {"vix": 31.0},
+            },
+            signal_log_enabled=False,
+        )
+        latest = get_latest_macro_state()
+
+    assert latest is not None
+    assert latest["regime"] == "RISK_OFF"
+    assert latest["economic_highlights"] == "Tariff headlines rising"
+    assert latest["action_plan"]["summary"] == "Be defensive"
+
+
+def test_data_fetcher_injects_latest_macro_state_when_enabled() -> None:
+    settings = MagicMock()
+    settings.macro_intelligence_enabled = False
+    settings.macro_proactive_scan_enabled = True
+
+    fetcher = DataFetcher()
+    fetcher.settings = settings
+
+    with patch.object(fetcher, "get_ohlcv", return_value=pd.DataFrame()), patch.object(
+        fetcher, "get_macro_intelligence_cached", return_value={"enabled": False}
+    ), patch(
+        "src.agents.market_data.data_fetcher.get_latest_macro_state",
+        return_value={"enabled": True, "regime": "NEUTRAL", "top_signals": []},
+    ):
+        result = fetcher.get_macro_data()
+
+    assert result["macro_state"]["regime"] == "NEUTRAL"
+
+
+def test_generate_macro_action_plan_falls_back_when_disabled() -> None:
+    with patch("src.agents.market_data.macro_intelligence.get_settings") as mock_settings:
+        mock_settings.return_value.macro_second_order_reasoning_enabled = False
+        plan = generate_macro_action_plan(
+            {
+                "regime": "RISK_OFF",
+                "confidence_score": 0.8,
+                "top_signals": [{"signal_text": "VIX at 32.00"}],
+            }
+        )
+
+    assert plan["portfolio_bias"] == "defensive"
+    assert len(plan["sector_implications"]) >= 1
+
+
+def test_run_proactive_macro_scan_persists_action_plan(db_session) -> None:
+    alpha_vantage = MagicMock()
+    finnhub = MagicMock()
+    fake_fetcher = MagicMock()
+    fake_fetcher.get_macro_data.return_value = {
+        "vix": 16.0,
+        "sp500_above_200ma": True,
+        "market_regime": "BULL",
+        "macro_intelligence": {
+            "sector_trends": {"Information Technology": {"trend": "outperform", "real_time_pct": 1.2}},
+            "sector_summary": "Tech leading",
+            "economic_highlights": "Fed steady",
+            "headlines": [{"headline": "Fed holds rates steady", "source": "Reuters"}],
+        },
+    }
+
+    settings = MagicMock()
+    settings.macro_proactive_scan_enabled = True
+    settings.macro_signal_log_enabled = True
+    settings.macro_second_order_reasoning_enabled = False
+
+    with patch("src.agents.market_data.macro_intelligence.get_settings", return_value=settings), patch(
+        "src.agents.market_data.data_fetcher.DataFetcher", return_value=fake_fetcher
+    ), patch(
+        "src.agents.market_data.macro_intelligence.get_session", return_value=db_session
+    ):
+        result = run_proactive_macro_scan(alpha_vantage=alpha_vantage, finnhub=finnhub)
+
+    assert result["status"] == "ok"
+    latest = db_session.query(MacroState).order_by(MacroState.id.desc()).first()
+    assert latest is not None
+    assert latest.action_plan_json is not None
