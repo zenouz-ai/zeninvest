@@ -16,6 +16,7 @@ trading:
   max_position_pct: 15
   cash_floor_pct: 10
   benchmark_ticker: "^GSPC"
+  fx_aware_quantity: true   # Convert native-currency (USD/GBX) prices to GBP before quantity calculation
 
 risk:
   min_holding_hours_before_reduce: 24  # Block REDUCE/SELL on positions held < 24h unless risk limit exceeded

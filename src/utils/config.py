@@ -83,6 +83,12 @@ class Settings:
         return bool(self.trading.get("skip_market_holidays", True))
 
     @property
+    def fx_aware_quantity(self) -> bool:
+        """Convert native-currency prices (USD/GBX) to GBP before quantity calculation.
+        Aligns executed share count with GBP allocation target. Default: True."""
+        return bool(self.trading.get("fx_aware_quantity", True))
+
+    @property
     def max_positions(self) -> int:
         return self.trading["max_positions"]
 

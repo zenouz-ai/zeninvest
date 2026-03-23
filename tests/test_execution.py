@@ -975,3 +975,97 @@ class TestPendingStopReconciliation:
         assert result["pending_live_count"] == 0
         assert result["reconciled_pending_count"] == 0
         assert "rate limited" in (result["live_fetch_error"] or "")
+
+
+class TestFxAwareQuantity:
+    """Tests for price_gbp / fx-aware quantity calculation in execute_market_order."""
+
+    def test_buy_with_price_gbp_uses_gbp_for_quantity(self, db_session):
+        """BUY quantity is calculated using price_gbp, not native current_price."""
+        manager = OrderManager(client=MagicMock(), dry_run=True)
+        # USD price $232, GBP equivalent £179 (≈ GBP/USD 0.772)
+        result = manager.execute_market_order(
+            ticker="MPC_US_EQ",
+            action="BUY",
+            target_amount_gbp=500.0,
+            current_price=232.0,  # USD (native)
+            price_gbp=179.0,      # GBP equivalent
+        )
+        # quantity = floor(500 / 179 * 100) / 100 = floor(279.3) / 100 = 2.79
+        assert result["status"] == "dry_run"
+        assert result["quantity"] == 2.79
+        orders = db_session.query(Order).all()
+        assert len(orders) == 1
+        # value_gbp for BUY always uses target_amount_gbp regardless of price_gbp
+        assert orders[0].value_gbp == 500.0
+
+    def test_buy_without_price_gbp_falls_back_to_current_price(self, db_session):
+        """When price_gbp is not provided, current_price is used (backward compat)."""
+        manager = OrderManager(client=MagicMock(), dry_run=True)
+        result = manager.execute_market_order(
+            ticker="MPC_US_EQ",
+            action="BUY",
+            target_amount_gbp=500.0,
+            current_price=232.0,
+        )
+        # quantity = floor(500 / 232 * 100) / 100 = floor(215.5) / 100 = 2.15
+        assert result["quantity"] == 2.15
+
+    def test_sell_with_price_gbp_uses_gbp_for_value_logging(self, db_session):
+        """SELL value_gbp is logged using price_gbp when provided."""
+        mock_client = MagicMock()
+        mock_client.get_position.return_value = {"quantity": 2.79}
+        mock_client.place_market_order.return_value = {"id": "order-1"}
+        manager = OrderManager(client=mock_client, dry_run=False)
+
+        result = manager.execute_market_order(
+            ticker="MPC_US_EQ",
+            action="SELL",
+            target_amount_gbp=500.0,
+            current_price=232.0,  # USD
+            price_gbp=179.0,      # GBP
+        )
+        orders = db_session.query(Order).all()
+        assert len(orders) == 1
+        # value_gbp = 2.79 × £179 = £499.41
+        assert abs(orders[0].value_gbp - 2.79 * 179.0) < 0.01
+
+    def test_place_stop_loss_value_gbp_uses_current_price_gbp(self, db_session):
+        """Stop-loss value_gbp is logged in GBP when current_price_gbp is provided."""
+        mock_client = MagicMock()
+        mock_client.place_stop_order.return_value = {"id": "stop-1"}
+        manager = OrderManager(client=mock_client, dry_run=False)
+
+        result = manager.place_stop_loss(
+            ticker="MPC_US_EQ",
+            quantity=2.79,
+            current_price=232.0,       # USD — used for stop price to T212
+            stop_loss_pct=-8.0,
+            current_price_gbp=179.0,   # GBP — used for value_gbp logging
+        )
+        assert result["status"] == "placed"
+        orders = db_session.query(Order).all()
+        assert len(orders) == 1
+        # stop_order_value = 2.79 × £179 = £499.41
+        assert abs(orders[0].value_gbp - 2.79 * 179.0) < 0.01
+        # stop_price sent to T212 should use native USD price: 232 × 0.92 = 213.44
+        mock_client.place_stop_order.assert_called_once()
+        call_kwargs = mock_client.place_stop_order.call_args
+        assert abs(call_kwargs.kwargs.get("stop_price", 0) - round(232.0 * 0.92, 2)) < 0.01
+
+    def test_place_stop_loss_stop_price_remains_native_currency(self, db_session):
+        """Stop trigger price sent to T212 always uses native current_price, not price_gbp."""
+        mock_client = MagicMock()
+        mock_client.place_stop_order.return_value = {"id": "stop-2"}
+        manager = OrderManager(client=mock_client, dry_run=False)
+
+        manager.place_stop_loss(
+            ticker="MPC_US_EQ",
+            quantity=2.0,
+            current_price=200.0,      # USD
+            stop_loss_pct=-8.0,
+            current_price_gbp=155.0,  # GBP — must NOT affect stop trigger price
+        )
+        call_kwargs = mock_client.place_stop_order.call_args
+        # Stop price must be 200 × 0.92 = 184.0 USD, not 155 × 0.92 = 142.6 GBP
+        assert call_kwargs.kwargs.get("stop_price") == round(200.0 * 0.92, 2)
