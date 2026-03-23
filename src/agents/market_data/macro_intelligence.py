@@ -214,7 +214,7 @@ def get_economic_headlines(finnhub: FinnhubClient, limit: int = 10) -> dict[str,
                     "url": item.get("url"),
                 }))
 
-        scored.sort(key=lambda x: (-x[0], x[1]["datetime"] or 0), reverse=True)
+        scored.sort(key=lambda x: (-x[0], -(x[1].get("datetime") or 0)))
         result["headlines"] = [s[1] for s in scored[:limit]]
 
         # Simple earnings season heuristic: check if "earnings" appears frequently
@@ -557,9 +557,7 @@ def run_proactive_macro_scan(
     if not settings.macro_proactive_scan_enabled:
         return {"status": "disabled"}
 
-    fetcher = DataFetcher()
-    fetcher._alpha_vantage = alpha_vantage
-    fetcher._finnhub = finnhub
+    fetcher = DataFetcher(alpha_vantage=alpha_vantage, finnhub=finnhub)
     try:
         macro_data = fetcher.get_macro_data()
         macro_state = build_proactive_macro_state(macro_data)

@@ -397,10 +397,13 @@ Files to check on every feature:
 | `docs/DASHBOARD.md` | Dashboard architecture, phases, data alignment, frontend/backend design |
 | `docs/DASHBOARD_DEPLOYMENT.md` | Dashboard VPS deployment: Docker service, VPS IP access, firewall |
 | `docs/AGENTIC_RESEARCH.md` | Agentic research: independent tool access, implementation plan, phase breakdown |
+| `dashboard/frontend/src/data/roadmap.ts` | Features delivered or added to pipeline — the dashboard Roadmap page reads milestone status from this file |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 
 **Test count:** Update `README.md` status line (`N tests passing`) whenever tests are added or removed.
+
+**Dashboard roadmap:** The Roadmap & Architecture page (`dashboard/frontend/src/pages/Roadmap.tsx`) renders milestones from `dashboard/frontend/src/data/roadmap.ts`. When a user story is delivered, move it from `status: 'pipeline'` to `status: 'delivered'` with `start`/`end` dates. When a new user story is added, append it to the `MILESTONES` array. The architecture Mermaid diagram in `Roadmap.tsx` should also be updated when new pipeline components are added.
 
 ## Project Evolution Context
 
@@ -425,9 +428,9 @@ Files to check on every feature:
 - **US-7.4** Integration Test Coverage — shared in-memory orchestrator harness; `run_cycle()` dry-run happy path; orphaned decision surfacing; live ACTIVE → CAUTIOUS and HALTED liquidation transitions; manual reset recovery; 5 new tests
 - **US-3.1** Risk-Parity Position Sizing — `risk.risk_parity_enabled`; 60-day inverse-vol BUY overlay with vol floor + target-vol scaler; strategy/risk waterfall exposes Claude size vs risk-parity size; BUY execution uses delta-to-target semantics; 10 new tests
 - **US-1.7.3** Dashboard Visual Design System — Syne font; full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`); glass-dark panels; 72px violet grid; brand gradient violet→cyan→emerald; blurred nav; pill active state; 4 shared primitives (`Panel`, `MetricCard`, `StatusPill`, `SectionHeader`); spec in `dashboard/frontend/dashboard-style-guide.md`
+- **US-4.5** Proactive Macro Intelligence — daily scheduled `macro_scan` (configurable `macro_scan_time_utc`, default 06:00 UTC); persisted `MacroState` (regime/confidence/top_signals/action_plan) + `MacroSignalLog` audit trail; deterministic regime derivation (RISK_ON/RISK_OFF/NEUTRAL) with optional Claude-backed second-order reasoning; cycle-time injection into strategy prompt and moderation market context; 48h staleness guard on macro state injection; DataFetcher constructor injection for client reuse; 25 tests
 
 **Week 1 sprint (in-progress — see `docs/SPRINT_WEEK_1.md` for full detail):**
-- **US-4.5** Proactive Macro Intelligence — daily scan, second-order reasoning, pipeline injection, audit trail (Days 3–7)
 - **US-1.6** Slack NL Trade Commands — inbound BUY/SELL/REVIEW; single-ticker pipeline; Risk VETO respected (Days 5–7)
 - **US-1.9** Conversational WF skeleton — DB tables + stub endpoints only; no LLM/execution yet (Days 6–7; needs US-1.6 first)
 - **US-8.1** Open-Source Launch Prep — nested dir, remotes, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CI (Day 8)

@@ -234,6 +234,7 @@ class MacroSignalLog(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    # Intentionally not a ForeignKey — allows independent cleanup/archival
     state_id = Column(Integer, nullable=True, index=True)
     signal_type = Column(String(50), nullable=False)
     signal_text = Column(Text, nullable=False)

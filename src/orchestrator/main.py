@@ -553,10 +553,10 @@ class Orchestrator:
                 top_signals = macro_state.get("top_signals", [])[:3]
                 if top_signals:
                     news_parts.append("Top signals:")
-                    for signal in top_signals:
+                    for sig in top_signals:
                         news_parts.append(
-                            f"- [{signal.get('signal_type', 'macro')}] "
-                            f"{signal.get('signal_text', '')}"
+                            f"- [{sig.get('signal_type', 'macro')}] "
+                            f"{sig.get('signal_text', '')}"
                         )
                 if macro_state.get("sector_summary"):
                     news_parts.append("Persisted sector summary:")
@@ -587,7 +587,7 @@ class Orchestrator:
                 if top_signals:
                     macro_context_lines.append(
                         "Top signals: "
-                        + " | ".join(signal.get("signal_text", "") for signal in top_signals)
+                        + " | ".join(sig.get("signal_text", "") for sig in top_signals)
                     )
                 action_plan = macro_state.get("action_plan", {})
                 if action_plan.get("summary"):
@@ -1902,12 +1902,12 @@ class Orchestrator:
     def _get_top_tickers(self, sub_results: dict[str, Any]) -> list[str]:
         """Extract top tickers from sub-strategy results."""
         tickers: set[str] = set()
-        for signal in sub_results.get("momentum", []):
-            if signal.action == "BUY" and signal.score >= 75:
-                tickers.add(signal.ticker)
-        for signal in sub_results.get("mean_reversion", []):
-            if signal.action == "BUY" and signal.score >= 70:
-                tickers.add(signal.ticker)
+        for sig in sub_results.get("momentum", []):
+            if sig.action == "BUY" and sig.score >= 75:
+                tickers.add(sig.ticker)
+        for sig in sub_results.get("mean_reversion", []):
+            if sig.action == "BUY" and sig.score >= 70:
+                tickers.add(sig.ticker)
         for score in sub_results.get("top_factor", []):
             tickers.add(score.ticker)
         return list(tickers)
