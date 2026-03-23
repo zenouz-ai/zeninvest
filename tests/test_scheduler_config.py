@@ -60,3 +60,53 @@ def test_config_cycle_frequency_intraday() -> None:
     settings = Settings(config)
     assert settings.cycle_times_utc == ["08:00", "12:00", "16:00"]
     assert settings.cycle_hours == 4
+
+
+def test_macro_config_accessors_read_values() -> None:
+    """Macro planning config exposes explicit typed accessors for US-4.5."""
+    settings = Settings(
+        {
+            "trading": {},
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+            "macro": {
+                "proactive_scan_enabled": True,
+                "scan_time_utc": "06:15",
+                "signal_log_enabled": False,
+                "second_order_reasoning_enabled": True,
+                "research_routing_mode": "followup_on_materiality",
+                "search_provider_policy": "brave_primary_tavily_fallback",
+            },
+        }
+    )
+
+    assert settings.macro_proactive_scan_enabled is True
+    assert settings.macro_scan_time_utc == "06:15"
+    assert settings.macro_signal_log_enabled is False
+    assert settings.macro_second_order_reasoning_enabled is True
+    assert settings.macro_research_routing_mode == "followup_on_materiality"
+    assert settings.macro_search_provider_policy == "brave_primary_tavily_fallback"
+
+
+def test_macro_config_accessors_default_safely() -> None:
+    """Macro settings default to disabled/static-first when macro block is absent."""
+    settings = Settings(
+        {
+            "trading": {},
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    assert settings.macro_proactive_scan_enabled is False
+    assert settings.macro_scan_time_utc == "06:00"
+    assert settings.macro_signal_log_enabled is True
+    assert settings.macro_second_order_reasoning_enabled is False
+    assert settings.macro_research_routing_mode == "static_first"
+    assert settings.macro_search_provider_policy == "brave_primary_tavily_fallback"

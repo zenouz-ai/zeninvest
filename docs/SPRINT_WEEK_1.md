@@ -198,6 +198,14 @@ docker compose up -d --build
 **Roadmap:** `docs/SOPHISTICATION_ROADMAP.md` § US-4.5
 **Spec doc:** `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`
 
+**Final optimal delivery cut (recommended):**
+- **Ship Phase 1 + Phase 3 first** — scheduled scan, persisted `macro_state`,
+  signal audit logs, and cycle-time strategy/moderation context injection.
+- **Keep rollout static-first** — prefer persisted macro state and current cached
+  macro intelligence; only use live research follow-up on materiality triggers.
+- **Provider policy:** Brave primary, Tavily fallback (same as US-4.4).
+- **Defer auto-actions** — macro output should remain review/context first in v1.
+
 **What to build (phased):**
 
 **Phase 1 — Scheduled macro scan:**
@@ -237,6 +245,14 @@ docker compose up -d --build
 - [ ] Full audit trail: every signal logged with source, confidence, timestamp
 - [ ] `proactive_scan_enabled: false` leaves existing macro behaviour unchanged
 - [ ] All new tables created via Alembic migration
+
+**Suggested implementation order:**
+1. Config + `Settings` accessors (`macro.proactive_scan_enabled`, `scan_time_utc`, routing flags)
+2. `MacroState` + `MacroSignalLog` models and migration
+3. Deterministic scan/persistence path in `macro_intelligence.py`
+4. Scheduler job
+5. Orchestrator context injection with fallback to existing cached macro intelligence
+6. Optional `macro_action_plan` / second-order reasoning behind a feature flag
 
 ---
 

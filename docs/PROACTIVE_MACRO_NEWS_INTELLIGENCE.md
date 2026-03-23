@@ -19,6 +19,30 @@ Define a phased implementation plan for a proactive macro system that:
 - Feeds macro context into Strategy/Moderation while preserving `RiskManager` absolute veto
 - Keeps full signal-to-action audit trails
 
+## Final implementation recommendation
+
+The optimal delivery cut for **US-4.5** is a **foundation-first, static-first** rollout:
+
+1. **Phase A/C first (ship now)** — add an independent scheduled macro scan, persist
+   a lightweight `macro_state` snapshot plus normalized signal logs, and inject the
+   latest persisted state into strategy/moderation context each cycle.
+2. **Second-order reasoning next** — add an LLM-generated `macro_action_plan` only
+   after persistence, scheduling, and context wiring are stable.
+3. **Review-first, not auto-action** — do not let macro signals place or resize
+   trades directly in v1. Surface them as context and audit trail first.
+
+For freshness and responsiveness, macro follow-up research should use the same
+hybrid routing policy validated for US-4.4:
+
+- **Default posture:** `static_first` — use the persisted macro state and existing
+  cached macro intelligence first.
+- **Materiality trigger:** only invoke live search when the macro state is stale,
+  contradictory, or materially relevant to the current cycle's risk posture.
+- **Provider strategy:** **Brave primary + Tavily fallback**; dual-provider mode
+  reserved for high-materiality macro/news cases.
+
+This keeps cycle latency predictable while still improving recency when it matters.
+
 ---
 
 ## Current Baseline (Already in Repo)
@@ -87,6 +111,18 @@ flowchart LR
 ## Database Schema (Proposed)
 
 ### New Tables
+
+### Recommended v1 schema cut
+
+To keep Week 1 scope realistic, implement the smallest schema that satisfies the
+story's acceptance criteria:
+
+1. **`macro_state`** — latest persisted regime snapshot and supporting payload
+2. **`macro_signal_logs`** — timestamped, normalized signal audit rows
+3. **Optional:** `macro_scan_runs` if you want explicit scan status / duration
+
+The broader `macro_events`, `macro_signals`, and `macro_action_audit` tables can
+follow in a later phase once review-first usage proves valuable.
 
 1. `macro_scan_runs`
    - `id` (PK), `scan_type`, `started_at`, `completed_at`, `status`
@@ -172,6 +208,24 @@ macro_news:
 
 Also add settings accessors in `src/utils/config.py`.
 
+### Recommended production defaults
+
+For the first implementation pass:
+
+```yaml
+macro:
+  proactive_scan_enabled: false
+  scan_time_utc: "06:00"
+  signal_log_enabled: true
+  second_order_reasoning_enabled: false
+  research_routing_mode: static_first
+  search_provider_policy: brave_primary_tavily_fallback
+```
+
+Keep the scan disabled by default until the scheduler job, persistence, and tests
+land. Enable second-order reasoning only after the deterministic macro-state path
+is stable.
+
 ---
 
 ## Macro-Specific Risk Controls
@@ -195,22 +249,26 @@ Also add settings accessors in `src/utils/config.py`.
 
 ### Phase A — Foundation (build now)
 
-- Add macro tables and migration
-- Add scanner job shell + run logging
-- Persist normalized events and dedup keys
-- Add read-only dashboard/API visibility for macro scans/signals
+- Add `macro_state` and `macro_signal_logs` tables + migration
+- Add scheduler job shell + run logging
+- Persist deterministic regime snapshot and top normalized signals
+- Add read path for "latest macro state" with fallback to current cached macro intelligence
+- Add tests for persistence, disabled behavior, and stale/fallback behavior
 
 ### Phase B — Signal Engine + Taxonomy
 
 - Implement taxonomy map and second-order reasoning templates
 - Generate macro signals with confidence/conviction
-- Add macro state manager and regime persistence
+- Add LLM-generated `macro_action_plan` behind a feature flag
+- Reuse US-4.4 routing posture: static-first, bounded follow-up, Brave primary/Tavily fallback
 
 ### Phase C — Committee Integration
 
 - Inject active macro state/signals into strategy + moderation context
-- Add "macro thesis" section to decision payloads/journals
+- Add "macro thesis" section to decision payloads/journals where practical
 - Track signal influence in audit trail
+- Prefer persisted `macro_state` first, then fall back to existing cached
+  `macro_intelligence` when no proactive scan has run yet
 
 ### Phase D — Action Planner (review-first)
 
@@ -255,6 +313,21 @@ Also add settings accessors in `src/utils/config.py`.
 - [ ] Macro recommendations and macro-driven actions are fully auditable end-to-end
 - [ ] Auto-actions require explicit threshold gates and always pass deterministic risk rules
 - [ ] Degradation policy reduces macro spend safely under budget pressure
+
+## Week 1 / v1 definition of done
+
+For the first production implementation, treat the story as complete when:
+
+- [ ] A daily macro scan runs independently of trading cycles
+- [ ] The scan persists a latest `macro_state` row with regime, confidence, and top signals
+- [ ] Signal audit rows are written to `macro_signal_logs`
+- [ ] The orchestrator injects latest `macro_state` into cycle context when enabled
+- [ ] Existing `macro_intelligence` remains the fallback when no proactive state exists
+- [ ] `proactive_scan_enabled: false` preserves current behavior
+- [ ] Targeted tests cover scheduler wiring, persistence, fallback behavior, and context injection
+
+Second-order reasoning and macro action planning are valuable follow-ons, but
+should not block the first shippable version.
 
 ---
 

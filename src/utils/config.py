@@ -285,6 +285,43 @@ class Settings:
         ttls = self.data_providers.get("cache_ttl_hours", {})
         return ttls.get(data_type, defaults.get(data_type, 4))
 
+    # --- Macro ---
+    @property
+    def macro(self) -> dict[str, Any]:
+        return self._config.get("macro", {})
+
+    @property
+    def macro_proactive_scan_enabled(self) -> bool:
+        """Enable the independent scheduled macro scan planned for US-4.5."""
+        return bool(self.macro.get("proactive_scan_enabled", False))
+
+    @property
+    def macro_scan_time_utc(self) -> str:
+        """Daily UTC time for the proactive macro scan job."""
+        return str(self.macro.get("scan_time_utc", "06:00"))
+
+    @property
+    def macro_signal_log_enabled(self) -> bool:
+        """Persist macro signal audit entries when proactive scans run."""
+        return bool(self.macro.get("signal_log_enabled", True))
+
+    @property
+    def macro_second_order_reasoning_enabled(self) -> bool:
+        """Enable LLM-generated second-order macro action planning."""
+        return bool(self.macro.get("second_order_reasoning_enabled", False))
+
+    @property
+    def macro_research_routing_mode(self) -> str:
+        """Routing posture for macro freshness lookups: static-first by default."""
+        return str(self.macro.get("research_routing_mode", "static_first"))
+
+    @property
+    def macro_search_provider_policy(self) -> str:
+        """Search provider policy for macro follow-up queries."""
+        return str(
+            self.macro.get("search_provider_policy", "brave_primary_tavily_fallback")
+        )
+
     # --- Universe Screening ---
     @property
     def universe(self) -> dict[str, Any]:
