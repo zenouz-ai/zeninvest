@@ -19,6 +19,8 @@ from src.agents.market_data.macro_intelligence import (
     persist_macro_state,
     run_proactive_macro_scan,
     _parse_pct,
+    _derive_proactive_regime,
+    _confidence_from_inputs,
 )
 from src.agents.market_data.data_fetcher import DataFetcher
 from src.data.models import Base, MacroSignalLog, MacroState
@@ -331,3 +333,122 @@ def test_run_proactive_macro_scan_persists_action_plan(db_session) -> None:
     latest = db_session.query(MacroState).order_by(MacroState.id.desc()).first()
     assert latest is not None
     assert latest.action_plan_json is not None
+
+
+# --- Edge-case / boundary tests ---
+
+
+def test_derive_proactive_regime_boundary_values() -> None:
+    """Verify boundary conditions for regime classification."""
+    # VIX exactly 30 → RISK_OFF
+    assert _derive_proactive_regime(30.0, True) == "RISK_OFF"
+    # VIX exactly 18, sp_above True → RISK_ON
+    assert _derive_proactive_regime(18.0, True) == "RISK_ON"
+    # VIX 18.5 alone (sp_above None) → NEUTRAL
+    assert _derive_proactive_regime(18.5, None) == "NEUTRAL"
+    # sp_above False, low VIX → RISK_OFF (sp below 200MA dominates)
+    assert _derive_proactive_regime(15.0, False) == "RISK_OFF"
+    # Both None → NEUTRAL
+    assert _derive_proactive_regime(None, None) == "NEUTRAL"
+    # VIX 25, sp_above True → NEUTRAL (VIX in the gap)
+    assert _derive_proactive_regime(25.0, True) == "NEUTRAL"
+
+
+def test_confidence_from_inputs_all_missing() -> None:
+    """When all inputs are missing, confidence should be base level."""
+    c = _confidence_from_inputs(vix=None, sp_above_200ma=None, sector_count=0, headline_count=0)
+    assert c == 0.35
+
+
+def test_confidence_from_inputs_all_present() -> None:
+    """When all inputs are present, confidence should be capped at 0.95."""
+    c = _confidence_from_inputs(vix=20.0, sp_above_200ma=True, sector_count=5, headline_count=3)
+    # 0.35 + 0.15 + 0.15 + 0.20 + 0.15 = 1.00 → capped to 0.95
+    assert c == 0.95
+
+
+def test_run_proactive_macro_scan_disabled() -> None:
+    """When proactive scan is disabled, should return disabled status."""
+    with patch("src.agents.market_data.macro_intelligence.get_settings") as mock_settings:
+        mock_settings.return_value.macro_proactive_scan_enabled = False
+        result = run_proactive_macro_scan(MagicMock(), MagicMock())
+    assert result == {"status": "disabled"}
+
+
+def test_run_proactive_macro_scan_data_fetcher_fails() -> None:
+    """When DataFetcher.get_macro_data() raises, the scan should propagate the error."""
+    fake_fetcher = MagicMock()
+    fake_fetcher.get_macro_data.side_effect = RuntimeError("Network failure")
+
+    settings = MagicMock()
+    settings.macro_proactive_scan_enabled = True
+
+    with patch("src.agents.market_data.macro_intelligence.get_settings", return_value=settings), \
+         patch("src.agents.market_data.data_fetcher.DataFetcher", return_value=fake_fetcher):
+        with pytest.raises(RuntimeError, match="Network failure"):
+            run_proactive_macro_scan(MagicMock(), MagicMock())
+
+
+def test_get_latest_macro_state_empty_db(db_session) -> None:
+    """When no macro state exists, should return None."""
+    with patch("src.agents.market_data.macro_intelligence.get_session", return_value=db_session):
+        result = get_latest_macro_state()
+    assert result is None
+
+
+def test_macro_state_staleness_guard() -> None:
+    """Stale macro state (>48h) should not be injected into cycle context."""
+    from datetime import datetime, timedelta, timezone
+
+    settings = MagicMock()
+    settings.macro_proactive_scan_enabled = True
+
+    stale_ts = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    stale_state = {"enabled": True, "regime": "RISK_OFF", "timestamp": stale_ts, "top_signals": []}
+
+    fetcher = DataFetcher()
+    fetcher.settings = settings
+
+    with patch.object(fetcher, "get_ohlcv", return_value=pd.DataFrame()), \
+         patch.object(fetcher, "get_macro_intelligence_cached", return_value={"enabled": False}), \
+         patch("src.agents.market_data.data_fetcher.get_latest_macro_state", return_value=stale_state):
+        result = fetcher.get_macro_data()
+
+    assert "macro_state" not in result
+
+
+def test_macro_state_fresh_is_injected() -> None:
+    """Fresh macro state (<48h) should be injected into cycle context."""
+    from datetime import datetime, timezone
+
+    settings = MagicMock()
+    settings.macro_proactive_scan_enabled = True
+
+    fresh_ts = datetime.now(timezone.utc).isoformat()
+    fresh_state = {"enabled": True, "regime": "RISK_ON", "timestamp": fresh_ts, "top_signals": []}
+
+    fetcher = DataFetcher()
+    fetcher.settings = settings
+
+    with patch.object(fetcher, "get_ohlcv", return_value=pd.DataFrame()), \
+         patch.object(fetcher, "get_macro_intelligence_cached", return_value={"enabled": False}), \
+         patch("src.agents.market_data.data_fetcher.get_latest_macro_state", return_value=fresh_state):
+        result = fetcher.get_macro_data()
+
+    assert result["macro_state"]["regime"] == "RISK_ON"
+
+
+def test_headline_sorting_highest_score_first() -> None:
+    """Headlines with higher keyword scores should appear first."""
+    fh = MagicMock()
+    fh.get_market_news.return_value = [
+        {"headline": "Tech earnings surprise", "source": "CNBC", "datetime": 100},
+        {"headline": "Fed rate decision and inflation CPI jobs GDP tariff", "source": "Reuters", "datetime": 200},
+        {"headline": "Sports update", "source": "ESPN", "datetime": 300},
+    ]
+
+    result = get_economic_headlines(fh, limit=3)
+    headlines = result["headlines"]
+    assert len(headlines) >= 2
+    # The Fed headline has the most keyword matches and should come first
+    assert "Fed" in headlines[0]["headline"]

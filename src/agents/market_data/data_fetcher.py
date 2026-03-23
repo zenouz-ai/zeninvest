@@ -42,10 +42,15 @@ except ImportError:
 class DataFetcher:
     """Unified data fetcher for all market data sources."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        finnhub: FinnhubClient | None = None,
+        alpha_vantage: AlphaVantageClient | None = None,
+    ) -> None:
         self.settings = get_settings()
-        self._finnhub: FinnhubClient | None = None
-        self._alpha_vantage: AlphaVantageClient | None = None
+        self._finnhub: FinnhubClient | None = finnhub
+        self._alpha_vantage: AlphaVantageClient | None = alpha_vantage
 
     @property
     def finnhub(self) -> FinnhubClient:
@@ -164,7 +169,25 @@ class DataFetcher:
         if self.settings.macro_proactive_scan_enabled:
             latest_macro_state = get_latest_macro_state()
             if latest_macro_state:
-                result["macro_state"] = latest_macro_state
+                # Staleness guard: skip injection if state is older than 48 hours
+                ts_str = latest_macro_state.get("timestamp")
+                if ts_str:
+                    try:
+                        ts = datetime.fromisoformat(ts_str)
+                        if ts.tzinfo is None:
+                            ts = ts.replace(tzinfo=timezone.utc)
+                        age = datetime.now(timezone.utc) - ts
+                        if age > timedelta(hours=48):
+                            from src.utils.logger import get_logger
+                            get_logger("data_fetcher").warning(
+                                "Stale macro state (%.1f hours old), skipping injection",
+                                age.total_seconds() / 3600,
+                            )
+                            latest_macro_state = None
+                    except (ValueError, TypeError):
+                        pass  # If timestamp can't be parsed, inject anyway
+                if latest_macro_state:
+                    result["macro_state"] = latest_macro_state
 
         return result
 
