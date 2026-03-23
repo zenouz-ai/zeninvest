@@ -1744,7 +1744,7 @@ class Orchestrator:
         stop_loss_pct = decision.get("stop_loss_pct", 0)
         if (
             action == "BUY"
-            and exec_result.get("status") in ("filled", "dry_run", "pending")
+            and exec_result.get("status") in ("filled", "dry_run")
             and stop_loss_pct
             and stop_loss_pct < 0
         ):
@@ -1783,7 +1783,7 @@ class Orchestrator:
         # Also alert if BUY filled but no stop_loss_pct was provided
         if (
             action == "BUY"
-            and exec_result.get("status") in ("filled", "pending")
+            and exec_result.get("status") == "filled"
             and stop_loss_result is None
             and not self.dry_run
         ):
