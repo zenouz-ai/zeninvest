@@ -20,8 +20,8 @@ trading:
 
 risk:
   min_holding_hours_before_reduce: 24  # Block REDUCE/SELL on positions held < 24h unless risk limit exceeded
-  max_single_stock_pct: 15
-  max_sector_pct: 35
+  max_single_stock_pct: 20
+  max_sector_pct: 40
   max_correlation: 0.7
   cautious_drawdown_pct: 30  # CAUTIOUS at 30% drawdown; practice-friendly (real money: consider 5/15)
   halt_drawdown_pct: 40     # HALTED at 40% drawdown
@@ -29,7 +29,7 @@ risk:
   vix_high: 25
   vix_extreme: 35
   min_positions: 5
-  risk_parity_enabled: false
+  risk_parity_enabled: true
   risk_parity_lookback_days: 60
   risk_parity_vol_floor: 0.05
   risk_parity_target_vol: 0.15
@@ -66,20 +66,20 @@ data_providers:
     macro_intelligence: 4
 
 macro:
-  proactive_scan_enabled: false   # US-4.5: independent scheduled macro scan (keep off until implemented)
+  proactive_scan_enabled: true   # US-4.5: independent scheduled macro scan (keep off until implemented)
   scan_time_utc: "06:00"          # Daily macro scan time; separate from trading cycles
   signal_log_enabled: true        # Persist normalized macro signal audit entries when proactive scan runs
-  second_order_reasoning_enabled: false  # Enable LLM-generated macro_action_plan after Phase A/C land
+  second_order_reasoning_enabled: true  # Enable LLM-generated macro_action_plan after Phase A/C land
   persist_headlines: true          # Archive Finnhub headlines to macro_headlines for World News dashboard tab
   research_routing_mode: static_first    # static_first | followup_on_materiality | bounded_mini_research
   search_provider_policy: brave_primary_tavily_fallback  # Matches US-4.4 production default
 
 universe:
-  max_candidates: 35          # Max new stocks to screen per cycle (increased from 30)
-  candidates_per_sector: 3    # Min candidates sampled from each sector
-  large_cap_pct: 0.70         # 70% of candidates from large cap ($10B+)
-  mid_cap_pct: 0.20           # 20% from mid cap ($2B-$10B)
-  small_cap_pct: 0.10         # 10% from small cap ($300M-$2B)
+  max_candidates: 40          # Max new stocks to screen per cycle (increased from 30)
+  candidates_per_sector: 5    # Min candidates sampled from each sector
+  large_cap_pct: 0.60         # candidates from large cap ($10B+)
+  mid_cap_pct: 0.30           # from mid cap ($2B-$10B)
+  small_cap_pct: 0.10         # from small cap ($300M-$2B)
   large_cap_min: 10000000000  # $10B
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
@@ -118,7 +118,7 @@ research:
 opportunity:
   enabled: true
   mode: active  # shadow|active
-  immediate_threshold_z: 0.3  # lower to promote more queued tickers before expiry
+  immediate_threshold_z: 0.2  # lower to promote more queued tickers before expiry
   queue_threshold_z: 0.0     # relaxed from 0.1 to allow more candidates into queue
   queue_ttl_cycles: 6       # extended to give queued tickers more cycles to promote
   swap_delta_z: 1.0
@@ -146,7 +146,7 @@ opportunity:
 
 order_management:
   enabled: true
-  default_stop_loss_pct: -8       # Default stop-loss % when placing missing stops (no ATR or no decision)
+  default_stop_loss_pct: -10       # Default stop-loss % when placing missing stops (no ATR or no decision)
   reassess_stops: true            # Reassess stop-losses each cycle based on ATR
   trailing_stops:
     enabled: true                 # Software-based trailing stops (cancel + replace)
