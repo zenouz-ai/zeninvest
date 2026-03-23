@@ -16,6 +16,7 @@ trading:
   max_position_pct: 15
   cash_floor_pct: 10
   benchmark_ticker: "^GSPC"
+  fx_aware_quantity: true   # Convert native-currency (USD/GBX) prices to GBP before quantity calculation
 
 risk:
   min_holding_hours_before_reduce: 24  # Block REDUCE/SELL on positions held < 24h unless risk limit exceeded
@@ -78,6 +79,7 @@ universe:
   uninvestigated_target_pct: 0.5  # Target share of per-cycle candidates that have never been investigated (approx)
   batch_enrichment_enabled: true   # Scheduled job to enrich instruments missing sector/market_cap
   batch_enrichment_per_run: 50     # Max instruments to enrich per scheduler run
+  data_fallback_web_search_enabled: true  # Use Brave/Tavily for analyst/news when Finnhub/AV fail or time out
 
 cost_limits:
   anthropic_daily_gbp: 1.00
@@ -94,10 +96,10 @@ search_api_limits:
 
 # Agentic research (US-4.4) — tool-use for Strategy, Skeptic, Risk
 research:
-  enabled: false
-  strategy_research_enabled: false  # Enable tool-use in Strategy when research.enabled
-  skeptic_research_enabled: false   # Enable tool-use in GPT-4o Skeptic
-  risk_research_enabled: false      # Enable tool-use in Gemini Risk
+  enabled: true
+  strategy_research_enabled: true   # Enable tool-use in Strategy when research.enabled
+  skeptic_research_enabled: true    # Enable tool-use in GPT-4o Skeptic
+  risk_research_enabled: true       # Enable tool-use in Gemini Risk
   max_calls_per_member_per_cycle:
     strategy: 20
     skeptic: 8

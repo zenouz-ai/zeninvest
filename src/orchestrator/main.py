@@ -1506,6 +1506,7 @@ class Orchestrator:
     ) -> dict[str, Any] | None:
         """Execute an approved trade and generate journal + stop-loss where relevant."""
         current_price = self._get_current_price(ticker, stocks_data)
+        price_gbp = self._compute_fx_price_gbp(current_price, ticker, portfolio_data)
 
         if current_price <= 0:
             logger.warning(f"No price for {ticker}, skipping")
@@ -1685,6 +1686,7 @@ class Orchestrator:
             action=action,
             target_amount_gbp=trade_value,
             current_price=current_price,
+            price_gbp=price_gbp,
             strategy=decision.get("primary_strategy"),
             conviction=conviction,
             moderation_result=mod_result.consensus,
@@ -1744,7 +1746,7 @@ class Orchestrator:
         stop_loss_pct = decision.get("stop_loss_pct", 0)
         if (
             action == "BUY"
-            and exec_result.get("status") in ("filled", "dry_run", "pending")
+            and exec_result.get("status") in ("filled", "dry_run")
             and stop_loss_pct
             and stop_loss_pct < 0
         ):
@@ -1755,6 +1757,7 @@ class Orchestrator:
                         ticker=ticker,
                         quantity=executed_qty,
                         current_price=current_price,
+                        current_price_gbp=price_gbp,
                         stop_loss_pct=stop_loss_pct,
                         strategy=decision.get("primary_strategy"),
                     )
@@ -1783,7 +1786,7 @@ class Orchestrator:
         # Also alert if BUY filled but no stop_loss_pct was provided
         if (
             action == "BUY"
-            and exec_result.get("status") in ("filled", "pending")
+            and exec_result.get("status") == "filled"
             and stop_loss_result is None
             and not self.dry_run
         ):
@@ -2110,6 +2113,39 @@ class Orchestrator:
                 ind = s.get("indicators", {})
                 return float(ind.get("current_price", 0))
         return 0.0
+
+    def _compute_fx_price_gbp(
+        self, current_price: float, ticker: str, portfolio_data: dict | None
+    ) -> float:
+        """Return current_price converted to GBP for quantity calculation.
+
+        yfinance returns prices in the stock's native currency (USD for _US_EQ,
+        GBX for _UK_EQ). Dividing a GBP allocation target by a USD price produces
+        too few shares (~79% of intended for USD stocks). This method applies the
+        account-level GBP/native-currency scale so quantity calculation is correct.
+
+        The FX scale is derived from T212's own data:
+            scale = invested_gbp / sum(qty × currentPrice_native)
+        This is computed fresh each cycle and matches T212's live exchange rate.
+
+        Falls back to current_price (scale=1.0) when the portfolio is empty (first
+        trade ever) — safe degradation, same behaviour as before this feature.
+        Only active when fx_aware_quantity=True in settings.
+        """
+        if not self.settings.fx_aware_quantity:
+            return current_price
+        if "_UK_EQ" in ticker:
+            return current_price / 100  # GBX (pence) → GBP
+        if "_US_EQ" not in ticker:
+            return current_price  # Unknown suffix — no conversion
+        positions = (portfolio_data or {}).get("positions", [])
+        invested_gbp = float(
+            (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
+            .get("currentValue", 0) or 0
+        )
+        scale = self._compute_position_value_scale(positions, invested_gbp)
+        # scale == 1.0 when no positions exist (empty portfolio) — graceful fallback
+        return current_price * scale
 
     def _get_stock_metadata(self, ticker: str, stocks_data: list[dict]) -> dict[str, Any]:
         """Extract company metadata (industry, market_cap, description) for output."""

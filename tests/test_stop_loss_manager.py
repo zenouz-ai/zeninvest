@@ -302,6 +302,123 @@ class TestLimitBuy:
         assert db_session.query(Order).filter(Order.order_type == "limit").count() == 0
 
 
+class TestReplaceStop:
+    """Tests for _replace_stop() cancel-first design and emergency fallback."""
+
+    def _make_live_manager(self, mock_settings, mock_client):
+        """Return a StopLossManager in live (non-dry-run) mode."""
+        order_manager = OrderManager(client=mock_client, dry_run=False)
+        with patch("src.agents.execution.stop_loss_manager.get_settings", return_value=mock_settings):
+            slm = StopLossManager(
+                order_manager=order_manager,
+                client=mock_client,
+                dry_run=False,
+            )
+            slm.settings = mock_settings
+            return slm
+
+    def test_cancel_old_stop_before_new_placement(self, mock_settings, db_session):
+        """Old stop is cancelled BEFORE new stop is placed (T212 one-stop constraint)."""
+        mock_client = MagicMock()
+        call_order = []
+        mock_client.cancel_order.side_effect = lambda *a, **kw: call_order.append("cancel")
+        mock_client.place_stop_order.side_effect = lambda *a, **kw: (
+            call_order.append("place") or {"id": "new_id_1", "status": "NEW"}
+        )
+        mock_client.get_pending_orders.return_value = []
+
+        slm = self._make_live_manager(mock_settings, mock_client)
+        old_stop_info = {"id": "old_id_1", "stopPrice": 90.0}
+        slm._replace_stop(
+            ticker="LNG_US_EQ",
+            quantity=1.0,
+            new_stop_price=95.0,
+            current_price=100.0,
+            old_stop_info=old_stop_info,
+            adjustment_type="trailing",
+            trigger_reason="trailing_ratchet",
+        )
+        assert call_order == ["cancel", "place"], (
+            "cancel_order must be called before place_stop_order"
+        )
+
+    def test_emergency_fallback_when_new_stop_fails(self, mock_settings, db_session):
+        """When new stop fails after old is cancelled, emergency stop at old price is placed."""
+        mock_client = MagicMock()
+        # First place_stop_order call (new price) → fails; second (old price) → succeeds
+        call_count = {"n": 0}
+
+        def fake_place_stop(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise Exception("T212: stop rejected")
+            return {"id": "fallback_id", "status": "NEW"}
+
+        mock_client.place_stop_order.side_effect = fake_place_stop
+        mock_client.cancel_order.return_value = None
+        mock_client.get_pending_orders.return_value = []
+
+        slm = self._make_live_manager(mock_settings, mock_client)
+        old_stop_info = {"id": "old_id_2", "stopPrice": 90.0}
+        result = slm._replace_stop(
+            ticker="LNG_US_EQ",
+            quantity=1.0,
+            new_stop_price=95.0,
+            current_price=100.0,
+            old_stop_info=old_stop_info,
+            adjustment_type="trailing",
+            trigger_reason="trailing_ratchet",
+        )
+        # Two place_stop_order calls: new price + emergency fallback
+        assert mock_client.place_stop_order.call_count == 2
+        assert result["status"] == "failed"  # ratchet itself failed; fallback was placed for protection
+
+    def test_no_fallback_if_cancel_failed(self, mock_settings, db_session):
+        """If cancel fails, new stop is still attempted but no emergency fallback loop occurs."""
+        mock_client = MagicMock()
+        mock_client.cancel_order.side_effect = Exception("cancel error")
+        mock_client.place_stop_order.side_effect = Exception("T212 rejected")
+        mock_client.get_pending_orders.return_value = []
+
+        slm = self._make_live_manager(mock_settings, mock_client)
+        old_stop_info = {"id": "old_id_3", "stopPrice": 90.0}
+        result = slm._replace_stop(
+            ticker="LNG_US_EQ",
+            quantity=1.0,
+            new_stop_price=95.0,
+            current_price=100.0,
+            old_stop_info=old_stop_info,
+            adjustment_type="trailing",
+            trigger_reason="trailing_ratchet",
+        )
+        # No emergency fallback because cancelled_order_id is None (cancel failed)
+        assert mock_client.place_stop_order.call_count == 1
+        assert result["status"] == "failed"
+
+
+class TestTrailingRatchetGuard:
+    """Test guard: trailing ratchet skipped when computed stop >= current_price."""
+
+    def test_ratchet_skipped_when_new_stop_above_current_price(self, manager, db_session):
+        """When new_stop >= current_price, ratchet is skipped and adjustment recorded."""
+        # trail_pct=5, hwm=100 -> new_stop=95. Set current_price=90 < 95.
+        positions = [
+            {"instrument": {"ticker": "LNG_US_EQ"}, "quantity": 1.0, "currentPrice": 90.0}
+        ]
+        manager.settings.trailing_stop_default_trail_pct = 5.0
+        # prev_hwm=100 via DB -> new_stop = 100 * 0.95 = 95 > current_price=90 -> skip
+        with patch.object(manager, "_get_last_hwm", return_value=100.0), \
+             patch.object(manager, "_get_pending_stops", return_value={}), \
+             patch.object(manager, "_replace_stop") as mock_replace:
+            results = manager.apply_trailing_stops(positions)
+        assert results == []
+        mock_replace.assert_not_called()
+        adj = db_session.query(StopLossAdjustment).first()
+        assert adj is not None
+        assert adj.status == "skipped"
+        assert adj.trigger_reason == "trailing_ratchet_invalid"
+
+
 class TestExtractAtr:
     def test_extracts_atr_14(self):
         assert StopLossManager._extract_atr({"indicators": {"atr_14": 5.5}}) == 5.5

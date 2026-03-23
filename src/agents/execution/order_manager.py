@@ -329,6 +329,7 @@ class OrderManager:
         action: str,
         target_amount_gbp: float,
         current_price: float,
+        price_gbp: float | None = None,
         strategy: str | None = None,
         conviction: int | None = None,
         moderation_result: str | None = None,
@@ -340,13 +341,16 @@ class OrderManager:
             ticker: Instrument ticker (e.g., "AAPL_US_EQ")
             action: BUY, SELL, or REDUCE
             target_amount_gbp: Target trade value in GBP
-            current_price: Current market price
+            current_price: Current market price in the instrument's native currency (USD for US stocks)
+            price_gbp: current_price converted to GBP. When provided, used for quantity
+                calculation and value_gbp logging (SELL/REDUCE). Falls back to current_price
+                when None (backward-compatible).
             strategy: Which strategy triggered this
             conviction: Conviction score
             moderation_result: Moderation panel result
             risk_result: Risk agent result
         """
-        quantity = calculate_quantity(target_amount_gbp, current_price)
+        quantity = calculate_quantity(target_amount_gbp, price_gbp or current_price)
         if quantity <= 0:
             logger.warning(f"Calculated quantity is 0 for {ticker} @ {current_price}")
             return {
@@ -503,7 +507,7 @@ class OrderManager:
                 "value_gbp": float(abs(target_amount_gbp)) if action == "BUY" else computed_dup,
             }
 
-        computed_value_gbp = abs(quantity) * current_price
+        computed_value_gbp = abs(quantity) * (price_gbp or current_price)
         # Min-order policy is based on the *target* trade value (pre quantity flooring)
         # for BUY orders. This avoids off-by-a-few-pence skips when the share quantity
         # is rounded down to 2 decimals.
@@ -873,15 +877,19 @@ class OrderManager:
         current_price: float,
         stop_loss_pct: float,
         strategy: str | None = None,
+        current_price_gbp: float | None = None,
     ) -> dict[str, Any]:
         """Place a stop-loss order for a position.
 
         Args:
             ticker: Instrument ticker (e.g., "AAPL_US_EQ")
             quantity: Number of shares to protect (positive).
-            current_price: Current market price.
+            current_price: Current market price in native currency (USD for US stocks).
+                Used for the stop trigger price sent to T212 (must be in native currency).
             stop_loss_pct: Negative percentage (e.g., -8.0 for 8% below).
             strategy: Which strategy triggered this.
+            current_price_gbp: current_price converted to GBP. When provided, used for
+                value_gbp logging only. Falls back to current_price when None.
 
         Returns:
             Result dict with order status.
@@ -891,7 +899,7 @@ class OrderManager:
 
         stop_price = round(current_price * (1 + stop_loss_pct / 100), 2)
         sell_quantity = -quantity  # Negative for sell
-        stop_order_value = abs(sell_quantity) * current_price
+        stop_order_value = abs(sell_quantity) * (current_price_gbp or current_price)
         can_place, reject_reason = self._passes_min_order_value(
             action="SELL",
             order_type="stop",
