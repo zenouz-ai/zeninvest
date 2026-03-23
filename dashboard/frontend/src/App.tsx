@@ -8,6 +8,7 @@ import Opportunity from './pages/Opportunity'
 import OrderManagement from './pages/OrderManagement'
 import Costs from './pages/Costs'
 import Roadmap from './pages/Roadmap'
+import WorldNews from './pages/WorldNews'
 import { AlertBanner } from './components/AlertBanner'
 import { DashboardAuthBanner } from './components/DashboardAuthBanner'
 import { DashboardApiKeyModal } from './components/DashboardApiKeyModal'
@@ -75,6 +76,7 @@ function MoreDropdown() {
         >
           <NavLink to="/opportunity" className={dropdownLinkClass} onClick={() => setOpen(false)}>Opportunity</NavLink>
           <NavLink to="/orders" className={dropdownLinkClass} onClick={() => setOpen(false)}>Order Mgmt</NavLink>
+          <NavLink to="/world-news" className={dropdownLinkClass} onClick={() => setOpen(false)}>World News</NavLink>
           <NavLink to="/costs" className={dropdownLinkClass} onClick={() => setOpen(false)}>Costs</NavLink>
           <NavLink to="/roadmap" className={dropdownLinkClass} onClick={() => setOpen(false)}>Roadmap</NavLink>
         </div>
@@ -179,6 +181,7 @@ function App() {
                 <NavLink to="/runs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Run History</NavLink>
                 <NavLink to="/opportunity" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Opportunity</NavLink>
                 <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>
+                <NavLink to="/world-news" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>World News</NavLink>
                 <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>
                 <NavLink to="/roadmap" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Roadmap</NavLink>
                 <div className="pt-2 pb-1">
@@ -208,6 +211,7 @@ function App() {
             <Route path="/opportunity" element={<Opportunity />} />
             <Route path="/orders" element={<OrderManagement />} />
             <Route path="/costs" element={<Costs />} />
+            <Route path="/world-news" element={<WorldNews />} />
             <Route path="/roadmap" element={<Roadmap />} />
           </Routes>
         </main>

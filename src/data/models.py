@@ -243,6 +243,25 @@ class MacroSignalLog(Base):
     regime = Column(String(20), nullable=False)
 
 
+class MacroHeadline(Base):
+    """Persistent archive of macro-economic headlines from Finnhub."""
+
+    __tablename__ = "macro_headlines"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    headline = Column(Text, nullable=False)
+    source = Column(String(100), nullable=False)
+    published_at = Column(DateTime, nullable=False, index=True)
+    url = Column(Text, nullable=True)
+    category = Column(String(50), nullable=True, index=True)
+    fetched_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    cycle_id = Column(String(100), nullable=True)
+
+    __table_args__ = (
+        Index("ix_macro_headlines_dedup", "headline", "published_at", unique=True),
+    )
+
+
 class OpportunityScoreSnapshot(Base):
     """Per-cycle Universal Opportunity Value (UOV) scores per ticker."""
 

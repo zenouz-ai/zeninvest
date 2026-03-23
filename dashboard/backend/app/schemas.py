@@ -429,3 +429,59 @@ class ApiUsageDailySchema(BaseModel):
 
     date: str
     by_service: dict[str, dict[str, Any]]  # service -> {calls, errors, error_rate}
+
+
+# --- Macro / World News ---
+
+
+class MacroHeadlineSchema(BaseModel):
+    """Persisted macro headline."""
+
+    id: int
+    headline: str
+    source: str
+    published_at: datetime
+    url: str | None = None
+    category: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MacroSignalSchema(BaseModel):
+    """Macro signal audit log entry."""
+
+    id: int
+    timestamp: datetime
+    state_id: int | None = None
+    signal_type: str
+    signal_text: str
+    source: str
+    confidence_score: float
+    regime: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MacroStateSchema(BaseModel):
+    """Proactive macro state snapshot."""
+
+    id: int
+    timestamp: datetime
+    regime: str
+    confidence_score: float
+    source: str
+    top_signals: list[dict[str, Any]] = []
+    action_plan: dict[str, Any] = {}
+    sector_summary: str | None = None
+    economic_highlights: str | None = None
+
+
+class MacroSummarySchema(BaseModel):
+    """Compact macro summary for Dashboard Home card."""
+
+    regime: str | None = None
+    confidence_score: float | None = None
+    top_signal: str | None = None
+    headline_count_7d: int = 0
+    category_counts: dict[str, int] = {}
+    last_updated: str | None = None

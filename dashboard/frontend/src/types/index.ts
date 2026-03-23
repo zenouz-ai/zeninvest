@@ -170,6 +170,45 @@ export interface Order {
   error_message?: string | null
 }
 
+// --- Macro / World News ---
+
+export interface MacroState {
+  id: number
+  timestamp: string
+  regime: 'RISK_ON' | 'RISK_OFF' | 'NEUTRAL'
+  confidence_score: number
+  source: string
+  top_signals: Array<{ signal_type: string; signal_text: string; source: string }>
+  action_plan: {
+    summary?: string
+    portfolio_bias?: string
+    confidence_score?: number
+    sector_implications?: Array<{ sector: string; bias: string; confidence: number; rationale: string }>
+    risks?: string[]
+    opportunities?: string[]
+  }
+  sector_summary: string | null
+  economic_highlights: string | null
+}
+
+export interface MacroHeadline {
+  id: number
+  headline: string
+  source: string
+  published_at: string
+  url: string | null
+  category: string | null
+}
+
+export interface MacroSummary {
+  regime: string | null
+  confidence_score: number | null
+  top_signal: string | null
+  headline_count_7d: number
+  category_counts: Record<string, number>
+  last_updated: string | null
+}
+
 // Utility function to clean ticker format for display
 export function cleanTicker(ticker: string): string {
   return ticker.replace(/_US_EQ$/, '').replace(/_UK_EQ$/, '').replace(/\._/g, '.')

@@ -43,6 +43,7 @@ timeline
         US-7.1 : Dashboard Authentication
         US-7.4 : Integration Test Coverage
         US-1.7.3 : Dashboard Visual Design System
+        US-1.7.4 : World News Dashboard Tab
     section Pipeline (priority order)
         US-1.6 : Slack NL Trade Commands
         US-1.9 : Conversational Trading Workflow
@@ -88,6 +89,7 @@ timeline
 | | 18 | US-1.7.3 | Dashboard Visual Design System (Syne font, full CSS token system, glass-dark panels, 72px violet grid, shadow/radius tokens, brand gradient, blurred nav, pill active state, 4 new shared primitives) |
 | | 19 | US-4.5 | Proactive Macro News Intelligence (daily scheduled `macro_scan`, persisted `macro_state`, `macro_signal_logs`, structured `macro_action_plan`, strategy/moderation context injection) |
 | | 20 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
+| | 21 | US-1.7.4 | World News Dashboard Tab (persistent headline archive, keyword categorisation, 5 macro REST endpoints, regime + headline feed + action plan page, Dashboard Home macro card, 23 tests) |
 | **Pipeline** | 1 | US-1.6 | Slack NL Trade Commands |
 | | 2 | US-1.9 | Conversational Trading Workflow |
 | | 3 | US-2.1 | Conviction Calibration |

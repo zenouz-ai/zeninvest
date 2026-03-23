@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order, UniverseBubbleItem } from '../types'
+import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order, UniverseBubbleItem, MacroState, MacroHeadline, MacroSummary } from '../types'
 import { getDashboardApiKey } from '../utils/apiKey'
 import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
 
@@ -395,6 +395,26 @@ export const systemApi = {
   },
   forceSell: async (ticker: string): Promise<{ status: string; ticker: string; quantity?: number; error?: string }> => {
     const response = await api.post(`/api/system/force-sell/${ticker}`)
+    return response.data
+  },
+}
+
+// Macro / World News API
+export const macroApi = {
+  state: async (): Promise<MacroState | null> => {
+    const response = await api.get('/api/macro/state')
+    return response.data
+  },
+  stateHistory: async (days = 7): Promise<MacroState[]> => {
+    const response = await api.get('/api/macro/state/history', { params: { days } })
+    return response.data
+  },
+  headlines: async (days = 7, category = 'all'): Promise<MacroHeadline[]> => {
+    const response = await api.get('/api/macro/headlines', { params: { days, category } })
+    return response.data
+  },
+  summary: async (): Promise<MacroSummary> => {
+    const response = await api.get('/api/macro/summary')
     return response.data
   },
 }

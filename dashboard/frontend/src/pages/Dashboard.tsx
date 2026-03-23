@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { runsApi, portfolioApi, eventsApi, statusApi, costsApi, dashboardApi, ordersApi, universeApi, systemApi, performanceApi } from '../api/client'
-import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail } from '../types'
+import { runsApi, portfolioApi, eventsApi, statusApi, costsApi, dashboardApi, ordersApi, universeApi, systemApi, performanceApi, macroApi } from '../api/client'
+import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail, MacroSummary } from '../types'
 import { safeFormat } from '../utils/date'
 import { cleanTicker } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
@@ -96,6 +96,9 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
 
   const fetchRunFeed = useCallback(() => dashboardApi.getRunFeed({ limit: 15 }), [])
   const runFeedResult = useAsyncData<RunFeedEntry[]>(fetchRunFeed)
+
+  const fetchMacroSummary = useCallback(() => macroApi.summary().catch(() => null), [])
+  const macroResult = useAsyncData<MacroSummary | null>(fetchMacroSummary)
 
   const fetchDailyCosts = useCallback(async () => {
     const raw = await costsApi.getDaily({ days: 31 })
@@ -476,6 +479,26 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
           <FreshnessIndicator lastUpdatedAt={monthlyResult.lastUpdatedAt} isStale={monthlyResult.isStale} className="mt-1 block" />
         </div>
       </div>
+
+      {/* Macro conditions bar */}
+      {macroResult.data && macroResult.data.regime && (
+        <div className="card flex items-center gap-4 flex-wrap text-sm">
+          <span className="text-xs uppercase tracking-wider text-terminal-text-dim">Macro</span>
+          <span className={`pill ${macroResult.data.regime === 'RISK_ON' ? 'pill-emerald' : macroResult.data.regime === 'RISK_OFF' ? 'pill-loss' : 'pill-dim'}`}>
+            {macroResult.data.regime === 'RISK_ON' ? 'Risk On' : macroResult.data.regime === 'RISK_OFF' ? 'Risk Off' : 'Neutral'}
+          </span>
+          {macroResult.data.confidence_score != null && (
+            <span className="font-mono text-terminal-text">{Math.round(macroResult.data.confidence_score * 100)}% conf</span>
+          )}
+          {macroResult.data.top_signal && (
+            <span className="text-terminal-text-dim truncate max-w-xs">{macroResult.data.top_signal}</span>
+          )}
+          {macroResult.data.headline_count_7d > 0 && (
+            <span className="text-terminal-text-dim">{macroResult.data.headline_count_7d} headlines (7d)</span>
+          )}
+          <Link to="/world-news" className="text-xs text-accent hover:underline ml-auto">View World News &rarr;</Link>
+        </div>
+      )}
 
       {/* Last cycle summary — always visible (WF-3) */}
       {latestRun && (

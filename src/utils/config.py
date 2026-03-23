@@ -311,6 +311,11 @@ class Settings:
         return bool(self.macro.get("second_order_reasoning_enabled", False))
 
     @property
+    def macro_persist_headlines(self) -> bool:
+        """Archive Finnhub headlines to macro_headlines table for dashboard display."""
+        return bool(self.macro.get("persist_headlines", True))
+
+    @property
     def macro_research_routing_mode(self) -> str:
         """Routing posture for macro freshness lookups: static-first by default."""
         return str(self.macro.get("research_routing_mode", "static_first"))
