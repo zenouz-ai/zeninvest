@@ -1,13 +1,18 @@
-"""Inbound command gateway scaffold for future ChatOps controls.
+"""Inbound command gateway for ChatOps trade controls (US-1.6).
 
-This scaffold is intentionally disabled in v1. Outbound notifications are the
-only active chat interface feature in this release.
+Routes parsed commands to the single-ticker pipeline. Handles ticker resolution,
+command logging, and result formatting.
 """
 
 from dataclasses import dataclass
 from typing import Any
 
+from src.agents.notifications.trade_command_parser import TradeCommandIntent, parse_trade_command
 from src.utils.config import get_settings
+from src.utils.logger import get_logger
+from src.utils.ticker_utils import resolve_ticker_to_t212
+
+logger = get_logger("command_gateway")
 
 
 @dataclass(slots=True)
@@ -27,23 +32,60 @@ class CommandGatewayDisabledError(RuntimeError):
 
 
 class CommandGateway:
-    """Disabled placeholder for authenticated inbound ChatOps commands."""
+    """Inbound command gateway — routes parsed commands to single-ticker pipeline."""
 
     def __init__(self) -> None:
         self.settings = get_settings()
 
     @property
     def enabled(self) -> bool:
-        return self.settings.notification_command_gateway_enabled
+        return self.settings.slack_trade_commands_enabled
 
     def handle(self, request: CommandRequest) -> dict[str, Any]:
+        """Route an inbound command to the appropriate handler.
+
+        Returns a result dict with at minimum a 'status' key.
+        """
         if not self.enabled:
             raise CommandGatewayDisabledError("Command gateway is disabled in configuration")
 
-        # Placeholder only. Phase 2 will add provider signature verification,
-        # allow-listing, and command audit logging.
-        return {
-            "status": "not_implemented",
-            "command": request.command,
-            "source": request.source,
-        }
+        text = request.raw_payload.get("text", "") or request.command
+        thread_ts = request.raw_payload.get("thread_ts") or request.raw_payload.get("ts", "")
+
+        # 1. Parse intent
+        intent = parse_trade_command(text, use_llm_fallback=True)
+        if not intent:
+            return {"status": "unparseable", "message": "Could not parse trade command."}
+
+        # 2. Resolve ticker
+        ticker_t212 = resolve_ticker_to_t212(intent.ticker)
+        if not ticker_t212:
+            return {
+                "status": "unknown_ticker",
+                "ticker": intent.ticker,
+                "message": f"Unknown ticker: {intent.ticker}. Check the symbol and try again.",
+            }
+
+        # 3. Run single-ticker pipeline
+        from src.orchestrator.single_ticker_run import SingleTickerRunner
+
+        runner = SingleTickerRunner(dry_run=False)
+        try:
+            result = runner.run(
+                ticker_t212=ticker_t212,
+                intent=intent,
+                user_id=request.user_id,
+                channel_id=request.channel_id,
+                thread_ts=thread_ts,
+            )
+            return {
+                "status": result.status,
+                "result": result,
+                "intent": intent,
+                "ticker_t212": ticker_t212,
+            }
+        except Exception as e:
+            logger.error(f"Command gateway pipeline error: {e}", exc_info=True)
+            return {"status": "error", "message": str(e)}
+        finally:
+            runner.close()

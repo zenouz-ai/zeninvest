@@ -178,6 +178,11 @@ notifications:
   include_dry_run_alerts: false
   command_gateway:
     enabled: false
+  slack_trade_commands:
+    enabled: false
+    channel_id: ""
+    confirmation_threshold_gbp: 500
+    confirmation_timeout_minutes: 10
 
 dashboard:
   enabled: true

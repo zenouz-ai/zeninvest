@@ -15,6 +15,7 @@ from .database import init_dashboard_tables
 from .middleware.auth import APIKeyMiddleware, get_api_key, warn_if_unauthenticated
 from .routers import (
     api_usage,
+    chat,
     costs,
     dashboard,
     decisions,
@@ -105,6 +106,7 @@ app.include_router(api_usage.router, prefix="/api/api-usage", tags=["api-usage"]
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(docs.router, prefix="/api/docs", tags=["docs"])
 app.include_router(macro.router, prefix="/api/macro", tags=["macro"])
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 
 
 @app.get("/health")

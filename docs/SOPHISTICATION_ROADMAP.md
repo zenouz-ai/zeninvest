@@ -90,8 +90,8 @@ timeline
 | | 19 | US-4.5 | Proactive Macro News Intelligence (daily scheduled `macro_scan`, persisted `macro_state`, `macro_signal_logs`, structured `macro_action_plan`, strategy/moderation context injection) |
 | | 20 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
 | | 21 | US-1.7.4 | World News Dashboard Tab (persistent headline archive, keyword categorisation, 5 macro REST endpoints, regime + headline feed + action plan page, Dashboard Home macro card, 23 tests) |
-| **Pipeline** | 1 | US-1.6 | Slack NL Trade Commands |
-| | 2 | US-1.9 | Conversational Trading Workflow |
+| | 22 | US-1.6 | Slack NL Trade Commands (regex-first NL parser, single-ticker pipeline, Socket Mode listener, CommandGateway, `slack_command_log`, large order confirmation, 43 tests) |
+| | 23 | US-1.9 | Conversational Trading Workflow skeleton (ChatSession/ChatTurn models, SessionManager CRUD, dashboard chat API stubs) |
 | | 3 | US-2.1 | Conviction Calibration |
 | | 4 | US-2.2 | Dynamic Strategy Weighting |
 | | 5 | US-2.3 | Moderator Effectiveness |
@@ -120,13 +120,13 @@ timeline
 | **US-1.3** | Performance Dashboard (CLI) | CLI `--dashboard`: portfolio value, Sharpe, win rate, costs, active positions | Immediate visibility into system behaviour | **Delivered** (export/summary open) |
 | **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Delivered** |
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
-| **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Planned** |
+| **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker; single-ticker pipeline, user intent overwrites decision; Risk can veto | Manual override with full audit trail | **Delivered** |
 | **US-1.7** | Dashboard & Visualisation | Web dashboard: 8 pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs, Roadmap); full API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system). | Full operational visibility; personal quant experience | **Delivered** |
 | **US-1.7.1** | Dashboard UX Phase 1 | AlertBanner (alert aggregation on all pages), Dashboard Home restructure (positions on home, always-visible activity + cycle summary, independent section loading, performance card, pause/resume toggle, PAUSED badge), accessibility (`aria-expanded`, `aria-live`), mobile nav fix. See `docs/UX_AUDIT.md`. | Reduces time-to-insight from 4 clicks to 0; surfaces anomalies proactively | **Delivered** |
 | **US-1.7.2** | Dashboard UX Phase 2 | Force Sell from Portfolio, data freshness indicators, keyboard-accessible tables, focus trap on modals, colour accessibility (▲/▼ arrows + aria-labels), chart colour alignment. See `docs/UX_AUDIT.md`. | 19/28 audit findings resolved; full keyboard + screen reader accessibility | **Delivered** |
 | **US-1.7.3** | Dashboard Visual Design System | Formalised ZENOUZ.ai visual language from `dashboard-style-guide.md`: Syne heading font, full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`), violet soft-fill accents, glass-dark card treatment (radial-gradient + panel shadow + 1.5rem radius), brand gradient updated to violet→cyan→emerald, 72px violet atmospheric grid, blurred sticky nav bar, pill active state. Tailwind: `font-heading`, `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`. Four new shared primitives: `Panel` (glass-dark surface), `MetricCard` (Syne KPI), `StatusPill` (brand pill/badge), `SectionHeader` (Syne heading + mono eyebrow). | Unified, polished visual identity across the entire dashboard; primitives unblock consistent page migration | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_DEPLOYMENT.md` | Operational visibility on live VPS | **Delivered** |
-| **US-1.9** | Conversational Trading Workflow | Multi-turn, session-based Slack + dashboard chat workflow with shared session backend, explicit confirmation gate, deterministic risk veto, and full conversation/research/action audit trail; see `docs/CONVERSATIONAL_TRADING_WORKFLOW.md` | Human-in-the-loop collaborative trading with traceable decisions and safer execution control | **Planned** |
+| **US-1.9** | Conversational Trading Workflow | Multi-turn, session-based Slack + dashboard chat workflow with shared session backend, explicit confirmation gate, deterministic risk veto, and full conversation/research/action audit trail; see `docs/CONVERSATIONAL_TRADING_WORKFLOW.md` | Human-in-the-loop collaborative trading with traceable decisions and safer execution control | **Delivered (skeleton)** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
@@ -425,35 +425,42 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 ---
 
 **US-1.6: Slack Natural Language Trade Commands**
-**Value:** Manual override with full audit trail; single-ticker pipeline; user intent overwrites decision; Risk can veto  
-**Effort:** Medium–Large (5–8 days)  
-**Data Sources:** Full pipeline; new `slack_command_log`  
-**Stage:** Planned  
+**Value:** Manual override with full audit trail; single-ticker pipeline; user intent overwrites decision; Risk can veto
+**Effort:** Medium–Large (5–8 days)
+**Data Sources:** Full pipeline; new `slack_command_log`
+**Stage:** Delivered
 
-**Detailed plan:** `docs/CHAT_AND_COMMANDS.md`.  
+**Detailed plan:** `docs/CHAT_AND_COMMANDS.md`.
 
 **Acceptance Criteria:**
-- [ ] Inbound Slack listener (Socket Mode)
-- [ ] NL parser: BUY/SELL/REVIEW + ticker + quantity or amount (£)
-- [ ] Single-ticker pipeline (cycle_id = `slack-{ts}`); final action = user intent; risk can veto
-- [ ] REVIEW: run pipeline, post summary, no order
-- [ ] Execute via OrderManager; Order.strategy = `slack_command`; confirm in Slack
-- [ ] Safety: ticker validation, cash/position checks, large-order confirmation, risk veto messaging
-- [ ] `slack_command_log`; CLI `slack_trade_listener`
+- [x] Inbound Slack listener (Socket Mode) — `src/agents/notifications/slack_listener.py`
+- [x] NL parser: BUY/SELL/REVIEW + ticker + quantity or amount (£) — regex-first with Claude fallback
+- [x] Single-ticker pipeline (cycle_id = `slack-{ts}`); final action = user intent; risk can veto — `src/orchestrator/single_ticker_run.py`
+- [x] REVIEW: run pipeline, post summary, no order
+- [x] Execute via OrderManager; Order.strategy = `slack_command`; confirm in Slack
+- [x] Safety: ticker validation, cash/position checks, large-order confirmation, risk veto messaging
+- [x] `slack_command_log`; CLI `slack_trade_listener`
+- [x] 43 new tests (parser, ticker resolution, pipeline, listener, chat session)
 
-**Integration:** Long-running process; reuses Strategy/Moderation/Risk/Execution stack.
+**Integration:** Long-running process; reuses Strategy/Moderation/Risk/Execution stack. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`.
 
 ---
 
 **US-1.9: Conversational Trading Workflow**
-**Value:** Multi-turn collaborative trading across Slack and dashboard with persistent context and explicit action confirmation  
-**Effort:** Large (8–12 days, phased delivery)  
-**Data Sources:** Existing pipeline + new chat session/turn/action tables + optional agentic research tools  
-**Stage:** Planned  
+**Value:** Multi-turn collaborative trading across Slack and dashboard with persistent context and explicit action confirmation
+**Effort:** Large (8–12 days, phased delivery)
+**Data Sources:** Existing pipeline + new chat session/turn/action tables + optional agentic research tools
+**Stage:** Delivered (skeleton); full workflow pending
 
 **Detailed plan:** `docs/CONVERSATIONAL_TRADING_WORKFLOW.md`.
 
-**Acceptance Criteria:**
+**Skeleton (delivered):**
+- [x] `ChatSession` and `ChatTurn` DB models + Alembic migration
+- [x] `SessionManager` stub with real CRUD: `create_session()`, `add_turn()`, `get_session()`, `end_session()`
+- [x] Dashboard chat API endpoints: `POST /api/chat/sessions`, `POST /sessions/{id}/turns`, `GET /sessions/{id}`, `POST /sessions/{id}/end`
+- [x] 5 tests against in-memory SQLite
+
+**Full workflow (pending):**
 - [ ] Session management supports start/resume/end/timeout with persistent multi-turn context
 - [ ] Shared backend supports Slack thread and dashboard chat continuity
 - [ ] Agent provides structured research summaries and follow-up refinements by turn
@@ -463,7 +470,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [ ] Dashboard chat APIs and SSE events support real-time conversational updates
 
 **Dependencies:**
-- Requires US-1.6 for robust inbound Slack handling baseline
+- Requires US-1.6 for robust inbound Slack handling baseline (delivered)
 - Requires US-1.7 backend/frontend extension for chat panel and APIs
 - Uses US-4.4 research tooling when enabled; core session + confirmation flow can ship without deep tool-use
 

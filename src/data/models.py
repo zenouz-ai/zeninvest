@@ -459,3 +459,57 @@ class TradeOutcome(Base):
     moderation_result = Column(String(20), nullable=True)
     risk_result = Column(String(20), nullable=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class SlackCommandLog(Base):
+    """Audit log for Slack-triggered trade commands (US-1.6)."""
+
+    __tablename__ = "slack_command_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    channel_id = Column(String(100), nullable=True)
+    user_id = Column(String(100), nullable=True)
+    thread_ts = Column(String(50), nullable=True)
+    raw_message = Column(Text, nullable=False)
+    parsed_intent_json = Column(Text, nullable=True)
+    ticker = Column(String(50), nullable=True, index=True)
+    action = Column(String(20), nullable=True)
+    cycle_id = Column(String(100), nullable=True, index=True)
+    order_id = Column(Integer, nullable=True)
+    status = Column(String(30), nullable=False, default="received")
+    rejection_reason = Column(Text, nullable=True)
+    response_message = Column(Text, nullable=True)
+
+
+class ChatSession(Base):
+    """Conversational trading session (US-1.9)."""
+
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    status = Column(String(20), nullable=False, default="active")
+    channel_type = Column(String(20), nullable=False)
+    channel_session_key = Column(String(100), nullable=True)
+    user_id = Column(String(100), nullable=True)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_activity_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    ended_at = Column(DateTime, nullable=True)
+    context_json = Column(Text, nullable=True)
+    linked_cycle_id = Column(String(100), nullable=True)
+
+
+class ChatTurn(Base):
+    """Individual turn in a conversational trading session (US-1.9)."""
+
+    __tablename__ = "chat_turns"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, nullable=False, index=True)
+    turn_index = Column(Integer, nullable=False, default=0)
+    role = Column(String(20), nullable=False)
+    message_text = Column(Text, nullable=True)
+    intent_json = Column(Text, nullable=True)
+    resolution_json = Column(Text, nullable=True)
+    response_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -218,49 +218,63 @@ docker compose up -d --build
 
 ---
 
-## US-1.6 — Slack NL Trade Commands
-**Days:** 5–7 | **Effort:** Medium (~2 days) | **Priority:** P2
+## US-1.6 — Slack NL Trade Commands ✅
+**Days:** 5–7 | **Effort:** Medium (~2 days) | **Priority:** P2 | **Status:** Delivered
 **Roadmap:** `docs/SOPHISTICATION_ROADMAP.md` § US-1.6
 **Depends on:** Existing notifications module (`src/agents/notifications/`)
 
-**What to build:**
-- Inbound Slack slash commands or keyword parsing: `BUY <ticker>`, `SELL <ticker>`, `REVIEW <ticker>`
-- Single-ticker pipeline: user intent triggers a focused run_cycle for that ticker only
-- User intent overwrites strategy decision (BUY/SELL forced); Risk can still VETO
-- Slack webhook listener (new endpoint or polling)
-- Response: confirmation message back to Slack with decision outcome
+**What was built:**
+- Regex-first NL parser (`trade_command_parser.py`) with Claude fallback for ambiguous messages
+- Single-ticker pipeline (`single_ticker_run.py`): 8-phase pipeline reusing all existing agents
+- User intent overrides strategy decision; Risk VETO still final
+- Slack Socket Mode listener (`slack_listener.py`) with background thread processing
+- CommandGateway evolved from disabled scaffold to functional command router
+- Large order confirmation flow (in-memory pending dict, thread-based timeout)
+- `SlackCommandLog` DB model for full audit trail
+- CLI entry point: `poetry run python -m src.agents.notifications.slack_trade_listener`
 
-**Key files to touch:**
-- `src/agents/notifications/command_gateway.py` — enable the scaffold (currently `enabled: false`)
-- `src/agents/notifications/slack_listener.py` (new) — inbound webhook handler
-- `src/orchestrator/main.py` — `run_single_ticker(ticker, forced_action)` method
-- `dashboard/backend/app/routers/` — optional: expose command via dashboard API too
-- `config/settings.yaml` — `notifications.command_gateway.enabled: true`
-- Tests: `tests/test_slack_commands.py` (new)
+**Key files created/modified:**
+- `src/agents/notifications/trade_command_parser.py` (new) — NL parser with 5 regex patterns
+- `src/agents/notifications/slack_listener.py` (new) — Socket Mode listener
+- `src/agents/notifications/slack_trade_listener.py` (new) — CLI entry point
+- `src/agents/notifications/command_gateway.py` — evolved from scaffold
+- `src/agents/notifications/formatters.py` — trade command reply formatters
+- `src/orchestrator/single_ticker_run.py` (new) — single-ticker pipeline
+- `src/utils/ticker_utils.py` — `resolve_ticker_to_t212()`
+- `src/agents/execution/order_manager.py` — `quantity_override` parameter
+- `src/data/models.py` — `SlackCommandLog` model
+- `config/settings.yaml` — `slack_trade_commands` config block
+- `src/utils/config.py` — 6 new settings properties
 
 **Acceptance criteria:**
-- [ ] `BUY AAPL` from Slack triggers a focused BUY pipeline for AAPL_US_EQ
-- [ ] `SELL AAPL` triggers forced SELL; Risk VETO respected (no execution if vetoed)
-- [ ] `REVIEW AAPL` triggers data fetch + strategy analysis; no order placed
-- [ ] Response message sent back to Slack within 30 seconds
-- [ ] Full audit trail: command logged to `notification_logs` with source=slack_command
-- [ ] `command_gateway.enabled: false` disables all inbound handling
-- [ ] Unit tests with mocked Slack payloads
+- [x] `BUY AAPL` from Slack triggers a focused BUY pipeline for AAPL_US_EQ
+- [x] `SELL AAPL` triggers forced SELL; Risk VETO respected (no execution if vetoed)
+- [x] `REVIEW AAPL` triggers data fetch + strategy analysis; no order placed
+- [x] Response message sent back to Slack within 30 seconds (async background thread)
+- [x] Full audit trail: `slack_command_log` with cycle_id, order_id, status
+- [x] `slack_trade_commands.enabled: false` disables all inbound handling
+- [x] 38 unit tests (parser 16, ticker resolution 6, pipeline 11, listener/gateway 5)
 
 ---
 
-## US-1.9 — Conversational Trading Workflow (skeleton only this week)
-**Days:** 6–7 | **Effort:** Large (8–12 days total; skeleton only in Week 1) | **Priority:** P2
+## US-1.9 — Conversational Trading Workflow (skeleton only this week) ✅
+**Days:** 6–7 | **Effort:** Large (8–12 days total; skeleton only in Week 1) | **Priority:** P2 | **Status:** Skeleton delivered
 **Roadmap:** `docs/SOPHISTICATION_ROADMAP.md` § US-1.9
 **Spec doc:** `docs/CONVERSATIONAL_TRADING_WORKFLOW.md`
-**Depends on:** US-1.6 (must land first)
+**Depends on:** US-1.6 (delivered)
 
-**What to build this week (skeleton / Phase A only):**
-- `ChatSession` and `ChatTurn` DB models + Alembic migration (tables only, no logic yet)
-- `SessionManager` stub: `create_session()`, `add_turn()`, `get_session()`, `end_session()`
-- Minimal FastAPI endpoints: `POST /api/chat/sessions`, `POST /api/chat/sessions/{id}/turns`
-- No LLM calls yet; no Slack integration yet; no execution yet
-- Returns hardcoded `{"status": "received"}` — just the plumbing
+**What was built (skeleton / Phase A):**
+- `ChatSession` and `ChatTurn` DB models + Alembic migration (combined with `SlackCommandLog`)
+- `SessionManager` with real DB CRUD: `create_session()`, `add_turn()`, `get_session()`, `end_session()`
+- FastAPI endpoints: `POST /api/chat/sessions`, `POST /sessions/{id}/turns`, `GET /sessions/{id}`, `POST /sessions/{id}/end`
+- No LLM calls; no Slack integration; no execution — just the plumbing
+
+**Key files created:**
+- `src/data/models.py` — `ChatSession`, `ChatTurn` models
+- `src/data/migrations/versions/l7m8n9o0p1q2_add_slack_command_log_and_chat_tables.py`
+- `src/agents/conversation/session_manager.py` (new)
+- `dashboard/backend/app/routers/chat.py` (new)
+- `tests/test_chat_session_stub.py` (new, 5 tests)
 
 **Deferred to Week 2+:**
 - Full conversation orchestrator with LLM reasoning
@@ -269,20 +283,13 @@ docker compose up -d --build
 - Research tool integration
 - Dashboard chat panel UI
 
-**Key files to touch:**
-- `src/data/models.py` — `ChatSession`, `ChatTurn` models
-- `src/data/migrations/` — Alembic migration
-- `src/agents/notifications/session_manager.py` (new stub)
-- `dashboard/backend/app/routers/chat.py` (new, minimal)
-- Tests: `tests/test_chat_session_stub.py` (new, basic CRUD)
-
 **Acceptance criteria (Week 1 scope only):**
-- [ ] `chat_sessions` and `chat_turns` tables created via migration
-- [ ] `POST /api/chat/sessions` creates a session record, returns session_id
-- [ ] `POST /api/chat/sessions/{id}/turns` appends a turn record
-- [ ] `GET /api/chat/sessions/{id}` returns session + turns
-- [ ] No LLM calls, no execution, no Slack integration
-- [ ] Tests pass against in-memory SQLite
+- [x] `chat_sessions` and `chat_turns` tables created via migration
+- [x] `POST /api/chat/sessions` creates a session record, returns session_id
+- [x] `POST /api/chat/sessions/{id}/turns` appends a turn record
+- [x] `GET /api/chat/sessions/{id}` returns session + turns
+- [x] No LLM calls, no execution, no Slack integration
+- [x] Tests pass against in-memory SQLite
 
 ---
 

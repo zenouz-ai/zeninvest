@@ -334,6 +334,7 @@ class OrderManager:
         conviction: int | None = None,
         moderation_result: str | None = None,
         risk_result: str | None = None,
+        quantity_override: float | None = None,
     ) -> dict[str, Any]:
         """Execute a market order with deduplication.
 
@@ -349,8 +350,13 @@ class OrderManager:
             conviction: Conviction score
             moderation_result: Moderation panel result
             risk_result: Risk agent result
+            quantity_override: When set, use this quantity directly instead of calculating
+                from target_amount_gbp. Used by Slack trade commands with explicit share count.
         """
-        quantity = calculate_quantity(target_amount_gbp, price_gbp or current_price)
+        if quantity_override is not None and quantity_override > 0:
+            quantity = quantity_override
+        else:
+            quantity = calculate_quantity(target_amount_gbp, price_gbp or current_price)
         if quantity <= 0:
             logger.warning(f"Calculated quantity is 0 for {ticker} @ {current_price}")
             return {

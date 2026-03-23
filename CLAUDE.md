@@ -417,7 +417,7 @@ Files to check on every feature:
 - **Key docs:** `docs/SOPHISTICATION_ROADMAP.md` (backlog), `docs/COMPETITIVE_ANALYSIS.md` (positioning)
 
 
-## Near-term delivery focus (updated 2026-03-22)
+## Near-term delivery focus (updated 2026-03-23)
 
 **Delivered:**
 - **US-1.5** Chat Interface & Real-Time Trade Alerts
@@ -434,10 +434,10 @@ Files to check on every feature:
 - **US-1.7.3** Dashboard Visual Design System — Syne font; full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`); glass-dark panels; 72px violet grid; brand gradient violet→cyan→emerald; blurred nav; pill active state; 4 shared primitives (`Panel`, `MetricCard`, `StatusPill`, `SectionHeader`); spec in `dashboard/frontend/dashboard-style-guide.md`
 - **US-4.5** Proactive Macro Intelligence — daily scheduled `macro_scan` (configurable `macro_scan_time_utc`, default 06:00 UTC); persisted `MacroState` (regime/confidence/top_signals/action_plan) + `MacroSignalLog` audit trail; deterministic regime derivation (RISK_ON/RISK_OFF/NEUTRAL) with optional Claude-backed second-order reasoning; cycle-time injection into strategy prompt and moderation market context; 48h staleness guard on macro state injection; DataFetcher constructor injection for client reuse; 25 tests
 - **US-1.7.4** World News Dashboard Tab — persistent `MacroHeadline` archive with keyword-based categorisation (fed, rates, trade, earnings, inflation, jobs, gdp, market); 5 REST endpoints (`/api/macro/*`); dedicated `/world-news` page with regime card, timeline, expandable headline feed with category filters, action plan, sector snapshot; compact macro conditions bar on Dashboard Home; no LLMs/Brave/Tavily needed; 23 new tests
+- **US-1.6** Slack NL Trade Commands — inbound BUY/SELL/REVIEW via Slack Socket Mode; single-ticker pipeline (data→strategy→moderation→risk→execution) with user-intent override; regex-first NL parser with Claude fallback; `SlackCommandLog` audit table; `CommandGateway` evolved from scaffold; `resolve_ticker_to_t212()` utility; large order confirmation flow; reply formatter; CLI entry `poetry run python -m src.agents.notifications.slack_trade_listener`; 43 new tests
+- **US-1.9** Conversational Trading WF skeleton — `ChatSession` + `ChatTurn` DB models with Alembic migration; `SessionManager` with real CRUD (create/add_turn/get/end); 4 dashboard REST endpoints (`/api/chat/sessions`, `/api/chat/sessions/{id}/turns`, `/api/chat/sessions/{id}`, `/api/chat/sessions/{id}/end`); no LLM/execution yet — plumbing for future multi-turn conversational workflow
 
 **Week 1 sprint (in-progress — see `docs/SPRINT_WEEK_1.md` for full detail):**
-- **US-1.6** Slack NL Trade Commands — inbound BUY/SELL/REVIEW; single-ticker pipeline; Risk VETO respected (Days 5–7)
-- **US-1.9** Conversational WF skeleton — DB tables + stub endpoints only; no LLM/execution yet (Days 6–7; needs US-1.6 first)
 - **US-8.1** Open-Source Launch Prep — nested dir, remotes, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CI (Day 8)
 
 **Deferred (await data or later sprint):**

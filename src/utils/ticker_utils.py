@@ -2,6 +2,12 @@
 
 # See CLAUDE.md Ticker Format Gotcha for rationale.
 
+from src.data.database import get_session
+from src.data.models import Instrument
+from src.utils.logger import get_logger
+
+logger = get_logger("ticker_utils")
+
 
 def t212_to_yf(ticker: str) -> str:
     """Convert T212 ticker to yfinance symbol.
@@ -28,3 +34,46 @@ def t212_to_yf(ticker: str) -> str:
         if len(parts) == 2 and len(parts[1]) == 1 and parts[1].isalpha():
             base = f"{parts[0]}.{parts[1]}"  # Class B: BRK_B -> BRK.B
     return base
+
+
+def resolve_ticker_to_t212(symbol: str) -> str | None:
+    """Resolve a plain symbol (e.g. 'AAPL') to T212 ticker (e.g. 'AAPL_US_EQ').
+
+    Lookup order:
+    1. Exact match in Instrument table (already T212 format)
+    2. Append _US_EQ suffix and check
+    3. Case-insensitive search on Instrument.name
+
+    Returns None if not found.
+    """
+    if not symbol or not symbol.strip():
+        return None
+    symbol = symbol.strip().upper()
+    session = get_session()
+    try:
+        # 1. Exact match (user may have typed the T212 format directly)
+        inst = session.query(Instrument).filter(Instrument.ticker == symbol).first()
+        if inst:
+            return inst.ticker
+
+        # 2. Append _US_EQ (most common case: "AAPL" -> "AAPL_US_EQ")
+        t212_candidate = f"{symbol}_US_EQ"
+        inst = session.query(Instrument).filter(Instrument.ticker == t212_candidate).first()
+        if inst:
+            return inst.ticker
+
+        # 3. Case-insensitive name search (e.g. "Apple" -> "AAPL_US_EQ")
+        inst = (
+            session.query(Instrument)
+            .filter(Instrument.name.ilike(f"%{symbol}%"))
+            .first()
+        )
+        if inst:
+            return inst.ticker
+
+        return None
+    except Exception as e:
+        logger.warning(f"Ticker resolution failed for '{symbol}': {e}")
+        return None
+    finally:
+        session.close()

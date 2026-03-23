@@ -528,18 +528,18 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 - [x] Unit tests cover formatter correctness, routing, retry, dedup, and fail-open behavior.
 - [x] End-to-end dry-run validation demonstrates event emission and persisted logs.
 
-### Phase 2 (Inbound Trade Commands — Planned)
+### Phase 2 (Inbound Trade Commands — Delivered)
 
-- [ ] Natural language parser (`trade_command_parser.py`) extracts intent (BUY/SELL/REVIEW), ticker, quantity, and amount_gbp.
-- [ ] Single-ticker pipeline (`single_ticker_run.py`) runs full data → strategy → moderation → risk flow with user intent override.
-- [ ] RiskManager veto prevents execution; rejection message posted to Slack with reason.
-- [ ] `SlackCommandLog` table captures all Slack-triggered runs; linked to Order and cycle_id.
-- [ ] Slack Socket Mode listener (`slack_listener.py`) processes messages from configured channel; replies in thread.
-- [ ] Large order confirmation flow requires "yes" confirmation for orders > `confirmation_threshold_gbp`.
-- [ ] Ticker resolution rejects unknown symbols before pipeline invocation.
-- [ ] Cash/position validation prevents insufficient-fund and non-existent-position orders.
-- [ ] All trades (autonomous and Slack-initiated) visible in portfolio and audit logs with consistent cycle_id format.
-- [ ] Tests cover parser, single-ticker pipeline, order validation, and confirmation flow (mocked Socket Mode).
+- [x] Natural language parser (`trade_command_parser.py`) extracts intent (BUY/SELL/REVIEW), ticker, quantity, and amount_gbp — regex-first (zero cost) with Claude fallback.
+- [x] Single-ticker pipeline (`single_ticker_run.py`) runs full data → strategy → moderation → risk flow with user intent override.
+- [x] RiskManager veto prevents execution; rejection message posted to Slack with reason.
+- [x] `SlackCommandLog` table captures all Slack-triggered runs; linked to Order and cycle_id.
+- [x] Slack Socket Mode listener (`slack_listener.py`) processes messages from configured channel; replies in thread.
+- [x] Large order confirmation flow requires "yes" confirmation for orders > `confirmation_threshold_gbp`.
+- [x] Ticker resolution (`resolve_ticker_to_t212`) rejects unknown symbols before pipeline invocation.
+- [x] Cash/position validation prevents insufficient-fund and non-existent-position orders.
+- [x] All trades (autonomous and Slack-initiated) visible in portfolio and audit logs with consistent cycle_id format (`slack-{timestamp}`).
+- [x] 43 tests cover parser (16), ticker resolution (6), single-ticker pipeline (11), listener + gateway (5), and chat session stub (5).
 
 ### Phase 3 (Web Chat UI — Future)
 
