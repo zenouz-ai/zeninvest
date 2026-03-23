@@ -199,7 +199,7 @@ export default function WorldNews() {
 
           {state && (
             <div className="text-right">
-              <FreshnessIndicator timestamp={state.timestamp} staleMinutes={60 * 48} />
+              <FreshnessIndicator lastUpdatedAt={state.timestamp ? new Date(state.timestamp) : null} isStale={state.timestamp ? (Date.now() - new Date(state.timestamp).getTime()) > 48 * 60 * 60 * 1000 : false} />
             </div>
           )}
         </div>
