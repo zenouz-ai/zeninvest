@@ -77,6 +77,10 @@ def sample_market_context():
             "vix": 18.5,
             "market_regime": "BULL",
             "sp500_above_200ma": True,
+            "proactive_regime": "RISK_ON",
+            "proactive_confidence": 0.82,
+            "proactive_top_signals": [{"signal_type": "volatility", "signal_text": "VIX at 18.5"}],
+            "macro_action_plan": {"summary": "Constructive backdrop with selective tech tailwinds."},
         },
         "sub_strategies": {
             "momentum": {"action": "BUY", "score": 72, "reasoning": "RSI in sweet spot | Above 50MA | RS vs S&P: 1.12"},
@@ -316,6 +320,8 @@ class TestContextFormatter:
         assert "Market Conditions" in text
         assert "BULL" in text
         assert "VIX: 18.5" in text
+        assert "RISK_ON" in text
+        assert "Constructive backdrop" in text
         assert "Sub-Strategy Signals" in text
         assert "Momentum: BUY" in text
         assert "Analyst" in text

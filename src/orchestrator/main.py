@@ -541,8 +541,58 @@ class Orchestrator:
                     news_parts.append(f"\n### Economic Highlights (Fed, tariffs, earnings)")
                     news_parts.append(macro_intel["economic_highlights"])
 
+            # Inject persisted proactive macro state when available (US-4.5 foundation)
+            macro_state = macro.get("macro_state", {})
+            if macro_state.get("enabled"):
+                news_parts.append("\n### Proactive Macro State")
+                news_parts.append(
+                    "Regime: "
+                    f"{macro_state.get('regime', 'NEUTRAL')} | "
+                    f"Confidence: {float(macro_state.get('confidence_score', 0.0)):.2f}"
+                )
+                top_signals = macro_state.get("top_signals", [])[:3]
+                if top_signals:
+                    news_parts.append("Top signals:")
+                    for signal in top_signals:
+                        news_parts.append(
+                            f"- [{signal.get('signal_type', 'macro')}] "
+                            f"{signal.get('signal_text', '')}"
+                        )
+                if macro_state.get("sector_summary"):
+                    news_parts.append("Persisted sector summary:")
+                    news_parts.append(str(macro_state["sector_summary"]))
+                if macro_state.get("economic_highlights"):
+                    news_parts.append("Persisted economic highlights:")
+                    news_parts.append(str(macro_state["economic_highlights"]))
+                action_plan = macro_state.get("action_plan", {})
+                if action_plan:
+                    news_parts.append("Macro action plan:")
+                    if action_plan.get("summary"):
+                        news_parts.append(str(action_plan["summary"]))
+                    for implication in action_plan.get("sector_implications", [])[:3]:
+                        news_parts.append(
+                            f"- {implication.get('sector', 'Market')}: "
+                            f"{implication.get('bias', 'mixed')} — "
+                            f"{implication.get('rationale', '')}"
+                        )
+
             analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
             news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
+            macro_context_summary = "No persisted proactive macro state available."
+            if macro_state.get("enabled"):
+                macro_context_lines = [
+                    f"Regime: {macro_state.get('regime', 'NEUTRAL')}",
+                    f"Confidence: {float(macro_state.get('confidence_score', 0.0)):.2f}",
+                ]
+                if top_signals:
+                    macro_context_lines.append(
+                        "Top signals: "
+                        + " | ".join(signal.get("signal_text", "") for signal in top_signals)
+                    )
+                action_plan = macro_state.get("action_plan", {})
+                if action_plan.get("summary"):
+                    macro_context_lines.append(f"Action plan: {action_plan['summary']}")
+                macro_context_summary = "\n".join(macro_context_lines)[:1500]
 
             # Build company profiles for top candidates
             all_stock_tickers = [s.get("ticker", "") for s in stocks_data if s.get("ticker")][:35]
@@ -567,6 +617,7 @@ class Orchestrator:
                 market_regime=market_regime,
                 analyst_data=analyst_summary,
                 news_sentiment=news_summary,
+                macro_context=macro_context_summary,
                 company_profiles=company_profiles,
                 system_state=current_state,
                 vix=vix,
@@ -2063,6 +2114,7 @@ class Orchestrator:
             effective_news = news_summary
 
         macro_intel = macro.get("macro_intelligence", {})
+        proactive_macro = macro.get("macro_state", {})
         sector_headwind = (
             get_sector_headwind(macro_intel, sector) if macro_intel.get("enabled") else None
         )
@@ -2079,6 +2131,10 @@ class Orchestrator:
                 "sector_headwind": sector_headwind,
                 "economic_highlights": economic_highlights,
                 "sector_summary": sector_summary,
+                "proactive_regime": proactive_macro.get("regime"),
+                "proactive_confidence": proactive_macro.get("confidence_score"),
+                "proactive_top_signals": proactive_macro.get("top_signals", []),
+                "macro_action_plan": proactive_macro.get("action_plan", {}),
             },
             "sub_strategies": {
                 "momentum": momentum_signal,

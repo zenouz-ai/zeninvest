@@ -226,6 +226,7 @@ class TestPrompts:
             factor_proposals="- AAPL: composite=75",
             analyst_data="AAPL: Buy consensus, 10 analysts",
             news_sentiment="AAPL: bullish 60%, 5 articles",
+            macro_context="Regime: RISK_ON",
             company_profiles="**AAPL** (Apple Inc) | Consumer Electronics\nDesigns and sells smartphones and computers.",
             tickers_to_decide="AAPL_US_EQ",
             system_state="ACTIVE",
@@ -251,6 +252,7 @@ class TestPrompts:
             factor_proposals="None",
             analyst_data="None",
             news_sentiment="None",
+            macro_context="No proactive macro state available.",
             company_profiles="No profiles available.",
             tickers_to_decide="TICK1, TICK2",
             system_state="CAUTIOUS",
@@ -288,6 +290,7 @@ class TestStrategyEngine:
     @patch("src.agents.strategy.engine.log_cost")
     def test_synthesize_with_claude(self, mock_log_cost, mock_budget, db_session):
         engine = StrategyEngine()
+        engine.settings._config.setdefault("research", {})["enabled"] = False
 
         mock_response = MagicMock()
         mock_response.content = [MagicMock()]
@@ -332,6 +335,7 @@ class TestStrategyEngine:
             market_regime="BULL",
             analyst_data="Positive analyst consensus",
             news_sentiment="Bullish news sentiment",
+            macro_context="Regime: RISK_ON",
             company_profiles="**AAPL** (Apple Inc) | Consumer Electronics\nDesigns and sells smartphones.",
             system_state="ACTIVE",
             vix=18.0,

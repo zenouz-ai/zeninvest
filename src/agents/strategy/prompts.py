@@ -79,6 +79,12 @@ Format: [Sentiment ±score] Headline (Source). Score > +0.15 = bullish. Score < 
 Use headlines to identify catalysts, risks, and market mood that numbers cannot capture.
 {news_sentiment}
 
+## PROACTIVE MACRO CONTEXT
+Use this persisted macro state and action plan as top-down context for second-order impacts
+on sectors and holdings. It should inform conviction and risk framing, but not override
+stock-specific evidence by itself.
+{macro_context}
+
 ## CURRENT RISK BUDGET
 - System State: {system_state}
 - VIX: {vix} (>25 = elevated volatility, reduce position sizes; >35 = extreme, max 5%)
@@ -140,6 +146,7 @@ def build_strategy_prompt(
     factor_proposals: str,
     analyst_data: str,
     news_sentiment: str,
+    macro_context: str,
     company_profiles: str,
     tickers_to_decide: str,
     system_state: str,
@@ -174,6 +181,7 @@ def build_strategy_prompt(
         factor_proposals=factor_proposals,
         analyst_data=analyst_data,
         news_sentiment=news_sentiment,
+        macro_context=macro_context or "No persisted proactive macro state available.",
         system_state=system_state,
         vix=vix or "N/A",
         cash_pct=cash_pct,

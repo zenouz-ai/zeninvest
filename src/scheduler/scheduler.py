@@ -255,6 +255,32 @@ def _enrich_universe() -> None:
         logger.error(f"Batch enrichment failed: {e}")
 
 
+def _run_macro_scan() -> None:
+    """Run proactive macro scan and persist macro state for later cycle use."""
+    from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
+    from src.agents.market_data.finnhub_client import FinnhubClient
+    from src.agents.market_data.macro_intelligence import run_proactive_macro_scan
+
+    settings = get_settings()
+    if not settings.macro_proactive_scan_enabled:
+        logger.debug("Proactive macro scan disabled, skipping macro_scan job")
+        return
+
+    logger.info("Running proactive macro scan...")
+    try:
+        result = run_proactive_macro_scan(
+            alpha_vantage=AlphaVantageClient(),
+            finnhub=FinnhubClient(),
+        )
+        logger.info(
+            "Proactive macro scan persisted state_id=%s regime=%s",
+            result.get("state_id"),
+            result.get("regime"),
+        )
+    except Exception as e:
+        logger.error(f"Proactive macro scan failed: {e}")
+
+
 def create_scheduler() -> BlockingScheduler:
     """Create and configure the APScheduler instance."""
     settings = get_settings()
@@ -326,6 +352,20 @@ def create_scheduler() -> BlockingScheduler:
             hour=6,
             minute=0,
             id="enrich_universe",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            max_instances=1,
+        )
+
+    if bool(getattr(settings, "macro_proactive_scan_enabled", False)):
+        scan_time = str(getattr(settings, "macro_scan_time_utc", "06:00"))
+        macro_hour, macro_minute = map(int, scan_time.split(":"))
+        scheduler.add_job(
+            _run_macro_scan,
+            "cron",
+            hour=macro_hour,
+            minute=macro_minute,
+            id="macro_scan",
             replace_existing=True,
             misfire_grace_time=3600,
             max_instances=1,

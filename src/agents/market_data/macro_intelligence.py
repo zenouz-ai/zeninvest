@@ -12,6 +12,7 @@ Data sources:
 - Finnhub /news: General market news for economic headlines (free tier, 60/min)
 """
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -20,6 +21,8 @@ import yfinance as yf
 
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.finnhub_client import FinnhubClient
+from src.data.database import get_session
+from src.data.models import MacroSignalLog, MacroState
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -307,3 +310,345 @@ def get_sector_headwind(macro_intel: dict[str, Any], yf_sector: str) -> str | No
                 return f"Sector {av_name} underperforming ({rt:+.2f}% real-time)."
             break
     return None
+
+
+def _derive_proactive_regime(vix: float | None, sp_above_200ma: bool | None) -> str:
+    """Map baseline macro indicators to a proactive regime label."""
+    if vix is not None and vix >= 30:
+        return "RISK_OFF"
+    if sp_above_200ma is False:
+        return "RISK_OFF"
+    if vix is not None and vix <= 18 and sp_above_200ma is True:
+        return "RISK_ON"
+    return "NEUTRAL"
+
+
+def _confidence_from_inputs(
+    *,
+    vix: float | None,
+    sp_above_200ma: bool | None,
+    sector_count: int,
+    headline_count: int,
+) -> float:
+    """Simple deterministic confidence score for the v1 proactive macro state."""
+    confidence = 0.35
+    if vix is not None:
+        confidence += 0.15
+    if sp_above_200ma is not None:
+        confidence += 0.15
+    if sector_count > 0:
+        confidence += 0.20
+    if headline_count > 0:
+        confidence += 0.15
+    return round(min(confidence, 0.95), 2)
+
+
+def build_proactive_macro_state(macro_data: dict[str, Any]) -> dict[str, Any]:
+    """Build deterministic v1 proactive macro state from existing macro inputs."""
+    macro_intel = macro_data.get("macro_intelligence", {}) or {}
+    sector_trends = macro_intel.get("sector_trends", {}) or {}
+    headlines = macro_intel.get("headlines", []) or []
+    vix = macro_data.get("vix")
+    sp_above = macro_data.get("sp500_above_200ma")
+    regime = _derive_proactive_regime(vix, sp_above)
+
+    top_signals: list[dict[str, Any]] = []
+    if vix is not None:
+        top_signals.append(
+            {
+                "signal_type": "volatility",
+                "signal_text": f"VIX at {float(vix):.2f}",
+                "source": "market_data",
+            }
+        )
+    if sp_above is not None:
+        position = "above" if sp_above else "below"
+        top_signals.append(
+            {
+                "signal_type": "trend",
+                "signal_text": f"S&P 500 trading {position} 200-day moving average",
+                "source": "market_data",
+            }
+        )
+
+    sector_signals = [
+        (name, payload)
+        for name, payload in sector_trends.items()
+        if payload.get("trend") in {"underperform", "outperform"}
+    ]
+    sector_signals.sort(
+        key=lambda item: abs(float(item[1].get("real_time_pct", 0.0))),
+        reverse=True,
+    )
+    for name, payload in sector_signals[:2]:
+        top_signals.append(
+            {
+                "signal_type": "sector",
+                "signal_text": (
+                    f"{name} {payload.get('trend')} "
+                    f"({float(payload.get('real_time_pct', 0.0)):+.2f}% real-time)"
+                ),
+                "source": "macro_intelligence",
+            }
+        )
+
+    if headlines:
+        top_signals.append(
+            {
+                "signal_type": "headline",
+                "signal_text": headlines[0].get("headline", "Macro headline detected"),
+                "source": headlines[0].get("source", "finnhub"),
+            }
+        )
+
+    top_signals = top_signals[:3]
+    confidence = _confidence_from_inputs(
+        vix=vix,
+        sp_above_200ma=sp_above,
+        sector_count=len(sector_trends),
+        headline_count=len(headlines),
+    )
+
+    return {
+        "enabled": True,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "regime": regime,
+        "confidence_score": confidence,
+        "top_signals": top_signals,
+        "sector_summary": macro_intel.get("sector_summary", ""),
+        "economic_highlights": macro_intel.get("economic_highlights", ""),
+        "source": "scheduled_scan",
+        "raw_payload": {
+            "vix": vix,
+            "sp500_above_200ma": sp_above,
+            "market_regime": macro_data.get("market_regime"),
+            "macro_intelligence": macro_intel,
+        },
+    }
+
+
+def _default_macro_action_plan(macro_state: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic fallback action plan used when LLM reasoning is disabled/unavailable."""
+    regime = str(macro_state.get("regime", "NEUTRAL"))
+    confidence = float(macro_state.get("confidence_score", 0.0))
+
+    if regime == "RISK_OFF":
+        portfolio_bias = "defensive"
+        sector_implications = [
+            {
+                "sector": "Information Technology",
+                "bias": "headwind",
+                "confidence": confidence,
+                "rationale": "Higher volatility and weaker broad-market trend reduce appetite for higher-beta growth exposure.",
+            },
+            {
+                "sector": "Utilities",
+                "bias": "tailwind",
+                "confidence": max(confidence - 0.05, 0.0),
+                "rationale": "Defensive sectors tend to hold up better during risk-off conditions.",
+            },
+        ]
+        risks = ["Macro volatility may pressure cyclical and high-duration equities."]
+        opportunities = ["Favor resilience, tighter stops, and patience on new growth entries."]
+    elif regime == "RISK_ON":
+        portfolio_bias = "constructive"
+        sector_implications = [
+            {
+                "sector": "Information Technology",
+                "bias": "tailwind",
+                "confidence": confidence,
+                "rationale": "Lower volatility and a healthy broad-market trend support momentum and quality growth leadership.",
+            },
+            {
+                "sector": "Industrials",
+                "bias": "tailwind",
+                "confidence": max(confidence - 0.05, 0.0),
+                "rationale": "Risk-on environments can support cyclical participation and follow-through.",
+            },
+        ]
+        risks = ["Crowded momentum leadership can reverse quickly if volatility re-accelerates."]
+        opportunities = ["Selective additions to strong relative-strength names are more attractive."]
+    else:
+        portfolio_bias = "balanced"
+        sector_implications = [
+            {
+                "sector": "Market",
+                "bias": "mixed",
+                "confidence": confidence,
+                "rationale": "Signals are mixed, so quality and stock-specific catalysts should matter more than top-down macro direction.",
+            }
+        ]
+        risks = ["Range-bound conditions can create false breakouts and lower signal reliability."]
+        opportunities = ["Favor selective entries, balanced sizing, and evidence-backed sector confirmation."]
+
+    top_signals = macro_state.get("top_signals", [])
+    summary = (
+        f"Macro regime is {regime} with confidence {confidence:.2f}. "
+        f"Primary signals: {'; '.join(s.get('signal_text', '') for s in top_signals[:3]) or 'none'}."
+    )
+    return {
+        "summary": summary,
+        "portfolio_bias": portfolio_bias,
+        "confidence_score": confidence,
+        "sector_implications": sector_implications,
+        "risks": risks,
+        "opportunities": opportunities,
+    }
+
+
+def generate_macro_action_plan(macro_state: dict[str, Any]) -> dict[str, Any]:
+    """Generate structured second-order macro implications.
+
+    Uses Claude when enabled and available, but always falls back to a deterministic
+    structured plan so proactive scans remain robust and auditable.
+    """
+    settings = get_settings()
+    if not settings.macro_second_order_reasoning_enabled:
+        return _default_macro_action_plan(macro_state)
+
+    prompt = f"""You are generating a structured macro action plan for an autonomous equity trading system.
+
+Return JSON only with keys:
+- summary: string
+- portfolio_bias: one of defensive|balanced|constructive
+- confidence_score: float 0-1
+- sector_implications: list of objects with sector, bias (tailwind|headwind|mixed), confidence, rationale
+- risks: list[str]
+- opportunities: list[str]
+
+Current macro state:
+{json.dumps(macro_state, indent=2, default=str)}
+"""
+
+    try:
+        from anthropic import Anthropic
+
+        client = Anthropic(api_key=settings.anthropic_api_key)
+        response = client.messages.create(
+            model=settings.strategy_model,
+            max_tokens=1200,
+            system="You produce concise, valid JSON for macro portfolio reasoning.",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw_text = "".join(
+            block.text for block in getattr(response, "content", []) if getattr(block, "type", "") == "text"
+        ).strip()
+        parsed = json.loads(raw_text)
+        parsed.setdefault("confidence_score", float(macro_state.get("confidence_score", 0.0)))
+        parsed.setdefault("sector_implications", [])
+        parsed.setdefault("risks", [])
+        parsed.setdefault("opportunities", [])
+        return parsed
+    except Exception as e:
+        logger.warning("Macro action plan generation failed, using deterministic fallback: %s", e)
+        fallback = _default_macro_action_plan(macro_state)
+        fallback["summary"] = f"{fallback['summary']} (Fallback used: {type(e).__name__})"
+        return fallback
+
+
+def run_proactive_macro_scan(
+    alpha_vantage: AlphaVantageClient,
+    finnhub: FinnhubClient,
+) -> dict[str, Any]:
+    """Build and persist the latest proactive macro state and action plan."""
+    from src.agents.market_data.data_fetcher import DataFetcher
+
+    settings = get_settings()
+    if not settings.macro_proactive_scan_enabled:
+        return {"status": "disabled"}
+
+    fetcher = DataFetcher()
+    fetcher._alpha_vantage = alpha_vantage
+    fetcher._finnhub = finnhub
+    try:
+        macro_data = fetcher.get_macro_data()
+        macro_state = build_proactive_macro_state(macro_data)
+        macro_state["action_plan"] = generate_macro_action_plan(macro_state)
+        persisted = persist_macro_state(
+            macro_state,
+            signal_log_enabled=settings.macro_signal_log_enabled,
+        )
+        return {
+            "status": "ok",
+            "regime": macro_state["regime"],
+            "confidence_score": macro_state["confidence_score"],
+            "state_id": persisted["state_id"],
+            "top_signals": macro_state["top_signals"],
+            "action_plan": macro_state["action_plan"],
+        }
+    finally:
+        fetcher.close()
+
+
+def persist_macro_state(
+    macro_state: dict[str, Any],
+    *,
+    signal_log_enabled: bool = True,
+) -> dict[str, Any]:
+    """Persist macro state snapshot and normalized signal logs."""
+    session = get_session()
+    try:
+        created_at = datetime.now(timezone.utc)
+        row = MacroState(
+            timestamp=created_at,
+            regime=str(macro_state.get("regime", "NEUTRAL")),
+            confidence_score=float(macro_state.get("confidence_score", 0.0)),
+            source=str(macro_state.get("source", "scheduled_scan")),
+            top_signals_json=json.dumps(macro_state.get("top_signals", []), default=str),
+            action_plan_json=json.dumps(macro_state.get("action_plan", {}), default=str),
+            sector_summary=macro_state.get("sector_summary"),
+            economic_highlights=macro_state.get("economic_highlights"),
+            raw_payload_json=json.dumps(macro_state.get("raw_payload", {}), default=str),
+        )
+        session.add(row)
+        session.flush()
+
+        if signal_log_enabled:
+            for signal in macro_state.get("top_signals", []):
+                session.add(
+                    MacroSignalLog(
+                        timestamp=created_at,
+                        state_id=row.id,
+                        signal_type=str(signal.get("signal_type", "macro")),
+                        signal_text=str(signal.get("signal_text", "")),
+                        source=str(signal.get("source", macro_state.get("source", "scheduled_scan"))),
+                        confidence_score=float(macro_state.get("confidence_score", 0.0)),
+                        regime=str(macro_state.get("regime", "NEUTRAL")),
+                    )
+                )
+
+        session.commit()
+        return {
+            "status": "ok",
+            "state_id": row.id,
+            "num_signals": len(macro_state.get("top_signals", [])) if signal_log_enabled else 0,
+            "regime": row.regime,
+        }
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def get_latest_macro_state() -> dict[str, Any] | None:
+    """Return the latest persisted proactive macro state, if available."""
+    session = get_session()
+    try:
+        latest = session.query(MacroState).order_by(MacroState.timestamp.desc()).first()
+        if latest is None:
+            return None
+        return {
+            "enabled": True,
+            "timestamp": latest.timestamp.isoformat() if latest.timestamp else None,
+            "regime": latest.regime,
+            "confidence_score": latest.confidence_score,
+            "source": latest.source,
+            "top_signals": json.loads(latest.top_signals_json or "[]"),
+            "action_plan": json.loads(latest.action_plan_json or "{}"),
+            "sector_summary": latest.sector_summary or "",
+            "economic_highlights": latest.economic_highlights or "",
+            "raw_payload": json.loads(latest.raw_payload_json or "{}"),
+        }
+    finally:
+        session.close()

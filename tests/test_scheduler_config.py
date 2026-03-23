@@ -11,6 +11,9 @@ def test_scheduler_creates_jobs_from_cycle_times_utc() -> None:
     mock_settings = MagicMock()
     mock_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
     mock_settings.trading = {}
+    mock_settings.batch_enrichment_enabled = False
+    mock_settings.macro_proactive_scan_enabled = False
+    mock_settings.macro_scan_time_utc = "06:00"
 
     with patch("src.scheduler.scheduler.get_settings", return_value=mock_settings):
         with patch("src.scheduler.scheduler.DATABASE_URL", "sqlite:///:memory:"):
@@ -30,6 +33,8 @@ def test_scheduler_jobs_have_max_instances_one() -> None:
     mock_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
     mock_settings.trading = {}
     mock_settings.batch_enrichment_enabled = True
+    mock_settings.macro_proactive_scan_enabled = False
+    mock_settings.macro_scan_time_utc = "06:00"
 
     with patch("src.scheduler.scheduler.get_settings", return_value=mock_settings):
         with patch("src.scheduler.scheduler.DATABASE_URL", "sqlite:///:memory:"):
@@ -110,3 +115,36 @@ def test_macro_config_accessors_default_safely() -> None:
     assert settings.macro_second_order_reasoning_enabled is False
     assert settings.macro_research_routing_mode == "static_first"
     assert settings.macro_search_provider_policy == "brave_primary_tavily_fallback"
+
+
+def test_scheduler_adds_macro_scan_job_when_enabled() -> None:
+    """Scheduler should register a dedicated daily macro scan job when enabled."""
+    mock_settings = MagicMock()
+    mock_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
+    mock_settings.trading = {}
+    mock_settings.batch_enrichment_enabled = False
+    mock_settings.macro_proactive_scan_enabled = True
+    mock_settings.macro_scan_time_utc = "06:15"
+
+    with patch("src.scheduler.scheduler.get_settings", return_value=mock_settings):
+        with patch("src.scheduler.scheduler.DATABASE_URL", "sqlite:///:memory:"):
+            scheduler = create_scheduler()
+
+    macro_job = next((j for j in scheduler.get_jobs() if j.id == "macro_scan"), None)
+    assert macro_job is not None
+
+
+def test_scheduler_omits_macro_scan_job_when_disabled() -> None:
+    """Scheduler should not create macro scan job when feature is disabled."""
+    mock_settings = MagicMock()
+    mock_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
+    mock_settings.trading = {}
+    mock_settings.batch_enrichment_enabled = False
+    mock_settings.macro_proactive_scan_enabled = False
+    mock_settings.macro_scan_time_utc = "06:00"
+
+    with patch("src.scheduler.scheduler.get_settings", return_value=mock_settings):
+        with patch("src.scheduler.scheduler.DATABASE_URL", "sqlite:///:memory:"):
+            scheduler = create_scheduler()
+
+    assert all(j.id != "macro_scan" for j in scheduler.get_jobs())

@@ -318,16 +318,14 @@ is stable.
 
 For the first production implementation, treat the story as complete when:
 
-- [ ] A daily macro scan runs independently of trading cycles
-- [ ] The scan persists a latest `macro_state` row with regime, confidence, and top signals
-- [ ] Signal audit rows are written to `macro_signal_logs`
-- [ ] The orchestrator injects latest `macro_state` into cycle context when enabled
-- [ ] Existing `macro_intelligence` remains the fallback when no proactive state exists
-- [ ] `proactive_scan_enabled: false` preserves current behavior
-- [ ] Targeted tests cover scheduler wiring, persistence, fallback behavior, and context injection
-
-Second-order reasoning and macro action planning are valuable follow-ons, but
-should not block the first shippable version.
+- [x] A daily macro scan runs independently of trading cycles
+- [x] The scan persists a latest `macro_state` row with regime, confidence, and top signals
+- [x] Signal audit rows are written to `macro_signal_logs`
+- [x] The orchestrator injects latest `macro_state` into cycle context when enabled
+- [x] Existing `macro_intelligence` remains the fallback when no proactive state exists
+- [x] `proactive_scan_enabled: false` preserves current behavior
+- [x] Targeted tests cover scheduler wiring, persistence, fallback behavior, and context injection
+- [x] Structured `macro_action_plan` output is generated and persisted for second-order sector implications
 
 ---
 

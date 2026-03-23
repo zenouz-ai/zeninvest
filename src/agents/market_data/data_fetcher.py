@@ -13,7 +13,7 @@ from sqlalchemy import func
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.finnhub_client import FinnhubClient
 from src.agents.market_data.fundamentals import get_fundamentals
-from src.agents.market_data.macro_intelligence import get_macro_intelligence
+from src.agents.market_data.macro_intelligence import get_latest_macro_state, get_macro_intelligence
 from src.agents.market_data.indicators import calculate_indicators, calculate_relative_strength
 from src.agents.market_data.seed_universe import get_seed_instruments
 from src.agents.market_data.brave_enrichment import (
@@ -157,6 +157,14 @@ class DataFetcher:
         # Macro intelligence: sector trends + economic headlines (cached)
         macro_intel = self.get_macro_intelligence_cached()
         result["macro_intelligence"] = macro_intel
+
+        # Proactive macro state (US-4.5 foundation): persisted daily scan injected
+        # into cycle context when enabled. Existing macro_intelligence remains the
+        # fallback if no proactive state exists yet.
+        if self.settings.macro_proactive_scan_enabled:
+            latest_macro_state = get_latest_macro_state()
+            if latest_macro_state:
+                result["macro_state"] = latest_macro_state
 
         return result
 
