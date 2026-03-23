@@ -263,6 +263,19 @@ export const MILESTONES: Milestone[] = [
       'Daily scheduled macro_scan (06:00 UTC), persisted MacroState (regime/confidence/top_signals/action_plan) + MacroSignalLog audit trail, deterministic regime derivation (RISK_ON/RISK_OFF/NEUTRAL) with optional Claude-backed second-order reasoning, cycle-time injection into strategy prompt and moderation market context, 48h staleness guard, 25 tests',
     architectureComponents: ['Data Fetcher', 'Scheduler', 'Strategy Engine', 'Risk Agent'],
   },
+  {
+    id: 'US-1.7.4',
+    name: 'World News Dashboard Tab',
+    topic: 'Foundation',
+    status: 'delivered',
+    start: '2026-03-23',
+    end: '2026-03-23',
+    effort: 'M',
+    priority: 'P1',
+    description:
+      'Persistent MacroHeadline archive with keyword-based categorisation (fed, rates, trade, earnings, inflation, jobs, gdp, market), 5 REST endpoints (/api/macro/*), World News page with regime card, regime timeline, expandable headline feed with category filters, action plan section, sector snapshot. Compact macro conditions bar on Dashboard Home. No LLMs/Brave/Tavily required — uses existing Finnhub + AV data. 23 new tests.',
+    architectureComponents: ['Dashboard', 'Data Fetcher', 'React'],
+  },
   // --- Pipeline ---
   {
     id: 'US-1.6',

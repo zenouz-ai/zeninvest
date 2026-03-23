@@ -13,7 +13,7 @@ from sqlalchemy import func
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.finnhub_client import FinnhubClient
 from src.agents.market_data.fundamentals import get_fundamentals
-from src.agents.market_data.macro_intelligence import get_latest_macro_state, get_macro_intelligence
+from src.agents.market_data.macro_intelligence import get_latest_macro_state, get_macro_intelligence, persist_headlines
 from src.agents.market_data.indicators import calculate_indicators, calculate_relative_strength
 from src.agents.market_data.seed_universe import get_seed_instruments
 from src.agents.market_data.brave_enrichment import (
@@ -222,6 +222,12 @@ class DataFetcher:
                     data=macro_intel,
                     ttl_hours=self.settings.cache_ttl_hours("macro_intelligence"),
                 )
+                # Persist headlines for World News dashboard tab
+                if self.settings.macro_persist_headlines:
+                    try:
+                        persist_headlines(macro_intel.get("headlines", []))
+                    except Exception as e:
+                        logger.debug("Headline archival skipped: %s", e)
             return macro_intel
         except Exception as e:
             logger.warning(f"Macro intelligence fetch failed: {e}")

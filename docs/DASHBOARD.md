@@ -74,8 +74,9 @@ Resolved 9 more findings (6 Major, 3 Minor) from `docs/UX_AUDIT.md`:
 Resolved final 9 findings + 2 bonus features, completing all 28/28 UX audit items:
 
 - **Mobile-responsive tables** (`Portfolio.tsx`, `Universe.tsx`): Card layout on mobile (`sm:hidden`), hidden secondary columns on tablet via `meta.responsive` on TanStack column defs (RE-1, RE-2).
-- **Nav consolidation** (`App.tsx`): Primary 4 pages (Dashboard, Universe, Portfolio, Runs) + "More" dropdown for secondary 4 (Opportunity, Order Mgmt, Costs, Roadmap). Click-outside + `aria-expanded` (IA-6).
-- **Typography hierarchy**: `tracking-wide` on all section h2 headings, explicit `text-base` on modal h3s, consistent type scale across all 8 pages (VD-4).
+- **Nav consolidation** (`App.tsx`): Primary 4 pages (Dashboard, Universe, Portfolio, Runs) + "More" dropdown for secondary 5 (Opportunity, Order Mgmt, World News, Costs, Roadmap). Click-outside + `aria-expanded` (IA-6).
+- **Typography hierarchy**: `tracking-wide` on all section h2 headings, explicit `text-base` on modal h3s, consistent type scale across all 9 pages (VD-4).
+- **World News page** (`WorldNews.tsx`): `/world-news` — macro regime card (hero), regime timeline, expandable headline feed grouped by date with category filters (fed/rates/trade/earnings/inflation/jobs/gdp/market), action plan section (sector implications, risks, opportunities), sector snapshot. Dashboard Home compact macro bar with regime badge + headline count + link. 5 REST endpoints (`/api/macro/*`) query `MacroState`, `MacroSignalLog`, and `MacroHeadline` tables.
 - **Skeleton loading screens** (`Skeleton.tsx`): `DashboardSkeleton`, `TableSkeleton`, `SkeletonCard` with pulsing placeholders. Replaces `LoadingSpinner` on all pages (ES-2).
 - **Deep-linking & URL state** (`Universe.tsx`): `/universe/:ticker` route auto-expands matched row. `?q=` and `?sector=` search params synced to URL via `useSearchParams` (WF-5).
 - **Position sparklines** (`Sparkline.tsx`, `Portfolio.tsx`): Inline SVG sparkline per position showing P&L % trend across portfolio history snapshots. Directional colouring (green up, red down). Desktop + mobile (3A bonus).

@@ -70,6 +70,7 @@ macro:
   scan_time_utc: "06:00"          # Daily macro scan time; separate from trading cycles
   signal_log_enabled: true        # Persist normalized macro signal audit entries when proactive scan runs
   second_order_reasoning_enabled: false  # Enable LLM-generated macro_action_plan after Phase A/C land
+  persist_headlines: true          # Archive Finnhub headlines to macro_headlines for World News dashboard tab
   research_routing_mode: static_first    # static_first | followup_on_materiality | bounded_mini_research
   search_provider_policy: brave_primary_tavily_fallback  # Matches US-4.4 production default
 

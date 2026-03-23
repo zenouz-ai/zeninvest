@@ -22,7 +22,7 @@ import yfinance as yf
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.finnhub_client import FinnhubClient
 from src.data.database import get_session
-from src.data.models import MacroSignalLog, MacroState
+from src.data.models import MacroHeadline, MacroSignalLog, MacroState
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -292,6 +292,99 @@ def get_macro_intelligence(
         "earnings_season_flag": headline_data.get("earnings_season_flag", False),
         "errors": sector_errors + [e for e in [headline_data.get("error")] if e],
     }
+
+
+# ---------------------------------------------------------------------------
+# Headline archival for World News dashboard tab
+# ---------------------------------------------------------------------------
+
+_HEADLINE_CATEGORIES: list[tuple[str, list[str]]] = [
+    ("fed", ["fed", "fomc", "federal reserve"]),
+    ("rates", ["rate", "treasury", "bond", "yield"]),
+    ("trade", ["tariff", "china", "trade war", "trade deal"]),
+    ("earnings", ["earnings", "revenue", "profit", "quarterly"]),
+    ("inflation", ["inflation", "cpi", "ppi", "consumer price"]),
+    ("jobs", ["jobs", "employment", "unemployment", "nonfarm", "labour", "labor"]),
+    ("gdp", ["gdp", "growth", "recession"]),
+    ("market", ["s&p", "nasdaq", "dow", "rally", "selloff", "correction"]),
+]
+
+
+def categorize_headline(headline_text: str) -> str:
+    """Assign a category to a headline based on keyword matching.
+
+    Returns the first matching category, or 'general' as fallback.
+    """
+    text = headline_text.lower()
+    for category, keywords in _HEADLINE_CATEGORIES:
+        if any(kw in text for kw in keywords):
+            return category
+    return "general"
+
+
+def persist_headlines(
+    headlines: list[dict[str, Any]],
+    *,
+    cycle_id: str | None = None,
+) -> int:
+    """Archive headlines to the macro_headlines table for dashboard display.
+
+    Returns number of new headlines inserted (duplicates are skipped).
+    """
+    if not headlines:
+        return 0
+
+    session = get_session()
+    inserted = 0
+    try:
+        for h in headlines:
+            headline_text = h.get("headline") or h.get("title") or ""
+            if not headline_text:
+                continue
+
+            raw_dt = h.get("datetime")
+            if raw_dt is None:
+                published_at = datetime.now(timezone.utc)
+            elif isinstance(raw_dt, (int, float)):
+                published_at = datetime.fromtimestamp(raw_dt, tz=timezone.utc)
+            elif isinstance(raw_dt, datetime):
+                published_at = raw_dt
+            else:
+                published_at = datetime.now(timezone.utc)
+
+            # Check for existing duplicate
+            existing = (
+                session.query(MacroHeadline.id)
+                .filter(
+                    MacroHeadline.headline == headline_text,
+                    MacroHeadline.published_at == published_at,
+                )
+                .first()
+            )
+            if existing:
+                continue
+
+            row = MacroHeadline(
+                headline=headline_text,
+                source=h.get("source", "unknown"),
+                published_at=published_at,
+                url=h.get("url"),
+                category=categorize_headline(headline_text),
+                cycle_id=cycle_id,
+            )
+            session.add(row)
+            inserted += 1
+
+        session.commit()
+        if inserted:
+            logger.debug("Persisted %d new macro headlines", inserted)
+        return inserted
+    except Exception as e:
+        session.rollback()
+        logger.warning("Failed to persist macro headlines: %s", e)
+        return 0
+    finally:
+        session.close()
 
 
 def get_sector_headwind(macro_intel: dict[str, Any], yf_sector: str) -> str | None:

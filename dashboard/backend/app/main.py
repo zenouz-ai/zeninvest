@@ -20,6 +20,7 @@ from .routers import (
     decisions,
     docs,
     events,
+    macro,
     moderation,
     opportunity,
     orders,
@@ -103,6 +104,7 @@ app.include_router(costs.router, prefix="/api/costs", tags=["costs"])
 app.include_router(api_usage.router, prefix="/api/api-usage", tags=["api-usage"])
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(docs.router, prefix="/api/docs", tags=["docs"])
+app.include_router(macro.router, prefix="/api/macro", tags=["macro"])
 
 
 @app.get("/health")

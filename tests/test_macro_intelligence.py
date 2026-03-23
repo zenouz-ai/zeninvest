@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.agents.market_data.macro_intelligence import (
     build_proactive_macro_state,
+    categorize_headline,
     generate_macro_action_plan,
     get_economic_headlines,
     get_latest_macro_state,
@@ -16,6 +17,7 @@ from src.agents.market_data.macro_intelligence import (
     get_sector_headwind,
     get_sector_performance,
     get_sector_performance_yfinance,
+    persist_headlines,
     persist_macro_state,
     run_proactive_macro_scan,
     _parse_pct,
@@ -23,7 +25,7 @@ from src.agents.market_data.macro_intelligence import (
     _confidence_from_inputs,
 )
 from src.agents.market_data.data_fetcher import DataFetcher
-from src.data.models import Base, MacroSignalLog, MacroState
+from src.data.models import Base, MacroHeadline, MacroSignalLog, MacroState
 
 
 @pytest.fixture
@@ -452,3 +454,100 @@ def test_headline_sorting_highest_score_first() -> None:
     assert len(headlines) >= 2
     # The Fed headline has the most keyword matches and should come first
     assert "Fed" in headlines[0]["headline"]
+
+
+# ---------------------------------------------------------------------------
+# Headline categorisation and persistence (World News)
+# ---------------------------------------------------------------------------
+
+
+class TestCategorizeHeadline:
+    def test_fed_category(self) -> None:
+        assert categorize_headline("Fed holds rates steady at 5.5%") == "fed"
+        assert categorize_headline("FOMC meeting minutes released") == "fed"
+
+    def test_rates_category(self) -> None:
+        assert categorize_headline("Treasury yields surge to 4.8%") == "rates"
+
+    def test_trade_category(self) -> None:
+        assert categorize_headline("China tariffs increased by 25%") == "trade"
+
+    def test_earnings_category(self) -> None:
+        assert categorize_headline("Apple earnings beat expectations") == "earnings"
+
+    def test_inflation_category(self) -> None:
+        assert categorize_headline("CPI report shows inflation cooling") == "inflation"
+
+    def test_jobs_category(self) -> None:
+        assert categorize_headline("Nonfarm payrolls beat expectations") == "jobs"
+
+    def test_gdp_category(self) -> None:
+        assert categorize_headline("GDP growth revised higher to 3.1%") == "gdp"
+
+    def test_market_category(self) -> None:
+        assert categorize_headline("S&P 500 hits new record high") == "market"
+
+    def test_general_fallback(self) -> None:
+        assert categorize_headline("Company XYZ announces new product") == "general"
+
+
+class TestPersistHeadlines:
+    def test_persists_headlines(self, db_session) -> None:
+        headlines = [
+            {
+                "headline": "Fed holds rates steady",
+                "source": "Reuters",
+                "datetime": 1710891600,
+                "url": "https://example.com/1",
+            },
+            {
+                "headline": "China tariffs increased",
+                "source": "CNBC",
+                "datetime": 1710895200,
+                "url": None,
+            },
+        ]
+        with patch("src.agents.market_data.macro_intelligence.get_session", return_value=db_session):
+            count = persist_headlines(headlines, cycle_id="test_cycle")
+        assert count == 2
+        rows = db_session.query(MacroHeadline).all()
+        assert len(rows) == 2
+        assert rows[0].category == "fed"
+        assert rows[1].category == "trade"
+        assert rows[0].cycle_id == "test_cycle"
+
+    def test_deduplicates_headlines(self, db_session) -> None:
+        headlines = [
+            {"headline": "Fed holds rates", "source": "Reuters", "datetime": 1710891600},
+        ]
+        with patch("src.agents.market_data.macro_intelligence.get_session", return_value=db_session):
+            count1 = persist_headlines(headlines)
+            count2 = persist_headlines(headlines)  # Same headline again
+        assert count1 == 1
+        assert count2 == 0
+        assert db_session.query(MacroHeadline).count() == 1
+
+    def test_empty_headlines(self, db_session) -> None:
+        with patch("src.agents.market_data.macro_intelligence.get_session", return_value=db_session):
+            count = persist_headlines([])
+        assert count == 0
+
+    def test_handles_missing_fields(self, db_session) -> None:
+        headlines = [
+            {"headline": "Some news", "source": "BBC"},  # No datetime, no url
+        ]
+        with patch("src.agents.market_data.macro_intelligence.get_session", return_value=db_session):
+            count = persist_headlines(headlines)
+        assert count == 1
+        row = db_session.query(MacroHeadline).first()
+        assert row.headline == "Some news"
+        assert row.url is None
+
+    def test_skips_empty_headline_text(self, db_session) -> None:
+        headlines = [
+            {"headline": "", "source": "Reuters", "datetime": 1710891600},
+            {"source": "CNBC", "datetime": 1710891600},  # No headline key
+        ]
+        with patch("src.agents.market_data.macro_intelligence.get_session", return_value=db_session):
+            count = persist_headlines(headlines)
+        assert count == 0
