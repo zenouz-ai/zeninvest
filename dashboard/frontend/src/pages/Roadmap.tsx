@@ -31,10 +31,11 @@ graph TB
         T212[Trading 212<br/>Practice API]
     end
 
-    subgraph Data["Market Data - US-4.1, 4.2, 4.3"]
+    subgraph Data["Market Data - US-4.1, 4.2, 4.3, 4.5"]
         DF[Data Fetcher]
         UNIV[Universe Screener]
         MACRO[Macro Intelligence]
+        PROMACRO[Proactive Macro Scan<br/>US-4.5 daily regime]
         FALLBACK[Web Search Fallback<br/>Brave Tavily]
     end
 
@@ -91,6 +92,8 @@ graph TB
     DF --> UNIV
     DF --> CLAUDE
     MACRO --> CLAUDE
+    PROMACRO --> CLAUDE
+    PROMACRO --> CONS
     FALLBACK --> CLAUDE
 
     REXEC --> CLAUDE

@@ -397,10 +397,13 @@ Files to check on every feature:
 | `docs/DASHBOARD.md` | Dashboard architecture, phases, data alignment, frontend/backend design |
 | `docs/DASHBOARD_DEPLOYMENT.md` | Dashboard VPS deployment: Docker service, VPS IP access, firewall |
 | `docs/AGENTIC_RESEARCH.md` | Agentic research: independent tool access, implementation plan, phase breakdown |
+| `dashboard/frontend/src/data/roadmap.ts` | Features delivered or added to pipeline — the dashboard Roadmap page reads milestone status from this file |
 
 **How to update:** After implementing a feature, scan each file above for sections that reference the changed area. Update inline — do not leave stale descriptions. Keep the same tone and depth as the existing content.
 
 **Test count:** Update `README.md` status line (`N tests passing`) whenever tests are added or removed.
+
+**Dashboard roadmap:** The Roadmap & Architecture page (`dashboard/frontend/src/pages/Roadmap.tsx`) renders milestones from `dashboard/frontend/src/data/roadmap.ts`. When a user story is delivered, move it from `status: 'pipeline'` to `status: 'delivered'` with `start`/`end` dates. When a new user story is added, append it to the `MILESTONES` array. The architecture Mermaid diagram in `Roadmap.tsx` should also be updated when new pipeline components are added.
 
 ## Project Evolution Context
 

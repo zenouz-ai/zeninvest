@@ -237,18 +237,33 @@ export const MILESTONES: Milestone[] = [
       'APIKeyMiddleware on all /api/* endpoints; DASHBOARD_API_KEY env var; configurable public_routes for GET-only demo exposure; write endpoints always protected; 33 tests',
     architectureComponents: ['Dashboard', 'FastAPI'],
   },
-  // --- Pipeline ---
+  {
+    id: 'US-1.7.3',
+    name: 'Dashboard Visual Design System',
+    topic: 'Foundation',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-22',
+    effort: 'M',
+    priority: 'P1',
+    description:
+      'Syne heading font, full CSS token system (--color-*, --shadow-*, --radius-*, --transition-*), glass-dark panels, 72px violet grid, brand gradient violet→cyan→emerald, blurred nav, pill active state, 4 shared primitives (Panel, MetricCard, StatusPill, SectionHeader)',
+    architectureComponents: ['Dashboard', 'React'],
+  },
   {
     id: 'US-4.5',
     name: 'Proactive Macro News Intelligence',
     topic: 'Signals',
-    status: 'pipeline',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-23',
     effort: 'L',
     priority: 'P1',
     description:
-      'Scheduled macro/geopolitical scans, second-order impact reasoning, persistent macro state, confidence-scored signals, and auditable macro action planning',
+      'Daily scheduled macro_scan (06:00 UTC), persisted MacroState (regime/confidence/top_signals/action_plan) + MacroSignalLog audit trail, deterministic regime derivation (RISK_ON/RISK_OFF/NEUTRAL) with optional Claude-backed second-order reasoning, cycle-time injection into strategy prompt and moderation market context, 48h staleness guard, 25 tests',
     architectureComponents: ['Data Fetcher', 'Scheduler', 'Strategy Engine', 'Risk Agent'],
   },
+  // --- Pipeline ---
   {
     id: 'US-1.6',
     name: 'Slack NL Trade Commands',
