@@ -550,3 +550,89 @@ def format_timestamp_utc(ts: datetime | str | None) -> str:
     if isinstance(ts, datetime):
         return ts.strftime("%Y-%m-%d %H:%M:%S UTC")
     return str(ts)
+
+
+# --- Slack Trade Command Reply Formatters (US-1.6) ---
+
+
+def format_trade_command_reply(result: "SingleTickerResult") -> str:
+    """Format single-ticker pipeline result for Slack thread reply.
+
+    Args:
+        result: SingleTickerResult from single_ticker_run.
+    """
+    ticker = result.ticker_yf or result.ticker_t212
+
+    if result.status == "review_only":
+        return _format_review_reply(result, ticker)
+    elif result.status == "executed":
+        return _format_executed_reply(result, ticker)
+    elif result.status == "rejected":
+        return _format_rejected_reply(result, ticker)
+    else:
+        return _format_error_reply(result, ticker)
+
+
+def _format_review_reply(result: "SingleTickerResult", ticker: str) -> str:
+    """Format REVIEW response."""
+    lines = [f"*Review {ticker}*"]
+    if result.strategy_decision:
+        action = result.strategy_action or "HOLD"
+        conv = result.conviction
+        lines.append(f"Strategy: {action} (conviction {conv})")
+    if result.moderation_consensus:
+        lines.append(f"Moderation: {result.moderation_consensus}")
+    if result.risk_verdict:
+        lines.append(f"Risk: {result.risk_verdict.get('verdict', 'N/A')}")
+    if result.strategy_decision:
+        reasoning = result.strategy_decision.get("reasoning", "")
+        if reasoning:
+            lines.append(f"Reasoning: {_excerpt(reasoning, 200)}")
+    lines.append("No order placed.")
+    return "\n".join(lines)
+
+
+def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
+    """Format BUY/SELL executed response."""
+    action = result.user_action
+    qty = result.quantity
+    price = result.price
+    value = result.value_gbp
+    exec_status = result.execution_result.get("status", "unknown") if result.execution_result else "unknown"
+
+    lines = [f"*{action} {ticker}* — {exec_status}"]
+    if qty and price:
+        lines.append(f"Quantity: {qty:.2f} @ £{price:.2f} = £{value:.2f}")
+
+    # Show if user overrode strategy
+    if result.strategy_action and result.strategy_action != action:
+        lines.append(f"(Strategy suggested {result.strategy_action}; you overrode to {action})")
+
+    if result.moderation_consensus:
+        lines.append(f"Moderation: {result.moderation_consensus}")
+    if result.risk_verdict_str:
+        lines.append(f"Risk: {result.risk_verdict_str}")
+
+    if result.execution_result:
+        order_id = result.execution_result.get("order_id")
+        if order_id:
+            lines.append(f"Order ID: {order_id}")
+
+    return "\n".join(lines)
+
+
+def _format_rejected_reply(result: "SingleTickerResult", ticker: str) -> str:
+    """Format rejected response."""
+    reason = result.rejection_reason or "Unknown reason"
+    lines = [f"*Rejected: {result.user_action} {ticker}*", f"Reason: {reason}"]
+    if result.strategy_action:
+        lines.append(f"Strategy: {result.strategy_action} (conviction {result.conviction})")
+    if result.moderation_consensus:
+        lines.append(f"Moderation: {result.moderation_consensus}")
+    return "\n".join(lines)
+
+
+def _format_error_reply(result: "SingleTickerResult", ticker: str) -> str:
+    """Format error response."""
+    error = result.error_message or "Unknown error"
+    return f"*Error processing {result.user_action} {ticker}*\n{error}"

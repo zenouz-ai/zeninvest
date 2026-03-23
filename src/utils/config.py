@@ -659,6 +659,28 @@ class Settings:
             return False
         return bool(command_gateway.get("enabled", False))
 
+    # --- Slack Trade Commands (US-1.6) ---
+    @property
+    def _slack_trade_commands(self) -> dict[str, Any]:
+        stc = self.notifications.get("slack_trade_commands", {})
+        return stc if isinstance(stc, dict) else {}
+
+    @property
+    def slack_trade_commands_enabled(self) -> bool:
+        return bool(self._slack_trade_commands.get("enabled", False))
+
+    @property
+    def slack_trade_channel_id(self) -> str:
+        return str(self._slack_trade_commands.get("channel_id", ""))
+
+    @property
+    def slack_trade_confirmation_threshold_gbp(self) -> float:
+        return float(self._slack_trade_commands.get("confirmation_threshold_gbp", 500))
+
+    @property
+    def slack_trade_confirmation_timeout_minutes(self) -> int:
+        return int(self._slack_trade_commands.get("confirmation_timeout_minutes", 10))
+
     # --- Environment variables ---
     @staticmethod
     def get_env(key: str) -> str:
@@ -707,6 +729,14 @@ class Settings:
     @property
     def slack_webhook_url(self) -> str | None:
         return self.get_env_optional("SLACK_WEBHOOK_URL")
+
+    @property
+    def slack_app_token(self) -> str | None:
+        return self.get_env_optional("SLACK_APP_TOKEN")
+
+    @property
+    def slack_bot_token(self) -> str | None:
+        return self.get_env_optional("SLACK_BOT_TOKEN")
 
     @property
     def alert_email_from(self) -> str | None:
