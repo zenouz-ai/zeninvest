@@ -10,7 +10,9 @@ last_updated: 2026-03-24
 
 ## Purpose
 
-This document records the production-stability hardening delivered after the VPS experienced severe CPU saturation, elevated load average, and memory pressure caused by duplicate Python processes and overlapping long-running services. It is the authoritative plan and implementation record for the lean non-Docker runtime model now recommended on a small VPS.
+This document records the production-stability hardening delivered after the VPS experienced severe CPU saturation, elevated load average, and memory pressure caused by duplicate Python processes and overlapping long-running services. It is the authoritative implementation record for the runtime-safety work itself, regardless of whether the host is operated via Docker Compose or a lean non-Docker `systemd` layout.
+
+**Current operational choice (2026-03-24):** production remains Docker-based on the VPS. The committed `systemd` units are an alternative deployment path, not the active control plane on the current host.
 
 Use this document alongside:
 
@@ -88,7 +90,28 @@ The hardening work targeted the following constraints:
 - explicit restart behaviour
 - no tight loops
 - migrations handled separately from long-lived processes
-- simple operations with `systemd`
+- simple operations with either Docker Compose or `systemd`
+
+---
+
+## Current Production Posture
+
+The codebase now supports two operational patterns:
+
+### Active production posture
+
+- **Docker Compose**
+- `docker compose up -d --build`
+- long-lived services remain containerised
+- host-level app `systemd` units stay disabled
+
+### Alternative posture
+
+- **Non-Docker `systemd`**
+- one service per long-lived component
+- useful when explicitly migrating away from Docker
+
+The runtime-safety code changes (locks, bounded workers, single-cycle guard, safer API entrypoint) still matter in both modes. What differs is which process manager owns startup and restart behaviour.
 
 ---
 

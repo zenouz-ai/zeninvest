@@ -239,7 +239,29 @@ React frontend (SPA, served by FastAPI when dist/ exists)
 
 ## Runtime Topology (US-7.6)
 
-For the small-VPS production posture, the recommended runtime model is three long-lived single-instance services plus one one-shot migration service:
+The runtime hardening work is deployment-model agnostic. On the current VPS, the active production control plane remains Docker Compose, with three long-lived containers plus shared runtime locks:
+
+```
+docker compose
+  |
+  +-- investment-agent
+  |     -> python -m src.scheduler.scheduler
+  |     -> scheduler.lock
+  |
+  +-- investment-dashboard
+  |     -> python -m dashboard.backend
+  |     -> api.lock
+  |
+  +-- investment-slack-listener
+        -> python -m src.agents.notifications.slack_trade_listener
+        -> slack-listener.lock
+
+orchestrator run_cycle()
+  -> orchestrator-cycle.lock
+  -> shared across scheduled + dashboard-triggered execution
+```
+
+An alternative non-Docker small-VPS layout is also committed via `systemd`:
 
 ```
 systemd
@@ -259,10 +281,6 @@ systemd
   +-- investment-agent-migrate.service (oneshot)
         -> scripts/run_migrations.sh
         -> migrations.lock
-
-orchestrator run_cycle()
-  -> orchestrator-cycle.lock
-  -> shared across scheduled + dashboard-triggered execution
 ```
 
 **Operational guarantees:**

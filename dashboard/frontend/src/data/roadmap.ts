@@ -319,8 +319,8 @@ export const MILESTONES: Milestone[] = [
     effort: 'M',
     priority: 'P0',
     description:
-      'Single-instance runtime locks for API/scheduler/Slack/cycle execution, production-safe single-process dashboard entrypoint, bounded dashboard trigger dispatcher, bounded Slack worker pool, lower-overhead SSE polling, separate migration service, and committed systemd units for a small VPS.',
-    architectureComponents: ['Dashboard', 'Scheduler', 'Notifications', 'Orchestrator', 'systemd'],
+      'Single-instance runtime locks for API/scheduler/Slack/cycle execution, production-safe single-process dashboard entrypoint, bounded dashboard trigger dispatcher, bounded Slack worker pool, lower-overhead SSE polling, separate migration service, and an optional systemd split alongside the current Docker Compose VPS posture.',
+    architectureComponents: ['Dashboard', 'Scheduler', 'Notifications', 'Orchestrator', 'Docker', 'systemd'],
   },
   {
     id: 'US-2.4',

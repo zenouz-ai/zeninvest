@@ -14,7 +14,7 @@ This guide covers end-to-end deployment of the investment agent on a VPS: server
 
 > Path and username note: examples use `/home/deploy` and user `deploy`. If your VPS user differs (for example `deploy_invest_ai`), replace those values consistently in all commands and service files.
 >
-> Runtime note (2026-03-24): for non-Docker operation on a small VPS, prefer the committed multi-service `systemd` layout from §4.6 and [VPS Runtime Stability Plan](VPS_RUNTIME_STABILITY_PLAN.md). Some older fallback examples in this guide still reference the legacy single `investment-agent` service; treat those as historical rather than the recommended current posture.
+> Runtime note (2026-03-24): the current VPS production posture remains **Docker Compose**. The committed multi-service `systemd` layout in §4.6 is an **alternative non-Docker path**, not the active production control plane on the current host. Some older fallback examples in this guide still reference the legacy single `investment-agent` service; treat those as historical rather than the recommended current posture.
 
 ---
 
@@ -446,9 +446,9 @@ poetry run alembic upgrade head
 poetry run python -m src.orchestrator.main --dry-run
 ```
 
-### 4.6 Create systemd Services (Recommended Small-VPS Layout)
+### 4.6 Create systemd Services (Alternative Small-VPS Layout)
 
-For the current non-Docker production posture, use the committed multi-service layout instead of one monolithic service. This keeps API, scheduler, Slack listener, and migrations separate and lets runtime locks reject duplicate starts cleanly.
+Use this section only if you intentionally choose a non-Docker deployment. The current production posture on the VPS remains Docker Compose. This alternative layout keeps API, scheduler, Slack listener, and migrations separate and lets runtime locks reject duplicate starts cleanly.
 
 Committed units:
 

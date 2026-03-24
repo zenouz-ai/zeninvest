@@ -2023,8 +2023,8 @@ class Orchestrator:
 
         return adjusted_decisions, rejections
 
-    @staticmethod
     def _build_company_profiles(
+        self,
         stocks_data: list[dict[str, Any]],
         top_tickers: list[str],
     ) -> str:

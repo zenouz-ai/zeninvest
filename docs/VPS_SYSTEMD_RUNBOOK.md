@@ -6,6 +6,8 @@ last_updated: 2026-03-24
 
 # VPS Systemd Runbook
 
+> Alternative non-Docker operating path. Use this only if you intentionally choose `systemd` instead of Docker Compose for production.
+
 ## Target Architecture
 
 Run exactly three long-lived services on the VPS:

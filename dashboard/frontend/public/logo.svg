@@ -1,48 +1,20 @@
-<svg viewBox="0 0 220 170" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="c3g" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00d4ff"/>
-      <stop offset="100%" stop-color="#00ffa3"/>
+    <linearGradient id="zeninvest-logo-gradient" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00d4ff" />
+      <stop offset="100%" stop-color="#00ffa3" />
     </linearGradient>
-    <filter id="c3gl">
-      <feGaussianBlur stdDeviation="4" result="b"/>
-      <feMerge>
-        <feMergeNode in="b"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
-
-  <!-- Top bar -->
-  <circle cx="55" cy="45" r="6" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <circle cx="90" cy="45" r="5" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <circle cx="125" cy="45" r="5" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <circle cx="160" cy="45" r="6" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <line x1="55" y1="45" x2="90" y2="45" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="90" y1="45" x2="125" y2="45" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="125" y1="45" x2="160" y2="45" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-
-  <!-- Diagonal -->
-  <circle cx="140" cy="72" r="4.5" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <circle cx="110" cy="97" r="5.5" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <circle cx="80" cy="122" r="4.5" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <line x1="160" y1="45" x2="140" y2="72" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="140" y1="72" x2="110" y2="97" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="110" y1="97" x2="80" y2="122" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="80" y1="122" x2="55" y2="150" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-
-  <!-- Bottom bar -->
-  <circle cx="55" cy="150" r="6" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <circle cx="90" cy="150" r="5" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <circle cx="125" cy="150" r="5" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <circle cx="160" cy="150" r="6" fill="url(#c3g)" filter="url(#c3gl)"/>
-  <line x1="55" y1="150" x2="90" y2="150" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="90" y1="150" x2="125" y2="150" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-  <line x1="125" y1="150" x2="160" y2="150" stroke="url(#c3g)" stroke-width="2.5" opacity="0.7"/>
-
-  <!-- Cross connections -->
-  <line x1="90" y1="45" x2="140" y2="72" stroke="url(#c3g)" stroke-width="0.8" opacity="0.15"/>
-  <line x1="125" y1="45" x2="110" y2="97" stroke="url(#c3g)" stroke-width="0.8" opacity="0.15"/>
-  <line x1="80" y1="122" x2="90" y2="150" stroke="url(#c3g)" stroke-width="0.8" opacity="0.15"/>
-  <line x1="110" y1="97" x2="125" y2="150" stroke="url(#c3g)" stroke-width="0.8" opacity="0.15"/>
+  <g fill="none" stroke="url(#zeninvest-logo-gradient)" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="16" y1="18" x2="48" y2="18" stroke-width="4" />
+    <line x1="48" y1="18" x2="16" y2="46" stroke-width="4" />
+    <line x1="16" y1="46" x2="48" y2="46" stroke-width="4" />
+  </g>
+  <g fill="url(#zeninvest-logo-gradient)">
+    <circle cx="16" cy="18" r="4.5" />
+    <circle cx="48" cy="18" r="4.5" />
+    <circle cx="32" cy="32" r="5" />
+    <circle cx="16" cy="46" r="4.5" />
+    <circle cx="48" cy="46" r="4.5" />
+  </g>
 </svg>

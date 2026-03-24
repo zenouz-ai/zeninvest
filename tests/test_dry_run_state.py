@@ -100,7 +100,13 @@ def _build_orchestrator(portfolio_value=9300.0):
     # Track whether screening was called and with what state
     screening_called = {"value": False, "system_state": None}
 
-    def mock_fetch_stocks_data(current_positions, exclude_tickers=None, system_state="ACTIVE"):
+    def mock_fetch_stocks_data(
+        current_positions,
+        exclude_tickers=None,
+        system_state="ACTIVE",
+        cycle_id=None,
+        **kwargs,
+    ):
         screening_called["value"] = True
         screening_called["system_state"] = system_state
         return [

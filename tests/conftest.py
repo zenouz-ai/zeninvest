@@ -289,7 +289,7 @@ class OrchestratorTestHarness:
 
         orchestrator._get_portfolio_state = lambda: portfolio_data
         orchestrator._fetch_stocks_data = (
-            lambda current_positions, exclude_tickers=None, system_state="ACTIVE": stocks_data
+            lambda current_positions, exclude_tickers=None, system_state="ACTIVE", cycle_id=None, **kwargs: stocks_data
         )
 
         def _fake_run_sub_strategies(stocks_data_arg, existing_positions):  # noqa: ANN001

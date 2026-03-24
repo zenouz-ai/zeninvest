@@ -171,7 +171,7 @@ def test_orchestrator_emits_instruction_and_summary(monkeypatch) -> None:
         "total_return_pct": 0.0,
         "alpha_pct": 0.0,
     }
-    orchestrator._fetch_stocks_data = lambda current_positions, exclude_tickers=None, system_state="ACTIVE": [
+    orchestrator._fetch_stocks_data = lambda current_positions, exclude_tickers=None, system_state="ACTIVE", cycle_id=None, **kwargs: [
         {
             "ticker": "AAPL_US_EQ",
             "name": "Apple Inc.",
