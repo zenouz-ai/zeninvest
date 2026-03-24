@@ -78,12 +78,18 @@ class CommandGateway:
                 channel_id=request.channel_id,
                 thread_ts=thread_ts,
             )
-            return {
+            resp: dict[str, Any] = {
                 "status": result.status,
                 "result": result,
                 "intent": intent,
                 "ticker_t212": ticker_t212,
             }
+            # Propagate error/rejection messages so the listener can display them
+            if result.error_message:
+                resp["message"] = result.error_message
+            elif result.rejection_reason:
+                resp["message"] = result.rejection_reason
+            return resp
         except Exception as e:
             logger.error(f"Command gateway pipeline error: {e}", exc_info=True)
             return {"status": "error", "message": str(e)}
