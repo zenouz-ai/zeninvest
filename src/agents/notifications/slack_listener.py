@@ -210,6 +210,12 @@ class SlackTradeListener:
             requested_ticker = getattr(resolved.get("intent"), "ticker", None)
 
             if status == "unparseable":
+                self._post_reply(
+                    channel,
+                    ts,
+                    resolved.get("message", "I couldn't parse that trade command."),
+                )
+                logger.info(f"Command completed: {text!r} → unparseable")
                 return
 
             if status == "unknown_ticker":

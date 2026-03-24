@@ -78,6 +78,35 @@ class CommandGateway:
             "Tip: try the company name instead, for example `REVIEW Rocket Lab`."
         )
 
+    def _unparseable_message(self, text: str) -> str:
+        """Build a helpful reply for unsupported conversational requests."""
+        normalized = " ".join((text or "").strip().lower().split())
+        examples = (
+            "Currently supported one-ticker commands include "
+            "`BUY AAPL`, `SELL 10 TSLA`, `REVIEW MSFT`, `BUY £500 NVDA`, and "
+            "`force sell TSLA`."
+        )
+
+        portfolio_keywords = (
+            "liquidate",
+            "all tickers",
+            "all holdings",
+            "portfolio",
+            "holdings below",
+            "holding below",
+            "below £",
+            "under £",
+        )
+        if any(keyword in normalized for keyword in portfolio_keywords):
+            return (
+                "I couldn't action that yet. The current Slack trade listener only supports "
+                "one ticker per message, so portfolio-wide rules like "
+                "`liquidate all tickers with holding below £100` are not supported yet. "
+                f"{examples}"
+            )
+
+        return f"I couldn't parse that trade command. {examples}"
+
     def resolve_request(self, request: CommandRequest) -> dict[str, Any]:
         """Parse and resolve an inbound command without running the pipeline."""
         if not self.enabled:
@@ -87,7 +116,7 @@ class CommandGateway:
 
         intent = parse_trade_command(text, use_llm_fallback=True)
         if not intent:
-            return {"status": "unparseable", "message": "Could not parse trade command."}
+            return {"status": "unparseable", "message": self._unparseable_message(text)}
 
         ticker_t212 = resolve_ticker_to_t212(intent.ticker)
         if not ticker_t212:

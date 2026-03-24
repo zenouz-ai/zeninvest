@@ -56,6 +56,12 @@ Current implementation state: US-1.9 remains a hardened skeleton only. Session C
 7. On confirmation, pipeline executes through Moderation and deterministic Risk.
 8. Agent posts execution result and keeps session open until ended or timed out.
 
+Representative future user stories to support in this phase:
+
+- Portfolio-level natural language actions such as "Liquidate all tickers with holding below £100"
+- Conditional follow-ups such as "Only do that for positions opened more than 30 days ago"
+- Clarifying turns when a request implies a basket, threshold, or portfolio filter rather than a single ticker
+
 ---
 
 ## Architecture
@@ -358,6 +364,10 @@ Use this sequence as the default delivery plan. Estimates assume one developer w
 | US-1.9-T10 | Research orchestration depth | Optional tool routing (committee-only vs deep), research log writes, budget-aware policy | US-4.4 maturity + T3 | 1-1.5 days |
 | US-1.9-T11 | Test suite + fixtures | Unit/integration tests for session lifecycle, confirm gate, APIs, Slack threading, concurrency | T1-T10 | 1.5-2 days |
 | US-1.9-T12 | Docs + runbooks | Update README, CLAUDE, ARCHITECTURE, DASHBOARD, GOVERNANCE, CHAT_AND_COMMANDS, DEPLOYMENT, LOCAL_SETUP | T1-T11 | 0.5-1 day |
+
+Portfolio-rule user story note:
+
+- Treat requests like "liquidate all tickers with holding below £100" as first-class conversational intents in T3/T4/T8, with explicit clarification, preview, and confirmation before execution.
 
 ### Definition of Done per Ticket
 

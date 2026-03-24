@@ -81,11 +81,18 @@ class TestSlackTradeListener:
         mock_settings.return_value.slack_trade_confirmation_timeout_minutes = 10
         listener = SlackTradeListener()
         listener._post_reply = MagicMock()
-        listener.gateway.resolve_request = MagicMock(return_value={"status": "unparseable"})
+        listener.gateway.resolve_request = MagicMock(return_value={
+            "status": "unparseable",
+            "message": "I couldn't parse that trade command.",
+        })
 
         listener._process_command("C123", "123.45", "U123", "hello there")
 
-        listener._post_reply.assert_not_called()
+        listener._post_reply.assert_called_once_with(
+            "C123",
+            "123.45",
+            "I couldn't parse that trade command.",
+        )
 
     @patch("src.agents.notifications.slack_listener.get_settings")
     def test_large_order_prompts_confirmation_before_execution(self, mock_settings):
@@ -275,6 +282,27 @@ class TestCommandGateway:
         )
         result = gw.handle(req)
         assert result["status"] == "unparseable"
+        assert "BUY AAPL" in result["message"]
+
+    @patch("src.agents.notifications.command_gateway.get_settings")
+    @patch("src.agents.notifications.command_gateway.parse_trade_command")
+    def test_unparseable_portfolio_rule_returns_contextual_tip(self, mock_parse, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        mock_parse.return_value = None
+        gw = CommandGateway()
+        from src.agents.notifications.command_gateway import CommandRequest
+        req = CommandRequest(
+            source="slack",
+            user_id="U1",
+            channel_id="C1",
+            command="Liquidate all tickers with holding below £100",
+            args=[],
+            raw_payload={"text": "Liquidate all tickers with holding below £100"},
+        )
+        result = gw.handle(req)
+        assert result["status"] == "unparseable"
+        assert "one ticker per message" in result["message"]
+        assert "not supported yet" in result["message"]
 
     @patch("src.agents.notifications.command_gateway.get_settings")
     @patch("src.agents.notifications.command_gateway.parse_trade_command")
