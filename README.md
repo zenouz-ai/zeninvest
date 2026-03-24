@@ -156,7 +156,7 @@ npm run build  # Production build (outputs to dist/)
 
 **Testing the dashboard:** Ensure `dashboard.enabled: true` in `config/settings.yaml`. Start the backend: `poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000`. Run the endpoint check: `poetry run python dashboard/backend/test_endpoints.py`. Then run the frontend (`npm run dev` in `dashboard/frontend` or open `http://localhost:8000` after `npm run build`). See `dashboard/backend/TESTING.md` for the full 10-page and API check.
 
-**Docker:** `docker compose up -d` runs the scheduler, always-on Slack listener, and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000). Public read-only pages work anonymously; operator pages require sign-in and are intentionally blocked over plain HTTP unless you are tunnelling to localhost in dev mode. Use the **Dry Run** or **Live Run** buttons only after operator sign-in, or: `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live); add `--dry-run` for dry-run.
+**Docker:** `docker compose up -d` runs the scheduler, always-on Slack listener, and dashboard. Today the dashboard can run on the raw Docker path `http://YOUR_VPS_IP:8000`, but the recommended production entrypoint is the canonical HTTPS domain `https://zeninvest.zenouz.ai` via Cloudflare + Nginx; see `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. Public read-only pages work anonymously; operator pages require sign-in and are intentionally blocked over plain HTTP unless you are tunnelling to localhost in dev mode. Use the **Dry Run** or **Live Run** buttons only after operator sign-in, or: `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live); add `--dry-run` for dry-run.
 
 **Schedule (configurable):**
 
@@ -317,7 +317,8 @@ docs/                   # Project documentation (including archived plans in doc
 ├── CHAT_AND_COMMANDS.md         # ChatOps: trade alerts, notification routing, planned commands
 ├── COMPETITIVE_ANALYSIS.md      # Assessment vs professional quant systems
 ├── DASHBOARD.md                 # Web dashboard architecture, phases, frontend/backend design
-├── DASHBOARD_DEPLOYMENT.md      # Dashboard VPS deployment: Docker, port 8000, SPA fallback
+├── CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md  # Planned canonical HTTPS rollout for zeninvest.zenouz.ai
+├── DASHBOARD_DEPLOYMENT.md      # Dashboard VPS deployment: Docker, current raw path + recommended domain posture
 ├── DATA_EXPORT_RUNBOOK.md       # VPS-to-local data export with integrity checks
 ├── DATA_RATIONALE.md            # Every data point's purpose and keep/remove verdict
 ├── DEPLOYMENT.md                # VPS deployment and monitoring guide
@@ -347,7 +348,8 @@ notebooks/
 - [VPS Runtime Stability Plan](docs/VPS_RUNTIME_STABILITY_PLAN.md) — failure-mode diagnosis, target architecture, systemd split, migration model, and verification
 - [VPS Systemd Runbook](docs/VPS_SYSTEMD_RUNBOOK.md) — lean non-Docker service install/start/check commands for a small VPS
 - [Dashboard](docs/DASHBOARD.md) — web dashboard architecture, phases, frontend/backend design
-- [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) — VPS deployment: Docker, port 8000, SPA fallback
+- [Cloudflare Dashboard Domain Plan](docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md) — planned `zeninvest.zenouz.ai` HTTPS rollout with Cloudflare + Nginx
+- [Dashboard Deployment](docs/DASHBOARD_DEPLOYMENT.md) — VPS deployment: Docker, current raw path + recommended domain posture
 - [Chat & Commands](docs/CHAT_AND_COMMANDS.md) — trade alerts, notification routing, planned inbound commands
 - [Backtesting](docs/BACKTESTING.md) — engine, walk-forward validation, promotion report
 - [Order Management](docs/ORDER_MANAGEMENT_PROJECT.md) — stop-loss, trailing stops, limit dip-buy: design and config

@@ -25,7 +25,7 @@ last_updated: 2026-03-24
 | 3–7   | US-4.5    | Proactive Macro Intelligence | ✅ Done     | Scheduled scan + persisted context + action plan |
 | 5–7   | US-1.6    | Slack NL Commands            | ✅ Done     | Delivered + hardened: real confirmation, audit/status cleanup |
 | 6–7   | US-1.9    | Conversational WF            | ✅ Done     | Skeleton delivered + hardened: 404/422/integrity protections |
-| 8     | US-8.1    | Open-Source Launch Prep      | ⬜ Pending  | Repo hygiene + legal + CI; roadmap doc done    |
+| 8     | US-8.1    | Open-Source Launch Prep      | ⬜ Pending  | Repo hygiene + legal + CI; includes domain-access planning handoff for community launch posture |
 
 ---
 
@@ -319,6 +319,12 @@ git remote remove old-origin     # remove KayvanNejabati remote
 - `CODE_OF_CONDUCT.md` (Contributor Covenant v2.1, contact zenouz.ai@gmail.com)
 - `SECURITY.md` (email-only disclosure, 48h SLA)
 
+**Phase D — Community-facing access posture handoff:**
+- Keep `US-7.7 Dashboard HTTPS Domain & Canonical Access` visible in the Week 1 handoff as supporting community/open-source readiness
+- Maintain the rollout runbook in `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`
+- Ensure roadmap and deployment docs point to `https://zeninvest.zenouz.ai` as the intended canonical public entrypoint for future contributors/operators
+- Treat this as planning/documentation scope in Week 1, not implementation scope
+
 **Phase C — GitHub infrastructure:**
 - `.github/ISSUE_TEMPLATE/bug_report.md`
 - `.github/ISSUE_TEMPLATE/feature_request.md`
@@ -338,3 +344,4 @@ git remote remove old-origin     # remove KayvanNejabati remote
 - US-3.1 delivered in parallel with US-7.4 on 2026-03-22
 - US-1.9 skeleton cannot start until US-1.6 is merged
 - US-8.1 is pure file work — no test impact expected
+- `US-7.7` is included in the Week 1 sprint as a community-facing planning handoff only; implementation resumes in the next session

@@ -1739,14 +1739,14 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 ## 13. Dashboard VPS Deployment
 
-The web dashboard (activity feed, portfolio, run history, universe, 7 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-1.8 delivered; dashboard running on VPS once the operator runs the deployment steps below. **CORS:** Configure `dashboard.cors_origins` in `config/settings.yaml` with your VPS IP (defaults to localhost for local dev).
+The web dashboard (activity feed, portfolio, run history, universe, commands, world news, costs, roadmap, and operator controls across 10 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-1.8 delivered; dashboard running on VPS. **Recommended next step:** move to the canonical domain path in `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. **CORS:** configure `dashboard.cors_origins` in `config/settings.yaml` with your production domain (defaults to localhost for local dev).
 
-### Access Options (no domain required)
+### Access Options
 
 | Option | Access | Notes |
 |--------|--------|-------|
-| **VPS IP** (recommended) | `http://YOUR_VPS_IP:8000` | No cost, no setup. Activity feed (SSE) and Run History work via relative API URLs. |
-| **Domain** | `https://dashboard.yourdomain.com` | HTTPS via Let's Encrypt; ~£10–15/year. |
+| **Cloudflare + domain** (recommended) | `https://zeninvest.zenouz.ai` | Canonical HTTPS URL, safe operator login, internal-only origin via Nginx reverse proxy. |
+| **VPS IP** | `http://YOUR_VPS_IP:8000` | Current raw fallback path; operator login over public HTTP is blocked by design. |
 | **GitHub Pages** | Not suitable | Frontend must call VPS API; mixed content (HTTPS→HTTP) blocked. |
 
 ### Prerequisites
@@ -1760,13 +1760,13 @@ The web dashboard (activity feed, portfolio, run history, universe, 7 pages) is 
 From the project directory (e.g. `/home/deploy/investment-agent`):
 
 1. Pull latest: `git pull origin main` (or your deployment branch)
-2. Allow firewall (one-time): `sudo ufw allow 8000/tcp comment "Dashboard"` then `sudo ufw reload`
+2. Allow firewall (one-time for current raw path): `sudo ufw allow 8000/tcp comment "Dashboard"` then `sudo ufw reload`
 3. Build and run: `docker compose up -d --build` (builds agent from `Dockerfile.agent`, dashboard from `Dockerfile`)
-4. Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser
+4. Verify: `curl http://localhost:8000/health` and open the current dashboard path in a browser
 
 **To rebuild after updates:** `git pull origin main` then `docker compose up -d --build` (or `docker compose up -d --build dashboard` for dashboard-only, `docker compose up -d --build investment-agent` for agent-only). See [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md#updating--rebuilding-the-dashboard).
 
-**Outcome:** Dashboard is running on VPS. All 8 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Costs, Roadmap), activity feed (SSE), and API at `http://YOUR_VPS_IP:8000`.
+**Outcome:** Dashboard is running on VPS. All 10 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Commands, World News, Costs, Roadmap), activity feed (SSE), and API are available on the current raw path, with the planned canonical production target at `https://zeninvest.zenouz.ai`.
 
 **Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use the **Dry Run** or **Live Run** buttons on Dashboard Home (Live Run requires confirmation), or `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live) / `... --dry-run` (dry).
 

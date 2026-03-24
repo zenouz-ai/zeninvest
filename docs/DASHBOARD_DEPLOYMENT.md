@@ -16,11 +16,12 @@ Deploy the dashboard backend (FastAPI + SSE) and frontend (built SPA) as a Docke
 
 | Option | Pros | Cons |
 |--------|------|------|
-| **VPS IP only** (recommended) | No cost, no setup. Access via `http://YOUR_VPS_IP:8000` | No HTTPS (Let's Encrypt needs a domain). HTTP is acceptable for a personal dashboard. |
-| **Purchase domain** | HTTPS via Let's Encrypt, cleaner URL | ~£10–15/year |
+| **Cloudflare + domain** (recommended) | One canonical HTTPS URL, operator login works safely, origin can stay internal-only behind Nginx | Requires DNS + reverse proxy setup |
+| **VPS IP only** | No cost, no extra setup. Access via `http://YOUR_VPS_IP:8000` | No HTTPS; operator login over public HTTP is blocked by design |
+| **Purchase domain (no Cloudflare)** | HTTPS via reverse proxy / Let's Encrypt, cleaner URL | More origin-facing ops than Cloudflare-proxied setup |
 | **GitHub Pages** | Free static hosting | Not suitable: frontend must call VPS API. HTTPS page → HTTP API = mixed content blocked. Backend still needs VPS. |
 
-**Recommended:** Use VPS IP for initial deployment. Add a domain later if HTTPS is desired.
+**Recommended:** Use `https://zeninvest.zenouz.ai` behind Cloudflare-proxied DNS and an Nginx reverse proxy. Keep raw VPS/IP access only as an emergency or local fallback. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`.
 
 ---
 
@@ -39,7 +40,7 @@ All three share the same SQLite DB via `./data` volume. The split avoids buildin
 - `Dockerfile.agent`: Python 3.12-slim, Poetry deps, application code. No Node.js, no frontend build.
 - `Dockerfile`: Stage 1 (Node 20-slim) builds the React/Vite frontend with no secrets injected at build time. Stage 2 (Python 3.12-slim) installs Poetry deps, copies app code + built frontend dist.
 
-**Frontend API URL:** The frontend is served from the same origin as the API. Requests use relative paths (`/api/*`). The SSE activity feed uses `/api/events/stream` (same-origin), so it works at `http://VPS_IP:8000`.
+**Frontend API URL:** The frontend is served from the same origin as the API. Requests use relative paths (`/api/*`). The SSE activity feed uses `/api/events/stream` (same-origin), so it works through either the current VPS/IP path or the planned canonical domain path.
 
 **Authentication:** Public, read-only routes live under `/api/public/*`. Operator routes require backend login and a signed session cookie. Operator login is blocked on plain HTTP except localhost-only development mode.
 
@@ -50,11 +51,16 @@ sudo ufw allow 8000/tcp comment "Dashboard"
 sudo ufw reload
 ```
 
-### Optional: nginx Reverse Proxy
+### Recommended: Cloudflare + nginx Reverse Proxy
 
-For port 80 or future HTTPS:
-- nginx listens on 80, proxies to `http://127.0.0.1:8000`
+Target production posture:
+- Cloudflare proxied DNS for `zeninvest.zenouz.ai`
+- nginx publishes `80/443`
+- dashboard service is internal-only
+- nginx proxies to the dashboard service and forwards `X-Forwarded-Proto: https`
 - Disable buffering for SSE: `proxy_buffering off` on `/api/events/stream`
+
+Detailed implementation/runbook: `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`
 
 ---
 
@@ -81,7 +87,9 @@ curl http://localhost:8000/health
 curl http://localhost:8000/api/events/?limit=3
 ```
 
-Access from your machine: `http://YOUR_VPS_IP:8000`
+Access from your machine:
+- preferred: `https://zeninvest.zenouz.ai`
+- fallback/emergency: `http://YOUR_VPS_IP:8000` only until the domain rollout is complete
 
 ### Updating / Rebuilding the dashboard
 
@@ -99,7 +107,10 @@ To rebuild only the dashboard service (keeps agent running):
 docker compose up -d --build dashboard
 ```
 
-Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser.
+Verify:
+- `curl http://localhost:8000/health`
+- open `https://zeninvest.zenouz.ai` once the domain rollout is complete
+- or use `http://YOUR_VPS_IP:8000` only as the temporary pre-domain path
 
 **Local development:** Build the frontend with `cd dashboard/frontend && npm run build`. The dashboard Docker image (`Dockerfile`) runs a multi-stage build (Node → Python) that includes the built SPA. The agent image (`Dockerfile.agent`) is Python-only and is reused by both the scheduler and the Slack listener.
 
@@ -120,11 +131,13 @@ When the operator has run the steps above on a VPS:
 
 - [x] Code: scheduler + always-on Slack listener + dashboard services in docker-compose; multi-stage frontend build; FastAPI serves SPA
 - [x] Config: `dashboard.enabled: true`, `dashboard.events_enabled: true` in `config/settings.yaml`
-- [x] Firewall: `ufw allow 8000/tcp` (included in deployment commands above)
+- [x] Firewall: `ufw allow 8000/tcp` for the current raw-dashboard path
 - [x] Build & run: `docker compose up -d --build`
-- [x] Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser
+- [x] Verify: `curl http://localhost:8000/health` and open the dashboard in a browser
 
-**Outcome:** Dashboard is running on VPS. All 10 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Commands, World News, Costs, Roadmap), activity feed (SSE), and API are available at `http://YOUR_VPS_IP:8000`. Portfolio page includes Cash, Investments, Positions (T212 positions normalised for display), sector allocation, and chronological value history chart.
+**Next hardening step:** `US-7.7 Dashboard HTTPS Domain & Canonical Access` moves the dashboard to `https://zeninvest.zenouz.ai`, adds Cloudflare + nginx, and removes public raw `:8000` exposure.
+
+**Outcome:** Dashboard is running on VPS. Today it can run on the raw Docker/IP path; the planned production target is `https://zeninvest.zenouz.ai` with Cloudflare + nginx and no public `:8000` exposure. Portfolio page includes Cash, Investments, Positions (T212 positions normalised for display), sector allocation, and chronological value history chart.
 
 ---
 
@@ -152,17 +165,19 @@ With VPS IP and HTTP:
   - `/api/public/docs/*`
   - `/api/public/costs/*`
   - `/api/public/performance/*`
-- **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: localhost only. For VPS, add your IP:
+- **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: localhost only. For production, add the canonical HTTPS domain and keep localhost origins for local development:
   ```yaml
   dashboard:
     cors_origins:
-      - "http://YOUR_VPS_IP:8000"
+      - "https://zeninvest.zenouz.ai"
       - "http://localhost:3000"
+      - "http://localhost:8000"
   ```
 - Dashboard Home has **Dry Run** and **Live Run** buttons; they call `POST /api/runs/trigger` and `POST /api/runs/trigger-live` respectively. Live Run requires confirmation.
 
 ## Related Notes
 
 - [Dashboard System](DASHBOARD.md)
+- [Cloudflare Dashboard Domain Plan](CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md)
 - [Deployment (VPS)](DEPLOYMENT.md)
 - [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — US-1.8

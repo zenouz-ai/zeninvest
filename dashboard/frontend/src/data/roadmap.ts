@@ -323,6 +323,19 @@ export const MILESTONES: Milestone[] = [
     architectureComponents: ['Dashboard', 'Scheduler', 'Notifications', 'Orchestrator', 'Docker', 'systemd'],
   },
   {
+    id: 'US-7.7',
+    name: 'Dashboard HTTPS Domain & Canonical Access',
+    topic: 'Hardening',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P0',
+    horizon: 'Next',
+    timeboxDays: 2,
+    description:
+      'Expose the dashboard at https://zeninvest.zenouz.ai via Cloudflare-proxied DNS and Nginx TLS termination; keep public overview anonymous, keep operator routes session-protected, remove public port 8000 exposure, enforce canonical host access, and update deployment/runbook documentation.',
+    architectureComponents: ['Dashboard', 'Docker', 'FastAPI', 'Nginx', 'Cloudflare'],
+  },
+  {
     id: 'US-2.4',
     name: 'Nemotron Integration Investigation',
     topic: 'Calibration',

@@ -146,6 +146,7 @@ timeline
 | **US-7.0b** | Formal Verification Fixes | 18 findings (3C+7W+8I). Phase 1: scheduler `max_instances=1` (concurrent cycle prevention), resume warns HALTED/CAUTIOUS. Phase 2: `trade_without_stop` alert (P2-5), OpportunityQueue `queue_status` lifecycle QUEUED→EXECUTING→EXECUTED + orphan reconciliation (P2-6), portfolio re-query before BUY after SELL/REDUCE (P2-4), decision chain integrity check (P2-3). 18 new tests. 12 invariants verified. See `docs/FORMAL_VERIFICATION_AUDIT.md`. | Crash safety, state machine correctness, DB atomicity | **Delivered** |
 | **US-7.5** | Remaining Audit Backlog | Consolidated backlog from three audits: 15 medium/low findings (agent logic), 22 medium/low (trading system), 7 phase 3+4 items (formal verification). Includes: HALTED auto-recovery, market hours check, DB CHECK constraints, atomic cost budget, peak inflation detection, halted ticker denial list. | Hardening for eventual live-account transition | **Planned** |
 | **US-7.6** | VPS Runtime Stability & Service Isolation | Single-instance runtime locks for API/scheduler/Slack/cycle execution; bounded manual trigger and Slack worker execution; separate migration service; current Docker Compose production posture plus optional lean systemd split for small VPS operation | Prevents duplicate/runaway processes and keeps idle CPU low on a resource-constrained host | **Delivered** |
+| **US-7.7** | Dashboard HTTPS Domain & Canonical Access | Expose the dashboard at `https://zeninvest.zenouz.ai` via Cloudflare-proxied DNS and Nginx TLS termination; keep public overview anonymous, keep operator routes session-protected, remove public port 8000 exposure, enforce canonical host access, and update deployment/runbook documentation. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. | One safe, canonical public dashboard URL with working operator login over HTTPS | **Planned** |
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Delivered** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
@@ -224,6 +225,7 @@ Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Ha
 | 7.3 | Execution quality & slippage | High | Medium | M | Trade data | **P1** (pre-live) |
 | 7.4 | Integration test coverage | High | Easy | M | None | **P1** |
 | 7.5 | Remaining audit backlog | Medium | Easy–Med | L | None | **P2** |
+| 7.7 | Dashboard HTTPS domain + canonical access | Critical | Easy–Med | M | US-1.8 + US-7.1 | **P0** |
 | 4.3 | Sector rotation signal | Low–Med | Easy | M | ETF data (free) | **P3** |
 | 6.2 | Journal embeddings | Low | Medium | M | Trade journals | **P3** |
 | 6.3 | RL investigation | Low | Hard | M | Academic lit | **P3** |
@@ -574,6 +576,27 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Deployment complete checklist in `DASHBOARD_DEPLOYMENT.md`; dashboard running on VPS once operator executes it
 
 **Domain options:** VPS IP (recommended), purchase domain for HTTPS, or nginx reverse proxy. See deployment plan.
+
+---
+
+**US-7.7: Dashboard HTTPS Domain & Canonical Access**
+**Value:** One safe, canonical public dashboard URL with working operator login over HTTPS  
+**Effort:** Medium (1-2 days)  
+**Data Sources:** Same DB as agent (shared volume)  
+**Stage:** Planned  
+
+**Detailed plan:** `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`
+
+**Target state:** The dashboard is available at `https://zeninvest.zenouz.ai`, fronted by Cloudflare-proxied DNS and Dockerized Nginx TLS termination. The public overview remains anonymous, operator routes remain session-protected, and raw public port `8000` access is removed.
+
+**Acceptance Criteria:**
+- [ ] Cloudflare proxied `A` record for `zeninvest.zenouz.ai` points at the VPS; SSL/TLS mode set to `Full (strict)`
+- [ ] Docker Compose adds an `nginx` reverse proxy service publishing `80/443`
+- [ ] Dashboard service is no longer publicly exposed on `0.0.0.0:8000`
+- [ ] HTTP requests redirect to `https://zeninvest.zenouz.ai`
+- [ ] Operator login succeeds over HTTPS on the domain; raw public HTTP login remains blocked
+- [ ] Public overview and SSE-backed dashboard pages work through the canonical domain
+- [ ] Deployment/runbook docs updated to make the domain path the recommended production posture
 
 ---
 
