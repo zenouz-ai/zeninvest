@@ -256,7 +256,7 @@ docker compose up -d --build
 - [x] Response message sent back to Slack within 30 seconds (async background thread)
 - [x] Full audit trail: `slack_command_log` with cycle_id, order_id, status, and `response_message`
 - [x] `slack_trade_commands.enabled: false` disables all inbound handling
-- [x] Focused US-1.6/US-1.9 regression suite: 113 passing tests
+- [x] Focused US-1.6/US-1.9 regression suite: 117 passing tests
 
 ---
 

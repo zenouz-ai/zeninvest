@@ -440,7 +440,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Execute via OrderManager; Order.strategy = `slack_command`; confirm in Slack
 - [x] Safety: ticker validation, cash/position checks, real large-order confirmation, risk veto messaging, persisted response/audit status
 - [x] `slack_command_log`; CLI `slack_trade_listener`
-- [x] Focused US-1.6/US-1.9 regression suite: 113 passing tests
+- [x] Focused US-1.6/US-1.9 regression suite: 117 passing tests
 
 **Integration:** Long-running process; reuses Strategy/Moderation/Risk/Execution stack. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`.
 
@@ -459,7 +459,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] `SessionManager` stub with real CRUD: `create_session()`, `add_turn()`, `get_session()`, `end_session()`
 - [x] Dashboard chat API endpoints: `POST /api/chat/sessions`, `POST /sessions/{id}/turns`, `GET /sessions/{id}`, `POST /sessions/{id}/end`
 - [x] Missing-session `404`s, `channel_type` / `role` validation, and FK + unique turn-order protections
-- [x] Focused US-1.6/US-1.9 regression suite: 113 passing tests
+- [x] Focused US-1.6/US-1.9 regression suite: 117 passing tests
 
 **Full workflow (pending):**
 - [ ] Session management supports start/resume/end/timeout with persistent multi-turn context

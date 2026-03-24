@@ -287,7 +287,7 @@ export const MILESTONES: Milestone[] = [
     effort: 'M–L',
     priority: 'P1',
     description:
-      'Inbound Slack trade commands via Socket Mode: regex-first NL parser (BUY/SELL/REVIEW + ticker/company name + quantity/amount), single-ticker pipeline with user intent override, moderation reviewing the final user action/size, real large-order confirmation gate, force buy/sell to bypass risk VETO (force/override/! prefix, logged as OVERRIDDEN), CommandGateway, persisted response_message audit trail, graceful shutdown, CLI entry point. Dashboard Commands page with stats, filters, expandable audit rows. Focused US-1.6/US-1.9 regression suite: 113 passing tests.',
+      'Inbound Slack trade commands via Socket Mode: regex-first NL parser (BUY/SELL/REVIEW + ticker/company name + quantity/amount), single-ticker pipeline with user intent override, moderation reviewing the final user action/size, real large-order confirmation gate, force buy/sell to bypass explicit moderation/risk blocks (force/override/! prefix, logged as OVERRIDDEN), FX-aware GBP sizing for explicit amount orders on foreign listings, CommandGateway, persisted response_message audit trail, graceful shutdown, CLI entry point, and always-on Docker slack-listener service. Dashboard Commands page with stats, filters, expandable audit rows. Focused US-1.6/US-1.9 regression suite: 117 passing tests.',
     architectureComponents: ['Notifications', 'Orchestrator', 'Dashboard'],
   },
   {
