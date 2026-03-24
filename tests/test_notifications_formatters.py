@@ -402,6 +402,24 @@ class TestFormatExecutedReply:
         assert "pending" in reply
         assert "Trading 212 accepted the order but has not filled it yet" in reply
 
+    def test_executed_shows_moderation_override(self):
+        result = _make_result(
+            status="executed",
+            user_action="BUY",
+            moderation_consensus="BLOCKED",
+            moderation_overridden=True,
+            moderation_result={
+                "consensus": "BLOCKED",
+                "gpt4o_verdict": {"verdict": "DISAGREE", "confidence_score": 7, "reasoning": "Too risky."},
+            },
+            execution_result={"status": "filled", "order_id": 101},
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "Moderation: *OVERRIDDEN* (force buy" in reply
+        assert "GPT-4o (Skeptic): DISAGREE" in reply
+
     def test_executed_force_sell_uses_action_specific_wording(self):
         result = _make_result(
             status="executed",
@@ -584,9 +602,10 @@ class TestFormatRejectedReply:
         reply = format_trade_command_reply(result)
 
         assert "Tip:" in reply
+        assert "force buy <ticker>" in reply
         assert "REVIEW <ticker>" in reply
         assert "force" in reply
-        assert "does not bypass moderation BLOCKED" in reply
+        assert "override moderation BLOCKED" in reply
 
     def test_rejected_below_minimum_order_includes_contextual_tip(self):
         result = _make_result(

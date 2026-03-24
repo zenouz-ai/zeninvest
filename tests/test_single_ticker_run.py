@@ -184,6 +184,27 @@ class TestSingleTickerRunner:
         mocks["risk_manager"].evaluate_trade.assert_not_called()
         mocks["order_manager"].execute_market_order.assert_not_called()
 
+    def test_force_buy_bypasses_moderation_block(self, mock_runner):
+        runner, mocks = mock_runner
+        mod_result = MagicMock()
+        mod_result.consensus = "BLOCKED"
+        mod_result.to_dict.return_value = {
+            "consensus": "BLOCKED",
+            "gpt4o_verdict": {"verdict": "DISAGREE"},
+            "gemini_verdict": {"verdict": "DISAGREE"},
+        }
+        mocks["moderation_panel"].review_trade.return_value = mod_result
+
+        intent = TradeCommandIntent(
+            action="BUY", ticker="AAPL", raw_message="force buy AAPL", force=True
+        )
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "executed"
+        assert result.moderation_overridden is True
+        mocks["risk_manager"].evaluate_trade.assert_called_once()
+        mocks["order_manager"].execute_market_order.assert_called_once()
+
     def test_sell_no_position_rejected(self, mock_runner):
         runner, mocks = mock_runner
         mocks["t212_client"].get_position.return_value = {"quantity": 0}

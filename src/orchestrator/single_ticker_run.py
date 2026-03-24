@@ -37,6 +37,7 @@ class PreparedTradeExecution:
     conviction: int = 0
     moderation_result: str = ""
     risk_result: str = ""
+    moderation_overridden: bool = False
 
 
 @dataclass
@@ -63,6 +64,7 @@ class SingleTickerResult:
     conviction: int = 0
     strategy_action: str = ""
     moderation_consensus: str = ""
+    moderation_overridden: bool = False
     risk_verdict_str: str = ""
     price: float = 0.0
     quantity: float = 0.0
@@ -268,15 +270,22 @@ class SingleTickerRunner:
                 result.moderation_consensus = mod_result.consensus
 
                 if intent.action != "REVIEW" and result.moderation_consensus == "BLOCKED":
-                    result.status = "rejected"
-                    result.rejection_reason = "BLOCKED by moderation consensus"
-                    self._update_command_log(
-                        cmd_log,
-                        "rejected",
-                        rejection_reason=result.rejection_reason,
-                    )
-                    logger.info(f"[{cycle_id}] {ticker_t212} BLOCKED by moderation panel")
-                    return result
+                    if intent.force:
+                        result.moderation_overridden = True
+                        logger.warning(
+                            f"[{cycle_id}] {intent.action} {ticker_t212} MODERATION BLOCK OVERRIDDEN by user "
+                            f"(force=True)"
+                        )
+                    else:
+                        result.status = "rejected"
+                        result.rejection_reason = "BLOCKED by moderation consensus"
+                        self._update_command_log(
+                            cmd_log,
+                            "rejected",
+                            rejection_reason=result.rejection_reason,
+                        )
+                        logger.info(f"[{cycle_id}] {ticker_t212} BLOCKED by moderation panel")
+                        return result
 
             # --- Phase 5: REVIEW stops here ---
             if intent.action == "REVIEW":
@@ -359,8 +368,9 @@ class SingleTickerRunner:
                 current_price=current_price,
                 quantity_override=quantity_override,
                 conviction=result.conviction,
-                moderation_result=result.moderation_consensus,
+                moderation_result="OVERRIDDEN" if result.moderation_overridden else result.moderation_consensus,
                 risk_result=result.risk_verdict_str,
+                moderation_overridden=result.moderation_overridden,
             )
             result.status = "ready"
             return result

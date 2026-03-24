@@ -408,6 +408,8 @@ class SlackTradeListener:
             lines.append(
                 f"Strategy suggested {result.strategy_action}; you overrode to {result.user_action}."
             )
+        if result.moderation_overridden:
+            lines.append(f"Moderation: OVERRIDDEN via force {result.user_action.lower()}.")
         if result.risk_verdict_str == "OVERRIDDEN":
             lines.append(f"Risk: OVERRIDDEN via force {result.user_action.lower()}.")
             triggered = (result.risk_verdict or {}).get("triggered_rules", [])

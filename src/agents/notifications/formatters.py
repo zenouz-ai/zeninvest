@@ -648,7 +648,11 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
         if reasoning:
             lines.append(f"Reasoning: {reasoning}")
 
-    if result.moderation_consensus:
+    if result.moderation_overridden:
+        lines.append(
+            f"Moderation: *OVERRIDDEN* (force {result.user_action.lower()} — moderation BLOCKED bypassed)"
+        )
+    elif result.moderation_consensus:
         lines.append(f"Moderation: {result.moderation_consensus}")
     if result.moderation_result:
         gpt = result.moderation_result.get("gpt4o_verdict")
@@ -828,7 +832,7 @@ def _rejection_tip(result: "SingleTickerResult") -> str:
 
     reason = (result.rejection_reason or "").strip().lower()
     if "blocked by moderation consensus" in reason:
-        return "Use `REVIEW <ticker>` to inspect the committee reasoning first. `force` does not bypass moderation BLOCKED."
+        return f"Use `force {result.user_action.lower()} <ticker>` to override moderation BLOCKED, or `REVIEW <ticker>` to inspect the committee reasoning first."
 
     if "minimum order size" in reason or "below the minimum order size" in reason:
         return f"Try a larger order, for example `BUY £500 {ticker}` or use `REVIEW {ticker}` first."

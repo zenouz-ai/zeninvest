@@ -270,7 +270,7 @@ US-1.5 Phase 1 was implemented and deployed to VPS with the following execution 
 
 **REVIEW:** Run full pipeline, no execution; post strategy + moderation + risk + fundamentals/news summary to Slack.
 
-**Risk:** RiskManager still runs and can VETO (e.g. sector cap, single-stock cap). User intent is applied only after risk checks pass. **Force override:** When the user explicitly prefixes a command with `force`, `override`, or `!` (e.g. `force buy MSFT`), the risk VETO is bypassed and execution proceeds. The override is logged as `OVERRIDDEN` in the risk verdict, and the Slack reply clearly shows which risk rules were bypassed.
+**Risk:** RiskManager still runs and can VETO (e.g. sector cap, single-stock cap). User intent is applied only after risk checks pass. **Force override:** When the user explicitly prefixes a command with `force`, `override`, or `!` (e.g. `force buy MSFT`), explicit moderation/risk blocks are bypassed and execution proceeds. The original committee/risk objections are still preserved in the reply and audit trail, and overridden stages are labeled `OVERRIDDEN`.
 
 **Trade-off:** Latency (~15–30 seconds) and LLM cost per Slack command; acceptable for explicit manual triggers.
 
@@ -431,8 +431,8 @@ slack_trade_commands:
 #### 9. Slack Reply Format
 
 - **REVIEW:** Full pipeline detail — price, strategy action/conviction/allocation/stop-loss/reasoning (not truncated), per-moderator GPT-4o/Gemini verdicts with scores and reasoning. "No order placed."
-- **BUY/SELL (executed):** Quantity, price (native currency), value (GBP), execution status, strategy summary/reasoning, moderation consensus, risk verdict, order ID. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override: "Risk: *OVERRIDDEN* (force buy/force sell — risk VETO bypassed)" with overridden rules listed. If T212 accepts but has not filled the market order yet (`pending`), reply includes a tip to check dashboard / Trading 212 for status updates.
-- **Rejected (risk/cash/ticker):** Full pipeline detail — price, strategy reasoning, per-moderator verdicts, risk triggered rules. Includes contextual next-step tips: risk VETO suggests action-specific `force buy <ticker>` / `force sell <ticker>`; moderation BLOCKED points user to `REVIEW <ticker>` and notes that `force` does not bypass moderation; minimum-order rejects suggest a larger GBP order; no-position SELL rejects suggest reviewing current holdings first.
+- **BUY/SELL (executed):** Quantity, price (native currency), value (GBP), execution status, strategy summary/reasoning, moderation consensus, risk verdict, order ID. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override bypassed moderation and/or risk, the overridden stage is shown as `OVERRIDDEN` while still displaying the underlying GPT-4o/Gemini/risk detail. If T212 accepts but has not filled the market order yet (`pending`), reply includes a tip to check dashboard / Trading 212 for status updates.
+- **Rejected (risk/cash/ticker):** Full pipeline detail — price, strategy reasoning, per-moderator verdicts, risk triggered rules. Includes contextual next-step tips: risk VETO suggests action-specific `force buy <ticker>` / `force sell <ticker>`; moderation BLOCKED now suggests either `force buy <ticker>` / `force sell <ticker>` to proceed anyway or `REVIEW <ticker>` first; minimum-order rejects suggest a larger GBP order; no-position SELL rejects suggest reviewing current holdings first.
 - **Error:** Error replies now include contextual tips when possible, e.g. retrying `REVIEW <ticker>` after market data refresh when price determination fails.
 
 #### 10. Entry Point and Deployment
@@ -450,7 +450,7 @@ slack_trade_commands:
 | No position (SELL) | Reject |
 | Order > threshold | Require "yes" confirmation |
 | Risk VETO | Reject after pipeline; log reason. Hint suggests action-specific `force buy` / `force sell` override. |
-| Moderation BLOCKED | Reject after moderation; hint suggests `REVIEW <ticker>` because `force` does not bypass moderation. |
+| Moderation BLOCKED | Reject after moderation by default; explicit `force` prefix can override for Slack commands while preserving committee reasoning in reply/audit trail. |
 | Below minimum order size | Reject before broker placement; hint suggests a larger GBP amount or `REVIEW <ticker>`. |
 | Risk VETO + force prefix | **Override:** execute despite risk rejection; log as `OVERRIDDEN` with triggered rules |
 
@@ -501,7 +501,7 @@ slack_trade_commands:
 
 ### Safety Checks
 
-**Risk is the default final authority.** User intent is applied only after passing RiskManager checks. If risk VETO occurs, the order is rejected and the user receives a detailed message with the reason, triggered rules, and full pipeline context. **Force override:** The user can explicitly bypass risk VETO by prefixing the command with `force`, `override`, or `!` (e.g. `force buy MSFT`, `!buy AAPL`). The override is logged as `OVERRIDDEN`, the triggered rules are recorded, and the Slack reply clearly indicates which rules were bypassed. This is intentional for situations where the human operator has conviction beyond what the risk rules capture (e.g. cash floor with incoming deposit, known temporary conditions).
+**Risk is the default final authority.** User intent is applied only after passing RiskManager checks. If risk VETO occurs, the order is rejected and the user receives a detailed message with the reason, triggered rules, and full pipeline context. **Force override:** The user can explicitly bypass moderation/risk blocks by prefixing the command with `force`, `override`, or `!` (e.g. `force buy MSFT`, `!buy AAPL`). The override is logged/shown as `OVERRIDDEN`, the triggered rules and committee reasoning are still preserved, and the Slack reply clearly indicates which stages were bypassed. This is intentional for situations where the human operator has conviction beyond what the committee/risk rules capture (e.g. cash floor with incoming deposit, known temporary conditions).
 
 **Moderation reviews the final user-intended action and size.** If strategy suggests `HOLD` but the user explicitly asks to `BUY`, the moderation panel now reviews the `BUY` proposal while the reply/audit trail still preserves the original strategy recommendation for transparency.
 
