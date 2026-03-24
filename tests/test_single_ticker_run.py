@@ -273,6 +273,33 @@ class TestSingleTickerRunner:
 
         assert result.status == "executed"
 
+    def test_buy_with_amount_gbp_uses_fx_aware_price_for_us_instruments(self, mock_runner):
+        runner, mocks = mock_runner
+        mocks["data_fetcher"].get_stock_analysis_lite.return_value = {
+            "ticker": "ENGGY",
+            "indicators": {"close": 8.41, "current_price": 8.41},
+            "fundamentals": {"currentPrice": 8.41, "sector": "Utilities"},
+        }
+        mocks["t212_client"].get_account_summary.return_value = {
+            "cash": {"free": 5000},
+            "investments": {"currentValue": 80.0},
+        }
+        mocks["t212_client"].get_cash.return_value = {"free": 5000}
+        mocks["t212_client"].get_portfolio.return_value = [
+            {"ticker": "AAPL_US_EQ", "quantity": 10.0, "currentPrice": 10.0, "currentValue": 80.0}
+        ]
+
+        intent = TradeCommandIntent(
+            action="BUY", ticker="ENGGY", amount_gbp=550, raw_message="BUY £550 ENGGY"
+        )
+        prepared = runner.prepare(ticker_t212="ENGGY_US_EQ", intent=intent)
+
+        assert prepared.status == "ready"
+        assert prepared.price_gbp == pytest.approx(6.728, rel=1e-4)
+        assert prepared.quantity == pytest.approx(550.0 / 6.728, rel=1e-4)
+        assert prepared.prepared_execution is not None
+        assert prepared.prepared_execution.price_gbp == pytest.approx(6.728, rel=1e-4)
+
     def test_buy_with_available_to_trade_cash_field(self, mock_runner):
         runner, mocks = mock_runner
         mocks["t212_client"].get_cash.return_value = {"availableToTrade": 8665.04}

@@ -33,6 +33,7 @@ class PreparedTradeExecution:
     target_amount_gbp: float
     current_price: float
     quantity_override: float | None
+    price_gbp: float | None = None
     strategy: str = "slack_command"
     conviction: int = 0
     moderation_result: str = ""
@@ -67,6 +68,7 @@ class SingleTickerResult:
     moderation_overridden: bool = False
     risk_verdict_str: str = ""
     price: float = 0.0
+    price_gbp: float = 0.0
     quantity: float = 0.0
     value_gbp: float = 0.0
     command_log_id: int | None = None
@@ -184,6 +186,8 @@ class SingleTickerRunner:
             # --- Phase 3: Strategy synthesis ---
             logger.info(f"[{cycle_id}] Running strategy synthesis for {ticker_t212}")
             portfolio_data = self._get_portfolio_data()
+            price_gbp = self._compute_fx_price_gbp(current_price, ticker_t212, portfolio_data)
+            result.price_gbp = price_gbp
             portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
 
             strategy_result = self.strategy_engine.synthesize_with_claude(
@@ -226,7 +230,7 @@ class SingleTickerRunner:
                     intent=intent,
                     strategy_decision=strategy_decision,
                     total_value=portfolio_data.get("total_value", 10000),
-                    current_price=current_price,
+                    current_price_gbp=price_gbp,
                 )
             except ValueError as e:
                 result.status = "rejected"
@@ -234,7 +238,7 @@ class SingleTickerRunner:
                 self._update_command_log(cmd_log, "rejected", rejection_reason=result.rejection_reason)
                 return result
             result.quantity = abs(quantity_override) if quantity_override is not None else (
-                abs(target_amount_gbp / current_price) if current_price > 0 else 0.0
+                abs(target_amount_gbp / price_gbp) if price_gbp > 0 else 0.0
             )
             result.value_gbp = max(target_amount_gbp, 0.0)
 
@@ -355,10 +359,10 @@ class SingleTickerRunner:
                 target_allocation_pct = risk_verdict.adjusted_allocation_pct
                 resized_amount_gbp = portfolio_data.get("total_value", 10000) * (target_allocation_pct / 100.0)
                 target_amount_gbp = min(target_amount_gbp, resized_amount_gbp)
-                if quantity_override is not None and current_price > 0:
-                    quantity_override = min(quantity_override, target_amount_gbp / current_price)
+                if quantity_override is not None and price_gbp > 0:
+                    quantity_override = min(quantity_override, target_amount_gbp / price_gbp)
                 result.quantity = abs(quantity_override) if quantity_override is not None else (
-                    abs(target_amount_gbp / current_price) if current_price > 0 else 0.0
+                    abs(target_amount_gbp / price_gbp) if price_gbp > 0 else 0.0
                 )
                 result.value_gbp = max(target_amount_gbp, 0.0)
 
@@ -366,6 +370,7 @@ class SingleTickerRunner:
                 action=final_action,
                 target_amount_gbp=target_amount_gbp,
                 current_price=current_price,
+                price_gbp=price_gbp,
                 quantity_override=quantity_override,
                 conviction=result.conviction,
                 moderation_result="OVERRIDDEN" if result.moderation_overridden else result.moderation_consensus,
@@ -395,6 +400,7 @@ class SingleTickerRunner:
             action=execution.action,
             target_amount_gbp=execution.target_amount_gbp,
             current_price=execution.current_price,
+            price_gbp=execution.price_gbp,
             strategy=execution.strategy,
             conviction=execution.conviction,
             moderation_result=execution.moderation_result,
@@ -504,7 +510,7 @@ class SingleTickerRunner:
         intent: TradeCommandIntent,
         strategy_decision: dict[str, Any] | None,
         total_value: float,
-        current_price: float,
+        current_price_gbp: float,
     ) -> tuple[float, float, float | None]:
         """Resolve the user-intended allocation and value before risk/execution."""
         if intent.action == "SELL":
@@ -514,7 +520,7 @@ class SingleTickerRunner:
                 raise ValueError(f"No position in {ticker_t212}")
 
             quantity_override = intent.quantity_shares or pos_qty
-            target_amount_gbp = quantity_override * current_price
+            target_amount_gbp = quantity_override * current_price_gbp
             return 0.0, target_amount_gbp, quantity_override
 
         base_allocation_pct = strategy_decision.get("target_allocation_pct", 5.0) if strategy_decision else 5.0
@@ -523,7 +529,7 @@ class SingleTickerRunner:
         if intent.amount_gbp is not None:
             target_amount_gbp = float(intent.amount_gbp)
         elif quantity_override is not None:
-            target_amount_gbp = float(quantity_override) * current_price
+            target_amount_gbp = float(quantity_override) * current_price_gbp
         else:
             target_amount_gbp = total_value * (base_allocation_pct / 100.0)
 
@@ -561,9 +567,47 @@ class SingleTickerRunner:
             total = self._get_total_value_gbp(account_summary, cash_data, positions)
             cash = self._extract_available_cash(cash_data if cash_data else account_summary.get("cash", {}))
             cash_pct = (cash / total * 100) if total > 0 else 10.0
-            return {"total_value": total, "cash": cash, "cash_pct": cash_pct}
+            return {
+                "total_value": total,
+                "cash": cash,
+                "cash_pct": cash_pct,
+                "positions": positions,
+                "account_summary": account_summary,
+            }
         except Exception:
             return {"total_value": 10000, "cash": 1000, "cash_pct": 10.0}
+
+    def _compute_fx_price_gbp(
+        self, current_price: float, ticker: str, portfolio_data: dict[str, Any] | None
+    ) -> float:
+        """Convert native instrument price into GBP for quantity sizing and value display."""
+        if not self.settings.fx_aware_quantity:
+            return current_price
+        if "_UK_EQ" in ticker:
+            return current_price / 100
+        if "_US_EQ" not in ticker:
+            return current_price
+        positions = (portfolio_data or {}).get("positions", [])
+        invested_gbp = float(
+            (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
+            .get("currentValue", 0) or 0
+        )
+        scale = self._compute_position_value_scale(positions, invested_gbp)
+        return current_price * scale
+
+    @staticmethod
+    def _compute_position_value_scale(positions: list[dict[str, Any]], invested_gbp: float) -> float:
+        """Infer GBP/native-currency scale from T212 portfolio values."""
+        if invested_gbp <= 0 or not positions:
+            return 1.0
+        native_total = 0.0
+        for pos in positions:
+            qty = float(pos.get("quantity", 0) or 0)
+            px = float(pos.get("currentPrice", 0) or 0)
+            native_total += qty * px
+        if native_total <= 0:
+            return 1.0
+        return invested_gbp / native_total
 
     def _get_company_profile(self, ticker_t212: str) -> str:
         """Get company profile from Instrument table."""

@@ -402,6 +402,23 @@ class TestFormatExecutedReply:
         assert "pending" in reply
         assert "Trading 212 accepted the order but has not filled it yet" in reply
 
+    def test_executed_reply_avoids_false_native_price_equals_gbp_value(self):
+        result = _make_result(
+            status="executed",
+            user_action="BUY",
+            price=8.41,
+            price_gbp=6.73,
+            quantity=81.75,
+            value_gbp=550.0,
+            execution_result={"status": "pending", "order_id": 123},
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "Native price: $8.41" in reply
+        assert "Target value: £550.00" in reply
+        assert "@ $8.41 = £550.00" not in reply
+
     def test_executed_shows_moderation_override(self):
         result = _make_result(
             status="executed",

@@ -633,7 +633,12 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
 
     lines = [f"*{action} {ticker}* — {exec_status}"]
     if qty and price:
-        lines.append(f"Quantity: {qty:.2f} @ ${price:.2f} = £{value:.2f}")
+        if result.price_gbp and abs(result.price_gbp - price) > 0.01:
+            lines.append(
+                f"Quantity: {qty:.2f} | Native price: ${price:.2f} | Target value: £{value:.2f}"
+            )
+        else:
+            lines.append(f"Quantity: {qty:.2f} @ ${price:.2f} = £{value:.2f}")
 
     # Show if user overrode strategy
     if result.strategy_action and result.strategy_action != action:
