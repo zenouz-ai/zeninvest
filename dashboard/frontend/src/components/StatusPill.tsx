@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 
-type PillVariant = 'live' | 'active' | 'draft' | 'alert' | 'warning' | 'dim'
+export type PillVariant = 'live' | 'active' | 'draft' | 'alert' | 'warning' | 'dim'
 
 interface StatusPillProps {
   label: string

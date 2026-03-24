@@ -2,19 +2,23 @@ import { useState, useEffect } from 'react'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { Panel } from '../components/Panel'
 import { StatusPill } from '../components/StatusPill'
+import type { PillVariant } from '../components/StatusPill'
 import { SectionHeader } from '../components/SectionHeader'
 import { TableSkeleton } from '../components/Skeleton'
 import { commandsApi } from '../api/client'
 import type { SlackCommand, CommandStats } from '../types'
 import { cleanTicker } from '../types'
 
-const STATUS_VARIANT: Record<string, 'positive' | 'negative' | 'warning' | 'muted' | 'info'> = {
-  executed: 'positive',
-  rejected: 'negative',
-  error: 'negative',
+const STATUS_VARIANT: Record<string, PillVariant> = {
+  executed: 'active',
+  rejected: 'alert',
+  error: 'alert',
   executing: 'warning',
-  received: 'muted',
-  review_only: 'info',
+  awaiting_confirmation: 'warning',
+  expired: 'warning',
+  cancelled: 'dim',
+  received: 'dim',
+  review_only: 'live',
 }
 
 const ACTION_COLOUR: Record<string, string> = {
@@ -189,9 +193,10 @@ export default function Commands() {
                         {cmd.raw_message}
                       </td>
                       <td className="px-4 py-3">
-                        <StatusPill variant={STATUS_VARIANT[cmd.status] || 'muted'}>
-                          {cmd.status}
-                        </StatusPill>
+                        <StatusPill
+                          variant={STATUS_VARIANT[cmd.status] || 'dim'}
+                          label={cmd.status}
+                        />
                       </td>
                     </tr>
                     {expandedId === cmd.id && (
