@@ -5,8 +5,11 @@ import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail, MacroSumma
 import { safeFormat } from '../utils/date'
 import { cleanTicker } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
+import { MetricCard, type DeltaColor } from '../components/MetricCard'
 import { DashboardSkeleton } from '../components/Skeleton'
 import { PageBrandHeader } from '../components/PageBrandHeader'
+import { Panel } from '../components/Panel'
+import { StatusPill, type PillVariant } from '../components/StatusPill'
 import { useAsyncData } from '../hooks/useAsyncData'
 import { FreshnessIndicator } from '../components/FreshnessIndicator'
 import type { SseConnectionState } from '../hooks/useSSE'
@@ -22,6 +25,31 @@ function formatCountdown(isoString: string): string {
   const m = Math.floor((diffMs % 3600000) / 60000)
   if (h > 0) return `${h}h ${m}m`
   return `${m}m`
+}
+
+function getSystemStateVariant(systemState: string, paused: boolean): PillVariant {
+  if (paused) return 'warning'
+  if (systemState === 'HALTED') return 'alert'
+  if (systemState === 'CAUTIOUS') return 'warning'
+  return 'active'
+}
+
+function getStreamVariant(connectionState: SseConnectionState): PillVariant {
+  if (connectionState === 'open') return 'live'
+  if (connectionState === 'connecting') return 'warning'
+  return 'alert'
+}
+
+function getRunStatusVariant(status: string): PillVariant {
+  if (status === 'completed') return 'active'
+  if (status === 'running') return 'live'
+  return 'alert'
+}
+
+function getRunDeltaColor(status: string): DeltaColor {
+  if (status === 'completed') return 'emerald'
+  if (status === 'running') return 'cyan'
+  return 'loss'
 }
 
 type RunFeedEntry = {
@@ -266,11 +294,43 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
     }
   }
 
-  // Badge colours — PAUSED gets its own distinct colour (IA-5, VD-2)
-  const stateBadgeColor = paused
-    ? 'bg-accent'
-    : systemState === 'HALTED' ? 'bg-loss' : systemState === 'CAUTIOUS' ? 'bg-warning' : 'bg-gain'
   const stateBadgeText = paused ? 'PAUSED' : systemState
+  const stateBadgeVariant = getSystemStateVariant(systemState, paused)
+  const streamVariant = getStreamVariant(sseConnectionState)
+  const streamLabel = sseConnectionState === 'open'
+    ? 'Stream Live'
+    : sseConnectionState === 'connecting'
+      ? 'Stream Reconnecting'
+      : 'Stream Offline'
+  const nextCycleMetricSubtitle = nextRunUtc
+    ? `${safeFormat(nextRunUtc, 'MMM dd, HH:mm', '—')} UTC`
+    : 'Scheduler has not published the next run yet.'
+  const latestRunMetricSubtitle = latestRun
+    ? `Last ${safeFormat(latestRun.started_at, 'MMM dd, HH:mm', '—')} UTC${lastRunCost != null ? ` · £${lastRunCost.total_gbp.toFixed(4)}` : ''}`
+    : 'Awaiting first completed cycle.'
+  const portfolioValueMetric = portfolio
+    ? `£${portfolio.total_value_gbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    : 'N/A'
+  const portfolioDelta = portfolio?.pnl_pct != null
+    ? `${portfolio.pnl_pct >= 0 ? '+' : ''}${portfolio.pnl_pct.toFixed(2)}%`
+    : undefined
+  const portfolioDeltaColor: DeltaColor = portfolio?.pnl_pct == null
+    ? 'dim'
+    : portfolio.pnl_pct >= 0
+      ? 'emerald'
+      : 'loss'
+  const performanceValue = perf?.sharpe_30d != null ? perf.sharpe_30d.toFixed(2) : '—'
+  const performanceDelta = perf?.win_rate_pct != null ? `Win ${perf.win_rate_pct.toFixed(0)}%` : undefined
+  const performanceDeltaColor: DeltaColor = perf?.win_rate_pct != null ? 'cyan' : 'dim'
+  const performanceSubtitle = perf
+    ? `Max DD ${perf.max_drawdown_pct != null ? `${perf.max_drawdown_pct.toFixed(1)}%` : '—'} · ${perf.num_trades ?? 0} trades`
+    : 'No 30-day performance snapshot yet.'
+  const monthlyValue = monthlySummary ? `£${monthlySummary.cost_gbp.toFixed(2)}` : '—'
+  const monthlyDelta = monthlySummary ? `${monthlySummary.runs_count} runs` : undefined
+  const monthlyDeltaColor: DeltaColor = monthlySummary ? 'violet' : 'dim'
+  const monthlySubtitle = monthlySummary
+    ? `P&L ${monthlySummary.pnl_gbp != null ? `£${monthlySummary.pnl_gbp.toFixed(2)}` : '—'} · Investigated ${monthlySummary.new_investigated_this_month ?? 0}`
+    : 'Monthly summary not available yet.'
 
   // Check if ALL critical sections are still loading
   const allLoading = statusResult.loading && portfolioResult.loading && latestRunResult.loading
@@ -285,69 +345,110 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
         eyebrow="Dashboard"
         title="ZenInvest Agent"
         description="System health, positions, and recent activity at a glance."
+        titleMeta={<StatusPill label={stateBadgeText} variant={stateBadgeVariant} dot />}
       />
 
-      {/* System state badge + controls */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className={`inline-flex items-center px-3 py-1 rounded font-mono text-sm font-semibold text-terminal-bg ${stateBadgeColor}`}>
-          {stateBadgeText}
-        </span>
-        {/* SSE indicator — small dot, not a full card */}
-        <span
-          className="flex items-center gap-1.5 text-xs text-terminal-text-dim"
-          title={
-            sseConnectionState === 'open'
-              ? 'Event stream connected'
-              : sseConnectionState === 'connecting'
-                ? 'Event stream connecting…'
-                : 'Event stream disconnected'
-          }
-        >
-          <span
-            className={`inline-block w-2 h-2 rounded-full ${
-              sseConnectionState === 'open' ? 'bg-gain' : sseConnectionState === 'connecting' ? 'bg-warning' : 'bg-loss'
-            }`}
-          />
-          SSE
-        </span>
-        {/* Pause/Resume toggle */}
-        <button
-          type="button"
-          onClick={paused ? handlePauseResume : () => setShowPauseConfirm(true)}
-          disabled={pauseLoading}
-          className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {pauseLoading ? '...' : paused ? 'Resume' : 'Pause'}
-        </button>
-        {systemState === 'CAUTIOUS' && (
-          <button
-            type="button"
-            onClick={() => setShowResetPeakConfirm(true)}
-            disabled={resetPeakLoading}
-            className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {resetPeakLoading ? 'Resetting...' : 'Reset Peak'}
-          </button>
-        )}
-        <div className="flex items-center gap-2 ml-auto">
-          <button
-            type="button"
-            onClick={handleDryRun}
-            disabled={triggerLoading != null}
-            className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {triggerLoading === 'dry' ? 'Starting...' : 'Dry Run'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowLiveConfirm(true)}
-            disabled={triggerLoading != null || paused}
-            className="btn-danger text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {triggerLoading === 'live' ? 'Starting...' : 'Live Run'}
-          </button>
+      <Panel hero className="space-y-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill label={stateBadgeText} variant={stateBadgeVariant} dot />
+              <StatusPill label={streamLabel} variant={streamVariant} dot />
+              {status?.next_run_utc && (
+                <StatusPill label={`Next ${safeFormat(status.next_run_utc, 'MMM dd, HH:mm', '—')} UTC`} variant="dim" />
+              )}
+            </div>
+            <p className="text-sm leading-6 text-terminal-text-muted">
+              The operator dashboard now shares the same visual rhythm as the public overview: a branded hero surface, editorial metrics,
+              and calmer supporting panels for activity and detail.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={paused ? handlePauseResume : () => setShowPauseConfirm(true)}
+              disabled={pauseLoading}
+              className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {pauseLoading ? '...' : paused ? 'Resume' : 'Pause'}
+            </button>
+            {systemState === 'CAUTIOUS' && (
+              <button
+                type="button"
+                onClick={() => setShowResetPeakConfirm(true)}
+                disabled={resetPeakLoading}
+                className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resetPeakLoading ? 'Resetting...' : 'Reset Peak'}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleDryRun}
+              disabled={triggerLoading != null}
+              className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {triggerLoading === 'dry' ? 'Starting...' : 'Dry Run'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLiveConfirm(true)}
+              disabled={triggerLoading != null || paused}
+              className="btn-danger text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {triggerLoading === 'live' ? 'Starting...' : 'Live Run'}
+            </button>
+          </div>
         </div>
-      </div>
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Next Cycle"
+            value={countdownStr}
+            subtitle={nextCycleMetricSubtitle}
+            delta={latestRun ? latestRun.status : undefined}
+            deltaColor={latestRun ? getRunDeltaColor(latestRun.status) : 'dim'}
+          />
+          <MetricCard
+            label="Portfolio Value"
+            value={portfolioValueMetric}
+            subtitle={portfolio ? `${portfolio.num_positions} positions · £${portfolio.cash_gbp.toFixed(0)} cash` : 'No portfolio snapshot available.'}
+            delta={portfolioDelta}
+            deltaColor={portfolioDeltaColor}
+          />
+          <MetricCard
+            label="Performance (30d)"
+            value={performanceValue}
+            subtitle={performanceSubtitle}
+            delta={performanceDelta}
+            deltaColor={performanceDeltaColor}
+          />
+          <MetricCard
+            label="This Month"
+            value={monthlyValue}
+            subtitle={monthlySubtitle}
+            delta={monthlyDelta}
+            deltaColor={monthlyDeltaColor}
+          />
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-terminal-border/70 pt-4 md:flex-row md:items-center md:justify-between">
+          <div className="text-sm text-terminal-text-dim">
+            {latestRunMetricSubtitle}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-terminal-text-dim">
+            {portfolioResult.error && <SectionError error="Portfolio unavailable" onRetry={portfolioResult.refetch} />}
+            {perfResult.error && <SectionError error="Performance unavailable" onRetry={perfResult.refetch} />}
+            {monthlyResult.error && <SectionError error="Monthly summary unavailable" onRetry={monthlyResult.refetch} />}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-terminal-text-dim">
+          <FreshnessIndicator lastUpdatedAt={portfolioResult.lastUpdatedAt} isStale={portfolioResult.isStale} className="block" />
+          <FreshnessIndicator lastUpdatedAt={perfResult.lastUpdatedAt} isStale={perfResult.isStale} className="block" />
+          <FreshnessIndicator lastUpdatedAt={monthlyResult.lastUpdatedAt} isStale={monthlyResult.isStale} className="block" />
+        </div>
+      </Panel>
 
       {/* Confirmation modals */}
       {showLiveConfirm && (
@@ -387,121 +488,10 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
         </div>
       )}
 
-      {/* Top bar — 4 cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Cycle timing (merged Next + Last + trades) */}
-        <div className="card">
-          <div className="text-sm text-terminal-text-dim">Next Cycle</div>
-          <div className="text-xl font-mono font-bold">{countdownStr}</div>
-          {nextRunUtc && <div className="text-xs text-terminal-text-dim mt-0.5">{safeFormat(nextRunUtc, 'MMM dd, HH:mm', '')} UTC</div>}
-          <div className="border-t border-terminal-border mt-2 pt-2">
-            <div className="text-xs text-terminal-text-dim">Last run</div>
-            <div className="text-sm font-mono">
-              {latestRun ? safeFormat(latestRun.started_at, 'MMM dd, HH:mm', '—') : 'Never'}
-              {latestRun && (
-                <span className={`ml-2 ${latestRun.status === 'completed' ? 'text-gain' : latestRun.status === 'running' ? 'text-accent' : 'text-loss'}`}>
-                  {latestRun.status}
-                </span>
-              )}
-            </div>
-            {lastRunCost != null && <div className="text-xs text-terminal-text-dim">Cost: £{lastRunCost.total_gbp.toFixed(4)}</div>}
-          </div>
-          {latestRunResult.error && <SectionError error="Failed to load" onRetry={latestRunResult.refetch} />}
-        </div>
-
-        {/* Card 2: Portfolio Value */}
-        <div className="card">
-          <div className="text-sm text-terminal-text-dim">Portfolio Value</div>
-          {portfolioResult.loading ? (
-            <div className="text-lg font-mono text-terminal-text-dim">Loading...</div>
-          ) : portfolio ? (
-            <>
-              <div className="text-xl font-mono font-bold">
-                £{portfolio.total_value_gbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-              <div className="text-xs mt-1">
-                <PnlCurrency value={portfolio.pnl_gbp} className="font-mono" /> <PnlValue value={portfolio.pnl_pct} suffix="%" className="font-mono" />
-              </div>
-              <div className="text-xs text-terminal-text-dim mt-0.5">{portfolio.num_positions} positions · £{portfolio.cash_gbp.toFixed(0)} cash</div>
-            </>
-          ) : (
-            <div className="text-lg font-mono">N/A</div>
-          )}
-          {portfolioResult.error && <SectionError error="Failed to load" onRetry={portfolioResult.refetch} />}
-          <FreshnessIndicator lastUpdatedAt={portfolioResult.lastUpdatedAt} isStale={portfolioResult.isStale} className="mt-1 block" />
-        </div>
-
-        {/* Card 3: Performance (replaces SSE card) */}
-        <div className="card">
-          <div className="text-sm text-terminal-text-dim">Performance (30d)</div>
-          {perfResult.loading ? (
-            <div className="text-lg font-mono text-terminal-text-dim">Loading...</div>
-          ) : perf ? (
-            <>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
-                <div>
-                  <div className="text-xs text-terminal-text-dim">Sharpe</div>
-                  <div className="font-mono text-sm">{perf.sharpe_30d != null ? perf.sharpe_30d.toFixed(2) : '—'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-terminal-text-dim">Win rate</div>
-                  <div className="font-mono text-sm">{perf.win_rate_pct != null ? `${perf.win_rate_pct.toFixed(0)}%` : '—'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-terminal-text-dim">Max DD</div>
-                  <div className="font-mono text-sm text-loss">{perf.max_drawdown_pct != null ? `${perf.max_drawdown_pct.toFixed(1)}%` : '—'}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-terminal-text-dim">Trades</div>
-                  <div className="font-mono text-sm">{perf.num_trades ?? '—'}</div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="text-sm text-terminal-text-dim mt-1">No performance data yet</div>
-          )}
-          {perfResult.error && <SectionError error="Failed to load" onRetry={perfResult.refetch} />}
-          <FreshnessIndicator lastUpdatedAt={perfResult.lastUpdatedAt} isStale={perfResult.isStale} className="mt-1 block" />
-        </div>
-
-        {/* Card 4: This month summary (compact) */}
-        <div className="card">
-          <div className="text-sm text-terminal-text-dim">This Month</div>
-          {monthlyResult.loading ? (
-            <div className="text-lg font-mono text-terminal-text-dim">Loading...</div>
-          ) : monthlySummary ? (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-1">
-              <div>
-                <div className="text-xs text-terminal-text-dim">Runs</div>
-                <div className="font-mono text-sm">{monthlySummary.runs_count}</div>
-              </div>
-              <div>
-                <div className="text-xs text-terminal-text-dim">Cost</div>
-                <div className="font-mono text-sm">£{monthlySummary.cost_gbp.toFixed(2)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-terminal-text-dim">P&L</div>
-                <div className="font-mono text-sm">
-                  {monthlySummary.pnl_gbp != null ? <PnlCurrency value={monthlySummary.pnl_gbp} /> : '—'}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-terminal-text-dim">Investigated</div>
-                <div className="font-mono text-sm">{monthlySummary.new_investigated_this_month ?? '—'}</div>
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-terminal-text-dim mt-1">No data</div>
-          )}
-          {monthlyResult.error && <SectionError error="Failed to load" onRetry={monthlyResult.refetch} />}
-          <FreshnessIndicator lastUpdatedAt={monthlyResult.lastUpdatedAt} isStale={monthlyResult.isStale} className="mt-1 block" />
-        </div>
-      </div>
-
       {/* Macro conditions bar */}
       {macroResult.data && macroResult.data.regime && (
-        <div className="card flex items-center gap-4 flex-wrap text-sm">
-          <span className="text-xs uppercase tracking-wider text-terminal-text-dim">Macro</span>
+        <Panel className="flex items-center gap-4 flex-wrap text-sm">
+          <span className="label-mono">Macro</span>
           <span className={`pill ${macroResult.data.regime === 'RISK_ON' ? 'pill-emerald' : macroResult.data.regime === 'RISK_OFF' ? 'pill-loss' : 'pill-dim'}`}>
             {macroResult.data.regime === 'RISK_ON' ? 'Risk On' : macroResult.data.regime === 'RISK_OFF' ? 'Risk Off' : 'Neutral'}
           </span>
@@ -515,18 +505,16 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
             <span className="text-terminal-text-dim">{macroResult.data.headline_count_7d} headlines (7d)</span>
           )}
           <Link to="/world-news" className="text-xs text-accent hover:underline ml-auto">View World News &rarr;</Link>
-        </div>
+        </Panel>
       )}
 
       {/* Last cycle summary — always visible (WF-3) */}
       {latestRun && (
-        <div className="card bg-terminal-surface/60">
+        <Panel className="bg-terminal-surface/60">
           <div className="flex items-center gap-3 flex-wrap text-sm">
+            <StatusPill label={latestRun.status} variant={getRunStatusVariant(latestRun.status)} dot />
             <span className="font-mono text-accent">{latestRun.cycle_id}</span>
             <span className="text-terminal-text-dim">{safeFormat(latestRun.started_at, 'MMM dd, HH:mm', '')} UTC</span>
-            <span className={latestRun.status === 'completed' ? 'text-gain' : latestRun.status === 'running' ? 'text-accent' : 'text-loss'}>
-              {latestRun.status}
-            </span>
             {latestRun.summary_json && (
               <>
                 <span className="text-terminal-text-dim">·</span>
@@ -550,7 +538,7 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
               </>
             )}
           </div>
-        </div>
+        </Panel>
       )}
 
       {/* Two-column layout: Positions + Activity on left, Stats on right */}

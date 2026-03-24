@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react'
 import { clsx } from 'clsx'
 
-type DeltaColor = 'emerald' | 'cyan' | 'violet' | 'loss' | 'warning' | 'dim'
+export type DeltaColor = 'emerald' | 'cyan' | 'violet' | 'loss' | 'warning' | 'dim'
 
 interface MetricCardProps {
   /** Mono uppercase eyebrow label */
@@ -33,11 +33,11 @@ const deltaClasses: Record<DeltaColor, string> = {
  */
 export function MetricCard({ label, value, subtitle, delta, deltaColor = 'dim', className }: MetricCardProps) {
   return (
-    <div className={clsx('flex flex-col gap-1', className)}>
+    <div className={clsx('flex flex-col gap-1.5', className)}>
       <span className="label-mono">{label}</span>
       <div className="flex items-end gap-2 flex-wrap">
         <span
-          className="text-3xl font-bold tracking-tight leading-none text-terminal-text"
+          className="text-[clamp(1.9rem,3vw,3rem)] font-bold tracking-[-0.03em] leading-none text-terminal-text"
           style={{ fontFamily: 'var(--font-heading)' }}
         >
           {value}
@@ -47,7 +47,7 @@ export function MetricCard({ label, value, subtitle, delta, deltaColor = 'dim', 
         )}
       </div>
       {subtitle && (
-        <p className="text-xs text-terminal-text-dim leading-relaxed mt-0.5">{subtitle}</p>
+        <p className="max-w-xs text-xs leading-relaxed text-terminal-text-dim">{subtitle}</p>
       )}
     </div>
   )

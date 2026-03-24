@@ -17,7 +17,7 @@ interface PanelProps {
 export function Panel({ children, hero = false, className }: PanelProps) {
   return (
     <div
-      className={clsx('animate-fade-up', className)}
+      className={clsx('animate-fade-up overflow-hidden', className)}
       style={
         hero
           ? {

@@ -156,7 +156,21 @@ function DashboardShell() {
   const homePath = authenticated ? '/dashboard' : '/'
 
   return (
-    <div className="min-h-screen bg-terminal-bg">
+    <div className="relative min-h-screen overflow-hidden bg-terminal-bg">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute left-[-10rem] top-[-9rem] h-[24rem] w-[24rem] rounded-full bg-violet/14 blur-3xl" />
+        <div className="absolute right-[-8rem] top-28 h-[22rem] w-[22rem] rounded-full bg-cyan/10 blur-3xl" />
+        <div className="absolute bottom-[-10rem] left-1/3 h-[24rem] w-[24rem] rounded-full bg-emerald/8 blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-70"
+          style={{
+            background:
+              'radial-gradient(circle at top, rgba(255,255,255,0.06), transparent 26%), linear-gradient(180deg, rgba(6,6,10,0.08), rgba(6,6,10,0.5))',
+          }}
+        />
+      </div>
+
+      <div className="relative z-10">
       <nav
         className="sticky top-0 z-40 border-b border-terminal-border-strong"
         style={{
@@ -304,6 +318,7 @@ function DashboardShell() {
           <Route path="*" element={<Navigate to={homePath} replace />} />
         </Routes>
       </main>
+      </div>
     </div>
   )
 }

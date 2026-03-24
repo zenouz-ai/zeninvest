@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { authApi } from '../api/client'
 import { PageBrandHeader } from '../components/PageBrandHeader'
+import { Panel } from '../components/Panel'
+import { StatusPill } from '../components/StatusPill'
 
 interface LoginPageProps {
   onLoginSuccess: () => Promise<void> | void
@@ -39,9 +41,16 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
         eyebrow="OPERATOR"
         title="Sign In"
         description="Operator controls require a server-issued session. Login is blocked on plain HTTP except localhost development mode."
+        titleMeta={<StatusPill label="Private Access" variant="warning" />}
       />
 
-      <div className="max-w-md card">
+      <Panel className="max-w-md space-y-5">
+        <div className="space-y-2">
+          <div className="label-mono">Authenticated Session</div>
+          <p className="text-sm leading-6 text-terminal-text-muted">
+            This gateway issues an operator session before exposing live portfolio, execution, and control routes.
+          </p>
+        </div>
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="dashboard-username" className="block text-sm text-terminal-text-dim mb-1">
@@ -53,7 +62,7 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
               autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded border border-terminal-border bg-terminal-bg px-3 py-2 text-sm text-terminal-text focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full rounded-panel border border-terminal-border bg-terminal-bg/70 px-3 py-2.5 text-sm text-terminal-text focus:outline-none focus:ring-2 focus:ring-accent"
               placeholder="Operator username"
               required
             />
@@ -69,7 +78,7 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded border border-terminal-border bg-terminal-bg px-3 py-2 text-sm text-terminal-text focus:outline-none focus:ring-2 focus:ring-accent"
+              className="w-full rounded-panel border border-terminal-border bg-terminal-bg/70 px-3 py-2.5 text-sm text-terminal-text focus:outline-none focus:ring-2 focus:ring-accent"
               placeholder="Operator password"
               required
             />
@@ -87,7 +96,7 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
             {submitting ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
-      </div>
+      </Panel>
     </div>
   )
 }
