@@ -6,6 +6,26 @@ from unittest.mock import MagicMock, patch
 
 from src.agents.notifications.slack_listener import PendingConfirmation, SlackTradeListener
 from src.agents.notifications.command_gateway import CommandGateway, CommandGatewayDisabledError
+from src.orchestrator.single_ticker_run import SingleTickerResult
+
+
+def _make_result(**overrides) -> SingleTickerResult:
+    defaults = dict(
+        ticker_t212="AAPL_US_EQ",
+        ticker_yf="AAPL",
+        cycle_id="slack-20260324T120000",
+        user_action="BUY",
+        status="pending",
+        price=150.0,
+        quantity=0.0,
+        value_gbp=0.0,
+        strategy_action="",
+        risk_verdict_str="",
+        risk_verdict=None,
+        command_log_id=1,
+    )
+    defaults.update(overrides)
+    return SingleTickerResult(**defaults)
 
 
 class TestSlackTradeListener:
@@ -23,13 +43,15 @@ class TestSlackTradeListener:
     @patch("src.agents.notifications.slack_listener.get_settings")
     def test_cleanup_expired_confirmations(self, mock_settings):
         mock_settings.return_value.slack_trade_commands_enabled = True
+        mock_settings.return_value.slack_trade_confirmation_threshold_gbp = 2000
+        mock_settings.return_value.slack_trade_confirmation_timeout_minutes = 10
         listener = SlackTradeListener()
+        listener._post_reply = MagicMock()
 
         # Add an expired confirmation
         listener._pending["ts1"] = PendingConfirmation(
             thread_ts="ts1",
-            intent=MagicMock(),
-            ticker_t212="AAPL_US_EQ",
+            prepared_result=_make_result(command_log_id=11, value_gbp=2500),
             user_id="U123",
             channel_id="C123",
             expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
@@ -37,17 +59,110 @@ class TestSlackTradeListener:
         # Add a valid confirmation
         listener._pending["ts2"] = PendingConfirmation(
             thread_ts="ts2",
-            intent=MagicMock(),
-            ticker_t212="TSLA_US_EQ",
+            prepared_result=_make_result(ticker_t212="TSLA_US_EQ", ticker_yf="TSLA", command_log_id=12, value_gbp=2500),
             user_id="U123",
             channel_id="C123",
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         )
 
-        listener._cleanup_expired_confirmations()
+        mock_runner = MagicMock()
+        with patch("src.orchestrator.single_ticker_run.SingleTickerRunner", return_value=mock_runner):
+            listener._cleanup_expired_confirmations()
 
         assert "ts1" not in listener._pending
         assert "ts2" in listener._pending
+        mock_runner.update_command_log_entry.assert_called_once()
+        listener._post_reply.assert_called_once()
+
+    @patch("src.agents.notifications.slack_listener.get_settings")
+    def test_unparseable_message_does_not_post_processing_reply(self, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        mock_settings.return_value.slack_trade_confirmation_threshold_gbp = 2000
+        mock_settings.return_value.slack_trade_confirmation_timeout_minutes = 10
+        listener = SlackTradeListener()
+        listener._post_reply = MagicMock()
+        listener.gateway.resolve_request = MagicMock(return_value={"status": "unparseable"})
+
+        listener._process_command("C123", "123.45", "U123", "hello there")
+
+        listener._post_reply.assert_not_called()
+
+    @patch("src.agents.notifications.slack_listener.get_settings")
+    def test_large_order_prompts_confirmation_before_execution(self, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        mock_settings.return_value.slack_trade_confirmation_threshold_gbp = 2000
+        mock_settings.return_value.slack_trade_confirmation_timeout_minutes = 10
+        listener = SlackTradeListener()
+        listener._post_reply = MagicMock()
+        listener.gateway.resolve_request = MagicMock(return_value={
+            "status": "ok",
+            "intent": MagicMock(action="BUY"),
+            "ticker_t212": "AAPL_US_EQ",
+        })
+
+        prepared = _make_result(
+            status="ready",
+            user_action="BUY",
+            quantity=20.0,
+            value_gbp=3000.0,
+            strategy_action="HOLD",
+        )
+        mock_runner = MagicMock()
+        mock_runner.prepare.return_value = prepared
+
+        with patch("src.orchestrator.single_ticker_run.SingleTickerRunner", return_value=mock_runner):
+            listener._process_command("C123", "123.45", "U123", "BUY £3000 AAPL")
+
+        assert "123.45" in listener._pending
+        mock_runner.execute_prepared.assert_not_called()
+        mock_runner.update_command_log_entry.assert_called_once()
+        assert listener._post_reply.call_count == 2
+        prompt = listener._post_reply.call_args_list[-1].args[2]
+        assert "Reply 'yes'" in prompt
+        assert "£3000.00" in prompt
+
+    @patch("src.agents.notifications.slack_listener.get_settings")
+    def test_confirmation_yes_executes_prepared_trade(self, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        mock_settings.return_value.slack_trade_confirmation_threshold_gbp = 2000
+        mock_settings.return_value.slack_trade_confirmation_timeout_minutes = 10
+        listener = SlackTradeListener()
+        listener._post_reply = MagicMock()
+
+        prepared = _make_result(
+            status="ready",
+            user_action="BUY",
+            quantity=20.0,
+            value_gbp=3000.0,
+            command_log_id=22,
+        )
+        listener._pending["123.45"] = PendingConfirmation(
+            thread_ts="123.45",
+            prepared_result=prepared,
+            user_id="U123",
+            channel_id="C123",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+        )
+
+        executed = _make_result(
+            status="executed",
+            user_action="BUY",
+            quantity=20.0,
+            value_gbp=3000.0,
+            command_log_id=22,
+            execution_result={"status": "filled", "order_id": 99},
+        )
+        mock_runner = MagicMock()
+        mock_runner.execute_prepared.return_value = executed
+
+        with patch("src.orchestrator.single_ticker_run.SingleTickerRunner", return_value=mock_runner):
+            listener._handle_confirmation("C123", "123.45", "U123", "yes")
+
+        assert "123.45" not in listener._pending
+        mock_runner.execute_prepared.assert_called_once()
+        assert listener._post_reply.call_count == 2
+        final_reply = listener._post_reply.call_args_list[-1].args[2]
+        assert "BUY AAPL" in final_reply
 
 
 class TestSlackListenerBotFiltering:

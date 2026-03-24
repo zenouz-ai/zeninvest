@@ -2,7 +2,7 @@
 tags: [sprint, planning, week-1, delivery, zeninvest]
 status: active
 created: 2026-03-21
-last_updated: 2026-03-22
+last_updated: 2026-03-24
 ---
 
 # Sprint Plan — Week 1 (ZenInvest)
@@ -23,8 +23,8 @@ last_updated: 2026-03-22
 | 2–5   | US-3.1    | Risk-Parity Sizing           | ✅ Done     | Delivered: inverse-vol overlay, persistence, dashboard/API, tests |
 | 2–5   | US-1.7.3  | Dashboard Visual Design System | ✅ Done   | Syne font, token system, glass panels, 4 primitives |
 | 3–7   | US-4.5    | Proactive Macro Intelligence | ✅ Done     | Scheduled scan + persisted context + action plan |
-| 5–7   | US-1.6    | Slack NL Commands            | ⬜ Pending  | Builds on existing notifications module        |
-| 6–7   | US-1.9    | Conversational WF            | ⬜ Pending  | Skeleton only this week; US-1.6 must land first|
+| 5–7   | US-1.6    | Slack NL Commands            | ✅ Done     | Delivered + hardened: real confirmation, audit/status cleanup |
+| 6–7   | US-1.9    | Conversational WF            | ✅ Done     | Skeleton delivered + hardened: 404/422/integrity protections |
 | 8     | US-8.1    | Open-Source Launch Prep      | ⬜ Pending  | Repo hygiene + legal + CI; roadmap doc done    |
 
 ---
@@ -226,11 +226,12 @@ docker compose up -d --build
 **What was built:**
 - Regex-first NL parser (`trade_command_parser.py`) with Claude fallback for ambiguous messages
 - Single-ticker pipeline (`single_ticker_run.py`): 8-phase pipeline reusing all existing agents
-- User intent overrides strategy decision; Risk VETO still final
+- User intent overrides strategy decision; moderation now reviews the final user-intended action/size
 - Slack Socket Mode listener (`slack_listener.py`) with background thread processing
 - CommandGateway evolved from disabled scaffold to functional command router
-- Large order confirmation flow (in-memory pending dict, thread-based timeout)
+- Large order confirmation flow (prepare → prompt → yes/no/expiry execution path)
 - `SlackCommandLog` DB model for full audit trail
+- Command logs persist `review_only`, `awaiting_confirmation`, `cancelled`, `expired`, and final `response_message`
 - CLI entry point: `poetry run python -m src.agents.notifications.slack_trade_listener`
 
 **Key files created/modified:**
@@ -250,10 +251,12 @@ docker compose up -d --build
 - [x] `BUY AAPL` from Slack triggers a focused BUY pipeline for AAPL_US_EQ
 - [x] `SELL AAPL` triggers forced SELL; Risk VETO respected (no execution if vetoed)
 - [x] `REVIEW AAPL` triggers data fetch + strategy analysis; no order placed
+- [x] Large orders now wait for explicit `yes` confirmation before execution
+- [x] Non-command Slack chatter no longer leaves a stray processing reply
 - [x] Response message sent back to Slack within 30 seconds (async background thread)
-- [x] Full audit trail: `slack_command_log` with cycle_id, order_id, status
+- [x] Full audit trail: `slack_command_log` with cycle_id, order_id, status, and `response_message`
 - [x] `slack_trade_commands.enabled: false` disables all inbound handling
-- [x] 38 unit tests (parser 16, ticker resolution 6, pipeline 11, listener/gateway 5)
+- [x] Focused US-1.6/US-1.9 regression suite: 113 passing tests
 
 ---
 
@@ -267,14 +270,17 @@ docker compose up -d --build
 - `ChatSession` and `ChatTurn` DB models + Alembic migration (combined with `SlackCommandLog`)
 - `SessionManager` with real DB CRUD: `create_session()`, `add_turn()`, `get_session()`, `end_session()`
 - FastAPI endpoints: `POST /api/chat/sessions`, `POST /sessions/{id}/turns`, `GET /sessions/{id}`, `POST /sessions/{id}/end`
+- Request validation for `channel_type` / `role`; missing sessions now return `404`
+- Schema hardening: `chat_turns.session_id` FK and unique `(session_id, turn_index)` constraint
 - No LLM calls; no Slack integration; no execution — just the plumbing
 
 **Key files created:**
 - `src/data/models.py` — `ChatSession`, `ChatTurn` models
 - `src/data/migrations/versions/l7m8n9o0p1q2_add_slack_command_log_and_chat_tables.py`
+- `src/data/migrations/versions/m9n0o1p2q3r4_add_chat_turn_constraints.py`
 - `src/agents/conversation/session_manager.py` (new)
 - `dashboard/backend/app/routers/chat.py` (new)
-- `tests/test_chat_session_stub.py` (new, 5 tests)
+- `tests/test_chat_session_stub.py` and `tests/test_chat_api.py` — skeleton guardrail coverage
 
 **Deferred to Week 2+:**
 - Full conversation orchestrator with LLM reasoning
@@ -288,6 +294,7 @@ docker compose up -d --build
 - [x] `POST /api/chat/sessions` creates a session record, returns session_id
 - [x] `POST /api/chat/sessions/{id}/turns` appends a turn record
 - [x] `GET /api/chat/sessions/{id}` returns session + turns
+- [x] Missing sessions return `404`; invalid request shapes fail with `422`
 - [x] No LLM calls, no execution, no Slack integration
 - [x] Tests pass against in-memory SQLite
 

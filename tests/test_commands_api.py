@@ -27,6 +27,7 @@ def db_session():
         ticker="AAPL",
         action="BUY",
         status="executed",
+        response_message="*BUY AAPL* — filled",
         user_id="U123",
         channel_id="C456",
         cycle_id="slack-2026-03-23T12:00:00",
@@ -77,6 +78,7 @@ class TestCommandsRouter:
         assert len(result) == 3
         actions = {r["action"] for r in result}
         assert actions == {"BUY", "SELL", "REVIEW"}
+        assert any(r["response_message"] == "*BUY AAPL* — filled" for r in result)
 
     def test_filter_by_action(self, db_session):
         from dashboard.backend.app.routers.commands import get_commands

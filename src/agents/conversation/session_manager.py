@@ -14,6 +14,10 @@ from src.utils.logger import get_logger
 logger = get_logger("session_manager")
 
 
+class ChatSessionNotFoundError(LookupError):
+    """Raised when a requested chat session does not exist."""
+
+
 class SessionManager:
     """Manages conversational trading session lifecycle."""
 
@@ -72,6 +76,10 @@ class SessionManager:
         """
         session = get_session()
         try:
+            chat_session = session.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if not chat_session:
+                raise ChatSessionNotFoundError(f"Chat session {session_id} not found")
+
             # Get current turn count for index
             turn_count = (
                 session.query(ChatTurn)
@@ -89,9 +97,7 @@ class SessionManager:
             session.add(turn)
 
             # Update session last_activity_at
-            chat_session = session.query(ChatSession).filter(ChatSession.id == session_id).first()
-            if chat_session:
-                chat_session.last_activity_at = datetime.now(timezone.utc)
+            chat_session.last_activity_at = datetime.now(timezone.utc)
 
             session.commit()
             turn_id = turn.id
@@ -152,11 +158,13 @@ class SessionManager:
         session = get_session()
         try:
             chat_session = session.query(ChatSession).filter(ChatSession.id == session_id).first()
-            if chat_session:
-                chat_session.status = "closed"
-                chat_session.ended_at = datetime.now(timezone.utc)
-                session.commit()
-                logger.info(f"Closed chat session {session_id}")
+            if not chat_session:
+                raise ChatSessionNotFoundError(f"Chat session {session_id} not found")
+
+            chat_session.status = "closed"
+            chat_session.ended_at = datetime.now(timezone.utc)
+            session.commit()
+            logger.info(f"Closed chat session {session_id}")
         except Exception:
             session.rollback()
             raise

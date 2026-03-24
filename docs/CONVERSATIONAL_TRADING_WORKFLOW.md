@@ -1,7 +1,7 @@
 ---
 tags: [chat, slack, dashboard, conversational, trading, workflow]
-status: proposed
-last_updated: 2026-03-16
+status: current
+last_updated: 2026-03-24
 ---
 
 # Conversational Trading Workflow (Unified Spec)
@@ -13,11 +13,12 @@ last_updated: 2026-03-16
 Define a single implementation plan for a dialogue-driven trading workflow that unifies:
 
 - Existing outbound notifications (US-1.5, delivered)
-- Planned inbound Slack trade commands (US-1.6, planned)
+- Inbound Slack trade commands (US-1.6, delivered and hardened)
 - Planned dashboard interactivity (US-1.7 follow-on)
-- Agentic research capabilities (US-4.4, in progress)
+- Agentic research capabilities (US-4.4, delivered)
 
 This document is the canonical design for cross-channel conversational trade operations.
+Current implementation state: US-1.9 remains a hardened skeleton only. Session CRUD, validation, and integrity protections are delivered; multi-turn orchestration, explicit conversational action confirmation, Slack thread continuity, and research depth are still future phases.
 
 ---
 

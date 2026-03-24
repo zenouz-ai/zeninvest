@@ -6,7 +6,7 @@ last_updated: 2026-03-24
 
 # Chat Interface and Trade Commands
 
-> Outbound trade alerts (delivered) and inbound natural-language Slack commands (planned).
+> Outbound trade alerts (delivered) and inbound natural-language Slack commands (delivered + hardened).
 
 ## Purpose
 
@@ -395,8 +395,8 @@ slack_trade_commands:
 
 #### 7. Large Order Confirmation Flow
 
-- If `estimated_value_gbp >= confirmation_threshold_gbp`: post "Confirm: Buy 10 shares of AAPL (~£X)? Reply 'yes' in this thread within 10 min."
-- Store pending (in-memory or `SlackCommandPending` table); on "yes" in thread within timeout, call single-ticker pipeline and execute.
+- If `estimated_value_gbp >= confirmation_threshold_gbp`: prepare the trade through strategy → moderation → risk, then post a confirmation prompt before any execution.
+- Persist the command as `awaiting_confirmation`; on `yes`, execute the prepared trade; on `no`, mark `cancelled`; on timeout, mark `expired`.
 
 #### 8. Persistence and Audit
 
@@ -431,8 +431,8 @@ slack_trade_commands:
 #### 9. Slack Reply Format
 
 - **REVIEW:** Full pipeline detail — price, strategy action/conviction/allocation/stop-loss/reasoning (not truncated), per-moderator GPT-4o/Gemini verdicts with scores and reasoning. "No order placed."
-- **BUY/SELL (executed):** Quantity, price (native currency), value (GBP), execution status, moderation consensus, risk verdict, order ID. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override: "Risk: *OVERRIDDEN* (force buy — risk VETO bypassed)" with overridden rules listed.
-- **Rejected (risk/cash/ticker):** Full pipeline detail — price, strategy reasoning, per-moderator verdicts, risk triggered rules. Includes hint: "Tip: Use `force buy <ticker>` to override risk VETO."
+- **BUY/SELL (executed):** Quantity, price (native currency), value (GBP), execution status, moderation consensus, risk verdict, order ID. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override: "Risk: *OVERRIDDEN* (force buy/force sell — risk VETO bypassed)" with overridden rules listed.
+- **Rejected (risk/cash/ticker):** Full pipeline detail — price, strategy reasoning, per-moderator verdicts, risk triggered rules. Includes action-specific hint: "Tip: Use `force buy <ticker>`" or `force sell <ticker>` to override risk VETO.
 
 #### 10. Entry Point and Deployment
 
@@ -448,7 +448,7 @@ slack_trade_commands:
 | Insufficient cash (BUY) | Reject with current cash |
 | No position (SELL) | Reject |
 | Order > threshold | Require "yes" confirmation |
-| Risk VETO | Reject after pipeline; log reason. Hint suggests `force buy` to override. |
+| Risk VETO | Reject after pipeline; log reason. Hint suggests action-specific `force buy` / `force sell` override. |
 | Risk VETO + force prefix | **Override:** execute despite risk rejection; log as `OVERRIDDEN` with triggered rules |
 
 #### 12. Documentation Updates (When Implementing)
@@ -500,6 +500,8 @@ slack_trade_commands:
 
 **Risk is the default final authority.** User intent is applied only after passing RiskManager checks. If risk VETO occurs, the order is rejected and the user receives a detailed message with the reason, triggered rules, and full pipeline context. **Force override:** The user can explicitly bypass risk VETO by prefixing the command with `force`, `override`, or `!` (e.g. `force buy MSFT`, `!buy AAPL`). The override is logged as `OVERRIDDEN`, the triggered rules are recorded, and the Slack reply clearly indicates which rules were bypassed. This is intentional for situations where the human operator has conviction beyond what the risk rules capture (e.g. cash floor with incoming deposit, known temporary conditions).
 
+**Moderation reviews the final user-intended action and size.** If strategy suggests `HOLD` but the user explicitly asks to `BUY`, the moderation panel now reviews the `BUY` proposal while the reply/audit trail still preserves the original strategy recommendation for transparency.
+
 **Portfolio validation is mandatory** before any execution. BUY orders must have sufficient cash; SELL orders must have the position. Rejections are immediate and descriptive.
 
 ### Open Questions
@@ -533,17 +535,18 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 
 - [x] Natural language parser (`trade_command_parser.py`) extracts intent (BUY/SELL/REVIEW), ticker, quantity, and amount_gbp — regex-first (zero cost, supports ticker symbols and single-word company names like "buy apple", "sell google") with Claude fallback for ambiguous messages.
 - [x] Single-ticker pipeline (`single_ticker_run.py`) runs full data → strategy → moderation → risk flow with user intent override.
-- [x] RiskManager veto prevents execution; rejection message posted to Slack with reason.
+- [x] RiskManager veto prevents execution by default; explicit `force` prefixes are logged as `OVERRIDDEN` and preserve triggered rules in the audit trail.
 - [x] `SlackCommandLog` table captures all Slack-triggered runs; linked to Order and cycle_id.
 - [x] Slack Socket Mode listener (`slack_listener.py`) processes messages from configured channel; replies in thread.
 - [x] Large order confirmation flow requires "yes" confirmation for orders > `confirmation_threshold_gbp`.
 - [x] Ticker resolution (`resolve_ticker_to_t212`) rejects unknown symbols before pipeline invocation.
 - [x] Cash/position validation prevents insufficient-fund and non-existent-position orders.
+- [x] REVIEW commands persist `review_only`; confirmation lifecycle persists `awaiting_confirmation`, `cancelled`, `expired`, and final `response_message`.
 - [x] All trades (autonomous and Slack-initiated) visible in portfolio and audit logs with consistent cycle_id format (`slack-{timestamp}`).
-- [x] 43 tests cover parser (16), ticker resolution (6), single-ticker pipeline (11), listener + gateway (5), and chat session stub (5).
-- [x] **Dashboard Commands page** (`/commands`): Stats cards (total, executed, rejected, review), action/status filters, command history table with expandable rows showing cycle_id, order linkage, rejection reasons, and response messages. Backend: `GET /api/commands/` (filtered + paginated), `GET /api/commands/stats`. 9 additional tests (5 parser company-name + 4 commands API). Total: 52 tests across US-1.6/1.9.
+- [x] Focused US-1.6/US-1.9 regression suite: 113 passing tests across parser, ticker resolution, single-ticker runner, listener/gateway, commands API, chat session manager/API, and Slack reply formatting.
+- [x] **Dashboard Commands page** (`/commands`): Stats cards (total, executed, rejected, review), action/status filters, command history table with expandable rows showing cycle_id, order linkage, rejection reasons, and response messages. Backend: `GET /api/commands/` (filtered + paginated), `GET /api/commands/stats`.
 - [x] **Post-deployment fixes (2026-03-24):** Bot self-message loop prevention (`_resolve_bot_user_id` via `auth.test` + `bot_id`/user_id filtering); error message propagation from pipeline to Slack reply (gateway now surfaces `error_message`/`rejection_reason`); price extraction fix (`indicators.current_price` not `.close`); REVIEW reply shows full details — price, allocation %, stop-loss %, full reasoning (no truncation), per-moderator GPT-4o/Gemini verdicts with scores and reasoning; completion log lines for all terminal states (review_only, executed, rejected, error).
-- [x] **Force buy/sell + enhanced replies (2026-03-24):** `force buy`, `override buy`, `!buy` prefixes bypass risk VETO (logged as `OVERRIDDEN` with triggered rules). Rejected replies now show full pipeline detail: price, strategy reasoning, per-moderator verdicts with scores, risk triggered rules, and hint about force override. Executed replies show native-currency price. Console logs completion status after every command. Graceful shutdown via `threading.Event` (no more `[Request interrupted by user]`). 21 new tests (force parsing 9, strip prefix 6, force execution 2, enhanced formatting 4). Total: 73 tests across US-1.6/1.9.
+- [x] **Hardening pass (2026-03-24):** real confirmation gate before execution for large orders; moderation now reviews the final user action/size; force replies and rejection hints use action-specific wording; non-command chatter no longer leaves a stray processing reply; dashboard audit rows persist `response_message`.
 
 ### Phase 3 (Web Chat UI — Future)
 

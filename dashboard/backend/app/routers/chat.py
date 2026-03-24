@@ -4,12 +4,12 @@ Provides minimal CRUD endpoints for chat sessions and turns.
 No LLM logic, no execution — just plumbing for future conversational workflow.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from src.agents.conversation.session_manager import SessionManager
+from src.agents.conversation.session_manager import ChatSessionNotFoundError, SessionManager
 
 router = APIRouter()
 
@@ -17,13 +17,13 @@ _session_manager = SessionManager()
 
 
 class CreateSessionRequest(BaseModel):
-    channel_type: str = "dashboard"
+    channel_type: Literal["dashboard", "slack"] = "dashboard"
     user_id: str | None = None
     channel_session_key: str | None = None
 
 
 class AddTurnRequest(BaseModel):
-    role: str = "user"
+    role: Literal["user", "assistant", "system"] = "user"
     message_text: str = ""
     intent_json: str | None = None
 
@@ -53,6 +53,8 @@ async def add_turn(session_id: int, body: AddTurnRequest) -> dict[str, Any]:
             intent_json=body.intent_json,
         )
         return {"status": "received", "turn_id": turn_id}
+    except ChatSessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -72,5 +74,7 @@ async def end_session(session_id: int) -> dict[str, Any]:
     try:
         _session_manager.end_session(session_id)
         return {"status": "closed", "session_id": session_id}
+    except ChatSessionNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

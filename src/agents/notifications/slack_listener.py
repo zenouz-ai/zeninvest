@@ -7,7 +7,7 @@ runs the single-ticker pipeline, and posts threaded replies.
 import threading
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.agents.notifications.command_gateway import (
@@ -27,8 +27,7 @@ class PendingConfirmation:
     """Tracks a pending large-order confirmation."""
 
     thread_ts: str
-    intent: Any  # TradeCommandIntent
-    ticker_t212: str
+    prepared_result: Any  # SingleTickerResult
     user_id: str
     channel_id: str
     expires_at: datetime
@@ -178,9 +177,6 @@ class SlackTradeListener:
     ) -> None:
         """Process a trade command message. Runs in background thread."""
         try:
-            # Post processing indicator
-            self._post_reply(channel, ts, "Processing your request...")
-
             request = CommandRequest(
                 source="slack",
                 user_id=user_id,
@@ -190,33 +186,66 @@ class SlackTradeListener:
                 raw_payload={"text": text, "ts": ts, "thread_ts": ts},
             )
 
-            result = self.gateway.handle(request)
-            status = result.get("status", "error")
-            ticker_t212 = result.get("ticker_t212", "N/A")
+            resolved = self.gateway.resolve_request(request)
+            status = resolved.get("status", "error")
+            ticker_t212 = resolved.get("ticker_t212", "N/A")
 
             if status == "unparseable":
-                # Silently ignore non-trade messages (delete processing indicator)
                 return
 
             if status == "unknown_ticker":
-                self._post_reply(channel, ts, result.get("message", "Unknown ticker."))
+                self._post_reply(channel, ts, resolved.get("message", "Unknown ticker."))
                 logger.info(f"Command completed: {text!r} → unknown_ticker")
                 return
 
-            if status == "error":
-                self._post_reply(channel, ts, f"Error: {result.get('message', 'Unknown error')}")
-                logger.info(f"Command completed: {text!r} → error ({ticker_t212})")
-                return
+            self._post_reply(channel, ts, "Processing your request...")
 
-            # Format and post result
-            pipeline_result = result.get("result")
-            if pipeline_result:
-                reply = format_trade_command_reply(pipeline_result)
+            from src.orchestrator.single_ticker_run import SingleTickerRunner
+
+            runner = SingleTickerRunner(dry_run=False)
+            try:
+                prepared_result = runner.prepare(
+                    ticker_t212=ticker_t212,
+                    intent=resolved["intent"],
+                    user_id=user_id,
+                    channel_id=channel,
+                    thread_ts=ts,
+                )
+
+                if self._requires_confirmation(prepared_result):
+                    expires_at = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(
+                        minutes=self.settings.slack_trade_confirmation_timeout_minutes
+                    )
+                    prompt = self._format_confirmation_prompt(prepared_result)
+                    self._pending[ts] = PendingConfirmation(
+                        thread_ts=ts,
+                        prepared_result=prepared_result,
+                        user_id=user_id,
+                        channel_id=channel,
+                        expires_at=expires_at,
+                    )
+                    runner.update_command_log_entry(
+                        prepared_result.command_log_id,
+                        status="awaiting_confirmation",
+                        response_message=prompt,
+                    )
+                    self._post_reply(channel, ts, prompt)
+                    logger.info(f"Command completed: {text!r} → awaiting_confirmation ({ticker_t212})")
+                    return
+
+                final_result = prepared_result
+                if prepared_result.status == "ready":
+                    final_result = runner.execute_prepared(prepared_result)
+
+                reply = format_trade_command_reply(final_result)
+                runner.update_command_log_entry(
+                    final_result.command_log_id,
+                    response_message=reply,
+                )
                 self._post_reply(channel, ts, reply)
-            else:
-                self._post_reply(channel, ts, f"Command completed with status: {status}")
-
-            logger.info(f"Command completed: {text!r} → {status} ({ticker_t212})")
+                logger.info(f"Command completed: {text!r} → {final_result.status} ({ticker_t212})")
+            finally:
+                runner.close()
 
         except CommandGatewayDisabledError:
             self._post_reply(channel, ts, "Trade commands are currently disabled.")
@@ -236,6 +265,18 @@ class SlackTradeListener:
         now = datetime.now(timezone.utc)
         if now > pending.expires_at:
             del self._pending[thread_ts]
+            from src.orchestrator.single_ticker_run import SingleTickerRunner
+
+            runner = SingleTickerRunner(dry_run=False)
+            try:
+                runner.update_command_log_entry(
+                    pending.prepared_result.command_log_id,
+                    status="expired",
+                    rejection_reason="Confirmation expired.",
+                    response_message="Confirmation expired.",
+                )
+            finally:
+                runner.close()
             self._post_reply(channel, thread_ts, "Confirmation expired.")
             return
 
@@ -244,27 +285,34 @@ class SlackTradeListener:
             del self._pending[thread_ts]
             self._post_reply(channel, thread_ts, "Confirmed. Executing...")
 
-            # Run the pipeline
-            request = CommandRequest(
-                source="slack",
-                user_id=user_id,
-                channel_id=channel,
-                command=pending.intent.raw_message,
-                args=[],
-                raw_payload={
-                    "text": pending.intent.raw_message,
-                    "ts": thread_ts,
-                    "thread_ts": thread_ts,
-                },
-            )
-            result = self.gateway.handle(request)
-            pipeline_result = result.get("result")
-            if pipeline_result:
-                reply = format_trade_command_reply(pipeline_result)
-                self._post_reply(channel, thread_ts, reply)
+            from src.orchestrator.single_ticker_run import SingleTickerRunner
+
+            runner = SingleTickerRunner(dry_run=False)
+            try:
+                final_result = runner.execute_prepared(pending.prepared_result)
+                reply = format_trade_command_reply(final_result)
+                runner.update_command_log_entry(
+                    final_result.command_log_id,
+                    response_message=reply,
+                )
+            finally:
+                runner.close()
+            self._post_reply(channel, thread_ts, reply)
 
         elif lower in ("no", "n", "cancel"):
             del self._pending[thread_ts]
+            from src.orchestrator.single_ticker_run import SingleTickerRunner
+
+            runner = SingleTickerRunner(dry_run=False)
+            try:
+                runner.update_command_log_entry(
+                    pending.prepared_result.command_log_id,
+                    status="cancelled",
+                    rejection_reason="Cancelled by user",
+                    response_message="Order cancelled.",
+                )
+            finally:
+                runner.close()
             self._post_reply(channel, thread_ts, "Order cancelled.")
 
     def _post_reply(self, channel: str, thread_ts: str, text: str) -> None:
@@ -285,5 +333,52 @@ class SlackTradeListener:
         """Remove expired pending confirmations."""
         now = datetime.now(timezone.utc)
         expired = [k for k, v in self._pending.items() if now > v.expires_at]
-        for k in expired:
-            del self._pending[k]
+        if not expired:
+            return
+
+        from src.orchestrator.single_ticker_run import SingleTickerRunner
+
+        runner = SingleTickerRunner(dry_run=False)
+        try:
+            for k in expired:
+                pending = self._pending.pop(k)
+                runner.update_command_log_entry(
+                    pending.prepared_result.command_log_id,
+                    status="expired",
+                    rejection_reason="Confirmation expired.",
+                    response_message="Confirmation expired.",
+                )
+                self._post_reply(pending.channel_id, pending.thread_ts, "Confirmation expired.")
+        finally:
+            runner.close()
+
+    def _requires_confirmation(self, result: Any) -> bool:
+        """Return True when a prepared trade exceeds the confirmation threshold."""
+        return (
+            result.status == "ready"
+            and result.user_action in {"BUY", "SELL"}
+            and result.value_gbp >= self.settings.slack_trade_confirmation_threshold_gbp
+        )
+
+    def _format_confirmation_prompt(self, result: Any) -> str:
+        """Build the confirmation prompt for a prepared large order."""
+        ticker = result.ticker_yf or result.ticker_t212
+        timeout_minutes = self.settings.slack_trade_confirmation_timeout_minutes
+        lines = [
+            f"Confirm {result.user_action} {ticker}: estimated value £{result.value_gbp:.2f}",
+        ]
+        if result.quantity and result.price:
+            lines[0] += f" ({result.quantity:.2f} @ ${result.price:.2f})"
+        if result.strategy_action and result.strategy_action != result.user_action:
+            lines.append(
+                f"Strategy suggested {result.strategy_action}; you overrode to {result.user_action}."
+            )
+        if result.risk_verdict_str == "OVERRIDDEN":
+            lines.append(f"Risk: OVERRIDDEN via force {result.user_action.lower()}.")
+            triggered = (result.risk_verdict or {}).get("triggered_rules", [])
+            if triggered:
+                lines.append(f"Overridden rules: {', '.join(triggered)}")
+        lines.append(
+            f"Reply 'yes' in this thread within {timeout_minutes} minutes to execute, or 'no' to cancel."
+        )
+        return "\n".join(lines)

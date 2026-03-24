@@ -196,6 +196,19 @@ class TestSingleTickerRunner:
         assert result.user_action == "BUY"
         assert result.status == "executed"
 
+    def test_moderation_reviews_user_intent_not_strategy_action(self, mock_runner):
+        """Moderation should review the final user action, even when strategy disagrees."""
+        runner, mocks = mock_runner
+        intent = TradeCommandIntent(
+            action="BUY", ticker="AAPL", raw_message="BUY AAPL"
+        )
+
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "executed"
+        trade_proposal = mocks["moderation_panel"].review_trade.call_args.kwargs["trade_proposal"]
+        assert trade_proposal["action"] == "BUY"
+
     def test_buy_with_quantity(self, mock_runner):
         runner, mocks = mock_runner
         intent = TradeCommandIntent(
@@ -254,6 +267,19 @@ class TestSingleTickerRunner:
         assert result.status == "rejected"
         assert "Risk VETO" in result.rejection_reason
         mocks["order_manager"].execute_market_order.assert_not_called()
+
+    def test_review_logs_review_only_status(self, mock_runner, db_session):
+        runner, mocks = mock_runner
+        intent = TradeCommandIntent(
+            action="REVIEW", ticker="AAPL", raw_message="REVIEW AAPL"
+        )
+
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "review_only"
+        log = db_session.query(SlackCommandLog).order_by(SlackCommandLog.id.desc()).first()
+        assert log is not None
+        assert log.status == "review_only"
 
 
 class TestSingleTickerResult:

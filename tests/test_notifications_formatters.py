@@ -379,6 +379,18 @@ class TestFormatExecutedReply:
         assert "Strategy suggested HOLD" in reply
         assert "you overrode to BUY" in reply
 
+    def test_executed_force_sell_uses_action_specific_wording(self):
+        result = _make_result(
+            status="executed",
+            user_action="SELL",
+            risk_verdict_str="OVERRIDDEN",
+            risk_verdict={"triggered_rules": ["cash_floor"]},
+            execution_result={"status": "filled"},
+        )
+        reply = format_trade_command_reply(result)
+        assert "force sell" in reply
+        assert "cash_floor" in reply
+
 
 class TestFormatRejectedReply:
 

@@ -287,7 +287,7 @@ export const MILESTONES: Milestone[] = [
     effort: 'M–L',
     priority: 'P1',
     description:
-      'Inbound Slack trade commands via Socket Mode: regex-first NL parser (BUY/SELL/REVIEW + ticker/company name + quantity/amount), single-ticker pipeline with user intent override, force buy/sell to bypass risk VETO (force/override/! prefix, logged as OVERRIDDEN), CommandGateway, large order confirmation flow, SlackCommandLog audit trail, enhanced rejected replies (full pipeline detail + force hint), graceful shutdown, CLI entry point. Dashboard Commands page with stats, filters, expandable audit rows. 73 tests.',
+      'Inbound Slack trade commands via Socket Mode: regex-first NL parser (BUY/SELL/REVIEW + ticker/company name + quantity/amount), single-ticker pipeline with user intent override, moderation reviewing the final user action/size, real large-order confirmation gate, force buy/sell to bypass risk VETO (force/override/! prefix, logged as OVERRIDDEN), CommandGateway, persisted response_message audit trail, graceful shutdown, CLI entry point. Dashboard Commands page with stats, filters, expandable audit rows. Focused US-1.6/US-1.9 regression suite: 113 passing tests.',
     architectureComponents: ['Notifications', 'Orchestrator', 'Dashboard'],
   },
   {
@@ -300,7 +300,7 @@ export const MILESTONES: Milestone[] = [
     effort: 'L',
     priority: 'P1',
     description:
-      'Skeleton delivered: ChatSession/ChatTurn DB models, SessionManager CRUD stub, dashboard chat API endpoints. Full multi-turn workflow (LLM reasoning, Slack thread continuity, research tools) deferred.',
+      'Skeleton delivered: ChatSession/ChatTurn DB models, SessionManager CRUD stub, dashboard chat API endpoints, request validation, missing-session 404 handling, and chat-turn FK + unique turn-order protection. Full multi-turn workflow (LLM reasoning, Slack thread continuity, research tools) deferred.',
     architectureComponents: ['Notifications', 'Dashboard', 'Orchestrator'],
   },
   {

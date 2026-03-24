@@ -26,6 +26,20 @@ logger = get_logger("single_ticker_run")
 
 
 @dataclass
+class PreparedTradeExecution:
+    """Prepared execution payload used for confirmation + final order placement."""
+
+    action: str
+    target_amount_gbp: float
+    current_price: float
+    quantity_override: float | None
+    strategy: str = "slack_command"
+    conviction: int = 0
+    moderation_result: str = ""
+    risk_result: str = ""
+
+
+@dataclass
 class SingleTickerResult:
     """Result of a single-ticker pipeline run."""
 
@@ -53,6 +67,8 @@ class SingleTickerResult:
     price: float = 0.0
     quantity: float = 0.0
     value_gbp: float = 0.0
+    command_log_id: int | None = None
+    prepared_execution: PreparedTradeExecution | None = field(default=None, repr=False)
 
 
 class SingleTickerRunner:
@@ -88,18 +104,27 @@ class SingleTickerRunner:
         channel_id: str | None = None,
         thread_ts: str | None = None,
     ) -> SingleTickerResult:
-        """Execute single-ticker pipeline with user intent override.
+        """Execute single-ticker pipeline with user intent override."""
+        result = self.prepare(
+            ticker_t212=ticker_t212,
+            intent=intent,
+            user_id=user_id,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+        )
+        if result.status != "ready":
+            return result
+        return self.execute_prepared(result)
 
-        Steps:
-        1. Data fetch for one ticker
-        2. Sub-strategy scoring
-        3. Claude strategy synthesis
-        4. Moderation panel review
-        5. For REVIEW: stop here, return summary
-        6. Override strategy action with user intent
-        7. Risk evaluation
-        8. Execution (if risk passes)
-        """
+    def prepare(
+        self,
+        ticker_t212: str,
+        intent: TradeCommandIntent,
+        user_id: str | None = None,
+        channel_id: str | None = None,
+        thread_ts: str | None = None,
+    ) -> SingleTickerResult:
+        """Prepare a single-ticker run through risk without placing an order."""
         ticker_yf = t212_to_yf(ticker_t212)
         cycle_id = f"slack-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
 
@@ -119,6 +144,7 @@ class SingleTickerRunner:
             channel_id=channel_id,
             thread_ts=thread_ts,
         )
+        result.command_log_id = cmd_log
 
         try:
             # --- Pre-flight validation ---
@@ -191,13 +217,38 @@ class SingleTickerRunner:
                 # Persist strategy decision
                 self._persist_strategy_decision(strategy_decision, cycle_id)
 
+            final_action = intent.action
+            try:
+                target_allocation_pct, target_amount_gbp, quantity_override = self._resolve_user_sizing(
+                    ticker_t212=ticker_t212,
+                    intent=intent,
+                    strategy_decision=strategy_decision,
+                    total_value=portfolio_data.get("total_value", 10000),
+                    current_price=current_price,
+                )
+            except ValueError as e:
+                result.status = "rejected"
+                result.rejection_reason = str(e)
+                self._update_command_log(cmd_log, "rejected", rejection_reason=result.rejection_reason)
+                return result
+            result.quantity = abs(quantity_override) if quantity_override is not None else (
+                abs(target_amount_gbp / current_price) if current_price > 0 else 0.0
+            )
+            result.value_gbp = max(target_amount_gbp, 0.0)
+
             # --- Phase 4: Moderation ---
             logger.info(f"[{cycle_id}] Running moderation for {ticker_t212}")
             if strategy_decision:
+                moderation_action = strategy_decision.get("action", "HOLD") if intent.action == "REVIEW" else final_action
+                moderation_alloc = (
+                    strategy_decision.get("target_allocation_pct", 5.0)
+                    if intent.action == "REVIEW"
+                    else target_allocation_pct
+                )
                 trade_proposal = {
                     "ticker": ticker_t212,
-                    "action": strategy_decision.get("action", intent.action),
-                    "target_allocation_pct": strategy_decision.get("target_allocation_pct", 5.0),
+                    "action": moderation_action,
+                    "target_allocation_pct": moderation_alloc,
                     "conviction": result.conviction,
                     "reasoning": strategy_decision.get("reasoning", ""),
                     "stop_loss_pct": strategy_decision.get("stop_loss_pct", -8),
@@ -219,7 +270,7 @@ class SingleTickerRunner:
             # --- Phase 5: REVIEW stops here ---
             if intent.action == "REVIEW":
                 result.status = "review_only"
-                self._update_command_log(cmd_log, "executed")
+                self._update_command_log(cmd_log, "review_only")
                 logger.info(
                     f"[{cycle_id}] REVIEW complete for {ticker_t212}: "
                     f"{result.strategy_action} (conviction {result.conviction}), "
@@ -227,13 +278,7 @@ class SingleTickerRunner:
                 )
                 return result
 
-            # --- Phase 6: Override with user intent ---
-            final_action = intent.action  # BUY or SELL
-            target_allocation_pct = strategy_decision.get("target_allocation_pct", 5.0) if strategy_decision else 5.0
-            if final_action == "SELL":
-                target_allocation_pct = 0.0  # Full sell unless quantity specified
-
-            # --- Phase 7: Risk evaluation ---
+            # --- Phase 6: Risk evaluation ---
             logger.info(f"[{cycle_id}] Running risk check for {final_action} {ticker_t212}")
             sector = self._get_sector(ticker_t212)
             current_portfolio = self._get_current_portfolio_pcts()
@@ -268,7 +313,7 @@ class SingleTickerRunner:
 
             if risk_verdict.verdict == "REJECT":
                 if intent.force:
-                    # User explicitly overrode risk VETO via "force buy"
+                    # User explicitly overrode risk VETO via a force prefix.
                     logger.warning(
                         f"[{cycle_id}] {intent.action} {ticker_t212} RISK VETO OVERRIDDEN by user "
                         f"(force=True): {risk_verdict.reasoning}"
@@ -282,67 +327,31 @@ class SingleTickerRunner:
                     return result
 
             # Apply risk resize if needed
-            if risk_verdict.verdict == "RESIZE" and risk_verdict.adjusted_allocation_pct is not None:
+            if (
+                final_action == "BUY"
+                and risk_verdict.verdict == "RESIZE"
+                and risk_verdict.adjusted_allocation_pct is not None
+            ):
                 target_allocation_pct = risk_verdict.adjusted_allocation_pct
+                resized_amount_gbp = portfolio_data.get("total_value", 10000) * (target_allocation_pct / 100.0)
+                target_amount_gbp = min(target_amount_gbp, resized_amount_gbp)
+                if quantity_override is not None and current_price > 0:
+                    quantity_override = min(quantity_override, target_amount_gbp / current_price)
+                result.quantity = abs(quantity_override) if quantity_override is not None else (
+                    abs(target_amount_gbp / current_price) if current_price > 0 else 0.0
+                )
+                result.value_gbp = max(target_amount_gbp, 0.0)
 
-            # --- Phase 8: Execution ---
-            logger.info(f"[{cycle_id}] Executing {final_action} {ticker_t212}")
-            total_value = portfolio_data.get("total_value", 10000)
-            target_amount_gbp = total_value * (target_allocation_pct / 100.0)
-
-            # Resolve quantity
-            quantity_override = None
-            if intent.quantity_shares:
-                quantity_override = intent.quantity_shares
-            elif intent.amount_gbp:
-                target_amount_gbp = intent.amount_gbp
-
-            if final_action == "SELL":
-                # For SELL: use position quantity if no explicit quantity
-                position = self.t212_client.get_position(ticker_t212)
-                pos_qty = float(position.get("quantity", 0))
-                if pos_qty <= 0:
-                    result.status = "rejected"
-                    result.rejection_reason = f"No position in {ticker_t212}"
-                    self._update_command_log(cmd_log, "rejected", rejection_reason=result.rejection_reason)
-                    return result
-                if not quantity_override:
-                    quantity_override = pos_qty
-                target_amount_gbp = quantity_override * current_price
-
-            exec_result = self.order_manager.execute_market_order(
-                ticker=ticker_t212,
+            result.prepared_execution = PreparedTradeExecution(
                 action=final_action,
                 target_amount_gbp=target_amount_gbp,
                 current_price=current_price,
-                strategy="slack_command",
+                quantity_override=quantity_override,
                 conviction=result.conviction,
                 moderation_result=result.moderation_consensus,
                 risk_result=result.risk_verdict_str,
-                quantity_override=quantity_override,
             )
-
-            result.execution_result = exec_result
-            result.quantity = abs(exec_result.get("quantity", 0))
-            result.value_gbp = exec_result.get("value_gbp", 0)
-
-            if exec_result.get("status") in ("filled", "dry_run", "pending"):
-                result.status = "executed"
-                self._update_command_log(
-                    cmd_log, "executed",
-                    order_id=exec_result.get("order_id"),
-                )
-                logger.info(
-                    f"[{cycle_id}] {intent.action} {ticker_t212} EXECUTED: "
-                    f"qty={result.quantity:.2f}, value=£{result.value_gbp:.2f}, "
-                    f"status={exec_result.get('status')}"
-                )
-            else:
-                result.status = "error"
-                result.error_message = exec_result.get("reason", "Execution failed")
-                self._update_command_log(cmd_log, "error", rejection_reason=result.error_message)
-                logger.warning(f"[{cycle_id}] {intent.action} {ticker_t212} FAILED: {result.error_message}")
-
+            result.status = "ready"
             return result
 
         except Exception as e:
@@ -351,6 +360,57 @@ class SingleTickerRunner:
             result.error_message = str(e)
             self._update_command_log(cmd_log, "error", rejection_reason=str(e))
             return result
+
+    def execute_prepared(self, result: SingleTickerResult) -> SingleTickerResult:
+        """Execute a previously prepared trade."""
+        if result.prepared_execution is None:
+            raise ValueError("SingleTickerResult has no prepared execution payload")
+
+        execution = result.prepared_execution
+        logger.info(f"[{result.cycle_id}] Executing {execution.action} {result.ticker_t212}")
+
+        exec_result = self.order_manager.execute_market_order(
+            ticker=result.ticker_t212,
+            action=execution.action,
+            target_amount_gbp=execution.target_amount_gbp,
+            current_price=execution.current_price,
+            strategy=execution.strategy,
+            conviction=execution.conviction,
+            moderation_result=execution.moderation_result,
+            risk_result=execution.risk_result,
+            quantity_override=execution.quantity_override,
+        )
+
+        result.execution_result = exec_result
+        result.quantity = abs(exec_result.get("quantity", 0))
+        result.value_gbp = exec_result.get("value_gbp", 0)
+
+        if exec_result.get("status") in ("filled", "dry_run", "pending"):
+            result.status = "executed"
+            self._update_command_log(
+                result.command_log_id,
+                "executed",
+                order_id=exec_result.get("order_id"),
+            )
+            logger.info(
+                f"[{result.cycle_id}] {result.user_action} {result.ticker_t212} EXECUTED: "
+                f"qty={result.quantity:.2f}, value=£{result.value_gbp:.2f}, "
+                f"status={exec_result.get('status')}"
+            )
+        else:
+            result.status = "error"
+            result.error_message = exec_result.get("reason", "Execution failed")
+            self._update_command_log(
+                result.command_log_id,
+                "error",
+                rejection_reason=result.error_message,
+            )
+            logger.warning(
+                f"[{result.cycle_id}] {result.user_action} {result.ticker_t212} FAILED: "
+                f"{result.error_message}"
+            )
+
+        return result
 
     def _validate_preflight(self, ticker_t212: str, intent: TradeCommandIntent) -> str | None:
         """Run pre-flight validation. Returns error message or None if ok."""
@@ -389,6 +449,38 @@ class SingleTickerRunner:
             if price is not None:
                 return float(price)
         return None
+
+    def _resolve_user_sizing(
+        self,
+        ticker_t212: str,
+        intent: TradeCommandIntent,
+        strategy_decision: dict[str, Any] | None,
+        total_value: float,
+        current_price: float,
+    ) -> tuple[float, float, float | None]:
+        """Resolve the user-intended allocation and value before risk/execution."""
+        if intent.action == "SELL":
+            position = self.t212_client.get_position(ticker_t212)
+            pos_qty = float(position.get("quantity", 0))
+            if pos_qty <= 0:
+                raise ValueError(f"No position in {ticker_t212}")
+
+            quantity_override = intent.quantity_shares or pos_qty
+            target_amount_gbp = quantity_override * current_price
+            return 0.0, target_amount_gbp, quantity_override
+
+        base_allocation_pct = strategy_decision.get("target_allocation_pct", 5.0) if strategy_decision else 5.0
+        quantity_override = intent.quantity_shares
+
+        if intent.amount_gbp is not None:
+            target_amount_gbp = float(intent.amount_gbp)
+        elif quantity_override is not None:
+            target_amount_gbp = float(quantity_override) * current_price
+        else:
+            target_amount_gbp = total_value * (base_allocation_pct / 100.0)
+
+        target_allocation_pct = (target_amount_gbp / total_value * 100) if total_value > 0 else 0.0
+        return target_allocation_pct, target_amount_gbp, quantity_override
 
     def _get_existing_positions(self) -> set[str]:
         """Get set of currently held ticker IDs."""
@@ -530,9 +622,10 @@ class SingleTickerRunner:
     def _update_command_log(
         self,
         log_id: int | None,
-        status: str,
+        status: str | None = None,
         order_id: int | None = None,
         rejection_reason: str | None = None,
+        response_message: str | None = None,
     ) -> None:
         """Update existing command log entry."""
         if log_id is None:
@@ -541,17 +634,37 @@ class SingleTickerRunner:
         try:
             log = session.query(SlackCommandLog).filter(SlackCommandLog.id == log_id).first()
             if log:
-                log.status = status
+                if status is not None:
+                    log.status = status
                 if order_id is not None:
                     log.order_id = order_id
                 if rejection_reason:
                     log.rejection_reason = rejection_reason
+                if response_message is not None:
+                    log.response_message = response_message
                 session.commit()
         except Exception as e:
             session.rollback()
             logger.warning(f"Failed to update command log: {e}")
         finally:
             session.close()
+
+    def update_command_log_entry(
+        self,
+        log_id: int | None,
+        status: str | None = None,
+        order_id: int | None = None,
+        rejection_reason: str | None = None,
+        response_message: str | None = None,
+    ) -> None:
+        """Public wrapper for updating Slack command log fields."""
+        self._update_command_log(
+            log_id=log_id,
+            status=status,
+            order_id=order_id,
+            rejection_reason=rejection_reason,
+            response_message=response_message,
+        )
 
     def close(self) -> None:
         """Clean up resources."""

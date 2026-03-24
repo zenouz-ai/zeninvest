@@ -648,7 +648,7 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
 
     # Risk verdict — highlight force override
     if result.risk_verdict_str == "OVERRIDDEN":
-        lines.append("Risk: *OVERRIDDEN* (force buy — risk VETO bypassed)")
+        lines.append(f"Risk: *OVERRIDDEN* (force {result.user_action.lower()} — risk VETO bypassed)")
         triggered = (result.risk_verdict or {}).get("triggered_rules", [])
         if triggered:
             lines.append(f"Overridden rules: {', '.join(triggered)}")
@@ -716,7 +716,7 @@ def _format_rejected_reply(result: "SingleTickerResult", ticker: str) -> str:
 
     # Hint about force override
     if result.risk_verdict_str == "REJECT":
-        lines.append("\n_Tip: Use `force buy <ticker>` to override risk VETO._")
+        lines.append(f"\n_Tip: Use `force {result.user_action.lower()} <ticker>` to override risk VETO._")
 
     return "\n".join(lines)
 

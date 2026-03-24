@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from unittest.mock import patch
 
-from src.agents.conversation.session_manager import SessionManager
+from src.agents.conversation.session_manager import ChatSessionNotFoundError, SessionManager
 from src.data.models import Base, ChatSession, ChatTurn
 
 
@@ -90,3 +90,13 @@ class TestSessionManager:
         )
         result = mgr.get_session(session_id)
         assert result["turns"][0]["intent_json"] is not None
+
+    def test_add_turn_to_missing_session_raises_not_found(self):
+        mgr = SessionManager()
+        with pytest.raises(ChatSessionNotFoundError):
+            mgr.add_turn(99999, role="user", message_text="Hello")
+
+    def test_end_missing_session_raises_not_found(self):
+        mgr = SessionManager()
+        with pytest.raises(ChatSessionNotFoundError):
+            mgr.end_session(99999)

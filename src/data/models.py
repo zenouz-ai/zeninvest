@@ -6,11 +6,13 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    ForeignKey,
     Float,
     Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase
 
@@ -503,9 +505,12 @@ class ChatTurn(Base):
     """Individual turn in a conversational trading session (US-1.9)."""
 
     __tablename__ = "chat_turns"
+    __table_args__ = (
+        UniqueConstraint("session_id", "turn_index", name="uq_chat_turns_session_id_turn_index"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(Integer, nullable=False, index=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     turn_index = Column(Integer, nullable=False, default=0)
     role = Column(String(20), nullable=False)
     message_text = Column(Text, nullable=True)

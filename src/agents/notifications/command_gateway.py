@@ -41,23 +41,17 @@ class CommandGateway:
     def enabled(self) -> bool:
         return self.settings.slack_trade_commands_enabled
 
-    def handle(self, request: CommandRequest) -> dict[str, Any]:
-        """Route an inbound command to the appropriate handler.
-
-        Returns a result dict with at minimum a 'status' key.
-        """
+    def resolve_request(self, request: CommandRequest) -> dict[str, Any]:
+        """Parse and resolve an inbound command without running the pipeline."""
         if not self.enabled:
             raise CommandGatewayDisabledError("Command gateway is disabled in configuration")
 
         text = request.raw_payload.get("text", "") or request.command
-        thread_ts = request.raw_payload.get("thread_ts") or request.raw_payload.get("ts", "")
 
-        # 1. Parse intent
         intent = parse_trade_command(text, use_llm_fallback=True)
         if not intent:
             return {"status": "unparseable", "message": "Could not parse trade command."}
 
-        # 2. Resolve ticker
         ticker_t212 = resolve_ticker_to_t212(intent.ticker)
         if not ticker_t212:
             return {
@@ -66,7 +60,26 @@ class CommandGateway:
                 "message": f"Unknown ticker: {intent.ticker}. Check the symbol and try again.",
             }
 
-        # 3. Run single-ticker pipeline
+        return {
+            "status": "ok",
+            "intent": intent,
+            "ticker_t212": ticker_t212,
+            "text": text,
+        }
+
+    def handle(self, request: CommandRequest) -> dict[str, Any]:
+        """Route an inbound command to the appropriate handler.
+
+        Returns a result dict with at minimum a 'status' key.
+        """
+        resolved = self.resolve_request(request)
+        if resolved.get("status") != "ok":
+            return resolved
+
+        intent = resolved["intent"]
+        ticker_t212 = resolved["ticker_t212"]
+        thread_ts = request.raw_payload.get("thread_ts") or request.raw_payload.get("ts", "")
+
         from src.orchestrator.single_ticker_run import SingleTickerRunner
 
         runner = SingleTickerRunner(dry_run=False)

@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-22
+last_updated: 2026-03-24
 ---
 
 # Sophistication Roadmap
@@ -90,8 +90,8 @@ timeline
 | | 19 | US-4.5 | Proactive Macro News Intelligence (daily scheduled `macro_scan`, persisted `macro_state`, `macro_signal_logs`, structured `macro_action_plan`, strategy/moderation context injection) |
 | | 20 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
 | | 21 | US-1.7.4 | World News Dashboard Tab (persistent headline archive, keyword categorisation, 5 macro REST endpoints, regime + headline feed + action plan page, Dashboard Home macro card, 23 tests) |
-| | 22 | US-1.6 | Slack NL Trade Commands (regex-first NL parser with company-name support, single-ticker pipeline, Socket Mode listener, CommandGateway, `slack_command_log`, large order confirmation, dashboard Commands page, 52 tests) |
-| | 23 | US-1.9 | Conversational Trading Workflow skeleton (ChatSession/ChatTurn models, SessionManager CRUD, dashboard chat API stubs) |
+| | 22 | US-1.6 | Slack NL Trade Commands (regex-first NL parser with company-name support, single-ticker pipeline, real confirmation gate, force override audit trail, dashboard Commands page, part of 113-test focused regression suite) |
+| | 23 | US-1.9 | Conversational Trading Workflow skeleton (ChatSession/ChatTurn models, SessionManager CRUD, dashboard chat API stubs, 404/422 validation hardening, chat-turn integrity constraints) |
 | | 3 | US-2.1 | Conviction Calibration |
 | | 4 | US-2.2 | Dynamic Strategy Weighting |
 | | 5 | US-2.3 | Moderator Effectiveness |
@@ -435,12 +435,12 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Acceptance Criteria:**
 - [x] Inbound Slack listener (Socket Mode) — `src/agents/notifications/slack_listener.py`
 - [x] NL parser: BUY/SELL/REVIEW + ticker + quantity or amount (£) — regex-first with Claude fallback
-- [x] Single-ticker pipeline (cycle_id = `slack-{ts}`); final action = user intent; risk can veto — `src/orchestrator/single_ticker_run.py`
+- [x] Single-ticker pipeline (cycle_id = `slack-{ts}`); moderation reviews final user action/size, risk can veto or explicit force can override — `src/orchestrator/single_ticker_run.py`
 - [x] REVIEW: run pipeline, post summary, no order
 - [x] Execute via OrderManager; Order.strategy = `slack_command`; confirm in Slack
-- [x] Safety: ticker validation, cash/position checks, large-order confirmation, risk veto messaging
+- [x] Safety: ticker validation, cash/position checks, real large-order confirmation, risk veto messaging, persisted response/audit status
 - [x] `slack_command_log`; CLI `slack_trade_listener`
-- [x] 43 new tests (parser, ticker resolution, pipeline, listener, chat session)
+- [x] Focused US-1.6/US-1.9 regression suite: 113 passing tests
 
 **Integration:** Long-running process; reuses Strategy/Moderation/Risk/Execution stack. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`.
 
@@ -458,7 +458,8 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] `ChatSession` and `ChatTurn` DB models + Alembic migration
 - [x] `SessionManager` stub with real CRUD: `create_session()`, `add_turn()`, `get_session()`, `end_session()`
 - [x] Dashboard chat API endpoints: `POST /api/chat/sessions`, `POST /sessions/{id}/turns`, `GET /sessions/{id}`, `POST /sessions/{id}/end`
-- [x] 5 tests against in-memory SQLite
+- [x] Missing-session `404`s, `channel_type` / `role` validation, and FK + unique turn-order protections
+- [x] Focused US-1.6/US-1.9 regression suite: 113 passing tests
 
 **Full workflow (pending):**
 - [ ] Session management supports start/resume/end/timeout with persistent multi-turn context
