@@ -86,6 +86,7 @@ class UniverseBubbleSchema(BaseModel):
     sold_live_qty: float = 0.0
     sold_dry_run_qty: float = 0.0
     research_calls: int = 0
+    research_calls_latest_cycle: int = 0
 
 
 class PositionSchema(BaseModel):

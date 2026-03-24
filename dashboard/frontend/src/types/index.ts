@@ -49,6 +49,7 @@ export interface UniverseBubbleItem extends Instrument {
   hold_qty: number
   sold_qty: number
   research_calls: number
+  research_calls_latest_cycle: number
 }
 
 /** Single moderator output in committee */
@@ -118,6 +119,10 @@ export interface InstrumentDetail extends Instrument {
     moderation?: ModerationEntry[] | null
     risk?: RiskFull
     research?: ResearchCall[] | null
+    scope_note?: string | null
+    pipeline_note?: string | null
+    latest_cycle_research_calls?: number
+    total_research_calls?: number
     execution_summary?: {
       last_buy?: {
         timestamp: string

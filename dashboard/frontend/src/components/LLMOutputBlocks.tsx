@@ -263,7 +263,7 @@ export function LLMResearchBlock({
     <div className="border border-terminal-border rounded p-3 bg-terminal-surface/30">
       <div className="flex items-center justify-between gap-2 mb-1">
         <span className="text-terminal-text-dim text-xs font-medium">
-          Agentic Research
+          Agentic Research (latest cycle)
           <span className="ml-2 px-1.5 py-0.5 rounded bg-accent/20 text-accent text-[10px]">
             {calls.length} call{calls.length !== 1 ? 's' : ''}
           </span>
@@ -370,6 +370,10 @@ export type LastDecision = {
   moderation?: ModerationEntry[] | null
   risk?: RiskFull
   research?: ResearchCall[] | null
+  scope_note?: string | null
+  pipeline_note?: string | null
+  latest_cycle_research_calls?: number
+  total_research_calls?: number
   execution_summary?: {
     last_buy?: {
       timestamp: string
@@ -403,6 +407,9 @@ export function LLMOutputPanel({
     return <div className="text-terminal-text-dim text-sm">No decision data for this ticker.</div>
   }
 
+  const latestCycleResearchCalls = lastDecision.latest_cycle_research_calls ?? lastDecision.research?.length ?? 0
+  const totalResearchCalls = lastDecision.total_research_calls ?? latestCycleResearchCalls
+
   return (
     <div className="space-y-4 text-sm">
       <div className="flex items-center gap-2 mb-2">
@@ -415,8 +422,22 @@ export function LLMOutputPanel({
         )}
       </div>
 
+      {(lastDecision.scope_note || lastDecision.pipeline_note || totalResearchCalls > latestCycleResearchCalls) && (
+        <div className="rounded border border-terminal-border bg-terminal-surface/30 px-3 py-2 text-xs text-terminal-text-dim space-y-1">
+          {lastDecision.scope_note && <div>{lastDecision.scope_note}</div>}
+          {lastDecision.pipeline_note && <div>{lastDecision.pipeline_note}</div>}
+          {totalResearchCalls > latestCycleResearchCalls && (
+            <div>
+              Research shown below is latest-cycle only: {latestCycleResearchCalls} call{latestCycleResearchCalls !== 1 ? 's' : ''}
+              {' '}in this cycle, {totalResearchCalls} total on record for this ticker.
+            </div>
+          )}
+        </div>
+      )}
+
       {lastDecision.execution_summary && (
         <div className="text-xs text-terminal-text-dim">
+          <span className="font-medium">Latest recorded order activity across cycles:</span>{' '}
           {lastDecision.execution_summary.last_buy ? (
             <span>
               Last BUY: {lastDecision.execution_summary.last_buy.quantity.toFixed(2)}&nbsp;sh ·{' '}

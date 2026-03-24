@@ -141,7 +141,7 @@ poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
 
 ### Dashboard Frontend
 
-**Brand:** ZENOUZ.ai — Graph Theory Z logo, cyan→emerald gradient, Outfit + JetBrains Mono typography, dark theme (`#06060a`). The frontend uses a shared page header across all tabs with a right-aligned hybrid Concept 1+2 bold Z mark rendered on transparent background (no card) for an embedded look. See `/branding/BRAND.md` for the full brand guide.
+**Brand:** `ZENOUZ.ai` is the company brand, `ZenInvest` is the product, and the authenticated dashboard home is titled `ZenInvest Agent`. The frontend uses the Graph Theory Z logo family, a cyan→emerald brand gradient, a dark base (`#06060a`), Syne for hero headings/KPIs, Outfit for body/UI copy, and JetBrains Mono for data labels. The shared page header across dashboard tabs includes a right-aligned hybrid bold Z mark inside a subtle glass panel. See `/branding/BRAND.md` for the full brand guide.
 
 ```bash
 cd dashboard/frontend

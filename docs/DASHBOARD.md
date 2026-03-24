@@ -1,7 +1,7 @@
 ---
 tags: [dashboard, frontend, api]
 status: current
-last_updated: 2026-03-22
+last_updated: 2026-03-24
 ---
 
 # Dashboard System
@@ -33,7 +33,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **10 pages:** Dashboard Home (system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture. Design: dark #0d1117, neutral #58a6ff, accent #d4a017, subtle grid texture. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-18): shared page header across all tabs with right-aligned hybrid Concept 1+2 bold Z mark, rendered on transparent background (no card/panel) for embedded dark-theme treatment. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
+| **React Frontend** | Complete | **10 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -204,13 +204,15 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 - Columns: ticker, name, sector, industry, market_cap tier, last_screened_at, data_available
 - Colour-coded labels based on latest committee verdict (from most recent `strategy_decisions` + `risk_decisions`)
 - Screening cooldown indicator (greyed out if within 72h window)
- - `Sold` column: total number of shares sold per ticker based on executed **and dry-run** SELL orders, with the backend exposing a live vs dry-run split so the UI can highlight when Sold > 0 is driven entirely by hypothetical dry-run cycles.
+- `Sold` column: total number of shares sold per ticker based on executed **and dry-run** SELL orders, with the backend exposing a live vs dry-run split so the UI can highlight when Sold > 0 is driven entirely by hypothetical dry-run cycles.
+- `Research` column: shows research activity as `latest cycle · total`. Example: `0 latest · 3 total` means the ticker has historical research on record, but the most recent strategy cycle did not use research for that ticker.
 
 **Ticker detail panel (expand/drill-down):**
 - Latest committee trail: Strategy decision → Moderation scores → Risk verdict → UOV score
-- Execution summary: most recent BUY/SELL orders for the ticker (quantity, status, timestamp), so reviewers can see whether BUY decisions actually resulted in Trading 212 orders or remained hypothetical (dry-run only or blocked before execution)
+- Execution summary: latest recorded BUY/SELL order activity for the ticker across all cycles (quantity, status, timestamp). This is intentionally broader than the latest strategy cycle so reviewers can see current order state even when the latest decision was HOLD or QUEUED.
 - Historical decisions: timeline of all past evaluations for this ticker
 - Research trail (Phase D, implemented): what each member searched for this ticker, key findings, cache hits, latency, cost — displayed in expandable `Agentic Research` block within the committee reasoning panel
+- Scope semantics: expanded committee reasoning is scoped to the **latest strategy cycle** only. If the latest action is `HOLD` or `QUEUED`, moderation and risk are intentionally shown as `Not invoked` because the orchestrator short-circuits before those stages for non-actionable decisions.
 - Company profile: business summary, sector, industry (from `instruments`)
 
 **Filters:**
@@ -566,14 +568,17 @@ See `/branding/BRAND.md` for the full brand guide.
 ### Typography
 
 - **Numbers/codes**: JetBrains Mono (400–500) — all data, timestamps, tickers
-- **Headings**: Outfit (600–700) — section titles, page headings
+- **Hero headings**: Syne (600–700) — dashboard page titles, hero metrics
+- **Section headings**: Outfit (500–700) — section titles, card headings
 - **Body**: Outfit (300–400) — labels, descriptions, body text
 - **Data labels/tags**: JetBrains Mono, 9–11px, uppercase, letter-spacing 2–4px
 
 ### Visual Style
 
 - ZENOUZ.ai branded: Graph Theory Z logo + "ZENOUZ.ai" wordmark in nav
-- Shared per-page branded header: hybrid Concept 1+2 bold Z rendered directly on page background (no boxed panel), consistently across all tabs
+- Product hierarchy: company `ZENOUZ.ai`, product `ZenInvest`, authenticated dashboard home `ZenInvest Agent`
+- Browser/app title format: `ZENOUZ.ai - ZenInvest`
+- Shared per-page branded header: hybrid Concept 1+2 bold Z presented in a subtle glass panel, consistently across all tabs
 - Dark background (#06060a) with subtle grid texture for depth
 - Cyan→emerald gradient for active states, chart accents, progress indicators
 - All numbers in monospace (JetBrains Mono)

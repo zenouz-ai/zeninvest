@@ -1,5 +1,12 @@
 # ZENOUZ.ai — Brand Guide
 
+## Brand Architecture
+
+- **Company:** `ZENOUZ.ai`
+- **Product:** `ZenInvest`
+- **Dashboard / operator experience:** `ZenInvest Agent`
+- **Browser/app title format:** `ZENOUZ.ai - ZenInvest`
+
 ## Active Logo: Graph Theory Z
 
 The Z letterform is constructed entirely from graph nodes and edges — no solid fills. The form emerges from a network structure, reflecting AI, mathematics, and connected intelligence.
@@ -63,7 +70,8 @@ Violet:  #5020cc  (instead of #6332ff)
 - **".ai":** weight 400, filled with the cyan→emerald gradient
 
 ### UI / Dashboard
-- **Headings:** Outfit (600–700)
+- **Hero headings / KPI callouts:** Syne (600–700)
+- **Section headings / body UI:** Outfit (400–600)
 - **Body:** Outfit (300–400)
 - **Code / Monospace:** JetBrains Mono (400–500)
 - **Data labels / Tags:** JetBrains Mono, 9–11px, uppercase, letter-spacing 2–4px
@@ -116,6 +124,7 @@ Use these as CSS variables in the dashboard frontend:
 - Keep the dark theme as default — it's the primary brand context
 - Use the Graph Theory Z logomark as a favicon (simplified to 5 nodes at small sizes)
 - Use JetBrains Mono for all data, numbers, timestamps, and code
+- In product UI, show the company/product hierarchy as `ZENOUZ.ai` first and `ZenInvest` second
 
 ### Don't
 - Don't place the logo on busy/patterned backgrounds without sufficient contrast

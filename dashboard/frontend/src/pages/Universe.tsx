@@ -24,6 +24,7 @@ type UniverseRow = Instrument & {
   _sold: number
   _uov_ewma: number | null
   _research: number
+  _researchLatest: number
 }
 
 const columnHelper = createColumnHelper<UniverseRow>()
@@ -51,6 +52,7 @@ export default function Universe() {
   const [soldMap, setSoldMap] = useState<Record<string, number>>({})
   const [uovMap, setUovMap] = useState<Record<string, number | null>>({})
   const [researchMap, setResearchMap] = useState<Record<string, number>>({})
+  const [researchLatestMap, setResearchLatestMap] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState(searchParams.get('q') ?? '')
@@ -96,6 +98,7 @@ export default function Universe() {
       const sold: Record<string, number> = {}
       const uov: Record<string, number | null> = {}
       const research: Record<string, number> = {}
+      const researchLatest: Record<string, number> = {}
       bubble.forEach((b) => {
         if (b.investigated) investigated[b.ticker] = true
         stats[b.ticker] = {
@@ -109,6 +112,7 @@ export default function Universe() {
         sold[b.ticker] = b.sold_qty ?? 0
         uov[b.ticker] = b.uov_ewma ?? null
         research[b.ticker] = b.research_calls ?? 0
+        researchLatest[b.ticker] = b.research_calls_latest_cycle ?? 0
       })
       setInvestigatedMap(investigated)
       setDecisionStatsMap(stats)
@@ -116,6 +120,7 @@ export default function Universe() {
       setSoldMap(sold)
       setUovMap(uov)
       setResearchMap(research)
+      setResearchLatestMap(researchLatest)
     } catch (err) {
       console.error('Failed to fetch universe:', err)
       setError(err instanceof Error ? err.message : 'Failed to load universe')
@@ -274,11 +279,18 @@ export default function Universe() {
         header: 'Research',
         enableSorting: true,
         cell: (info) => {
-          const v = info.getValue()
-          if (!v) return <span className="text-terminal-text-dim text-xs">—</span>
+          const total = info.getValue()
+          const latest = info.row.original._researchLatest
+          if (!total) return <span className="text-terminal-text-dim text-xs">—</span>
+          const label = total === latest ? `${latest} latest` : `${latest} latest · ${total} total`
           return (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono bg-accent/15 text-accent">
-              {v} call{v !== 1 ? 's' : ''}
+            <span
+              className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                latest > 0 ? 'bg-accent/15 text-accent' : 'bg-terminal-surface text-terminal-text-dim'
+              }`}
+              title="Research counts show latest decision cycle first, then all-time total for the ticker."
+            >
+              {label}
             </span>
           )
         },
@@ -352,6 +364,7 @@ export default function Universe() {
         _sold: sold,
         _uov_ewma: uov ?? null,
         _research: researchMap[ticker] ?? 0,
+        _researchLatest: researchLatestMap[ticker] ?? 0,
       }
     })
 
@@ -381,7 +394,7 @@ export default function Universe() {
     })
 
     return filtered
-  }, [instruments, search, sectorFilter, investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap, researchMap])
+  }, [instruments, search, sectorFilter, investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap, researchMap, researchLatestMap])
 
   const table = useReactTable({
     data: filteredData,

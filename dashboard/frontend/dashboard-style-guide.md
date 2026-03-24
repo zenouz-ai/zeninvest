@@ -1,6 +1,12 @@
-# InvestAgent Dashboard Style Guide
+# ZenInvest Dashboard Style Guide
 
-Use this document to style the InvestAgent React dashboard so it feels like part of `zenouz.ai`.
+Use this document to style the ZenInvest React dashboard so it feels like part of `ZENOUZ.ai`.
+
+Brand hierarchy for the product shell:
+
+- company: `ZENOUZ.ai`
+- product: `ZenInvest`
+- authenticated dashboard home: `ZenInvest Agent`
 
 The goal is not to clone the landing page section-for-section. The goal is to translate the website's visual language into a product UI:
 
@@ -327,4 +333,3 @@ The dashboard should look like it belongs to `zenouz.ai` if:
 Use this if you want a compact handoff:
 
 > Style this React dashboard so it matches the `zenouz.ai` website. Use a dark premium editorial aesthetic with `Outfit` body text, `Syne` headings, and `JetBrains Mono` for labels/status/meta. Use near-black backgrounds, dark glass panels, thin borders, large rounded corners, and restrained cyan/violet/emerald accents. Primary actions use the site gradient (`#6332ff -> #00d4ff -> #00ffa3`). Panels should feel like a serious AI decision system, not a generic SaaS admin template. Build shared theme tokens and reusable primitives first, then apply them across header, sidebar, KPI cards, tables, charts, forms, and status pills. Keep motion subtle, spacing generous, and hierarchy clear.
-

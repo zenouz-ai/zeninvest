@@ -123,6 +123,12 @@ def _get_instrument_label(session: Session, ticker: str) -> tuple[str | None, di
         .order_by(ResearchLog.created_at)
         .all()
     )
+    total_research_calls = (
+        session.query(func.count(ResearchLog.id))
+        .filter(ResearchLog.ticker == ticker)
+        .scalar()
+        or 0
+    )
     research_data: list[dict[str, Any]] | None = None
     if research_rows:
         research_data = [
@@ -141,12 +147,23 @@ def _get_instrument_label(session: Session, ticker: str) -> tuple[str | None, di
             for r in research_rows
         ]
 
+    pipeline_note: str | None = None
+    if strategy.action in ("HOLD", "QUEUED"):
+        pipeline_note = (
+            f"Latest decision is {strategy.action}, so moderation and risk were not invoked "
+            "for this cycle."
+        )
+
     decision_data = {
         "cycle_id": strategy.cycle_id,
         "strategy": strategy_full,
         "moderation": moderation_full,
         "risk": risk_full,
         "research": research_data,
+        "scope_note": "Expanded reasoning is scoped to the latest strategy cycle only.",
+        "pipeline_note": pipeline_note,
+        "latest_cycle_research_calls": len(research_rows),
+        "total_research_calls": int(total_research_calls),
     }
 
     return label, decision_data
@@ -206,6 +223,12 @@ async def get_universe_bubble(
             .filter(StrategyDecision.ticker.in_(tickers))
             .all()
         )
+        latest_strategy_rows = (
+            session.query(StrategyDecision.ticker, StrategyDecision.cycle_id)
+            .filter(StrategyDecision.ticker.in_(tickers))
+            .order_by(desc(StrategyDecision.timestamp))
+            .all()
+        )
         decision_stats: dict[str, dict[str, int]] = {}
         for ticker, action in decision_rows:
             stats = decision_stats.setdefault(
@@ -216,6 +239,10 @@ async def get_universe_bubble(
             act = (action or "").upper()
             if act in ("BUY", "SELL", "REDUCE", "HOLD"):
                 stats[act] += 1
+        latest_cycle_by_ticker: dict[str, str] = {}
+        for ticker, cycle_id in latest_strategy_rows:
+            if ticker not in latest_cycle_by_ticker:
+                latest_cycle_by_ticker[ticker] = cycle_id
         scores_rows = (
             session.query(OpportunityScoreSnapshot)
             .filter(OpportunityScoreSnapshot.ticker.in_(tickers))
@@ -281,6 +308,16 @@ async def get_universe_bubble(
             .all()
         )
         research_counts: dict[str, int] = {t: int(c) for t, c in research_count_rows}
+        research_cycle_count_rows = (
+            session.query(ResearchLog.ticker, ResearchLog.cycle_id, func.count(ResearchLog.id))
+            .filter(ResearchLog.ticker.in_(tickers))
+            .group_by(ResearchLog.ticker, ResearchLog.cycle_id)
+            .all()
+        )
+        research_counts_latest_cycle: dict[str, int] = {}
+        for ticker, cycle_id, count in research_cycle_count_rows:
+            if latest_cycle_by_ticker.get(ticker) == cycle_id:
+                research_counts_latest_cycle[ticker] = int(count)
 
         result = []
         for i in instruments:
@@ -309,6 +346,7 @@ async def get_universe_bubble(
                     sold_live_qty=sold_live_qty.get(i.ticker, 0.0),
                     sold_dry_run_qty=sold_dry_run_qty.get(i.ticker, 0.0),
                     research_calls=research_counts.get(i.ticker, 0),
+                    research_calls_latest_cycle=research_counts_latest_cycle.get(i.ticker, 0),
                 )
             )
         return result
