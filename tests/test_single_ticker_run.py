@@ -217,6 +217,44 @@ class TestSingleTickerRunner:
 
         assert result.status == "executed"
 
+    def test_force_buy_bypasses_risk_veto(self, mock_runner):
+        """Force buy should override risk REJECT and proceed to execution."""
+        runner, mocks = mock_runner
+        risk_verdict = MagicMock()
+        risk_verdict.verdict = "REJECT"
+        risk_verdict.triggered_rules = ["cash_floor"]
+        risk_verdict.reasoning = "Cash floor breached"
+        risk_verdict.adjusted_allocation_pct = None
+        mocks["risk_manager"].evaluate_trade.return_value = risk_verdict
+
+        intent = TradeCommandIntent(
+            action="BUY", ticker="AAPL", raw_message="force buy AAPL", force=True
+        )
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "executed"
+        assert result.risk_verdict_str == "OVERRIDDEN"
+        mocks["order_manager"].execute_market_order.assert_called_once()
+
+    def test_non_force_buy_rejected_by_risk(self, mock_runner):
+        """Normal buy (force=False) should still be rejected by risk VETO."""
+        runner, mocks = mock_runner
+        risk_verdict = MagicMock()
+        risk_verdict.verdict = "REJECT"
+        risk_verdict.triggered_rules = ["cash_floor"]
+        risk_verdict.reasoning = "Cash floor breached"
+        risk_verdict.adjusted_allocation_pct = None
+        mocks["risk_manager"].evaluate_trade.return_value = risk_verdict
+
+        intent = TradeCommandIntent(
+            action="BUY", ticker="AAPL", raw_message="BUY AAPL", force=False
+        )
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "rejected"
+        assert "Risk VETO" in result.rejection_reason
+        mocks["order_manager"].execute_market_order.assert_not_called()
+
 
 class TestSingleTickerResult:
 

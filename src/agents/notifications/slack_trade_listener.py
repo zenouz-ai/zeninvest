@@ -6,11 +6,15 @@ Usage:
 
 import signal
 import sys
+import threading
 
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
 logger = get_logger("slack_trade_listener")
+
+# Module-level shutdown event shared with the listener
+_shutdown_event = threading.Event()
 
 
 def main() -> None:
@@ -34,13 +38,14 @@ def main() -> None:
 
     def shutdown(*_: object) -> None:
         logger.info("Shutting down Slack trade listener...")
-        sys.exit(0)
+        _shutdown_event.set()
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
     logger.info("Starting Slack trade command listener...")
-    listener.start()
+    listener.start(shutdown_event=_shutdown_event)
+    logger.info("Slack trade listener stopped.")
 
 
 if __name__ == "__main__":
