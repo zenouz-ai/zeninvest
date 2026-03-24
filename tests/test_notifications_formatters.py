@@ -349,6 +349,14 @@ class TestFormatExecutedReply:
             value_gbp=525.0,
             moderation_consensus="APPROVED",
             risk_verdict_str="APPROVE",
+            conviction=82,
+            strategy_action="BUY",
+            strategy_decision={
+                "action": "BUY",
+                "target_allocation_pct": 5.0,
+                "stop_loss_pct": -8,
+                "reasoning": "Strong setup with improving fundamentals.",
+            },
             execution_result={
                 "status": "filled",
                 "order_id": 42,
@@ -364,6 +372,8 @@ class TestFormatExecutedReply:
         assert "Order ID: 42" in reply
         assert "Moderation: APPROVED" in reply
         assert "Risk: APPROVE" in reply
+        assert "Strategy: BUY (conviction 82)" in reply
+        assert "Strong setup with improving fundamentals." in reply
 
     def test_executed_shows_user_override(self):
         result = _make_result(

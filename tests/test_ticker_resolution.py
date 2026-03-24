@@ -27,6 +27,7 @@ def db_session():
     session.add(Instrument(ticker="MSFT_US_EQ", name="Microsoft Corporation"))
     session.add(Instrument(ticker="BP._UK_EQ", name="BP plc"))
     session.add(Instrument(ticker="DMYI_US_EQ", name="IonQ"))
+    session.add(Instrument(ticker="VACQ_US_EQ", name="Rocket Lab Corporation"))
     session.commit()
 
     yield session
@@ -65,6 +66,11 @@ class TestResolveTickerToT212:
         """IonQ resolves to the currently-listed Trading 212 instrument id."""
         result = resolve_ticker_to_t212("IONQ")
         assert result == "DMYI_US_EQ"
+
+    def test_alias_override_handles_legacy_rklb_symbol(self):
+        """Rocket Lab should resolve through the legacy T212 instrument id."""
+        result = resolve_ticker_to_t212("RKLB")
+        assert result == "VACQ_US_EQ"
 
     def test_unknown_returns_none(self):
         """Unknown ticker returns None."""

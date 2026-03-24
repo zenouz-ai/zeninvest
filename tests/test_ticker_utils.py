@@ -30,3 +30,8 @@ def test_non_standard_eq_suffix():
 
 def test_whitespace_handling():
     assert t212_to_yf("  AAPL_US_EQ  ") == "AAPL"
+
+
+def test_legacy_t212_symbol_overrides():
+    assert t212_to_yf("DMYI_US_EQ") == "IONQ"
+    assert t212_to_yf("VACQ_US_EQ") == "RKLB"

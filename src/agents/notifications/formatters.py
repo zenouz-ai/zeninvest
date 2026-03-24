@@ -639,8 +639,30 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
     if result.strategy_action and result.strategy_action != action:
         lines.append(f"(Strategy suggested {result.strategy_action}; you overrode to {action})")
 
+    if result.strategy_decision:
+        alloc = result.strategy_decision.get("target_allocation_pct", "—")
+        stop = result.strategy_decision.get("stop_loss_pct", "—")
+        lines.append(f"Strategy: {result.strategy_action or 'N/A'} (conviction {result.conviction})")
+        lines.append(f"Allocation: {alloc}% | Stop-loss: {stop}%")
+        reasoning = result.strategy_decision.get("reasoning", "")
+        if reasoning:
+            lines.append(f"Reasoning: {reasoning}")
+
     if result.moderation_consensus:
         lines.append(f"Moderation: {result.moderation_consensus}")
+    if result.moderation_result:
+        gpt = result.moderation_result.get("gpt4o_verdict")
+        if gpt:
+            lines.append(f"  • GPT-4o (Skeptic): {_format_gpt_moderator_header(gpt)}")
+            r = gpt.get("reasoning", "")
+            if r:
+                lines.append(f"    {r}")
+        gem = result.moderation_result.get("gemini_verdict")
+        if gem:
+            lines.append(f"  • Gemini (Risk): {_format_gemini_moderator_header(gem)}")
+            r = _format_gemini_reasoning(gem)
+            if r:
+                lines.append(f"    {r}")
 
     # Risk verdict — highlight force override
     if result.risk_verdict_str == "OVERRIDDEN":
@@ -650,6 +672,8 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
             lines.append(f"Overridden rules: {', '.join(triggered)}")
     elif result.risk_verdict_str:
         lines.append(f"Risk: {result.risk_verdict_str}")
+    if result.risk_verdict and result.risk_verdict.get("triggered_rules"):
+        lines.append(f"Risk rules: {', '.join(result.risk_verdict['triggered_rules'])}")
 
     if result.execution_result:
         order_id = result.execution_result.get("order_id")

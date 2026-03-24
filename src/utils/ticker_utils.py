@@ -9,6 +9,19 @@ from src.utils.logger import get_logger
 logger = get_logger("ticker_utils")
 
 
+# Trading 212 sometimes keeps legacy internal instrument ids after ticker changes
+# (commonly former SPAC identifiers). These overrides map between the internal
+# T212 id and the live market symbol used by yfinance and human users.
+T212_TO_MARKET_SYMBOL_OVERRIDES = {
+    "DMYI_US_EQ": "IONQ",
+    "VACQ_US_EQ": "RKLB",
+}
+MARKET_SYMBOL_TO_T212_OVERRIDES = {
+    market_symbol: t212_symbol
+    for t212_symbol, market_symbol in T212_TO_MARKET_SYMBOL_OVERRIDES.items()
+}
+
+
 def t212_to_yf(ticker: str) -> str:
     """Convert T212 ticker to yfinance symbol.
 
@@ -25,7 +38,11 @@ def t212_to_yf(ticker: str) -> str:
     Returns:
         yfinance symbol (e.g. AAPL, BRK.B, TAP-A)
     """
-    base = ticker.replace("_US_EQ", "").replace("_UK_EQ", "").strip()
+    normalized = ticker.strip().upper()
+    if normalized in T212_TO_MARKET_SYMBOL_OVERRIDES:
+        return T212_TO_MARKET_SYMBOL_OVERRIDES[normalized]
+
+    base = normalized.replace("_US_EQ", "").replace("_UK_EQ", "").strip()
     if base.endswith("_EQ"):
         base = base[:-3].strip()  # Fallback for non-standard suffix (e.g. VPNUS_EQ)
     base = base.replace("/", "-")  # Class A: TAP/A -> TAP-A (Yahoo uses hyphen)
@@ -51,6 +68,13 @@ def resolve_ticker_to_t212(symbol: str) -> str | None:
     symbol = symbol.strip().upper()
     session = get_session()
     try:
+        # 0. Known alias override (e.g. IONQ -> DMYI_US_EQ, RKLB -> VACQ_US_EQ)
+        alias_ticker = MARKET_SYMBOL_TO_T212_OVERRIDES.get(symbol)
+        if alias_ticker:
+            inst = session.query(Instrument).filter(Instrument.ticker == alias_ticker).first()
+            if inst:
+                return inst.ticker
+
         # 1. Exact match (user may have typed the T212 format directly)
         inst = session.query(Instrument).filter(Instrument.ticker == symbol).first()
         if inst:

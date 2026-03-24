@@ -163,6 +163,27 @@ class TestSingleTickerRunner:
         assert "Risk VETO" in result.rejection_reason
         mocks["order_manager"].execute_market_order.assert_not_called()
 
+    def test_moderation_blocked_rejects_before_risk_and_execution(self, mock_runner):
+        runner, mocks = mock_runner
+        mod_result = MagicMock()
+        mod_result.consensus = "BLOCKED"
+        mod_result.to_dict.return_value = {
+            "consensus": "BLOCKED",
+            "gpt4o_verdict": {"verdict": "DISAGREE"},
+            "gemini_verdict": {"verdict": "DISAGREE"},
+        }
+        mocks["moderation_panel"].review_trade.return_value = mod_result
+
+        intent = TradeCommandIntent(
+            action="BUY", ticker="AAPL", raw_message="BUY AAPL"
+        )
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "rejected"
+        assert result.rejection_reason == "BLOCKED by moderation consensus"
+        mocks["risk_manager"].evaluate_trade.assert_not_called()
+        mocks["order_manager"].execute_market_order.assert_not_called()
+
     def test_sell_no_position_rejected(self, mock_runner):
         runner, mocks = mock_runner
         mocks["t212_client"].get_position.return_value = {"quantity": 0}
@@ -260,6 +281,26 @@ class TestSingleTickerRunner:
         result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
 
         assert result.status == "executed"
+
+    def test_below_min_order_value_is_rejected_with_human_message(self, mock_runner):
+        runner, mocks = mock_runner
+        mocks["order_manager"].execute_market_order.return_value = {
+            "status": "skipped",
+            "reason": "below_min_order_value",
+            "ticker": "AAPL_US_EQ",
+            "action": "BUY",
+            "quantity": 2.0,
+            "price": 150.0,
+            "value_gbp": 300.0,
+        }
+
+        intent = TradeCommandIntent(
+            action="BUY", ticker="AAPL", quantity_shares=2, raw_message="BUY 2 AAPL"
+        )
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "rejected"
+        assert result.rejection_reason == "Order value £300.00 is below the minimum order size of £500.00"
 
     def test_force_buy_bypasses_risk_veto(self, mock_runner):
         """Force buy should override risk REJECT and proceed to execution."""

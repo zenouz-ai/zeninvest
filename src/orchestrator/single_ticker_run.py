@@ -267,6 +267,17 @@ class SingleTickerRunner:
                 result.moderation_result = mod_result.to_dict()
                 result.moderation_consensus = mod_result.consensus
 
+                if intent.action != "REVIEW" and result.moderation_consensus == "BLOCKED":
+                    result.status = "rejected"
+                    result.rejection_reason = "BLOCKED by moderation consensus"
+                    self._update_command_log(
+                        cmd_log,
+                        "rejected",
+                        rejection_reason=result.rejection_reason,
+                    )
+                    logger.info(f"[{cycle_id}] {ticker_t212} BLOCKED by moderation panel")
+                    return result
+
             # --- Phase 5: REVIEW stops here ---
             if intent.action == "REVIEW":
                 result.status = "review_only"
@@ -397,6 +408,18 @@ class SingleTickerRunner:
                 f"qty={result.quantity:.2f}, value=£{result.value_gbp:.2f}, "
                 f"status={exec_result.get('status')}"
             )
+        elif exec_result.get("status") == "skipped":
+            result.status = "rejected"
+            result.rejection_reason = self._format_execution_rejection(exec_result)
+            self._update_command_log(
+                result.command_log_id,
+                "rejected",
+                rejection_reason=result.rejection_reason,
+            )
+            logger.info(
+                f"[{result.cycle_id}] {result.user_action} {result.ticker_t212} SKIPPED: "
+                f"{result.rejection_reason}"
+            )
         else:
             result.status = "error"
             result.error_message = exec_result.get("reason", "Execution failed")
@@ -411,6 +434,22 @@ class SingleTickerRunner:
             )
 
         return result
+
+    def _format_execution_rejection(self, exec_result: dict[str, Any]) -> str:
+        """Translate execution skip reasons into user-friendly rejection messages."""
+        reason = str(exec_result.get("reason", "")).strip()
+        if reason == "below_min_order_value":
+            value = float(exec_result.get("value_gbp", 0) or 0)
+            min_order = float(self.settings.min_order_value_gbp)
+            return (
+                f"Order value £{value:.2f} is below the minimum order size "
+                f"of £{min_order:.2f}"
+            )
+        if reason == "duplicate":
+            return "A matching order was already placed recently."
+        if reason == "zero_quantity":
+            return "Calculated order quantity is zero."
+        return reason or "Execution failed"
 
     def _validate_preflight(self, ticker_t212: str, intent: TradeCommandIntent) -> str | None:
         """Run pre-flight validation. Returns error message or None if ok."""
