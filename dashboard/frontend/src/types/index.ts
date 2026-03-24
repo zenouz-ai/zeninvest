@@ -209,6 +209,29 @@ export interface MacroSummary {
   last_updated: string | null
 }
 
+// --- Slack Trade Commands ---
+
+export interface SlackCommand {
+  id: number
+  timestamp: string | null
+  channel_id: string | null
+  user_id: string | null
+  raw_message: string
+  ticker: string | null
+  action: string | null
+  cycle_id: string | null
+  order_id: number | null
+  status: string
+  rejection_reason: string | null
+  response_message: string | null
+}
+
+export interface CommandStats {
+  total: number
+  by_status: Record<string, number>
+  by_action: Record<string, number>
+}
+
 // Utility function to clean ticker format for display
 export function cleanTicker(ticker: string): string {
   return ticker.replace(/_US_EQ$/, '').replace(/_UK_EQ$/, '').replace(/\._/g, '.')

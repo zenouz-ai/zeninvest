@@ -14,24 +14,26 @@ logger = get_logger("trade_command_parser")
 
 # Regex patterns for common trade command formats
 # Matches: BUY AAPL, SELL 10 TSLA, REVIEW MSFT, BUY £500 NVDA, buy 5 shares of AAPL
+# Also matches company names: buy apple, sell google, review nvidia
 _ACTION_RE = r"(?P<action>BUY|SELL|REVIEW)"
 _QTY_RE = r"(?:(?P<qty>\d+(?:\.\d+)?)\s+(?:shares?\s+(?:of\s+)?)?)"
 _AMT_RE = r"(?:[£$](?P<amt>\d+(?:\.\d+)?)\s+(?:of\s+|worth\s+(?:of\s+)?)?)"
-_TICKER_RE = r"(?P<ticker>[A-Z]{1,5}(?:\.[A-Z])?)"
+# Matches ticker symbols (AAPL, BP.L) or single-word company names (apple, nvidia)
+_TICKER_RE = r"(?P<ticker>[A-Za-z]{1,20}(?:\.[A-Za-z])?)"
 
 _PATTERNS = [
-    # "BUY 10 shares of AAPL" or "BUY 10 AAPL"
+    # "BUY 10 shares of AAPL" or "BUY 10 AAPL" or "BUY 10 shares of apple"
     re.compile(rf"^\s*{_ACTION_RE}\s+{_QTY_RE}{_TICKER_RE}\s*$", re.IGNORECASE),
-    # "BUY £500 AAPL" or "BUY $500 of AAPL"
+    # "BUY £500 AAPL" or "BUY $500 of AAPL" or "BUY £500 apple"
     re.compile(rf"^\s*{_ACTION_RE}\s+{_AMT_RE}{_TICKER_RE}\s*$", re.IGNORECASE),
-    # "BUY AAPL" (simplest)
+    # "BUY AAPL" or "buy apple" (simplest)
     re.compile(rf"^\s*{_ACTION_RE}\s+{_TICKER_RE}\s*$", re.IGNORECASE),
     # "BUY AAPL 10" (ticker before qty)
     re.compile(
         rf"^\s*{_ACTION_RE}\s+{_TICKER_RE}\s+(?P<qty>\d+(?:\.\d+)?)\s*$",
         re.IGNORECASE,
     ),
-    # "BUY AAPL £500" (ticker before amount)
+    # "BUY AAPL £500" or "buy apple £500" (ticker before amount)
     re.compile(
         rf"^\s*{_ACTION_RE}\s+{_TICKER_RE}\s+[£$](?P<amt>\d+(?:\.\d+)?)\s*$",
         re.IGNORECASE,

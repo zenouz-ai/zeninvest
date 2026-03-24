@@ -91,6 +91,35 @@ class TestRegexParser:
         assert result.action == "BUY"
         assert result.ticker == "AAPL"
 
+    def test_company_name_buy_apple(self):
+        result = _try_regex("buy apple")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "APPLE"
+
+    def test_company_name_sell_google(self):
+        result = _try_regex("sell google")
+        assert result is not None
+        assert result.action == "SELL"
+        assert result.ticker == "GOOGLE"
+
+    def test_company_name_review_nvidia(self):
+        result = _try_regex("review nvidia")
+        assert result is not None
+        assert result.action == "REVIEW"
+        assert result.ticker == "NVIDIA"
+
+    def test_company_name_with_amount(self):
+        result = _try_regex("buy £500 apple")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "APPLE"
+        assert result.amount_gbp == 500.0
+
+    def test_multi_word_not_matched(self):
+        """Multi-word company names (e.g. 'Bank of America') fall through to Claude."""
+        assert _try_regex("buy bank of america") is None
+
 
 class TestParseTradeCommand:
     """Test the main parse_trade_command function (no LLM)."""

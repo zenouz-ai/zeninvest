@@ -9,6 +9,7 @@ import OrderManagement from './pages/OrderManagement'
 import Costs from './pages/Costs'
 import Roadmap from './pages/Roadmap'
 import WorldNews from './pages/WorldNews'
+import Commands from './pages/Commands'
 import { AlertBanner } from './components/AlertBanner'
 import { DashboardAuthBanner } from './components/DashboardAuthBanner'
 import { DashboardApiKeyModal } from './components/DashboardApiKeyModal'
@@ -76,6 +77,7 @@ function MoreDropdown() {
         >
           <NavLink to="/opportunity" className={dropdownLinkClass} onClick={() => setOpen(false)}>Opportunity</NavLink>
           <NavLink to="/orders" className={dropdownLinkClass} onClick={() => setOpen(false)}>Order Mgmt</NavLink>
+          <NavLink to="/commands" className={dropdownLinkClass} onClick={() => setOpen(false)}>Commands</NavLink>
           <NavLink to="/world-news" className={dropdownLinkClass} onClick={() => setOpen(false)}>World News</NavLink>
           <NavLink to="/costs" className={dropdownLinkClass} onClick={() => setOpen(false)}>Costs</NavLink>
           <NavLink to="/roadmap" className={dropdownLinkClass} onClick={() => setOpen(false)}>Roadmap</NavLink>
@@ -181,6 +183,7 @@ function App() {
                 <NavLink to="/runs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Run History</NavLink>
                 <NavLink to="/opportunity" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Opportunity</NavLink>
                 <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>
+                <NavLink to="/commands" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Commands</NavLink>
                 <NavLink to="/world-news" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>World News</NavLink>
                 <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>
                 <NavLink to="/roadmap" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Roadmap</NavLink>
@@ -211,6 +214,7 @@ function App() {
             <Route path="/opportunity" element={<Opportunity />} />
             <Route path="/orders" element={<OrderManagement />} />
             <Route path="/costs" element={<Costs />} />
+            <Route path="/commands" element={<Commands />} />
             <Route path="/world-news" element={<WorldNews />} />
             <Route path="/roadmap" element={<Roadmap />} />
           </Routes>
