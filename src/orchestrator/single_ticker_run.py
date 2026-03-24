@@ -360,9 +360,9 @@ class SingleTickerRunner:
         """Extract current price from stock data."""
         indicators = stock_data.get("indicators", {})
         if indicators and isinstance(indicators, dict):
-            close = indicators.get("close")
-            if close is not None:
-                return float(close)
+            price = indicators.get("current_price") or indicators.get("close")
+            if price is not None:
+                return float(price)
         fundamentals = stock_data.get("fundamentals", {})
         if fundamentals and isinstance(fundamentals, dict):
             price = fundamentals.get("currentPrice") or fundamentals.get("previousClose")
