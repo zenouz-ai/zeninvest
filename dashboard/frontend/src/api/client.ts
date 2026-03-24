@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order, UniverseBubbleItem, MacroState, MacroHeadline, MacroSummary } from '../types'
+import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order, UniverseBubbleItem, MacroState, MacroHeadline, MacroSummary, SlackCommand, CommandStats } from '../types'
 import { getDashboardApiKey } from '../utils/apiKey'
 import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
 
@@ -415,6 +415,24 @@ export const macroApi = {
   },
   summary: async (): Promise<MacroSummary> => {
     const response = await api.get('/api/macro/summary')
+    return response.data
+  },
+}
+
+// Commands API (Slack trade commands)
+export const commandsApi = {
+  list: async (params?: {
+    limit?: number
+    offset?: number
+    ticker?: string
+    action?: string
+    status?: string
+  }): Promise<SlackCommand[]> => {
+    const response = await api.get('/api/commands/', { params })
+    return response.data
+  },
+  stats: async (): Promise<CommandStats> => {
+    const response = await api.get('/api/commands/stats')
     return response.data
   },
 }

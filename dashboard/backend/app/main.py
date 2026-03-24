@@ -16,6 +16,7 @@ from .middleware.auth import APIKeyMiddleware, get_api_key, warn_if_unauthentica
 from .routers import (
     api_usage,
     chat,
+    commands,
     costs,
     dashboard,
     decisions,
@@ -107,6 +108,7 @@ app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(docs.router, prefix="/api/docs", tags=["docs"])
 app.include_router(macro.router, prefix="/api/macro", tags=["macro"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(commands.router, prefix="/api/commands", tags=["commands"])
 
 
 @app.get("/health")
