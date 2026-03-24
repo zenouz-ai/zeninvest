@@ -177,11 +177,11 @@ notifications:
   dedup_window_seconds: 300
   include_dry_run_alerts: false
   command_gateway:
-    enabled: false
+    enabled: true
   slack_trade_commands:
-    enabled: false
-    channel_id: ""
-    confirmation_threshold_gbp: 500
+    enabled: true
+    channel_id: "C0ANG26SBD0"
+    confirmation_threshold_gbp: 2000
     confirmation_timeout_minutes: 10
 
 dashboard:
