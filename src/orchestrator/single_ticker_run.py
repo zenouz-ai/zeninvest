@@ -220,6 +220,11 @@ class SingleTickerRunner:
             if intent.action == "REVIEW":
                 result.status = "review_only"
                 self._update_command_log(cmd_log, "executed")
+                logger.info(
+                    f"[{cycle_id}] REVIEW complete for {ticker_t212}: "
+                    f"{result.strategy_action} (conviction {result.conviction}), "
+                    f"moderation={result.moderation_consensus}"
+                )
                 return result
 
             # --- Phase 6: Override with user intent ---
@@ -265,6 +270,7 @@ class SingleTickerRunner:
                 result.status = "rejected"
                 result.rejection_reason = f"Risk VETO: {risk_verdict.reasoning}"
                 self._update_command_log(cmd_log, "rejected", rejection_reason=result.rejection_reason)
+                logger.info(f"[{cycle_id}] {intent.action} {ticker_t212} REJECTED by risk: {risk_verdict.reasoning}")
                 return result
 
             # Apply risk resize if needed
@@ -318,10 +324,16 @@ class SingleTickerRunner:
                     cmd_log, "executed",
                     order_id=exec_result.get("order_id"),
                 )
+                logger.info(
+                    f"[{cycle_id}] {intent.action} {ticker_t212} EXECUTED: "
+                    f"qty={result.quantity:.2f}, value=£{result.value_gbp:.2f}, "
+                    f"status={exec_result.get('status')}"
+                )
             else:
                 result.status = "error"
                 result.error_message = exec_result.get("reason", "Execution failed")
                 self._update_command_log(cmd_log, "error", rejection_reason=result.error_message)
+                logger.warning(f"[{cycle_id}] {intent.action} {ticker_t212} FAILED: {result.error_message}")
 
             return result
 
