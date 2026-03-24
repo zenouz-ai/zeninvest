@@ -1,5 +1,5 @@
 /**
- * Bridges Axios (and SSE) 403 responses to React without importing React here.
+ * Bridges protected API 401/403 responses to React without importing React here.
  * App subscribes via useSyncExternalStore or a small hook wrapper.
  */
 

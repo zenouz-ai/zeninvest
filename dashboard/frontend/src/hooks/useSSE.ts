@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Event } from '../types'
-import { getDashboardApiKey } from '../utils/apiKey'
 import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
 import { drainSseBuffer, reconnectDelayMs } from '../utils/sseStream'
 
@@ -63,12 +62,14 @@ export function useSSE(options: UseSSEOptions = {}) {
       setError(null)
       abort = new AbortController()
       const headers: Record<string, string> = { Accept: 'text/event-stream' }
-      const key = getDashboardApiKey()
-      if (key) headers['X-API-Key'] = key
 
       let res: Response
       try {
-        res = await fetch(streamUrl, { headers, signal: abort.signal })
+        res = await fetch(streamUrl, {
+          headers,
+          signal: abort.signal,
+          credentials: 'include',
+        })
       } catch (e) {
         if (cancelled || abort.signal.aborted) return
         setConnectionState('disconnected')
@@ -81,7 +82,7 @@ export function useSSE(options: UseSSEOptions = {}) {
         if (cancelled || abort.signal.aborted) return
         setConnectionState('disconnected')
         setError(new Error(`SSE HTTP ${res.status}`))
-        if (res.status === 403) {
+        if (res.status === 401 || res.status === 403) {
           setDashboardAuthRequired(true)
           return
         }

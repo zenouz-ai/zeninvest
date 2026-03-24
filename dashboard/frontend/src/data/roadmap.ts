@@ -240,7 +240,7 @@ export const MILESTONES: Milestone[] = [
     effort: 'S',
     priority: 'P0',
     description:
-      'APIKeyMiddleware on all /api/* endpoints; DASHBOARD_API_KEY env var; configurable public_routes for GET-only demo exposure; write endpoints always protected; 33 tests',
+      'Session-based operator auth, explicit /api/public/* read-only routes, secure cookies, and protected operator tabs backed by backend login',
     architectureComponents: ['Dashboard', 'FastAPI'],
   },
   {

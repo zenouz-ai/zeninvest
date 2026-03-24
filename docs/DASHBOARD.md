@@ -52,7 +52,7 @@ Based on `docs/UX_AUDIT.md`, resolved 10 of 28 findings (2 Critical, 5 Major, 3 
 - **Positions on home page**: top 5 positions by |P&L| shown on Dashboard with inline bar chart, linking to Portfolio page.
 - **Performance card**: replaces SSE status card with Sharpe (30d), win rate, max drawdown, trade count from `/api/performance/metrics`.
 - **Pause/Resume toggle**: wired `systemApi.pause()` / `resume()` to Dashboard UI with confirmation modal.
-- **SSE lifted to App level**: SSE connection shared between AlertBanner and Dashboard via props. The client uses **`fetch()` + `ReadableStream`** (not `EventSource`) so **`X-API-Key`** can be sent when `DASHBOARD_API_KEY` / `VITE_API_KEY` / `localStorage.dashboard_api_key` is set; reconnect uses exponential backoff.
+- **SSE lifted to App level**: SSE connection shared between AlertBanner and Dashboard via props. The client uses **`fetch()` + `ReadableStream`** (not `EventSource`) with session credentials included; reconnect uses exponential backoff.
 - **PAUSED badge colour**: distinct cyan badge instead of reusing ACTIVE green.
 - **aria-expanded** on all collapsible sections, **aria-live** on activity feed.
 - **Mobile nav fix**: hamburger menu closes on link click.
@@ -111,7 +111,7 @@ Next: migrate 10 existing pages to use these primitives in place of ad-hoc marku
 
 ### Deployment (delivered)
 
-See `docs/DASHBOARD_DEPLOYMENT.md` — two Docker services: `investment-agent` (`Dockerfile.agent`, Python-only scheduler) and `dashboard` (`Dockerfile`, multi-stage Node + Python with frontend build). SPA fallback on port 8000. Activity feed (SSE) uses relative URL — works when accessing at `http://VPS_IP:8000`. CORS origins configurable via `dashboard.cors_origins` in `config/settings.yaml`. Authentication via `DASHBOARD_API_KEY` env var — write endpoints always protected.
+See `docs/DASHBOARD_DEPLOYMENT.md` — two Docker services: `investment-agent` (`Dockerfile.agent`, Python-only scheduler) and `dashboard` (`Dockerfile`, multi-stage Node + Python with frontend build). SPA fallback on port 8000. Activity feed (SSE) uses relative URL. CORS origins configurable via `dashboard.cors_origins` in `config/settings.yaml`. Authentication is session-based for operator routes, with explicit anonymous read-only routes under `/api/public/*`.
 
 ### Stabilisation (done)
 
@@ -696,7 +696,7 @@ Setup deployment for the dashboard on the existing Hetzner VPS:
    - /* → React frontend static files
    - /events/stream → SSE with proper proxy buffering disabled
 
-3. ✅ API key authentication via `DASHBOARD_API_KEY` env var (`APIKeyMiddleware` on all `/api/*` routes; US-7.1 delivered 2026-03-21). **Operator UX:** any `/api/*` **403** raises a top **auth banner** (Retry / Dismiss / open **API key** modal). Nav includes an **API key** control: masked input, save to `localStorage.dashboard_api_key`, **Save & reload** or **Clear stored key** (same shared-secret model as build-time `VITE_API_KEY`). Server compares keys with **timing-safe** `hmac.compare_digest` when lengths match.
+3. ✅ Session-based operator authentication. Anonymous read-only content lives under `/api/public/*`; operator routes require backend login and a signed `HttpOnly` cookie. The SPA routes unauthenticated users to a sign-in screen and treats protected API `401/403` responses as a signed-out state.
 
 4. Create a deploy.sh script that builds the frontend, copies to the backend static dir, and restarts services
 
@@ -834,9 +834,9 @@ def db_session():
 
 The data flow is primarily server → client (push updates). SSE is simpler, works over HTTP/2, and plays nicely with nginx. WebSockets can be added later if two-way communication is needed.
 
-### Authenticated SSE (`DASHBOARD_API_KEY`)
+### Authenticated SSE
 
-Native browser **`EventSource` cannot send custom headers**, so it always failed against `APIKeyMiddleware` when an API key was configured. The dashboard frontend therefore opens **`GET /api/events/stream`** with **`fetch()`**, sets **`X-API-Key`** via the same resolution as Axios (`VITE_API_KEY` → `localStorage.dashboard_api_key`), parses `text/event-stream` incrementally, and reconnects with backoff. A **403** on the stream sets the same global auth banner as Axios (no reconnect spam). Nginx: keep `X-Accel-Buffering: no` on the stream response (already set in the FastAPI router).
+Native browser **`EventSource` cannot reliably carry the operator session behavior we need across deployments**, so the dashboard frontend opens **`GET /api/events/stream`** with **`fetch()`**, includes credentials, parses `text/event-stream` incrementally, and reconnects with backoff. A protected-route `401/403` on the stream flips the SPA into signed-out mode (no reconnect spam). Nginx: keep `X-Accel-Buffering: no` on the stream response (already set in the FastAPI router).
 
 ### Why SQLite First
 

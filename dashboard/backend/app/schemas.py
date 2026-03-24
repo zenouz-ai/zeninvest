@@ -408,6 +408,41 @@ class DegradationSchema(BaseModel):
     message: str | None = None
 
 
+class PublicCostDailySchema(BaseModel):
+    """Sanitized daily aggregate cost summary for public dashboard views."""
+
+    date: str
+    total_gbp: float
+    llm_cost_gbp: float = 0.0
+    api_cost_gbp: float = 0.0
+    research_cost_gbp: float = 0.0
+
+
+class PublicCostMonthlySchema(BaseModel):
+    """Sanitized monthly aggregate cost summary for public dashboard views."""
+
+    year_month: str
+    total_gbp: float
+    llm_cost_gbp: float = 0.0
+    api_cost_gbp: float = 0.0
+    research_cost_gbp: float = 0.0
+
+
+class AuthLoginRequestSchema(BaseModel):
+    """Operator login request payload."""
+
+    username: str
+    password: str
+
+
+class AuthSessionSchema(BaseModel):
+    """Operator session status payload."""
+
+    authenticated: bool
+    username: str | None = None
+    expires_at: int | None = None
+
+
 # --- System ---
 
 

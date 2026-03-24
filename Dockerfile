@@ -1,12 +1,6 @@
 # Stage 1: Build frontend
 FROM node:20-slim AS frontend-builder
 
-# Accept API key at build time so it can be baked into the Vite bundle as VITE_API_KEY.
-# Pass via: docker build --build-arg DASHBOARD_API_KEY=<value>
-# or via docker-compose args section (see docker-compose.yml).
-ARG DASHBOARD_API_KEY=""
-ENV VITE_API_KEY=${DASHBOARD_API_KEY}
-
 WORKDIR /app
 
 COPY dashboard/frontend/package.json dashboard/frontend/package-lock.json ./

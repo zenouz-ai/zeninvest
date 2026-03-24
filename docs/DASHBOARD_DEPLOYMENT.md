@@ -37,11 +37,11 @@ Three services in `docker-compose.yml`, using two Dockerfiles:
 All three share the same SQLite DB via `./data` volume. The split avoids building the frontend twice and halves memory usage on low-RAM VPS instances.
 
 - `Dockerfile.agent`: Python 3.12-slim, Poetry deps, application code. No Node.js, no frontend build.
-- `Dockerfile`: Stage 1 (Node 20-slim) builds the React/Vite frontend with `DASHBOARD_API_KEY` baked in as `VITE_API_KEY`. Stage 2 (Python 3.12-slim) installs Poetry deps, copies app code + built frontend dist.
+- `Dockerfile`: Stage 1 (Node 20-slim) builds the React/Vite frontend with no secrets injected at build time. Stage 2 (Python 3.12-slim) installs Poetry deps, copies app code + built frontend dist.
 
 **Frontend API URL:** The frontend is served from the same origin as the API. Requests use relative paths (`/api/*`). The SSE activity feed uses `/api/events/stream` (same-origin), so it works at `http://VPS_IP:8000`.
 
-**Authentication:** When `DASHBOARD_API_KEY` is set, all `/api/*` endpoints require `X-API-Key` header. Write endpoints (`/api/system/*`, `/api/runs/trigger*`) are always protected — they cannot be made public even via `public_routes` config.
+**Authentication:** Public, read-only routes live under `/api/public/*`. Operator routes require backend login and a signed session cookie. Operator login is blocked on plain HTTP except localhost-only development mode.
 
 ### VPS Firewall (one-time)
 
@@ -132,25 +132,26 @@ When the operator has run the steps above on a VPS:
 
 With VPS IP and HTTP:
 - Use firewall to restrict access (e.g. only your IP) if desired.
-- **API Key Authentication (US-7.1, delivered):** Set `DASHBOARD_API_KEY` in your `.env` before exposing the dashboard. When set, all `/api/*` endpoints require a matching `X-API-Key` header. Generate a key with:
+- **Public vs operator split:** Only `/api/public/*` routes are anonymous. All trading controls, holdings, strategy data, runs, events, commands, and research remain operator-only.
+- **Operator login:** Set these in `.env`:
+  ```
+  DASHBOARD_OPERATOR_USERNAME=<operator-username>
+  DASHBOARD_OPERATOR_PASSWORD_HASH=<pbkdf2 hash>
+  DASHBOARD_SESSION_SECRET=<random-hex-secret>
+  DASHBOARD_INSECURE_DEV_MODE=false
+  ```
+  Generate the password hash with:
   ```bash
-  python -c "import secrets; print(secrets.token_hex(32))"
+  poetry run python - <<'PY'
+  from dashboard.backend.app.services.auth import hash_password
+  print(hash_password("choose-a-strong-password"))
+  PY
   ```
-  Add to `.env`:
-  ```
-  DASHBOARD_API_KEY=<your-generated-key>
-  ```
-  The frontend automatically picks up `VITE_API_KEY` at build time (passed as Docker build arg). Operators can also set the key in the browser via **API key** in the nav (stored in `localStorage`); after save the SPA reloads. If the key is wrong or missing, a red **auth banner** explains the 403 and links to that flow. When `DASHBOARD_API_KEY` is not set, the dashboard runs in unauthenticated mode with a startup warning — acceptable for localhost-only dev.
-- **Public demo routes:** To expose read-only pages (e.g. Roadmap, Costs, Run History) without sharing the API key, add `public_routes` to `config/settings.yaml`:
-  ```yaml
-  dashboard:
-    public_routes:
-      - "/api/docs/"           # Roadmap & architecture — safe
-      - "/api/costs/"          # API spend totals — safe
-      - "/api/runs/"           # Cycle history (timestamps + status) — safe
-      - "/api/performance/metrics"  # Aggregate Sharpe/win-rate — safe
-  ```
-  GET requests to listed prefixes bypass auth. Write endpoints (`POST /api/runs/trigger-live`, `POST /api/system/*`) remain protected regardless. Never list `/api/portfolio/` (position data) or `/api/opportunity/` (pending buys) — these leak alpha.
+- **Transport requirement:** Operator login and operator API access are blocked over raw HTTP. Until TLS is available, use SSH tunnelling/VPN/local-only binding for operator work.
+- **Public routes:** Use only the explicit public endpoints:
+  - `/api/public/docs/*`
+  - `/api/public/costs/*`
+  - `/api/public/performance/*`
 - **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: localhost only. For VPS, add your IP:
   ```yaml
   dashboard:

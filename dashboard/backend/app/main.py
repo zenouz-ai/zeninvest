@@ -12,8 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from src.utils.config import get_settings
 
 from .database import init_dashboard_tables
-from .middleware.auth import APIKeyMiddleware, get_api_key, warn_if_unauthenticated
+from .middleware.auth import DashboardSessionMiddleware
 from .routers import (
+    auth,
     api_usage,
     chat,
     commands,
@@ -29,6 +30,7 @@ from .routers import (
     outcomes,
     performance,
     portfolio,
+    public,
     research,
     risk,
     runs,
@@ -37,6 +39,7 @@ from .routers import (
     system,
     universe,
 )
+from .services.auth import require_dashboard_auth_config
 
 settings = get_settings()
 
@@ -49,8 +52,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifespan context manager for startup/shutdown."""
     # Startup: Initialize dashboard tables
     if settings.dashboard_enabled:
+        require_dashboard_auth_config()
         init_dashboard_tables()
-    warn_if_unauthenticated()
     yield
     # Shutdown: cleanup if needed
 
@@ -60,6 +63,9 @@ app = FastAPI(
     description="REST API and SSE stream for investment agent dashboard",
     version="1.0.0",
     lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # CORS middleware for frontend — restrict to same-origin and VPS IP
@@ -75,18 +81,15 @@ app.add_middleware(
     allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*", "X-API-Key"],
+    allow_headers=["*"],
 )
 
-# API key auth — guards all /api/* routes; no-op when DASHBOARD_API_KEY unset.
-# Public demo routes (GET only) bypass auth when configured in settings.yaml.
-app.add_middleware(
-    APIKeyMiddleware,
-    api_key=get_api_key(),
-    public_prefixes=_settings.dashboard_public_routes,
-)
+# Session auth — public APIs live under /api/public/* and /api/auth/*.
+app.add_middleware(DashboardSessionMiddleware)
 
 # Register routers (must be before static mount so /api/* takes precedence)
+app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(public.router, prefix="/api/public", tags=["public"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(runs.router, prefix="/api/runs", tags=["runs"])
 app.include_router(status.router, prefix="/api/status", tags=["status"])

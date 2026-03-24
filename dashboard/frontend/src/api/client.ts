@@ -1,6 +1,5 @@
 import axios from 'axios'
 import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order, UniverseBubbleItem, MacroState, MacroHeadline, MacroSummary, SlackCommand, CommandStats } from '../types'
-import { getDashboardApiKey } from '../utils/apiKey'
 import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
 
 // Use relative paths when VITE_API_URL unset: same-origin in prod (FastAPI serves frontend)
@@ -8,28 +7,25 @@ const API_BASE_URL = import.meta.env.VITE_API_URL ?? ''
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
-})
-
-// Attach X-API-Key on every request when a key is available.
-api.interceptors.request.use((config) => {
-  const key = getDashboardApiKey()
-  if (key) {
-    config.headers['X-API-Key'] = key
-  }
-  return config
 })
 
 function isApiPath(url: string | undefined): boolean {
   return typeof url === 'string' && url.includes('/api/')
 }
 
+function isProtectedApiPath(url: string | undefined): boolean {
+  if (!isApiPath(url)) return false
+  return !(url?.includes('/api/public/') || url?.includes('/api/auth/'))
+}
+
 api.interceptors.response.use(
   (response) => {
     const url = response.config.url ?? ''
-    if (isApiPath(url) && response.status >= 200 && response.status < 300) {
+    if (isProtectedApiPath(url) && response.status >= 200 && response.status < 300) {
       clearDashboardAuthRequired()
     }
     return response
@@ -38,13 +34,57 @@ api.interceptors.response.use(
     if (axios.isAxiosError(error)) {
       const status = error.response?.status
       const url = error.config?.url ?? ''
-      if (status === 403 && isApiPath(url)) {
+      if ((status === 401 || status === 403) && isProtectedApiPath(url)) {
         setDashboardAuthRequired(true)
       }
     }
     return Promise.reject(error)
   }
 )
+
+export interface AuthSession {
+  authenticated: boolean
+  username: string | null
+  expires_at?: number | null
+}
+
+export const authApi = {
+  me: async (): Promise<AuthSession> => {
+    const response = await api.get('/api/auth/me')
+    return response.data
+  },
+  login: async (username: string, password: string): Promise<AuthSession> => {
+    const response = await api.post('/api/auth/login', { username, password })
+    clearDashboardAuthRequired()
+    return response.data
+  },
+  logout: async (): Promise<AuthSession> => {
+    const response = await api.post('/api/auth/logout')
+    clearDashboardAuthRequired()
+    return response.data
+  },
+}
+
+export const publicApi = {
+  getDailyCosts: async (params?: { days?: number }): Promise<any[]> => {
+    const response = await api.get('/api/public/costs/daily', { params })
+    return response.data
+  },
+  getMonthlyCosts: async (params?: { months?: number }): Promise<any[]> => {
+    const response = await api.get('/api/public/costs/monthly', { params })
+    return response.data
+  },
+  getPerformanceMetrics: async (): Promise<any | null> => {
+    const response = await api.get('/api/public/performance/metrics')
+    return response.data
+  },
+  getDoc: async (docKey: string): Promise<string> => {
+    const response = await api.get(`/api/public/docs/${docKey}`, {
+      responseType: 'text',
+    })
+    return response.data
+  },
+}
 
 // Events API
 export const eventsApi = {

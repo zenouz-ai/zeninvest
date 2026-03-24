@@ -798,21 +798,29 @@ class Settings:
 
     @property
     def dashboard_api_key(self) -> str | None:
-        """DASHBOARD_API_KEY from environment. None when not set (unauthenticated dev mode)."""
+        """Deprecated dashboard API key env var retained for bootstrap rotation only."""
         return os.environ.get("DASHBOARD_API_KEY") or None
 
     @property
-    def dashboard_public_routes(self) -> list[str]:
-        """API path prefixes exposed without auth for demo purposes (GET only).
+    def dashboard_operator_username(self) -> str | None:
+        """Operator username for dashboard session login."""
+        return os.environ.get("DASHBOARD_OPERATOR_USERNAME") or None
 
-        Configured via ``dashboard.public_routes`` in settings.yaml.
-        Write endpoints (/api/system/*, /api/runs/trigger*) are always protected
-        regardless of this list.
-        """
-        routes = self.dashboard.get("public_routes")
-        if isinstance(routes, list):
-            return [str(r) for r in routes if r]
-        return []
+    @property
+    def dashboard_operator_password_hash(self) -> str | None:
+        """PBKDF2 password hash for dashboard session login."""
+        return os.environ.get("DASHBOARD_OPERATOR_PASSWORD_HASH") or None
+
+    @property
+    def dashboard_session_secret(self) -> str | None:
+        """HMAC signing secret for dashboard operator sessions."""
+        return os.environ.get("DASHBOARD_SESSION_SECRET") or None
+
+    @property
+    def dashboard_insecure_dev_mode(self) -> bool:
+        """Allow localhost HTTP operator login for development only."""
+        raw = (os.environ.get("DASHBOARD_INSECURE_DEV_MODE") or "false").strip().lower()
+        return raw in {"1", "true", "yes", "y", "on"}
 
 
 # Singleton
