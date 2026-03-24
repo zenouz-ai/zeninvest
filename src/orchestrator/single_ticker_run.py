@@ -267,11 +267,19 @@ class SingleTickerRunner:
             result.risk_verdict_str = risk_verdict.verdict
 
             if risk_verdict.verdict == "REJECT":
-                result.status = "rejected"
-                result.rejection_reason = f"Risk VETO: {risk_verdict.reasoning}"
-                self._update_command_log(cmd_log, "rejected", rejection_reason=result.rejection_reason)
-                logger.info(f"[{cycle_id}] {intent.action} {ticker_t212} REJECTED by risk: {risk_verdict.reasoning}")
-                return result
+                if intent.force:
+                    # User explicitly overrode risk VETO via "force buy"
+                    logger.warning(
+                        f"[{cycle_id}] {intent.action} {ticker_t212} RISK VETO OVERRIDDEN by user "
+                        f"(force=True): {risk_verdict.reasoning}"
+                    )
+                    result.risk_verdict_str = "OVERRIDDEN"
+                else:
+                    result.status = "rejected"
+                    result.rejection_reason = f"Risk VETO: {risk_verdict.reasoning}"
+                    self._update_command_log(cmd_log, "rejected", rejection_reason=result.rejection_reason)
+                    logger.info(f"[{cycle_id}] {intent.action} {ticker_t212} REJECTED by risk: {risk_verdict.reasoning}")
+                    return result
 
             # Apply risk resize if needed
             if risk_verdict.verdict == "RESIZE" and risk_verdict.adjusted_allocation_pct is not None:

@@ -50,15 +50,29 @@ class TradeCommandIntent:
     quantity_shares: float | None = None
     amount_gbp: float | None = None
     raw_message: str = ""
+    force: bool = False  # When True, bypass risk VETO
 
     def to_json(self) -> str:
         return json.dumps(asdict(self))
 
 
+# Regex to detect force prefix: "force ", "override ", or leading "!"
+_FORCE_PREFIX_RE = re.compile(r"^\s*(?:force\s+|override\s+|!)", re.IGNORECASE)
+
+
+def _strip_force_prefix(message: str) -> tuple[str, bool]:
+    """Strip force/override/! prefix from message. Returns (cleaned_message, is_force)."""
+    m = _FORCE_PREFIX_RE.match(message)
+    if m:
+        return message[m.end():], True
+    return message, False
+
+
 def _try_regex(message: str) -> TradeCommandIntent | None:
     """Attempt to parse via regex patterns (zero-cost path)."""
+    cleaned, is_force = _strip_force_prefix(message)
     for pattern in _PATTERNS:
-        m = pattern.match(message.strip())
+        m = pattern.match(cleaned.strip())
         if m:
             groups = m.groupdict()
             action = groups["action"].upper()
@@ -71,6 +85,7 @@ def _try_regex(message: str) -> TradeCommandIntent | None:
                 quantity_shares=qty,
                 amount_gbp=amt,
                 raw_message=message,
+                force=is_force,
             )
     return None
 
@@ -82,6 +97,9 @@ def _try_claude(message: str) -> TradeCommandIntent | None:
 
         from src.utils.config import get_settings
 
+        # Detect force prefix before sending to Claude
+        cleaned, is_force = _strip_force_prefix(message)
+
         settings = get_settings()
         client = Anthropic(api_key=settings.anthropic_api_key)
 
@@ -90,7 +108,7 @@ def _try_claude(message: str) -> TradeCommandIntent | None:
             '{"action": "BUY"|"SELL"|"REVIEW", "ticker": "<SYMBOL>", '
             '"quantity_shares": <number|null>, "amount_gbp": <number|null>}\n'
             "If the message is not a trade command, return null.\n\n"
-            f"Message: {message}"
+            f"Message: {cleaned}"
         )
 
         resp = client.messages.create(
@@ -122,6 +140,7 @@ def _try_claude(message: str) -> TradeCommandIntent | None:
             quantity_shares=data.get("quantity_shares"),
             amount_gbp=data.get("amount_gbp"),
             raw_message=message,
+            force=is_force,
         )
     except Exception as e:
         logger.warning(f"Claude NL parse failed: {e}")
@@ -146,14 +165,16 @@ def parse_trade_command(message: str, use_llm_fallback: bool = True) -> TradeCom
     # Try regex first (covers >90% of expected inputs)
     result = _try_regex(message)
     if result:
-        logger.info(f"Parsed trade command via regex: {result.action} {result.ticker}")
+        force_tag = " [FORCE]" if result.force else ""
+        logger.info(f"Parsed trade command via regex: {result.action} {result.ticker}{force_tag}")
         return result
 
     # Fall back to Claude for ambiguous NL
     if use_llm_fallback:
         result = _try_claude(message)
         if result:
-            logger.info(f"Parsed trade command via Claude: {result.action} {result.ticker}")
+            force_tag = " [FORCE]" if result.force else ""
+            logger.info(f"Parsed trade command via Claude: {result.action} {result.ticker}{force_tag}")
             return result
 
     return None

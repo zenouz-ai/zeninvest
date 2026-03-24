@@ -637,7 +637,7 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
 
     lines = [f"*{action} {ticker}* — {exec_status}"]
     if qty and price:
-        lines.append(f"Quantity: {qty:.2f} @ £{price:.2f} = £{value:.2f}")
+        lines.append(f"Quantity: {qty:.2f} @ ${price:.2f} = £{value:.2f}")
 
     # Show if user overrode strategy
     if result.strategy_action and result.strategy_action != action:
@@ -645,7 +645,14 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
 
     if result.moderation_consensus:
         lines.append(f"Moderation: {result.moderation_consensus}")
-    if result.risk_verdict_str:
+
+    # Risk verdict — highlight force override
+    if result.risk_verdict_str == "OVERRIDDEN":
+        lines.append("Risk: *OVERRIDDEN* (force buy — risk VETO bypassed)")
+        triggered = (result.risk_verdict or {}).get("triggered_rules", [])
+        if triggered:
+            lines.append(f"Overridden rules: {', '.join(triggered)}")
+    elif result.risk_verdict_str:
         lines.append(f"Risk: {result.risk_verdict_str}")
 
     if result.execution_result:
@@ -657,13 +664,60 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
 
 
 def _format_rejected_reply(result: "SingleTickerResult", ticker: str) -> str:
-    """Format rejected response."""
+    """Format rejected response with full pipeline details."""
     reason = result.rejection_reason or "Unknown reason"
-    lines = [f"*Rejected: {result.user_action} {ticker}*", f"Reason: {reason}"]
-    if result.strategy_action:
-        lines.append(f"Strategy: {result.strategy_action} (conviction {result.conviction})")
-    if result.moderation_consensus:
-        lines.append(f"Moderation: {result.moderation_consensus}")
+    lines = [f"*Rejected: {result.user_action} {ticker}*"]
+
+    # Price
+    if result.price:
+        lines.append(f"Price: ${result.price:.2f}")
+
+    lines.append(f"\n*Reason:* {reason}")
+
+    # Strategy
+    if result.strategy_decision:
+        action = result.strategy_action or "HOLD"
+        conv = result.conviction
+        alloc = result.strategy_decision.get("target_allocation_pct", "—")
+        stop = result.strategy_decision.get("stop_loss_pct", "—")
+        lines.append(f"\n*Strategy:* {action} (conviction {conv})")
+        lines.append(f"Allocation: {alloc}% | Stop-loss: {stop}%")
+        reasoning = result.strategy_decision.get("reasoning", "")
+        if reasoning:
+            lines.append(f"Reasoning: {_excerpt(reasoning, 500)}")
+
+    # Moderation
+    if result.moderation_result:
+        lines.append(f"\n*Moderation:* {result.moderation_consensus}")
+        gpt = result.moderation_result.get("gpt4o_verdict")
+        if gpt:
+            v = gpt.get("verdict", "?")
+            s = gpt.get("score") or gpt.get("confidence_score", "?")
+            lines.append(f"  • GPT-4o (Skeptic): {v} (score {s})")
+            r = gpt.get("reasoning", "")
+            if r:
+                lines.append(f"    {_excerpt(r, 300)}")
+        gem = result.moderation_result.get("gemini_verdict")
+        if gem:
+            v = gem.get("verdict", "?")
+            s = gem.get("score") or gem.get("confidence_score", "?")
+            lines.append(f"  • Gemini (Risk): {v} (score {s})")
+            r = gem.get("reasoning") or gem.get("assessment", "")
+            if r:
+                lines.append(f"    {_excerpt(r, 300)}")
+    elif result.moderation_consensus:
+        lines.append(f"\n*Moderation:* {result.moderation_consensus}")
+
+    # Risk details
+    if result.risk_verdict:
+        triggered = result.risk_verdict.get("triggered_rules", [])
+        if triggered:
+            lines.append(f"\n*Risk rules triggered:* {', '.join(triggered)}")
+
+    # Hint about force override
+    if result.risk_verdict_str == "REJECT":
+        lines.append("\n_Tip: Use `force buy <ticker>` to override risk VETO._")
+
     return "\n".join(lines)
 
 

@@ -359,7 +359,7 @@ class TestFormatExecutedReply:
         assert "BUY AAPL" in reply
         assert "filled" in reply
         assert "3.50" in reply
-        assert "£150.00" in reply
+        assert "$150.00" in reply
         assert "£525.00" in reply
         assert "Order ID: 42" in reply
         assert "Moderation: APPROVED" in reply
@@ -390,12 +390,124 @@ class TestFormatRejectedReply:
             strategy_action="BUY",
             conviction=65,
             moderation_consensus="APPROVED",
+            strategy_decision={
+                "action": "BUY",
+                "conviction": 65,
+                "target_allocation_pct": 5.0,
+                "stop_loss_pct": -8,
+                "reasoning": "Fundamentals look solid",
+            },
         )
         reply = format_trade_command_reply(result)
         assert "Rejected" in reply
         assert "Risk VETO: max_single_stock_pct exceeded" in reply
-        assert "Strategy: BUY (conviction 65)" in reply
-        assert "Moderation: APPROVED" in reply
+        assert "conviction 65" in reply
+        assert "Moderation:* APPROVED" in reply
+
+    def test_rejected_shows_price_and_strategy_reasoning(self):
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            price=415.50,
+            rejection_reason="Risk VETO: Cash floor breached",
+            strategy_action="BUY",
+            conviction=70,
+            strategy_decision={
+                "action": "BUY",
+                "conviction": 70,
+                "target_allocation_pct": 6.0,
+                "stop_loss_pct": -10,
+                "reasoning": "Strong momentum with improving fundamentals",
+            },
+            risk_verdict={
+                "verdict": "REJECT",
+                "triggered_rules": ["cash_floor"],
+                "reasoning": "Cash floor breached",
+            },
+            risk_verdict_str="REJECT",
+        )
+        reply = format_trade_command_reply(result)
+        assert "$415.50" in reply
+        assert "Strong momentum" in reply
+        assert "cash_floor" in reply
+        assert "force buy" in reply  # hint about force override
+
+    def test_rejected_shows_moderation_detail(self):
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            price=100.0,
+            rejection_reason="Risk VETO: sector cap",
+            strategy_action="BUY",
+            conviction=75,
+            strategy_decision={
+                "action": "BUY",
+                "conviction": 75,
+                "target_allocation_pct": 5.0,
+                "stop_loss_pct": -8,
+                "reasoning": "Good value",
+            },
+            moderation_consensus="APPROVED",
+            moderation_result={
+                "consensus": "APPROVED",
+                "gpt4o_verdict": {
+                    "verdict": "AGREE",
+                    "score": 8,
+                    "reasoning": "Valuation looks reasonable.",
+                },
+                "gemini_verdict": {
+                    "verdict": "AGREE",
+                    "score": 7,
+                    "reasoning": "Risk-reward is acceptable.",
+                },
+            },
+            risk_verdict={
+                "verdict": "REJECT",
+                "triggered_rules": ["max_sector_pct"],
+                "reasoning": "sector cap",
+            },
+            risk_verdict_str="REJECT",
+        )
+        reply = format_trade_command_reply(result)
+        assert "GPT-4o (Skeptic): AGREE" in reply
+        assert "Gemini (Risk): AGREE" in reply
+        assert "max_sector_pct" in reply
+
+    def test_rejected_no_force_hint_when_not_risk_reject(self):
+        """Force hint should only appear when risk VETO is the reason."""
+        result = _make_result(
+            status="rejected",
+            user_action="SELL",
+            rejection_reason="No open position in AAPL_US_EQ",
+            risk_verdict_str="",
+        )
+        reply = format_trade_command_reply(result)
+        assert "force buy" not in reply
+
+
+class TestFormatForceOverrideReply:
+
+    def test_force_override_shows_overridden_risk(self):
+        result = _make_result(
+            status="executed",
+            user_action="BUY",
+            price=415.0,
+            quantity=2.0,
+            value_gbp=830.0,
+            moderation_consensus="APPROVED",
+            risk_verdict_str="OVERRIDDEN",
+            risk_verdict={
+                "verdict": "REJECT",
+                "triggered_rules": ["cash_floor"],
+                "reasoning": "Cash floor breached",
+            },
+            execution_result={"status": "filled", "order_id": 99},
+        )
+        reply = format_trade_command_reply(result)
+        assert "OVERRIDDEN" in reply
+        assert "risk VETO bypassed" in reply
+        assert "cash_floor" in reply
+        assert "Order ID: 99" in reply
 
 
 class TestFormatErrorReply:

@@ -62,6 +62,7 @@ The system is designed as a **human-supervised autonomous agent**, not a fully u
 - **Practice/Demo mode by default.** The Trading 212 API integration targets the demo endpoint (`https://demo.trading212.com/api/v0`). Switching to a live endpoint requires an explicit configuration change and is treated as a major deployment decision requiring sign-off.
 - **Pause/Resume control.** A human operator can pause all trading at any time via `--pause` and resume with `--resume`. The paused state is persisted in the database and survives restarts.
 - **Force sell capability.** Any position can be force-liquidated immediately via `--force-sell <TICKER>`, bypassing the normal strategy-moderation-risk pipeline.
+- **Force buy/sell via Slack.** The `force buy <TICKER>` command (also `override buy`, `!buy`) bypasses the risk VETO and proceeds to execution. The override is logged as `OVERRIDDEN` with the triggered rules, and the Slack reply clearly indicates which rules were bypassed. This is an explicit human override for situations where the operator has conviction beyond the risk rules.
 - **Scheduled execution only.** The system runs on a fixed schedule (configurable via `cycle_frequency`: intraday = 08/12/16 UTC, standard = 07/19 UTC, Monday-Friday). It does not react to intraday events autonomously. **US market holidays** (NYSE) are automatically skipped via `src/utils/market_holidays.py`; configurable via `skip_market_holidays: true` in settings.yaml.
 - **Daily and weekly reports.** Automated reports are generated at 21:30 UTC daily and 22:00 UTC Fridays, providing full transparency into decisions, costs, and performance.
 
@@ -77,7 +78,7 @@ No single component has unchecked authority. Every trade must pass through multi
 | 4 | Opportunity Agent (UOV optimizer) | Ranks/queues approved BUYs only (shadow or active mode) | **No -- deterministic Python** |
 | 5 | Execution Agent (T212 client) | Executes with deduplication | **No -- never** |
 
-The Risk Agent is implemented as pure deterministic Python code (`src/agents/risk/risk_manager.py`). It does not call any LLM and cannot be influenced by prompt injection or model hallucination. Its decisions are final.
+The Risk Agent is implemented as pure deterministic Python code (`src/agents/risk/risk_manager.py`). It does not call any LLM and cannot be influenced by prompt injection or model hallucination. Its decisions are final for autonomous (scheduled) cycles. For Slack trade commands, an explicit human `force` prefix can override the risk VETO — this is an intentional escape hatch for the human operator, not an LLM bypass. All force overrides are logged with `risk_verdict_str="OVERRIDDEN"` and the triggered rules are recorded.
 
 ### 2.3 Fail-Safe Defaults
 
@@ -499,6 +500,19 @@ poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
 - **Bypasses** the strategy, moderation, and risk pipeline -- this is an emergency action.
 - Logged to the `orders` table with `strategy="liquidation"`.
 - Also available via **Dashboard Portfolio page** "Force Sell" button (`POST /api/system/force-sell/{ticker}`) with confirmation modal — no CLI/SSH required.
+
+### 6.2a Force Buy/Sell via Slack (Risk Override)
+
+In Slack, prefix any trade command with `force`, `override`, or `!` to bypass the risk VETO:
+
+```
+force buy MSFT          # Bypasses risk VETO for BUY
+force buy 2 shares of AAPL
+!buy £500 NVDA
+override sell TSLA
+```
+
+Unlike `--force-sell` (which bypasses the entire pipeline), force buy/sell via Slack **still runs the full pipeline** (data → strategy → moderation → risk) for audit purposes. Only the risk rejection is overridden. The trade is logged with `risk_verdict_str="OVERRIDDEN"` and the triggered rules are recorded in the `risk_decisions` table and shown in the Slack reply.
 
 ### 6.3 Manual Override Procedures
 

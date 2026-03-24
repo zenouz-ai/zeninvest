@@ -78,8 +78,13 @@ class SlackTradeListener:
             web_client=self._web_client,
         )
 
-    def start(self) -> None:
-        """Connect via Socket Mode and start listening for messages."""
+    def start(self, shutdown_event: threading.Event | None = None) -> None:
+        """Connect via Socket Mode and start listening for messages.
+
+        Args:
+            shutdown_event: Optional threading.Event that signals graceful shutdown.
+                           When set, the listener closes cleanly without raising.
+        """
         if not self.settings.slack_trade_commands_enabled:
             logger.warning("Slack trade commands are disabled in config. Exiting.")
             return
@@ -149,14 +154,24 @@ class SlackTradeListener:
         logger.info("Slack Socket Mode connected. Listening for trade commands...")
         self._socket_client.connect()
 
-        # Block main thread
+        # Block main thread until shutdown signal or keyboard interrupt
         try:
             while True:
-                time.sleep(1)
+                # Use event.wait() instead of time.sleep() for clean shutdown
+                if shutdown_event and shutdown_event.wait(timeout=1):
+                    break
+                elif not shutdown_event:
+                    time.sleep(1)
                 self._cleanup_expired_confirmations()
         except (KeyboardInterrupt, SystemExit):
-            logger.info("Slack listener shutting down")
-            self._socket_client.close()
+            pass
+        finally:
+            logger.info("Slack listener shutting down gracefully...")
+            try:
+                self._socket_client.close()
+            except Exception:
+                pass
+            logger.info("Slack listener stopped.")
 
     def _process_command(
         self, channel: str, ts: str, user_id: str, text: str
@@ -177,6 +192,7 @@ class SlackTradeListener:
 
             result = self.gateway.handle(request)
             status = result.get("status", "error")
+            ticker_t212 = result.get("ticker_t212", "N/A")
 
             if status == "unparseable":
                 # Silently ignore non-trade messages (delete processing indicator)
@@ -184,10 +200,12 @@ class SlackTradeListener:
 
             if status == "unknown_ticker":
                 self._post_reply(channel, ts, result.get("message", "Unknown ticker."))
+                logger.info(f"Command completed: {text!r} → unknown_ticker")
                 return
 
             if status == "error":
                 self._post_reply(channel, ts, f"Error: {result.get('message', 'Unknown error')}")
+                logger.info(f"Command completed: {text!r} → error ({ticker_t212})")
                 return
 
             # Format and post result
@@ -198,8 +216,11 @@ class SlackTradeListener:
             else:
                 self._post_reply(channel, ts, f"Command completed with status: {status}")
 
+            logger.info(f"Command completed: {text!r} → {status} ({ticker_t212})")
+
         except CommandGatewayDisabledError:
             self._post_reply(channel, ts, "Trade commands are currently disabled.")
+            logger.info(f"Command completed: {text!r} → gateway_disabled")
         except Exception as e:
             logger.error(f"Error processing command: {e}", exc_info=True)
             self._post_reply(channel, ts, f"Error: {e}")

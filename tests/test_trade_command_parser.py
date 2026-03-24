@@ -4,6 +4,7 @@ import pytest
 
 from src.agents.notifications.trade_command_parser import (
     TradeCommandIntent,
+    _strip_force_prefix,
     _try_regex,
     parse_trade_command,
 )
@@ -119,6 +120,96 @@ class TestRegexParser:
     def test_multi_word_not_matched(self):
         """Multi-word company names (e.g. 'Bank of America') fall through to Claude."""
         assert _try_regex("buy bank of america") is None
+
+    def test_force_buy_ticker(self):
+        result = _try_regex("force buy AAPL")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "AAPL"
+        assert result.force is True
+
+    def test_force_sell_ticker(self):
+        result = _try_regex("FORCE SELL TSLA")
+        assert result is not None
+        assert result.action == "SELL"
+        assert result.ticker == "TSLA"
+        assert result.force is True
+
+    def test_override_buy(self):
+        result = _try_regex("override buy MSFT")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "MSFT"
+        assert result.force is True
+
+    def test_bang_prefix_buy(self):
+        result = _try_regex("!buy NVDA")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "NVDA"
+        assert result.force is True
+
+    def test_force_buy_with_quantity(self):
+        result = _try_regex("force buy 5 shares of AAPL")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "AAPL"
+        assert result.quantity_shares == 5.0
+        assert result.force is True
+
+    def test_force_buy_with_amount(self):
+        result = _try_regex("force buy £500 MSFT")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "MSFT"
+        assert result.amount_gbp == 500.0
+        assert result.force is True
+
+    def test_normal_buy_not_forced(self):
+        result = _try_regex("BUY AAPL")
+        assert result is not None
+        assert result.force is False
+
+    def test_force_company_name(self):
+        result = _try_regex("force buy microsoft")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "MICROSOFT"
+        assert result.force is True
+
+
+class TestStripForcePrefix:
+    """Test force/override/! prefix detection."""
+
+    def test_force_prefix(self):
+        cleaned, is_force = _strip_force_prefix("force buy AAPL")
+        assert cleaned == "buy AAPL"
+        assert is_force is True
+
+    def test_override_prefix(self):
+        cleaned, is_force = _strip_force_prefix("override SELL TSLA")
+        assert cleaned == "SELL TSLA"
+        assert is_force is True
+
+    def test_bang_prefix(self):
+        cleaned, is_force = _strip_force_prefix("!BUY NVDA")
+        assert cleaned == "BUY NVDA"
+        assert is_force is True
+
+    def test_no_prefix(self):
+        cleaned, is_force = _strip_force_prefix("BUY AAPL")
+        assert cleaned == "BUY AAPL"
+        assert is_force is False
+
+    def test_force_case_insensitive(self):
+        cleaned, is_force = _strip_force_prefix("FORCE BUY AAPL")
+        assert cleaned == "BUY AAPL"
+        assert is_force is True
+
+    def test_force_with_leading_whitespace(self):
+        cleaned, is_force = _strip_force_prefix("  force buy AAPL")
+        assert cleaned == "buy AAPL"
+        assert is_force is True
 
 
 class TestParseTradeCommand:
