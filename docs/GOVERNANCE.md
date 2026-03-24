@@ -814,10 +814,10 @@ models:
   moderator_2: gemini-2.5-flash
 
 universe:
-  max_candidates: 30              # New stocks screened per cycle
-  candidates_per_sector: 3        # Min per sector (avoid concentration)
-  large_cap_pct: 0.70             # 70% large cap ($10B+)
-  mid_cap_pct: 0.20               # 20% mid cap ($2B-$10B)
+  max_candidates: 40              # New stocks screened per cycle
+  candidates_per_sector: 5        # Min per sector (avoid concentration)
+  large_cap_pct: 0.60             # 60% large cap ($10B+)
+  mid_cap_pct: 0.30               # 30% mid cap ($2B-$10B)
   small_cap_pct: 0.10             # 10% small cap ($300M-$2B)
   large_cap_min: 10000000000
   mid_cap_min: 2000000000

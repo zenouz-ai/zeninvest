@@ -121,7 +121,7 @@ Both settings default to `true` if not specified.
 - `message`
 - `metadata_json` (JSON)
 
-**universe_updated** metadata includes: `num_candidates`, `total_available`, `large_pool`, `mid_pool`, `small_pool`, `large_cap_count`, `mid_cap_count`, `small_cap_count`, `sector_distribution`, `tickers`, `cooldown_hours`, `review_count`, `new_count`, `positions_count`, `cumul_screened`, `cumul_reviewed`, `cumul_orders`
+**universe_updated** metadata includes: `cycle_id`, `stocks_screened`, `num_candidates`, `total_available`, `large_pool`, `mid_pool`, `small_pool`, `large_cap_count`, `mid_cap_count`, `small_cap_count`, `sector_distribution`, `tickers`, `cooldown_hours`, `review_count`, `new_count`, `positions_count`, `cumul_screened`, `cumul_reviewed`, `cumul_orders`
 
 **GET /api/dashboard/monthly-summary** returns: `runs_count`, `cost_gbp`, `llm_cost_gbp`, `api_cost_gbp`, `portfolio_start_gbp`, `portfolio_end_gbp`, `pnl_gbp`, `new_investigated_this_month`, `cumul_screened`, `cumul_investigated`, `cumul_uninvestigated`, `cumul_uninvestigated_enriched`, `cumul_uninvestigated_not_enriched`, `investigated_1_review`, `investigated_2_reviews`, `investigated_3plus_reviews`, `cumul_orders`
 
@@ -132,7 +132,7 @@ Both settings default to `true` if not specified.
 - `started_at` (indexed)
 - `completed_at`
 - `status` (running|completed|failed)
-- `summary_json` (JSON)
+- `summary_json` (JSON; commonly includes `stocks_screened`, `stocks_reviewed`, `decisions_made`, `num_trades`, `num_rejected`, `duration_seconds`)
 
 ## Next Steps (Phase 2)
 

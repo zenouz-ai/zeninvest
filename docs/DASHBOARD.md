@@ -182,11 +182,11 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 - Card 4 — This Month: runs, cost, P&L, new investigations (compact summary)
 
 **Last cycle summary (always visible):**
-- Full-width card showing cycle_id, timestamp, status, stocks reviewed, trades, rejections, duration
+- Full-width card showing cycle_id, timestamp, status, stocks screened, stocks reviewed, trades, rejections, duration
 - Never collapsed — primary "what just happened" signal
 
 **Two-column layout:**
-- Left (wider): Positions snapshot (top 5 by |P&L| with inline bar chart, "View all" link to Portfolio) + Recent Activity (always-visible SSE feed, last 15 events, `aria-live="polite"`)
+- Left (wider): Positions snapshot (top 5 by |P&L| with inline bar chart, "View all" link to Portfolio) + Recent Activity (always-visible SSE feed, last 100 events, `aria-live="polite"`)
 - Right (320px): Cumulative stats (screened, investigated, uninvestigated, orders) + Cost breakdown (LLM/API/total with expandable daily table)
 
 **Secondary sections (expandable):**
@@ -227,6 +227,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 - Click to expand a run
 
 **Run detail view:**
+- Stocks screened in this run (from `universe_updated` metadata when available)
 - Stocks reviewed in this run (from `strategy_decisions` where cycle matches)
 - For each stock: full pipeline waterfall
 
