@@ -46,6 +46,19 @@ class SlackTradeListener:
         self._web_client = None
         self._socket_client = None
 
+    def _resolve_bot_user_id(self) -> str | None:
+        """Get the bot's own user ID via auth.test so we can filter our own messages."""
+        if not self._web_client:
+            return None
+        try:
+            resp = self._web_client.auth_test()
+            bot_id = resp.get("user_id")
+            logger.info(f"Resolved bot user ID: {bot_id}")
+            return bot_id
+        except Exception as e:
+            logger.warning(f"Could not resolve bot user ID: {e}")
+            return None
+
     def _init_slack_clients(self) -> None:
         """Initialize Slack clients (requires slack-sdk)."""
         from slack_sdk import WebClient
@@ -74,7 +87,10 @@ class SlackTradeListener:
         self._init_slack_clients()
         channel_id = self.settings.slack_trade_channel_id
 
-        logger.info(f"Starting Slack trade listener on channel {channel_id}")
+        # Resolve bot's own user ID so we never process our own messages
+        bot_user_id = self._resolve_bot_user_id()
+
+        logger.info(f"Starting Slack trade listener on channel {channel_id} (bot_user_id={bot_user_id})")
 
         from slack_sdk.socket_mode.request import SocketModeRequest
         from slack_sdk.socket_mode.response import SocketModeResponse
@@ -93,6 +109,9 @@ class SlackTradeListener:
                 return
             # Skip bot messages, message_changed, etc.
             if event.get("subtype"):
+                return
+            # Skip our own messages (prevents cascading loop)
+            if event.get("bot_id") or event.get("user") == bot_user_id:
                 return
             # Filter to configured channel
             if channel_id and event.get("channel") != channel_id:
