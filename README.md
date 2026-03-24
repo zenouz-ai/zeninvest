@@ -156,7 +156,7 @@ npm run build  # Production build (outputs to dist/)
 
 **Testing the dashboard:** Ensure `dashboard.enabled: true` in `config/settings.yaml`. Start the backend: `poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000`. Run the endpoint check: `poetry run python dashboard/backend/test_endpoints.py`. Then run the frontend (`npm run dev` in `dashboard/frontend` or open `http://localhost:8000` after `npm run build`). See `dashboard/backend/TESTING.md` for the full 10-page and API check.
 
-**Docker:** `docker compose up -d` runs both agent and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000). Activity feed (SSE) and Run History work when accessing via VPS IP — frontend uses relative API URLs. Use the **Dry Run** or **Live Run** buttons on Dashboard Home to trigger cycles, or: `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live); add `--dry-run` for dry-run.
+**Docker:** `docker compose up -d` runs the scheduler, always-on Slack listener, and dashboard. Dashboard served at `http://YOUR_VPS_IP:8000` (port 8000). Activity feed (SSE) and Run History work when accessing via VPS IP — frontend uses relative API URLs. Use the **Dry Run** or **Live Run** buttons on Dashboard Home to trigger cycles, or: `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live); add `--dry-run` for dry-run.
 
 **Schedule (configurable):**
 
@@ -171,20 +171,24 @@ Set `cycle_frequency: intraday` in `config/settings.yaml` for 3 cycles during ma
 
 ### Docker
 
-Two Dockerfiles: `Dockerfile.agent` (Python-only, runs the scheduler) and `Dockerfile` (multi-stage Node + Python, builds the frontend and runs the dashboard). The `investment-agent` service uses `Dockerfile.agent`; the `dashboard` service uses `Dockerfile`. This avoids building the frontend twice and halves memory usage during builds on low-RAM VPS instances.
+Two Dockerfiles: `Dockerfile.agent` (Python-only, reused for the scheduler and the always-on Slack listener) and `Dockerfile` (multi-stage Node + Python, builds the frontend and runs the dashboard). The `investment-agent` and `slack-listener` services use `Dockerfile.agent`; the `dashboard` service uses `Dockerfile`. This avoids building the frontend twice and halves memory usage during builds on low-RAM VPS instances.
 
 ```bash
-# Build and run both services (agent + dashboard)
+# Build and run all services (scheduler + Slack listener + dashboard)
 docker compose up -d --build
 
 # Rebuild only the dashboard (e.g. after frontend changes)
 docker compose up -d --build dashboard
 
-# Rebuild only the agent (e.g. after strategy/risk changes)
+# Rebuild only the scheduler (e.g. after strategy/risk changes)
 docker compose up -d --build investment-agent
+
+# Rebuild only the always-on Slack listener
+docker compose up -d --build slack-listener
 
 # View logs
 docker compose logs -f investment-agent
+docker compose logs -f slack-listener
 docker compose logs -f dashboard
 
 # Dashboard at http://localhost:8000 (or http://YOUR_VPS_IP:8000 on VPS)
@@ -201,7 +205,7 @@ docker exec -it investment-agent poetry run python -m src.orchestrator.main --dr
 
 Outbound chat interface v1 is live with persistent audit logging.
 
-- **Delivered (US-1.6):** Inbound Slack natural language trade commands — e.g. "BUY AAPL", "SELL 10 TSLA", "REVIEW MSFT", "BUY £500 NVDA", "buy apple", "sell google", "review nvidia". Slack Socket Mode listener triggers a full single-ticker pipeline (data → strategy → moderation → risk → execution) with user intent override. Moderation now reviews the final user-intended action/size, large orders enter a real confirmation flow before execution, and replies/audit rows persist `response_message` plus confirmation lifecycle statuses. **Force buy/sell:** `force buy MSFT`, `!buy AAPL`, `override buy NVDA` bypass explicit committee/risk blocks for Slack commands while still running the full pipeline and preserving the original objections in the audit trail. Rejected and error replies now carry contextual next-step tips: risk VETO shows `force buy` / `force sell`, moderation blocks explain that `force` can override the block if the operator still wants to proceed, minimum-order rejects suggest a larger GBP amount, price-data errors suggest retry/review, pending executions explain that Trading 212 accepted but has not yet filled the order, and unknown tickers suggest retrying with the company name. Regex-first NL parser (zero cost, supports ticker symbols and single-word company names) with Claude fallback for ambiguous messages. `SlackCommandLog` audit trail. **Dashboard Commands page** surfaces all command history with stats, filters, and expandable detail rows. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`. Focused US-1.6/US-1.9 regression suite: 113 passing tests. See [Chat & Commands](docs/CHAT_AND_COMMANDS.md).
+- **Delivered (US-1.6):** Inbound Slack natural language trade commands — e.g. "BUY AAPL", "SELL 10 TSLA", "REVIEW MSFT", "BUY £500 NVDA", "buy apple", "sell google", "review nvidia". Slack Socket Mode listener triggers a full single-ticker pipeline (data → strategy → moderation → risk → execution) with user intent override. Moderation now reviews the final user-intended action/size, large orders enter a real confirmation flow before execution, and replies/audit rows persist `response_message` plus confirmation lifecycle statuses. **Force buy/sell:** `force buy MSFT`, `!buy AAPL`, `override buy NVDA` bypass explicit committee/risk blocks for Slack commands while still running the full pipeline and preserving the original objections in the audit trail. Rejected and error replies now carry contextual next-step tips: risk VETO shows `force buy` / `force sell`, moderation blocks explain that `force` can override the block if the operator still wants to proceed, minimum-order rejects suggest a larger GBP amount, price-data errors suggest retry/review, pending executions explain that Trading 212 accepted but has not yet filled the order, and unknown tickers suggest retrying with the company name. Regex-first NL parser (zero cost, supports ticker symbols and single-word company names) with Claude fallback for ambiguous messages. `SlackCommandLog` audit trail. **Dashboard Commands page** surfaces all command history with stats, filters, and expandable detail rows. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`. Docker deployment now includes an always-on `slack-listener` service so Slack access survives deploys and reboots. Focused US-1.6/US-1.9 regression suite: 113 passing tests. See [Chat & Commands](docs/CHAT_AND_COMMANDS.md).
 - **Delivered (US-1.9 skeleton):** Conversational Trading Workflow DB schema (`chat_sessions`, `chat_turns`) + `SessionManager` CRUD stub + dashboard chat API endpoints. Hardened skeleton: missing sessions now return `404`, request models validate `channel_type`/`role`, and `chat_turns` has FK + unique turn-order protection. No LLM/execution yet — plumbing for future multi-turn conversational trading.
 - Channels (outbound): Slack webhook + SMTP email
 - Event types:

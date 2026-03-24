@@ -7,6 +7,7 @@ from typing import Callable
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from sqlalchemy import create_engine, inspect, text
 
 from src.data.database import DATABASE_URL
 from src.utils.config import get_settings
@@ -25,6 +26,41 @@ try:
 except ImportError:
     DASHBOARD_AVAILABLE = False
     log_event = None
+
+
+def _sync_analysis_cycle_jobs(database_url: str, cycle_times_utc: list[str]) -> set[str]:
+    """Remove stale persisted analysis-cycle jobs and return desired job IDs."""
+    desired_ids = set()
+    for cycle_time in cycle_times_utc:
+        hour, minute = map(int, cycle_time.split(":"))
+        desired_ids.add(f"analysis_cycle_{hour:02d}{minute:02d}")
+
+    # APScheduler persists cron jobs in apscheduler_jobs. When cadence changes
+    # (for example standard 07:00/19:00 -> intraday 08:00/12:00/16:00),
+    # replace_existing only updates matching IDs and leaves obsolete rows behind.
+    # Prune those rows directly before recreating the live scheduler.
+    engine = create_engine(database_url, connect_args={"check_same_thread": False})
+    try:
+        if not inspect(engine).has_table("apscheduler_jobs"):
+            return desired_ids
+        with engine.begin() as conn:
+            stale_ids = [
+                row[0]
+                for row in conn.execute(
+                    text("SELECT id FROM apscheduler_jobs WHERE id LIKE 'analysis_cycle_%'")
+                )
+                if row[0] not in desired_ids
+            ]
+            for job_id in stale_ids:
+                logger.info(f"Removing stale analysis cycle job: {job_id}")
+                conn.execute(
+                    text("DELETE FROM apscheduler_jobs WHERE id = :job_id"),
+                    {"job_id": job_id},
+                )
+    finally:
+        engine.dispose()
+
+    return desired_ids
 
 
 def _run_analysis_cycle() -> None:
@@ -289,9 +325,11 @@ def create_scheduler() -> BlockingScheduler:
         "default": SQLAlchemyJobStore(url=DATABASE_URL),
     }
 
+    desired_cycle_job_ids = _sync_analysis_cycle_jobs(DATABASE_URL, settings.cycle_times_utc)
+
     scheduler = BlockingScheduler(jobstores=jobstores)
 
-    # Analysis cycle: 07:00 and 19:00 UTC, Mon-Fri
+    # Analysis cycle: configured UTC schedule, Mon-Fri
     for cycle_time in settings.cycle_times_utc:
         hour, minute = map(int, cycle_time.split(":"))
         scheduler.add_job(
@@ -305,6 +343,8 @@ def create_scheduler() -> BlockingScheduler:
             misfire_grace_time=3600,
             max_instances=1,
         )
+
+    logger.debug(f"Active analysis cycle jobs: {sorted(desired_cycle_job_ids)}")
 
     # Daily snapshot: 21:30 UTC
     scheduler.add_job(

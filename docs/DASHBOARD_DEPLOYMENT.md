@@ -26,14 +26,15 @@ Deploy the dashboard backend (FastAPI + SSE) and frontend (built SPA) as a Docke
 
 ## Docker Architecture
 
-Two services in `docker-compose.yml`, each with its own Dockerfile:
+Three services in `docker-compose.yml`, using two Dockerfiles:
 
 | Service | Dockerfile | Purpose | Entry point |
 |---------|-----------|---------|-------------|
 | `investment-agent` | `Dockerfile.agent` | Python-only — runs scheduler | `alembic upgrade head && python -m src.scheduler.scheduler` |
+| `slack-listener` | `Dockerfile.agent` | Python-only — keeps Slack Socket Mode connected | `alembic upgrade head && python -m src.agents.notifications.slack_trade_listener` |
 | `dashboard` | `Dockerfile` | Multi-stage (Node + Python) — builds frontend, runs FastAPI | `uvicorn dashboard.backend.app.main:app` |
 
-Both share the same SQLite DB via `./data` volume. The split avoids building the frontend twice and halves memory usage on low-RAM VPS instances.
+All three share the same SQLite DB via `./data` volume. The split avoids building the frontend twice and halves memory usage on low-RAM VPS instances.
 
 - `Dockerfile.agent`: Python 3.12-slim, Poetry deps, application code. No Node.js, no frontend build.
 - `Dockerfile`: Stage 1 (Node 20-slim) builds the React/Vite frontend with `DASHBOARD_API_KEY` baked in as `VITE_API_KEY`. Stage 2 (Python 3.12-slim) installs Poetry deps, copies app code + built frontend dist.
@@ -100,7 +101,7 @@ docker compose up -d --build dashboard
 
 Verify: `curl http://localhost:8000/health` and open `http://YOUR_VPS_IP:8000` in a browser.
 
-**Local development:** Build the frontend with `cd dashboard/frontend && npm run build`. The dashboard Docker image (`Dockerfile`) runs a multi-stage build (Node → Python) that includes the built SPA. The agent image (`Dockerfile.agent`) is Python-only and does not build the frontend.
+**Local development:** Build the frontend with `cd dashboard/frontend && npm run build`. The dashboard Docker image (`Dockerfile`) runs a multi-stage build (Node → Python) that includes the built SPA. The agent image (`Dockerfile.agent`) is Python-only and is reused by both the scheduler and the Slack listener.
 
 ---
 
@@ -117,7 +118,7 @@ docker exec -it investment-agent poetry run python -m src.orchestrator.main
 
 When the operator has run the steps above on a VPS:
 
-- [x] Code: dashboard service in docker-compose; multi-stage frontend build; FastAPI serves SPA
+- [x] Code: scheduler + always-on Slack listener + dashboard services in docker-compose; multi-stage frontend build; FastAPI serves SPA
 - [x] Config: `dashboard.enabled: true`, `dashboard.events_enabled: true` in `config/settings.yaml`
 - [x] Firewall: `ufw allow 8000/tcp` (included in deployment commands above)
 - [x] Build & run: `docker compose up -d --build`

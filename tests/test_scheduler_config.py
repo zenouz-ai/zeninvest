@@ -1,5 +1,6 @@
 """Tests for scheduler configuration and 3-cycle setup."""
 
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from src.scheduler.scheduler import create_scheduler
@@ -148,3 +149,33 @@ def test_scheduler_omits_macro_scan_job_when_disabled() -> None:
             scheduler = create_scheduler()
 
     assert all(j.id != "macro_scan" for j in scheduler.get_jobs())
+
+
+def test_scheduler_removes_stale_analysis_cycle_jobs_when_cadence_changes(tmp_path: Path) -> None:
+    """Persisted 07:00/19:00 jobs should be removed when config switches to intraday."""
+    standard_settings = MagicMock()
+    standard_settings.cycle_times_utc = ["07:00", "19:00"]
+    standard_settings.trading = {}
+    standard_settings.batch_enrichment_enabled = False
+    standard_settings.macro_proactive_scan_enabled = False
+    standard_settings.macro_scan_time_utc = "06:00"
+
+    intraday_settings = MagicMock()
+    intraday_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
+    intraday_settings.trading = {}
+    intraday_settings.batch_enrichment_enabled = False
+    intraday_settings.macro_proactive_scan_enabled = False
+    intraday_settings.macro_scan_time_utc = "06:00"
+
+    db_url = f"sqlite:///{tmp_path / 'scheduler_jobs.db'}"
+
+    with patch("src.scheduler.scheduler.get_settings", return_value=standard_settings):
+        with patch("src.scheduler.scheduler.DATABASE_URL", db_url):
+            create_scheduler()
+
+    with patch("src.scheduler.scheduler.get_settings", return_value=intraday_settings):
+        with patch("src.scheduler.scheduler.DATABASE_URL", db_url):
+            scheduler = create_scheduler()
+
+    cycle_job_ids = {j.id for j in scheduler.get_jobs() if j.id.startswith("analysis_cycle_")}
+    assert cycle_job_ids == {"analysis_cycle_0800", "analysis_cycle_1200", "analysis_cycle_1600"}

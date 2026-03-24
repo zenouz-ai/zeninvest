@@ -23,6 +23,22 @@ services:
       retries: 3
       start_period: 30s
 
+  slack-listener:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: investment-slack-listener
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./journals:/app/journals
+      - ./logs:/app/logs
+    command: ["sh", "-c", "alembic upgrade head && python -m src.agents.notifications.slack_trade_listener"]
+    depends_on:
+      - investment-agent
+
   dashboard:
     build:
       context: .

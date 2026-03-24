@@ -247,7 +247,7 @@ Each has a 2,000 calls/month limit (config: `search_api_limits`). Omit if not us
 
 **Costs (as of 2026-03):** Brave Search $5/1k requests (free $5 credits/month); Brave Answers $4/1k queries + token costs (free $5 credits/month); Tavily pay-as-you-go $0.008/credit (2,000 calls ≈ $16) or Project plan $30/month for 4,000 credits.
 
-**Delivered (US-1.6 — Slack natural language trade commands):** Inbound Slack requires `SLACK_APP_TOKEN` (xapp-…) and `SLACK_BOT_TOKEN` (xoxb-…), plus the long-running `slack_trade_listener` process or container. Large orders enter an explicit confirmation flow before execution. See `docs/CHAT_AND_COMMANDS.md`.
+**Delivered (US-1.6 — Slack natural language trade commands):** Inbound Slack requires `SLACK_APP_TOKEN` (xapp-…) and `SLACK_BOT_TOKEN` (xoxb-…), plus the long-running `slack_trade_listener` process or container. In Docker deployments, `docker compose up -d --build` now starts a dedicated `slack-listener` service for always-on Slack access. Large orders enter an explicit confirmation flow before execution. See `docs/CHAT_AND_COMMANDS.md`.
 
 Secure the file:
 
