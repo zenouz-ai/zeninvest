@@ -431,8 +431,9 @@ slack_trade_commands:
 #### 9. Slack Reply Format
 
 - **REVIEW:** Full pipeline detail — price, strategy action/conviction/allocation/stop-loss/reasoning (not truncated), per-moderator GPT-4o/Gemini verdicts with scores and reasoning. "No order placed."
-- **BUY/SELL (executed):** Quantity, price (native currency), value (GBP), execution status, moderation consensus, risk verdict, order ID. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override: "Risk: *OVERRIDDEN* (force buy/force sell — risk VETO bypassed)" with overridden rules listed.
-- **Rejected (risk/cash/ticker):** Full pipeline detail — price, strategy reasoning, per-moderator verdicts, risk triggered rules. Includes action-specific hint: "Tip: Use `force buy <ticker>`" or `force sell <ticker>` to override risk VETO.
+- **BUY/SELL (executed):** Quantity, price (native currency), value (GBP), execution status, strategy summary/reasoning, moderation consensus, risk verdict, order ID. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override: "Risk: *OVERRIDDEN* (force buy/force sell — risk VETO bypassed)" with overridden rules listed. If T212 accepts but has not filled the market order yet (`pending`), reply includes a tip to check dashboard / Trading 212 for status updates.
+- **Rejected (risk/cash/ticker):** Full pipeline detail — price, strategy reasoning, per-moderator verdicts, risk triggered rules. Includes contextual next-step tips: risk VETO suggests action-specific `force buy <ticker>` / `force sell <ticker>`; moderation BLOCKED points user to `REVIEW <ticker>` and notes that `force` does not bypass moderation; minimum-order rejects suggest a larger GBP order; no-position SELL rejects suggest reviewing current holdings first.
+- **Error:** Error replies now include contextual tips when possible, e.g. retrying `REVIEW <ticker>` after market data refresh when price determination fails.
 
 #### 10. Entry Point and Deployment
 
@@ -449,6 +450,8 @@ slack_trade_commands:
 | No position (SELL) | Reject |
 | Order > threshold | Require "yes" confirmation |
 | Risk VETO | Reject after pipeline; log reason. Hint suggests action-specific `force buy` / `force sell` override. |
+| Moderation BLOCKED | Reject after moderation; hint suggests `REVIEW <ticker>` because `force` does not bypass moderation. |
+| Below minimum order size | Reject before broker placement; hint suggests a larger GBP amount or `REVIEW <ticker>`. |
 | Risk VETO + force prefix | **Override:** execute despite risk rejection; log as `OVERRIDDEN` with triggered rules |
 
 #### 12. Documentation Updates (When Implementing)
@@ -546,7 +549,7 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 - [x] Focused US-1.6/US-1.9 regression suite: 113 passing tests across parser, ticker resolution, single-ticker runner, listener/gateway, commands API, chat session manager/API, and Slack reply formatting.
 - [x] **Dashboard Commands page** (`/commands`): Stats cards (total, executed, rejected, review), action/status filters, command history table with expandable rows showing cycle_id, order linkage, rejection reasons, and response messages. Backend: `GET /api/commands/` (filtered + paginated), `GET /api/commands/stats`.
 - [x] **Post-deployment fixes (2026-03-24):** Bot self-message loop prevention (`_resolve_bot_user_id` via `auth.test` + `bot_id`/user_id filtering); error message propagation from pipeline to Slack reply (gateway now surfaces `error_message`/`rejection_reason`); price extraction fix (`indicators.current_price` not `.close`); REVIEW reply shows full details — price, allocation %, stop-loss %, full reasoning (no truncation), per-moderator GPT-4o/Gemini verdicts with scores and reasoning; completion log lines for all terminal states (review_only, executed, rejected, error).
-- [x] **Hardening pass (2026-03-24):** real confirmation gate before execution for large orders; moderation now reviews the final user action/size; force replies and rejection hints use action-specific wording; non-command chatter no longer leaves a stray processing reply; dashboard audit rows persist `response_message`.
+- [x] **Hardening pass (2026-03-24):** real confirmation gate before execution for large orders; moderation now reviews the final user action/size; force replies and rejection hints use action-specific wording; non-command chatter no longer leaves a stray processing reply; dashboard audit rows persist `response_message`; contextual Slack tips now cover risk vetoes, moderation blocks, unknown tickers, minimum-order rejects, price-data failures, no-position SELLs, duplicate orders, and pending broker acceptance.
 
 ### Phase 3 (Web Chat UI — Future)
 

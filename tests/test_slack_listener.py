@@ -291,6 +291,8 @@ class TestCommandGateway:
         )
         result = gw.handle(req)
         assert result["status"] == "unknown_ticker"
+        assert "Tip:" in result["message"]
+        assert "REVIEW Rocket Lab" in result["message"]
 
     @patch("src.agents.notifications.command_gateway.get_settings")
     @patch("src.agents.notifications.command_gateway.parse_trade_command")

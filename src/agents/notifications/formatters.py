@@ -680,6 +680,10 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
         if order_id:
             lines.append(f"Order ID: {order_id}")
 
+    tip = _execution_tip(result)
+    if tip:
+        lines.append(f"_Tip: {tip}_")
+
     return "\n".join(lines)
 
 
@@ -730,9 +734,9 @@ def _format_rejected_reply(result: "SingleTickerResult", ticker: str) -> str:
         if triggered:
             lines.append(f"\n*Risk rules triggered:* {', '.join(triggered)}")
 
-    # Hint about force override
-    if result.risk_verdict_str == "REJECT":
-        lines.append(f"\n_Tip: Use `force {result.user_action.lower()} <ticker>` to override risk VETO._")
+    tip = _rejection_tip(result)
+    if tip:
+        lines.append(f"\n_Tip: {tip}_")
 
     return "\n".join(lines)
 
@@ -740,7 +744,11 @@ def _format_rejected_reply(result: "SingleTickerResult", ticker: str) -> str:
 def _format_error_reply(result: "SingleTickerResult", ticker: str) -> str:
     """Format error response."""
     error = result.error_message or "Unknown error"
-    return f"*Error processing {result.user_action} {ticker}*\n{error}"
+    reply = f"*Error processing {result.user_action} {ticker}*\n{error}"
+    tip = _error_tip(result)
+    if tip:
+        reply += f"\n_Tip: {tip}_"
+    return reply
 
 
 def _format_gpt_moderator_header(verdict: dict[str, Any]) -> str:
@@ -810,3 +818,50 @@ def _format_gemini_reasoning(verdict: dict[str, Any]) -> str:
     if clarifier in reasoning:
         return reasoning
     return f"{reasoning} {clarifier}"
+
+
+def _rejection_tip(result: "SingleTickerResult") -> str:
+    """Return a contextual next-step tip for rejected Slack replies."""
+    ticker = result.ticker_yf or result.ticker_t212
+    if result.risk_verdict_str == "REJECT":
+        return f"Use `force {result.user_action.lower()} <ticker>` to override risk VETO."
+
+    reason = (result.rejection_reason or "").strip().lower()
+    if "blocked by moderation consensus" in reason:
+        return "Use `REVIEW <ticker>` to inspect the committee reasoning first. `force` does not bypass moderation BLOCKED."
+
+    if "minimum order size" in reason or "below the minimum order size" in reason:
+        return f"Try a larger order, for example `BUY £500 {ticker}` or use `REVIEW {ticker}` first."
+
+    if "no open position" in reason:
+        return f"Use `REVIEW {ticker}` to confirm whether you currently hold shares before selling."
+
+    if "matching order was already placed recently" in reason or "duplicate" in reason:
+        return "A similar order was already submitted. Wait a few minutes before retrying."
+
+    if "could not determine price" in reason:
+        return f"Try `REVIEW {ticker}` again after market data refresh, or retry with the live market symbol if the instrument recently changed ticker."
+
+    return ""
+
+
+def _execution_tip(result: "SingleTickerResult") -> str:
+    """Return contextual guidance for executed replies."""
+    exec_status = str((result.execution_result or {}).get("status", "")).lower().strip()
+    if exec_status == "pending":
+        return "Trading 212 accepted the order but has not filled it yet. Check the dashboard or Trading 212 for status updates."
+    return ""
+
+
+def _error_tip(result: "SingleTickerResult") -> str:
+    """Return contextual guidance for pipeline errors."""
+    error = (result.error_message or "").strip().lower()
+    ticker = result.ticker_yf or result.ticker_t212
+
+    if "could not determine price" in error:
+        return f"Try `REVIEW {ticker}` again after market data refresh, or retry with the live market symbol if the instrument recently changed ticker."
+
+    if "data fetch failed" in error or "timeout" in error:
+        return f"Retry `REVIEW {ticker}` in a minute to confirm market data before sending the trade again."
+
+    return ""

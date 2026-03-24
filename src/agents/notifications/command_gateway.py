@@ -57,7 +57,10 @@ class CommandGateway:
             return {
                 "status": "unknown_ticker",
                 "ticker": intent.ticker,
-                "message": f"Unknown ticker: {intent.ticker}. Check the symbol and try again.",
+                "message": (
+                    f"Unknown ticker: {intent.ticker}. Check the symbol and try again. "
+                    "Tip: try the company name instead, for example `REVIEW Rocket Lab`."
+                ),
             }
 
         return {

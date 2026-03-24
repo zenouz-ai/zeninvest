@@ -389,6 +389,19 @@ class TestFormatExecutedReply:
         assert "Strategy suggested HOLD" in reply
         assert "you overrode to BUY" in reply
 
+    def test_executed_pending_includes_status_tip(self):
+        result = _make_result(
+            status="executed",
+            user_action="BUY",
+            execution_result={"status": "pending", "order_id": 123},
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "BUY AAPL" in reply
+        assert "pending" in reply
+        assert "Trading 212 accepted the order but has not filled it yet" in reply
+
     def test_executed_force_sell_uses_action_specific_wording(self):
         result = _make_result(
             status="executed",
@@ -560,8 +573,36 @@ class TestFormatRejectedReply:
         assert "risk is higher than growth (8/10 vs 7/10)" in reply
         assert "confidence is very low at 2/10" in reply
 
+    def test_rejected_moderation_blocked_includes_contextual_tip(self):
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            rejection_reason="BLOCKED by moderation consensus",
+            moderation_consensus="BLOCKED",
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "Tip:" in reply
+        assert "REVIEW <ticker>" in reply
+        assert "force" in reply
+        assert "does not bypass moderation BLOCKED" in reply
+
+    def test_rejected_below_minimum_order_includes_contextual_tip(self):
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            rejection_reason="Order value £308.68 is below the minimum order size of £500.00",
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "Tip:" in reply
+        assert "BUY £500 AAPL" in reply
+        assert "REVIEW AAPL" in reply
+
     def test_rejected_no_force_hint_when_not_risk_reject(self):
-        """Force hint should only appear when risk VETO is the reason."""
+        """Risk-specific force override hint should not appear for unrelated rejections."""
         result = _make_result(
             status="rejected",
             user_action="SELL",
@@ -569,7 +610,31 @@ class TestFormatRejectedReply:
             risk_verdict_str="",
         )
         reply = format_trade_command_reply(result)
-        assert "force buy" not in reply
+        assert "override risk VETO" not in reply
+
+    def test_rejected_no_open_position_includes_review_tip(self):
+        result = _make_result(
+            status="rejected",
+            user_action="SELL",
+            ticker_yf="AAPL",
+            rejection_reason="No open position in AAPL_US_EQ",
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "Tip:" in reply
+        assert "REVIEW AAPL" in reply
+
+    def test_rejected_duplicate_order_includes_wait_tip(self):
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            rejection_reason="A matching order was already placed recently.",
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "Wait a few minutes before retrying" in reply
 
 
 class TestFormatForceOverrideReply:
@@ -608,6 +673,21 @@ class TestFormatErrorReply:
         reply = format_trade_command_reply(result)
         assert "Error processing BUY AAPL" in reply
         assert "Data fetch timeout for AAPL" in reply
+        assert "REVIEW AAPL" in reply
+
+    def test_error_price_resolution_includes_market_data_tip(self):
+        result = _make_result(
+            status="error",
+            user_action="BUY",
+            ticker_yf="IONQ",
+            error_message="Could not determine price for IONQ",
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "Could not determine price for IONQ" in reply
+        assert "REVIEW IONQ" in reply
+        assert "market symbol" in reply
 
     def test_error_unknown_when_no_message(self):
         result = _make_result(
