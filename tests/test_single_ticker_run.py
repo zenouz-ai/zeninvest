@@ -230,3 +230,52 @@ class TestSingleTickerResult:
         assert result.status == "pending"
         assert result.rejection_reason is None
         assert result.conviction == 0
+
+
+class TestExtractPrice:
+    """Tests for SingleTickerRunner._extract_price()."""
+
+    @pytest.fixture
+    def runner(self, db_session):
+        """Create a SingleTickerRunner with deps mocked."""
+        with patch("src.orchestrator.single_ticker_run.get_session", return_value=db_session), \
+             patch("src.orchestrator.single_ticker_run.DataFetcher"), \
+             patch("src.orchestrator.single_ticker_run.StrategyEngine"), \
+             patch("src.orchestrator.single_ticker_run.ModerationPanel"), \
+             patch("src.orchestrator.single_ticker_run.RiskManager"):
+            r = SingleTickerRunner(dry_run=True)
+            yield r
+
+    def test_extract_from_indicators_current_price(self, runner):
+        stock_data = {"indicators": {"current_price": 150.25, "close": 149.0}}
+        assert runner._extract_price(stock_data) == 150.25
+
+    def test_fallback_to_indicators_close(self, runner):
+        stock_data = {"indicators": {"close": 149.0}}
+        assert runner._extract_price(stock_data) == 149.0
+
+    def test_fallback_to_fundamentals_current_price(self, runner):
+        stock_data = {"indicators": {}, "fundamentals": {"currentPrice": 151.50}}
+        assert runner._extract_price(stock_data) == 151.50
+
+    def test_fallback_to_fundamentals_previous_close(self, runner):
+        stock_data = {"indicators": {}, "fundamentals": {"previousClose": 148.75}}
+        assert runner._extract_price(stock_data) == 148.75
+
+    def test_returns_none_when_no_price_available(self, runner):
+        stock_data = {"indicators": {}, "fundamentals": {}}
+        assert runner._extract_price(stock_data) is None
+
+    def test_returns_none_for_empty_data(self, runner):
+        assert runner._extract_price({}) is None
+
+    def test_handles_indicators_error_dict_gracefully(self, runner):
+        """When indicators contains an 'error' key (a dict), don't crash."""
+        stock_data = {"indicators": {"error": "timeout"}, "fundamentals": {"currentPrice": 100.0}}
+        # indicators has no price keys, should fall through to fundamentals
+        assert runner._extract_price(stock_data) == 100.0
+
+    def test_handles_indicators_error_string_gracefully(self, runner):
+        """When indicators is a non-dict (e.g. error string), fall through."""
+        stock_data = {"indicators": "error", "fundamentals": {"currentPrice": 100.0}}
+        assert runner._extract_price(stock_data) == 100.0

@@ -541,6 +541,7 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 - [x] All trades (autonomous and Slack-initiated) visible in portfolio and audit logs with consistent cycle_id format (`slack-{timestamp}`).
 - [x] 43 tests cover parser (16), ticker resolution (6), single-ticker pipeline (11), listener + gateway (5), and chat session stub (5).
 - [x] **Dashboard Commands page** (`/commands`): Stats cards (total, executed, rejected, review), action/status filters, command history table with expandable rows showing cycle_id, order linkage, rejection reasons, and response messages. Backend: `GET /api/commands/` (filtered + paginated), `GET /api/commands/stats`. 9 additional tests (5 parser company-name + 4 commands API). Total: 52 tests across US-1.6/1.9.
+- [x] **Post-deployment fixes (2026-03-24):** Bot self-message loop prevention (`_resolve_bot_user_id` via `auth.test` + `bot_id`/user_id filtering); error message propagation from pipeline to Slack reply (gateway now surfaces `error_message`/`rejection_reason`); price extraction fix (`indicators.current_price` not `.close`); REVIEW reply shows full details — price, allocation %, stop-loss %, full reasoning (no truncation), per-moderator GPT-4o/Gemini verdicts with scores and reasoning; completion log lines for all terminal states (review_only, executed, rejected, error).
 
 ### Phase 3 (Web Chat UI — Future)
 

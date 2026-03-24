@@ -224,3 +224,196 @@ def test_trade_execution_no_error_when_stop_loss_placed() -> None:
 
     assert "Stop-loss status: placed" in body
     assert "Stop-loss error:" not in body
+
+
+# --- Slack Trade Command Reply Formatters (US-1.6) ---
+
+from src.agents.notifications.formatters import format_trade_command_reply
+from src.orchestrator.single_ticker_run import SingleTickerResult
+
+
+def _make_result(**overrides) -> SingleTickerResult:
+    """Helper to create a SingleTickerResult with sensible defaults."""
+    defaults = dict(
+        ticker_t212="AAPL_US_EQ",
+        ticker_yf="AAPL",
+        cycle_id="slack-20260324T120000",
+        user_action="BUY",
+        status="pending",
+        strategy_decision=None,
+        moderation_result=None,
+        risk_verdict=None,
+        execution_result=None,
+        rejection_reason=None,
+        error_message=None,
+        conviction=0,
+        strategy_action="",
+        moderation_consensus="",
+        risk_verdict_str="",
+        price=0.0,
+        quantity=0.0,
+        value_gbp=0.0,
+    )
+    defaults.update(overrides)
+    return SingleTickerResult(**defaults)
+
+
+class TestFormatReviewReply:
+
+    def test_review_shows_full_reasoning_not_truncated(self):
+        long_reasoning = "A" * 500
+        result = _make_result(
+            status="review_only",
+            user_action="REVIEW",
+            strategy_decision={
+                "action": "BUY",
+                "conviction": 75,
+                "target_allocation_pct": 6.0,
+                "stop_loss_pct": -8,
+                "reasoning": long_reasoning,
+            },
+            strategy_action="BUY",
+            conviction=75,
+            price=150.0,
+        )
+        reply = format_trade_command_reply(result)
+        # Full reasoning should be included, not truncated
+        assert long_reasoning in reply
+
+    def test_review_includes_per_moderator_verdicts(self):
+        result = _make_result(
+            status="review_only",
+            user_action="REVIEW",
+            strategy_decision={
+                "action": "BUY",
+                "conviction": 80,
+                "target_allocation_pct": 5.0,
+                "stop_loss_pct": -8,
+                "reasoning": "Strong momentum",
+            },
+            strategy_action="BUY",
+            conviction=80,
+            price=150.0,
+            moderation_consensus="APPROVED",
+            moderation_result={
+                "consensus": "APPROVED",
+                "gpt4o_verdict": {
+                    "verdict": "AGREE",
+                    "score": 8,
+                    "reasoning": "Valuation is justified given growth trajectory.",
+                },
+                "gemini_verdict": {
+                    "verdict": "AGREE",
+                    "score": 7,
+                    "reasoning": "Risk-adjusted return is attractive.",
+                },
+            },
+        )
+        reply = format_trade_command_reply(result)
+        assert "GPT-4o (Skeptic): AGREE" in reply
+        assert "score 8" in reply
+        assert "Valuation is justified" in reply
+        assert "Gemini (Risk): AGREE" in reply
+        assert "score 7" in reply
+        assert "Risk-adjusted return" in reply
+
+    def test_review_includes_price_allocation_stop_loss(self):
+        result = _make_result(
+            status="review_only",
+            user_action="REVIEW",
+            strategy_decision={
+                "action": "BUY",
+                "conviction": 70,
+                "target_allocation_pct": 7.5,
+                "stop_loss_pct": -10,
+                "reasoning": "Solid fundamentals",
+            },
+            strategy_action="BUY",
+            conviction=70,
+            price=200.50,
+        )
+        reply = format_trade_command_reply(result)
+        assert "$200.50" in reply
+        assert "7.5%" in reply
+        assert "-10%" in reply
+
+
+class TestFormatExecutedReply:
+
+    def test_executed_shows_execution_details(self):
+        result = _make_result(
+            status="executed",
+            user_action="BUY",
+            price=150.0,
+            quantity=3.5,
+            value_gbp=525.0,
+            moderation_consensus="APPROVED",
+            risk_verdict_str="APPROVE",
+            execution_result={
+                "status": "filled",
+                "order_id": 42,
+                "ticker": "AAPL_US_EQ",
+            },
+        )
+        reply = format_trade_command_reply(result)
+        assert "BUY AAPL" in reply
+        assert "filled" in reply
+        assert "3.50" in reply
+        assert "£150.00" in reply
+        assert "£525.00" in reply
+        assert "Order ID: 42" in reply
+        assert "Moderation: APPROVED" in reply
+        assert "Risk: APPROVE" in reply
+
+    def test_executed_shows_user_override(self):
+        result = _make_result(
+            status="executed",
+            user_action="BUY",
+            strategy_action="HOLD",
+            price=150.0,
+            quantity=3.0,
+            value_gbp=450.0,
+            execution_result={"status": "dry_run"},
+        )
+        reply = format_trade_command_reply(result)
+        assert "Strategy suggested HOLD" in reply
+        assert "you overrode to BUY" in reply
+
+
+class TestFormatRejectedReply:
+
+    def test_rejected_shows_reason(self):
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            rejection_reason="Risk VETO: max_single_stock_pct exceeded",
+            strategy_action="BUY",
+            conviction=65,
+            moderation_consensus="APPROVED",
+        )
+        reply = format_trade_command_reply(result)
+        assert "Rejected" in reply
+        assert "Risk VETO: max_single_stock_pct exceeded" in reply
+        assert "Strategy: BUY (conviction 65)" in reply
+        assert "Moderation: APPROVED" in reply
+
+
+class TestFormatErrorReply:
+
+    def test_error_shows_error_message(self):
+        result = _make_result(
+            status="error",
+            user_action="BUY",
+            error_message="Data fetch timeout for AAPL",
+        )
+        reply = format_trade_command_reply(result)
+        assert "Error processing BUY AAPL" in reply
+        assert "Data fetch timeout for AAPL" in reply
+
+    def test_error_unknown_when_no_message(self):
+        result = _make_result(
+            status="error",
+            user_action="SELL",
+        )
+        reply = format_trade_command_reply(result)
+        assert "Unknown error" in reply

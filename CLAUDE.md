@@ -298,8 +298,11 @@ Research tools use a provider abstraction: Brave (primary) + Tavily (fallback, o
 ### Notification module structure (`src/agents/notifications/`)
 
 - **types.py** — `NotificationEvent`, `NotificationMessage`, `TradeInstructionPayload`, `TradeExecutionPayload`, `NotificationError`
-- **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y, or "—" when committee not invoked e.g. HOLD), reasoning excerpt, and structured stage reason for queued/filtered decisions (e.g. "Awaiting 2nd cycle for promotion", "Capacity gated (no slot or cash)", "Below UOV queue threshold").
+- **formatters.py** — Channel-specific rendering (`render_event` → Slack/Email). Trade/queued messages include ticker, action, quantity (or "queued"), committee summary (Moderation=X | Risk=Y, or "—" when committee not invoked e.g. HOLD), reasoning excerpt, and structured stage reason for queued/filtered decisions. `format_trade_command_reply()` renders `SingleTickerResult` for Slack thread replies: review (full per-moderator verdicts with GPT-4o/Gemini scores and reasoning, no truncation), executed, rejected, error statuses.
 - **service.py** — `NotificationService` with `emit_*` methods. Fail-open: all exceptions caught, logged with `exc_info`, and never propagated. Retries with backoff; failed attempts recorded in `notification_logs`.
+- **slack_listener.py** — Socket Mode handler for inbound trade commands; resolves bot's own `user_id` via `auth.test` on startup and filters out self-messages (prevents cascading reply loops); processes BUY/SELL/REVIEW commands in background threads; large-order confirmation flow with expiry.
+- **command_gateway.py** — Routes parsed `CommandRequest` to `SingleTickerRunner`; resolves ticker via `resolve_ticker_to_t212()`; propagates `error_message` and `rejection_reason` from pipeline result for Slack display.
+- **trade_command_parser.py** — Regex-first NL parser with Claude fallback; extracts action (BUY/SELL/REVIEW), ticker, optional quantity/amount_gbp from free-text Slack messages.
 - **providers/** — Slack webhook, SMTP email. Providers implement `send(subject, body)` and raise on failure.
 - **Event types**: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`
 

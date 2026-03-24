@@ -574,21 +574,56 @@ def format_trade_command_reply(result: "SingleTickerResult") -> str:
 
 
 def _format_review_reply(result: "SingleTickerResult", ticker: str) -> str:
-    """Format REVIEW response."""
+    """Format REVIEW response with full pipeline details."""
     lines = [f"*Review {ticker}*"]
+
+    # Price
+    if result.price:
+        lines.append(f"Price: ${result.price:.2f}")
+
+    # Strategy
     if result.strategy_decision:
         action = result.strategy_action or "HOLD"
         conv = result.conviction
-        lines.append(f"Strategy: {action} (conviction {conv})")
-    if result.moderation_consensus:
-        lines.append(f"Moderation: {result.moderation_consensus}")
-    if result.risk_verdict:
-        lines.append(f"Risk: {result.risk_verdict.get('verdict', 'N/A')}")
-    if result.strategy_decision:
+        alloc = result.strategy_decision.get("target_allocation_pct", "—")
+        stop = result.strategy_decision.get("stop_loss_pct", "—")
+        lines.append(f"\n*Strategy:* {action} (conviction {conv})")
+        lines.append(f"Allocation: {alloc}% | Stop-loss: {stop}%")
+
         reasoning = result.strategy_decision.get("reasoning", "")
         if reasoning:
-            lines.append(f"Reasoning: {_excerpt(reasoning, 200)}")
-    lines.append("No order placed.")
+            lines.append(f"Reasoning: {reasoning}")
+
+        # Extra strategy fields
+        entry_type = result.strategy_decision.get("entry_type")
+        if entry_type:
+            lines.append(f"Entry type: {entry_type}")
+
+    # Moderation
+    if result.moderation_result:
+        lines.append(f"\n*Moderation:* {result.moderation_consensus}")
+        # GPT-4o (Skeptic)
+        gpt = result.moderation_result.get("gpt4o_verdict")
+        if gpt:
+            v = gpt.get("verdict", "?")
+            s = gpt.get("score") or gpt.get("confidence_score", "?")
+            lines.append(f"  • GPT-4o (Skeptic): {v} (score {s})")
+            r = gpt.get("reasoning", "")
+            if r:
+                lines.append(f"    {r}")
+        # Gemini (Risk Assessor)
+        gem = result.moderation_result.get("gemini_verdict")
+        if gem:
+            v = gem.get("verdict", "?")
+            s = gem.get("score") or gem.get("confidence_score", "?")
+            lines.append(f"  • Gemini (Risk): {v} (score {s})")
+            r = gem.get("reasoning") or gem.get("assessment", "")
+            if r:
+                lines.append(f"    {r}")
+    elif result.moderation_consensus:
+        lines.append(f"\n*Moderation:* {result.moderation_consensus}")
+
+    lines.append("\n_No order placed._")
     return "\n".join(lines)
 
 
