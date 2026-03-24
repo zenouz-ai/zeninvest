@@ -10,7 +10,7 @@ last_updated: 2026-03-24
 
 ## Purpose
 
-This document tracks every planned and delivered enhancement to the investment agent, ordered by priority and feasibility. It serves as the single backlog for sprint planning and as a record of what has been shipped. The dashboard **Roadmap** tab (`/roadmap`) visualises this roadmap with a timeline and architecture-to-component mapping.
+This document tracks every planned and delivered enhancement to the investment agent, ordered by priority and feasibility. It serves as the single backlog for sprint planning and as a record of what has been shipped. The dashboard **Roadmap** page (`/roadmap`) visualises this backlog with a short-cycle **Timeline** board, a detailed story-card view, and an architecture-to-component mapping.
 
 ---
 

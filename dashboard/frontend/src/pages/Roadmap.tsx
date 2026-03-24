@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import {
@@ -8,17 +8,28 @@ import {
   DELIVERED_COUNT,
   PIPELINE_COUNT,
   PROGRESS_PCT,
+  type Horizon,
   type Milestone,
   type Topic,
 } from '../data/roadmap'
 import { safeFormat } from '../utils/date'
 import { PageBrandHeader } from '../components/PageBrandHeader'
+import { Panel } from '../components/Panel'
+import { SectionHeader } from '../components/SectionHeader'
+import { StatusPill, type PillVariant } from '../components/StatusPill'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
-type TabId = 'gantt' | 'roadmap' | 'architecture'
+type TabId = 'timeline' | 'roadmap' | 'architecture'
+type TimelineColumnId = 'Delivered' | Horizon
+type TimelineSection = {
+  topic: Topic
+  columns: Record<TimelineColumnId, Milestone[]>
+}
 
-/** Full pipeline Mermaid with external APIs and US annotations */
+const TIMELINE_COLUMNS: TimelineColumnId[] = ['Delivered', 'Next', 'Soon', 'Later']
+const HORIZON_ORDER: Horizon[] = ['Next', 'Soon', 'Later']
+
 const ARCHITECTURE_MERMAID = `
 graph TB
     subgraph Ext["External APIs"]
@@ -116,53 +127,10 @@ graph TB
     OM --> JOUR
 `
 
-/** Topic-to-color mapping for Gantt sections (work streams). Mermaid cycles section colors; order determines palette. */
-const TOPIC_ORDER = [...TOPICS]
-
-/** Build Mermaid gantt diagram from milestones. Sections = work streams (topics); bars colored by topic. */
-function buildGanttMermaid(): string {
-  const delivered = MILESTONES.filter((m) => m.status === 'delivered' && m.start && m.end)
-  const pipeline = MILESTONES.filter((m) => m.status === 'pipeline')
-  const effortDays: Record<string, number> = { S: 5, M: 10, L: 20, 'M–L': 14 }
-  const lastEnd = delivered.length
-    ? delivered.reduce((max, m) => (m.end! > max ? m.end! : max), delivered[0]!.end!)
-    : PROJECT_START
-  const plannedStart = lastEnd ? new Date(lastEnd) : new Date(PROJECT_START)
-  plannedStart.setDate(plannedStart.getDate() + 1)
-  const plannedStartStr = plannedStart.toISOString().slice(0, 10)
-
-  const lines: string[] = [
-    'gantt',
-    '    title Project Roadmap',
-    '    dateFormat YYYY-MM-DD',
-    '    axisFormat %b %Y',
-  ]
-  const sections = new Map<string, string[]>()
-  for (const m of delivered) {
-    const sec = m.topic
-    if (!sections.has(sec)) sections.set(sec, [])
-    const label = `${m.id} ${m.name}`.replace(/:/g, '')
-    sections.get(sec)!.push(`    ${label} :done, ${m.id.replace(/[.-]/g, '_')}, ${m.start}, ${m.end}`)
-  }
-  let cursor = plannedStartStr
-  for (const m of pipeline) {
-    const sec = m.topic
-    if (!sections.has(sec)) sections.set(sec, [])
-    const dur = effortDays[m.effort] ?? 10
-    const label = `${m.id} ${m.name}`.replace(/:/g, '')
-    const end = new Date(cursor)
-    end.setDate(end.getDate() + dur)
-    const endStr = end.toISOString().slice(0, 10)
-    sections.get(sec)!.push(`    ${label} : ${m.id.replace(/[.-]/g, '_')}, ${cursor}, ${endStr}`)
-    cursor = endStr
-  }
-  for (const topic of TOPIC_ORDER) {
-    const tasks = sections.get(topic)
-    if (!tasks || tasks.length === 0) continue
-    lines.push(`    section ${topic}`)
-    lines.push(...tasks)
-  }
-  return lines.join('\n')
+export function resolveRoadmapTab(tabParam: string | null): TabId {
+  if (tabParam === 'roadmap') return 'roadmap'
+  if (tabParam === 'architecture') return 'architecture'
+  return 'timeline'
 }
 
 function daysSince(start: string): number {
@@ -172,115 +140,286 @@ function daysSince(start: string): number {
   return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)))
 }
 
-function MilestoneRow({ m }: { m: Milestone }) {
-  const [expanded, setExpanded] = useState(false)
-  const dateRange =
-    m.status === 'delivered' && m.start && m.end
-      ? `${safeFormat(m.start, 'd MMM yyyy')} – ${safeFormat(m.end, 'd MMM yyyy')}`
-      : m.status === 'pipeline'
-        ? 'Planned'
-        : '—'
+function sortDelivered(a: Milestone, b: Milestone): number {
+  return (b.end ?? '').localeCompare(a.end ?? '') || a.id.localeCompare(b.id)
+}
 
+function sortPipeline(a: Milestone, b: Milestone): number {
+  const aHorizon = HORIZON_ORDER.indexOf(a.horizon ?? 'Later')
+  const bHorizon = HORIZON_ORDER.indexOf(b.horizon ?? 'Later')
+  if (aHorizon !== bHorizon) return aHorizon - bHorizon
+  if ((a.timeboxDays ?? 2) !== (b.timeboxDays ?? 2)) return (a.timeboxDays ?? 2) - (b.timeboxDays ?? 2)
+  return a.id.localeCompare(b.id)
+}
+
+export function getTimelineSections(milestones: Milestone[] = MILESTONES): TimelineSection[] {
+  return TOPICS.map((topic) => {
+    const items = milestones.filter((milestone) => milestone.topic === topic)
+    return {
+      topic,
+      columns: {
+        Delivered: items
+          .filter((milestone) => milestone.status === 'delivered')
+          .sort(sortDelivered),
+        Next: items
+          .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Next')
+          .sort(sortPipeline),
+        Soon: items
+          .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Soon')
+          .sort(sortPipeline),
+        Later: items
+          .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Later')
+          .sort(sortPipeline),
+      },
+    }
+  })
+}
+
+function formatDeliveredDateRange(milestone: Milestone): string {
+  if (!milestone.start || !milestone.end) return 'Delivered'
+  if (milestone.start === milestone.end) {
+    return safeFormat(milestone.end, 'd MMM yyyy')
+  }
+  return `${safeFormat(milestone.start, 'd MMM')} - ${safeFormat(milestone.end, 'd MMM yyyy')}`
+}
+
+function formatMilestoneWindow(milestone: Milestone): string {
+  if (milestone.status === 'delivered') return formatDeliveredDateRange(milestone)
+  if (milestone.timeboxDays) return `${milestone.timeboxDays} day${milestone.timeboxDays === 1 ? '' : 's'}`
+  return 'TBD'
+}
+
+function timelinePillVariant(column: TimelineColumnId): PillVariant {
+  if (column === 'Delivered') return 'active'
+  if (column === 'Next') return 'live'
+  if (column === 'Soon') return 'warning'
+  return 'dim'
+}
+
+function priorityPillVariant(priority: Milestone['priority']): PillVariant {
+  if (priority === 'P0') return 'alert'
+  if (priority === 'P1') return 'active'
+  if (priority === 'P2') return 'warning'
+  return 'dim'
+}
+
+function timelineCardClass(column: TimelineColumnId): string {
+  if (column === 'Delivered') {
+    return 'border-emerald/45 bg-emerald/8'
+  }
+  if (column === 'Next') {
+    return 'border-cyan/45 bg-cyan/8'
+  }
+  if (column === 'Soon') {
+    return 'border-warning/45 bg-warning/10'
+  }
+  return 'border-terminal-border bg-terminal-surface/60'
+}
+
+function clampTextStyle(lines: number) {
+  return {
+    display: '-webkit-box',
+    WebkitLineClamp: lines,
+    WebkitBoxOrient: 'vertical' as const,
+    overflow: 'hidden',
+  }
+}
+
+function TimelineMilestoneCard({
+  milestone,
+  column,
+  sequence,
+}: {
+  milestone: Milestone
+  column: TimelineColumnId
+  sequence: number
+}) {
   return (
-    <div className="border-l-2 border-terminal-border pl-4 py-2 hover:border-neutral/50 transition-colors">
-      <button
-        type="button"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full text-left flex items-start gap-3"
-      >
-        <span className={m.status === 'delivered' ? 'text-gain' : 'text-terminal-text-dim'}>
-          {m.status === 'delivered' ? '●' : '○'}
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-accent">{m.id}</span>
-            <span className="font-medium">{m.name}</span>
-            <span
-              className={`text-xs px-1.5 py-0.5 rounded ${
-                m.status === 'delivered'
-                  ? 'bg-gain/20 text-gain'
-                  : 'bg-terminal-border/50 text-terminal-text-dim'
-              }`}
-            >
-              {m.status}
-            </span>
-            <span className="text-terminal-text-dim text-sm">{dateRange}</span>
-            <span className="text-xs text-terminal-text-dim">
-              {m.effort} · {m.priority}
-            </span>
-          </div>
-          {expanded && (
-            <div className="mt-2 text-sm text-terminal-text-dim space-y-1">
-              <p>{m.description}</p>
-              {m.architectureComponents && m.architectureComponents.length > 0 && (
-                <p className="text-xs">
-                  Components: {m.architectureComponents.join(', ')}
-                </p>
-              )}
-            </div>
-          )}
+    <article
+      data-testid={`timeline-card-${milestone.id}`}
+      data-horizon={column}
+      data-uniform-card="true"
+      className={`relative flex min-h-[15rem] flex-col justify-between rounded-[1.35rem] border p-4 shadow-[0_14px_32px_rgba(0,0,0,0.24)] transition-colors ${timelineCardClass(column)}`}
+    >
+      <div className="absolute right-4 top-4 rounded-full border border-terminal-border bg-terminal-bg/85 px-2.5 py-1 text-[11px] font-mono text-terminal-text-dim">
+        #{sequence}
+      </div>
+
+      <div className="space-y-3 pr-12">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-xs uppercase tracking-[0.18em] text-accent">{milestone.id}</span>
+          <StatusPill label={column} variant={timelinePillVariant(column)} dot />
+          <StatusPill label={milestone.priority} variant={priorityPillVariant(milestone.priority)} />
         </div>
-      </button>
+
+        <div className="space-y-2">
+          <h3
+            className="text-lg font-semibold leading-tight text-terminal-text"
+            style={{ fontFamily: 'var(--font-heading)' }}
+          >
+            {milestone.name}
+          </h3>
+          <p className="text-sm leading-relaxed text-terminal-text-dim" style={clampTextStyle(4)}>
+            {milestone.description}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-2 border-t border-terminal-border/80 pt-3 text-xs text-terminal-text-dim">
+        <div className="flex items-center justify-between gap-3">
+          <span>{column === 'Delivered' ? 'Completed' : 'Timebox'}</span>
+          <span className="font-medium text-terminal-text">{formatMilestoneWindow(milestone)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span>Complexity</span>
+          <span className="font-medium text-terminal-text">{milestone.effort}</span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span>Scope</span>
+          <span className="font-medium text-terminal-text">
+            {milestone.architectureComponents?.length ?? 0} component{milestone.architectureComponents?.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function EmptyTimelineColumn({ column }: { column: TimelineColumnId }) {
+  return (
+    <div className="flex min-h-[15rem] items-center justify-center rounded-[1.35rem] border border-dashed border-terminal-border bg-terminal-surface/35 p-5 text-center text-sm text-terminal-text-dim">
+      {column === 'Delivered'
+        ? 'No shipped stories yet in this stream.'
+        : `No ${column.toLowerCase()} stories queued right now.`}
     </div>
   )
 }
 
-function GanttTabContent() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [svg, setSvg] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const id = 'gantt-diagram'
-    if (!containerRef.current) return
-    const mermaidCode = buildGanttMermaid()
-
-    import('mermaid').then(({ default: mermaid }) => {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: 'dark',
-        themeVariables: {
-          primaryColor: '#1f2937',
-          primaryTextColor: '#00d4ff',
-          primaryBorderColor: '#374151',
-          lineColor: '#4b5563',
-          secondaryColor: '#111827',
-          tertiaryColor: '#06060a',
-        },
-        gantt: {
-          barHeight: 20,
-          barGap: 4,
-          useMaxWidth: true,
-          numberSectionStyles: 6,
-        },
-      })
-      mermaid
-        .render(id, mermaidCode)
-        .then(({ svg: rendered }) => setSvg(rendered))
-        .catch((err: Error) => setError(err.message))
-    })
-  }, [])
+function TimelineTabContent() {
+  const sections = getTimelineSections()
 
   return (
-    <div className="space-y-4">
-      <p className="text-terminal-text-dim text-sm">
-        Timeline by work stream (topic). Each section is a different colour. Green bars = delivered; grey = planned.
-      </p>
-      <div ref={containerRef} className="card overflow-x-auto bg-terminal-bg/50">
-        {error && <p className="text-loss text-sm">{error}</p>}
-        {svg && (
-          <div
-            className="mermaid-render flex justify-center min-w-[600px]"
-            dangerouslySetInnerHTML={{ __html: svg }}
+    <div className="space-y-6" data-testid="timeline-board">
+      <Panel hero className="animate-none">
+        <div className="flex flex-col gap-5">
+          <SectionHeader
+            eyebrow="Primary View"
+            title="Short-cycle roadmap by work stream"
+            subtitle="Uniform cards keep future stories readable and honest. Delivered items show actual dates; planned work is grouped into Next, Soon, and Later 1-2 day slices."
           />
-        )}
-        {!svg && !error && (
-          <div className="flex items-center justify-center py-12">
-            <div className="animate-spin h-8 w-8 border-2 border-accent border-t-transparent rounded-full" />
+          <div className="flex flex-wrap gap-2 text-xs">
+            <StatusPill label="Delivered" variant="active" dot />
+            <StatusPill label="Next" variant="live" dot />
+            <StatusPill label="Soon" variant="warning" dot />
+            <StatusPill label="Later" variant="dim" dot />
           </div>
-        )}
-      </div>
+        </div>
+      </Panel>
+
+      {sections.map((section) => {
+        const deliveredCount = section.columns.Delivered.length
+        const plannedCount = section.columns.Next.length + section.columns.Soon.length + section.columns.Later.length
+
+        return (
+          <Panel key={section.topic}>
+            <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <SectionHeader
+                eyebrow="Work Stream"
+                title={section.topic}
+                subtitle={`${deliveredCount} delivered • ${plannedCount} planned in compact 1-2 day increments.`}
+              />
+              <div className="text-xs uppercase tracking-[0.18em] text-terminal-text-dim">
+                Sequence cues show the order inside each planning bucket.
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+              {TIMELINE_COLUMNS.map((column) => {
+                const items = section.columns[column]
+                return (
+                  <section
+                    key={`${section.topic}-${column}`}
+                    data-testid={`timeline-column-${section.topic}-${column}`}
+                    className="space-y-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <StatusPill label={column} variant={timelinePillVariant(column)} dot />
+                      <span className="text-xs text-terminal-text-dim">{items.length} stories</span>
+                    </div>
+                    <div className="grid gap-3">
+                      {items.length === 0 && <EmptyTimelineColumn column={column} />}
+                      {items.map((milestone, index) => (
+                        <TimelineMilestoneCard
+                          key={milestone.id}
+                          milestone={milestone}
+                          column={column}
+                          sequence={index + 1}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                )
+              })}
+            </div>
+          </Panel>
+        )
+      })}
     </div>
+  )
+}
+
+function MilestoneDetailCard({ milestone }: { milestone: Milestone }) {
+  const statusLabel = milestone.status === 'delivered' ? 'Delivered' : milestone.horizon ?? 'Planned'
+  const windowLabel = milestone.status === 'delivered'
+    ? formatDeliveredDateRange(milestone)
+    : `${formatMilestoneWindow(milestone)} · ${milestone.horizon ?? 'Planned'}`
+
+  return (
+    <article className="rounded-[1.35rem] border border-terminal-border bg-terminal-surface/55 p-5 shadow-[0_10px_28px_rgba(0,0,0,0.2)]">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs uppercase tracking-[0.18em] text-accent">{milestone.id}</span>
+            <StatusPill label={statusLabel} variant={timelinePillVariant(statusLabel === 'Planned' ? 'Later' : statusLabel as TimelineColumnId)} dot />
+            <StatusPill label={milestone.priority} variant={priorityPillVariant(milestone.priority)} />
+            <StatusPill label={milestone.effort} variant="dim" />
+          </div>
+          <div>
+            <h3
+              className="text-lg font-semibold leading-tight text-terminal-text"
+              style={{ fontFamily: 'var(--font-heading)' }}
+            >
+              {milestone.name}
+            </h3>
+            <p className="mt-3 text-sm leading-relaxed text-terminal-text-dim">{milestone.description}</p>
+          </div>
+        </div>
+
+        <div className="min-w-[12rem] rounded-2xl border border-terminal-border/70 bg-terminal-bg/45 p-3 text-sm text-terminal-text-dim">
+          <div className="flex items-center justify-between gap-3">
+            <span>Window</span>
+            <span className="font-medium text-terminal-text">{windowLabel}</span>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span>Components</span>
+            <span className="font-medium text-terminal-text">{milestone.architectureComponents?.length ?? 0}</span>
+          </div>
+        </div>
+      </div>
+
+      {milestone.architectureComponents && milestone.architectureComponents.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {milestone.architectureComponents.map((component) => (
+            <span
+              key={`${milestone.id}-${component}`}
+              className="rounded-full border border-terminal-border/80 bg-terminal-bg/60 px-3 py-1 text-xs text-terminal-text-dim"
+            >
+              {component}
+            </span>
+          ))}
+        </div>
+      )}
+    </article>
   )
 }
 
@@ -291,61 +430,75 @@ function RoadmapTabContent({
   topicFilter: Topic | 'All'
   setTopicFilter: (t: Topic | 'All') => void
 }) {
-  const filtered =
-    topicFilter === 'All'
-      ? MILESTONES
-      : MILESTONES.filter((m) => m.topic === topicFilter)
-
-  const byTopic = TOPICS.reduce<Record<string, Milestone[]>>((acc, t) => {
-    const items = filtered.filter((m) => m.topic === t)
-    if (items.length > 0) acc[t] = items
-    return acc
-  }, {})
+  const filtered = topicFilter === 'All'
+    ? MILESTONES
+    : MILESTONES.filter((milestone) => milestone.topic === topicFilter)
 
   const topicsToShow = topicFilter === 'All' ? TOPICS : [topicFilter]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="roadmap-detail-view">
+      <Panel hero className="animate-none">
+        <SectionHeader
+          eyebrow="Detailed View"
+          title="Readable story cards with factual history"
+          subtitle="This view keeps the full milestone inventory, but uses larger cards, stronger badges, and clear delivered-vs-planned windows instead of tiny bars."
+        />
+      </Panel>
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => setTopicFilter('All')}
-          className={`rounded px-2 py-1 text-sm border transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
-            topicFilter === 'All' ? 'border-accent text-accent' : 'border-terminal-border text-terminal-text'
+          className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
+            topicFilter === 'All'
+              ? 'border-accent bg-accent/10 text-accent'
+              : 'border-terminal-border text-terminal-text hover:border-accent hover:text-accent'
           }`}
         >
-          All
+          All streams
         </button>
-        {TOPICS.map((t) => (
+        {TOPICS.map((topic) => (
           <button
-            key={t}
+            key={topic}
             type="button"
-            onClick={() => setTopicFilter(t)}
-            className={`rounded px-2 py-1 text-sm border transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
-              topicFilter === t ? 'border-accent text-accent' : 'border-terminal-border text-terminal-text'
+            onClick={() => setTopicFilter(topic)}
+            className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
+              topicFilter === topic
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-terminal-border text-terminal-text hover:border-accent hover:text-accent'
             }`}
           >
-            {t}
+            {topic}
           </button>
         ))}
       </div>
 
-      <div className="space-y-6">
-        {topicsToShow.map((topic) => {
-          const items = topicFilter === 'All' ? byTopic[topic] : filtered
-          if (!items || items.length === 0) return null
-          return (
-            <div key={topic} className="card">
-              <h3 className="text-lg font-semibold tracking-wide mb-4 text-accent">{topic}</h3>
-              <div className="space-y-0">
-                {items.map((m) => (
-                  <MilestoneRow key={m.id} m={m} />
-                ))}
-              </div>
+      {topicsToShow.map((topic) => {
+        const items = filtered
+          .filter((milestone) => milestone.topic === topic)
+          .sort((a, b) => (a.status === 'delivered' && b.status === 'pipeline' ? -1 : a.status === 'pipeline' && b.status === 'delivered' ? 1 : a.status === 'delivered' ? sortDelivered(a, b) : sortPipeline(a, b)))
+
+        if (items.length === 0) return null
+
+        return (
+          <Panel key={topic}>
+            <div className="mb-5 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+              <SectionHeader
+                eyebrow="Topic"
+                title={topic}
+                subtitle={`${items.filter((milestone) => milestone.status === 'delivered').length} delivered • ${items.filter((milestone) => milestone.status === 'pipeline').length} planned`}
+              />
             </div>
-          )
-        })}
-      </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              {items.map((milestone) => (
+                <MilestoneDetailCard key={milestone.id} milestone={milestone} />
+              ))}
+            </div>
+          </Panel>
+        )
+      })}
     </div>
   )
 }
@@ -365,8 +518,8 @@ function DocViewerModal({
   useEffect(() => {
     axios
       .get(`${API_BASE}/api/docs/${docKey}`, { responseType: 'text' })
-      .then((r) => setContent(r.data))
-      .catch((e) => setError(e?.response?.status === 404 ? 'Document not found' : String(e?.message ?? e)))
+      .then((response) => setContent(response.data))
+      .catch((err) => setError(err?.response?.status === 404 ? 'Document not found' : String(err?.message ?? err)))
   }, [docKey])
 
   return (
@@ -378,7 +531,7 @@ function DocViewerModal({
     >
       <div
         className="relative max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-lg border border-terminal-border bg-terminal-bg shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-terminal-border px-4 py-2">
           <h2 className="text-lg font-semibold tracking-wide text-accent">{title}</h2>
@@ -393,13 +546,11 @@ function DocViewerModal({
         <div className="max-h-[70vh] overflow-auto p-4">
           {error && <p className="text-loss text-sm">{error}</p>}
           {content && (
-            <pre className="whitespace-pre-wrap font-mono text-sm text-terminal-text">
-              {content}
-            </pre>
+            <pre className="whitespace-pre-wrap font-mono text-sm text-terminal-text">{content}</pre>
           )}
           {!content && !error && (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin h-8 w-8 border-2 border-accent border-t-transparent rounded-full" />
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
             </div>
           )}
         </div>
@@ -443,13 +594,13 @@ function ArchitectureTabContent() {
   }, [])
 
   return (
-    <div className="space-y-4">
-      <p className="text-terminal-text-dim text-sm">
+    <div className="space-y-4" data-testid="architecture-view">
+      <p className="text-sm text-terminal-text-dim">
         Pipeline diagram with component-to-US mapping. See{' '}
         <button
           type="button"
           onClick={() => setDocModal({ key: 'ARCHITECTURE', title: 'docs/ARCHITECTURE.md' })}
-          className="text-neutral hover:underline focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg rounded"
+          className="rounded text-neutral hover:underline focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg"
         >
           docs/ARCHITECTURE.md
         </button>{' '}
@@ -457,7 +608,7 @@ function ArchitectureTabContent() {
         <button
           type="button"
           onClick={() => setDocModal({ key: 'SOPHISTICATION_ROADMAP', title: 'docs/SOPHISTICATION_ROADMAP.md' })}
-          className="text-neutral hover:underline focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg rounded"
+          className="rounded text-neutral hover:underline focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg"
         >
           docs/SOPHISTICATION_ROADMAP.md
         </button>{' '}
@@ -471,9 +622,7 @@ function ArchitectureTabContent() {
         />
       )}
       <div ref={containerRef} className="card overflow-x-auto bg-terminal-bg/50">
-        {error && (
-          <p className="text-loss text-sm">{error}</p>
-        )}
+        {error && <p className="text-loss text-sm">{error}</p>}
         {svg && (
           <div
             className="mermaid-render flex justify-center"
@@ -482,7 +631,7 @@ function ArchitectureTabContent() {
         )}
         {!svg && !error && (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin h-8 w-8 border-2 border-accent border-t-transparent rounded-full" />
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
           </div>
         )}
       </div>
@@ -492,18 +641,19 @@ function ArchitectureTabContent() {
 
 export default function Roadmap() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const tabParam = searchParams.get('tab')
-  const activeTab: TabId =
-    tabParam === 'roadmap'
-      ? 'roadmap'
-      : tabParam === 'architecture'
-        ? 'architecture'
-        : 'gantt'
-  const setActiveTab = (t: TabId) => {
-    if (t === 'gantt') setSearchParams({ tab: 'gantt' })
-    else if (t === 'roadmap') setSearchParams({ tab: 'roadmap' })
-    else setSearchParams({ tab: 'architecture' })
+  const activeTab = resolveRoadmapTab(searchParams.get('tab'))
+  const setActiveTab = (tab: TabId) => {
+    if (tab === 'timeline') {
+      setSearchParams({ tab: 'timeline' })
+      return
+    }
+    if (tab === 'roadmap') {
+      setSearchParams({ tab: 'roadmap' })
+      return
+    }
+    setSearchParams({ tab: 'architecture' })
   }
+
   const [topicFilter, setTopicFilter] = useState<Topic | 'All'>('All')
   const daysDev = daysSince(PROJECT_START)
 
@@ -514,17 +664,17 @@ export default function Roadmap() {
         description={`Project evolution from day 0 (${safeFormat(PROJECT_START, 'd MMM yyyy')}) to now. ${daysDev} days in development.`}
       />
 
-      <div className="flex flex-wrap gap-4">
-        <div className="card flex-1 min-w-[140px]">
-          <div className="text-terminal-text-dim text-sm">Delivered</div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="card">
+          <div className="text-sm text-terminal-text-dim">Delivered</div>
           <div className="text-2xl font-bold text-gain">{DELIVERED_COUNT}</div>
         </div>
-        <div className="card flex-1 min-w-[140px]">
-          <div className="text-terminal-text-dim text-sm">Pipeline</div>
+        <div className="card">
+          <div className="text-sm text-terminal-text-dim">Pipeline</div>
           <div className="text-2xl font-bold">{PIPELINE_COUNT}</div>
         </div>
-        <div className="card flex-1 min-w-[140px]">
-          <div className="text-terminal-text-dim text-sm">Progress</div>
+        <div className="card">
+          <div className="text-sm text-terminal-text-dim">Progress</div>
           <div className="text-2xl font-bold text-accent">{PROGRESS_PCT}%</div>
         </div>
       </div>
@@ -532,22 +682,22 @@ export default function Roadmap() {
       <div className="flex gap-1 border-b border-terminal-border">
         <button
           type="button"
-          onClick={() => setActiveTab('gantt')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
-            activeTab === 'gantt'
+          onClick={() => setActiveTab('timeline')}
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
+            activeTab === 'timeline'
               ? 'border-accent text-accent'
-              : 'border-transparent text-terminal-text hover:text-accent hover:border-accent'
+              : 'border-transparent text-terminal-text hover:border-accent hover:text-accent'
           }`}
         >
-          Gantt
+          Timeline
         </button>
         <button
           type="button"
           onClick={() => setActiveTab('roadmap')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
             activeTab === 'roadmap'
               ? 'border-accent text-accent'
-              : 'border-transparent text-terminal-text hover:text-accent hover:border-accent'
+              : 'border-transparent text-terminal-text hover:border-accent hover:text-accent'
           }`}
         >
           Roadmap
@@ -555,17 +705,17 @@ export default function Roadmap() {
         <button
           type="button"
           onClick={() => setActiveTab('architecture')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg ${
             activeTab === 'architecture'
               ? 'border-accent text-accent'
-              : 'border-transparent text-terminal-text hover:text-accent hover:border-accent'
+              : 'border-transparent text-terminal-text hover:border-accent hover:text-accent'
           }`}
         >
           Architecture
         </button>
       </div>
 
-      {activeTab === 'gantt' && <GanttTabContent />}
+      {activeTab === 'timeline' && <TimelineTabContent />}
       {activeTab === 'roadmap' && (
         <RoadmapTabContent topicFilter={topicFilter} setTopicFilter={setTopicFilter} />
       )}

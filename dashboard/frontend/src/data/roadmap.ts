@@ -22,6 +22,8 @@ export type MilestoneStatus = 'delivered' | 'pipeline'
 
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
 export type Effort = 'S' | 'M' | 'L' | 'M–L'
+export type Horizon = 'Next' | 'Soon' | 'Later'
+export type TimeboxDays = 1 | 2
 
 export interface Milestone {
   id: string
@@ -34,6 +36,10 @@ export interface Milestone {
   end?: string
   effort: Effort
   priority: Priority
+  /** Planning bucket for pipeline items */
+  horizon?: Horizon
+  /** Typical delivery timebox for pipeline items */
+  timeboxDays?: TimeboxDays
   description: string
   /** Architecture component(s) this US maps to */
   architectureComponents?: string[]
@@ -310,6 +316,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'S',
     priority: 'P2',
+    horizon: 'Next',
+    timeboxDays: 1,
     description:
       'Investigate Nemotron 3 Super as candidate moderator/risk model with smoke tests, shadow comparison, and promotion gates',
     architectureComponents: ['Moderation Panel', 'Risk Agent'],
@@ -321,6 +329,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P1',
+    horizon: 'Soon',
+    timeboxDays: 2,
     description:
       'Calibration curve: conviction vs win rate; position sizing by calibrated confidence',
     architectureComponents: ['Strategy Engine'],
@@ -332,6 +342,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P1',
+    horizon: 'Later',
+    timeboxDays: 2,
     description:
       'Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap',
     architectureComponents: ['Strategy Engine'],
@@ -343,6 +355,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'S',
     priority: 'P2',
+    horizon: 'Soon',
+    timeboxDays: 1,
     description:
       'Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost',
     architectureComponents: ['Moderation Panel'],
@@ -367,6 +381,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P2',
+    horizon: 'Soon',
+    timeboxDays: 2,
     description:
       'Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting',
     architectureComponents: ['Data Fetcher', 'Strategy Engine'],
@@ -378,6 +394,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'S',
     priority: 'P2',
+    horizon: 'Next',
+    timeboxDays: 1,
     description:
       'Flag BUY candidates with high avg correlation to portfolio',
     architectureComponents: ['Risk Agent', 'Universe Screener'],
@@ -402,6 +420,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P2',
+    horizon: 'Next',
+    timeboxDays: 2,
     description:
       'Next earnings date; flag "earnings imminent"; post-earnings drift signal',
     architectureComponents: ['Data Fetcher'],
@@ -413,6 +433,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 1,
     description:
       '11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening',
     architectureComponents: ['Data Fetcher', 'Universe Screener'],
@@ -424,6 +446,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P2',
+    horizon: 'Soon',
+    timeboxDays: 2,
     description:
       'Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges',
     architectureComponents: ['Backtesting module'],
@@ -435,6 +459,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'L',
     priority: 'P2',
+    horizon: 'Soon',
+    timeboxDays: 2,
     description:
       'Investigation then (if justified) XGBoost on indicators + fundamentals → forward return',
     architectureComponents: ['Strategy Engine', 'Future ML layer'],
@@ -446,6 +472,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 1,
     description:
       'Embeddings for journals; similarity search on new proposals',
     architectureComponents: ['Reporting', 'Future ML layer'],
@@ -457,6 +485,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 1,
     description:
       'Literature + data assessment; decision gate before any implementation',
     architectureComponents: ['Future ML layer'],
@@ -468,6 +498,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P2',
+    horizon: 'Next',
+    timeboxDays: 1,
     description:
       'Detect partial fills and resubmit unfilled remainder in the next cycle',
     architectureComponents: ['Order Manager', 'Execution'],
@@ -479,6 +511,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P2',
+    horizon: 'Soon',
+    timeboxDays: 2,
     description:
       'Track slippage and improve execution quality with timing and benchmark metrics',
     architectureComponents: ['Order Manager', 'Reporting'],
@@ -503,6 +537,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'L',
     priority: 'P2',
+    horizon: 'Next',
+    timeboxDays: 2,
     description:
       'Consolidated backlog: 15 medium/low (agent logic), 22 medium/low (trading system), 7 phase 3+4 (formal verification). Includes HALTED auto-recovery, market hours check, DB constraints, atomic cost budget.',
     architectureComponents: ['Orchestrator', 'Order Manager', 'Risk Agent', 'Scheduler'],
@@ -514,6 +550,8 @@ export const MILESTONES: Milestone[] = [
     status: 'pipeline',
     effort: 'M',
     priority: 'P0',
+    horizon: 'Next',
+    timeboxDays: 2,
     description:
       'Remove nested repo, clean git remotes, add MIT LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GitHub issue/PR templates, and GitHub Actions CI (pytest + mypy). Prerequisite for zenouz-ai/zeninvest going public.',
     architectureComponents: ['CI/CD', 'GitHub Actions'],

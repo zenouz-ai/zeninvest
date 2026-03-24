@@ -333,18 +333,20 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 ### Page 8: Roadmap & Architecture
 
-**Tabbed layout:** `[Gantt | Roadmap | Architecture]` (default: Gantt)
+**Tabbed layout:** `[Timeline | Roadmap | Architecture]` (default: Timeline; legacy `tab=gantt` URLs still open Timeline)
 
-**Gantt tab:**
-- Mermaid Gantt chart: timeline of delivered work (green) and planned pipeline (grey)
-- Sections by topic; nominal dates for pipeline items based on effort
+**Timeline tab:**
+- Custom hybrid roadmap board: one section per work stream, with consistent card sizes for readability
+- Columns: `Delivered`, `Next`, `Soon`, `Later`
+- Delivered stories show factual completion dates; planned stories show compact `1 day` / `2 days` timeboxes
+- No Mermaid or fake date-width bars for future work
 
 **Roadmap tab:**
 - Project evolution from day 0 (2026-02-22) to now; days-in-development counter
-- Summary cards: 10 delivered · 15 pipeline · 40% complete
-- Topic filter: All, Foundation, Calibration, Portfolio & Risk, Signals, Validation, ML / Advanced
-- Vertical timeline grouped by topic; delivered (● green) vs pipeline (○ grey)
-- Expandable milestone details: description, effort, priority, architecture components
+- Summary cards: 19 delivered · 17 pipeline · 53% complete
+- Topic filter: All, Foundation, Calibration, Portfolio & Risk, Signals, Validation, Hardening, ML / Advanced, Open-Source / Community
+- Larger milestone cards grouped by topic with clearer badges for status, priority, effort, and delivery/planning window
+- Architecture components surfaced as chips for each story
 
 **Architecture tab:**
 - Pipeline diagram (Mermaid) with component-to-US mapping
