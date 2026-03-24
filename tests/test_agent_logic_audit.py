@@ -31,7 +31,11 @@ import pytest
 
 # ── C-4: Gemini score clamping ──────────────────────────────────────────────
 
-from src.agents.moderation.gemini_mod import _clamp_gemini_scores, _parse_json_with_repair
+from src.agents.moderation.gemini_mod import (
+    _clamp_gemini_scores,
+    _normalize_gemini_result,
+    _parse_json_with_repair,
+)
 
 
 class TestGeminiScoreClamping:
@@ -84,6 +88,17 @@ class TestGeminiScoreClamping:
         result = _parse_json_with_repair(raw)
         assert result["growth_score"] == 10
         assert result["risk_score"] == 10
+
+    def test_normalize_gemini_result_explains_disagree_when_scores_conflict(self):
+        result = _normalize_gemini_result({
+            "verdict": "DISAGREE",
+            "growth_score": 7,
+            "risk_score": 8,
+            "confidence_score": 2,
+            "assessment": "Growth potential is solid due to strong fundamentals.",
+        })
+        assert "confidence is only 2/10" in result["assessment"]
+        assert "risk is 8/10 versus growth at 7/10" in result["assessment"]
 
 
 # ── C-1 & C-2: Moderation consensus with MODIFY ────────────────────────────

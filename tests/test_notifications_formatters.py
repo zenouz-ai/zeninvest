@@ -311,10 +311,10 @@ class TestFormatReviewReply:
         )
         reply = format_trade_command_reply(result)
         assert "GPT-4o (Skeptic): AGREE" in reply
-        assert "score 8" in reply
+        assert "confidence 8/10" in reply
         assert "Valuation is justified" in reply
         assert "Gemini (Risk): AGREE" in reply
-        assert "score 7" in reply
+        assert "confidence 7/10" in reply
         assert "Risk-adjusted return" in reply
 
     def test_review_includes_price_allocation_stop_loss(self):
@@ -444,6 +444,27 @@ class TestFormatRejectedReply:
         assert "cash_floor" in reply
         assert "force buy" in reply  # hint about force override
 
+    def test_rejected_shows_full_strategy_reasoning_not_truncated(self):
+        long_reasoning = "Microsoft has no confirmed entry signal yet. " * 30
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            rejection_reason="Risk VETO: cash floor",
+            strategy_action="HOLD",
+            conviction=58,
+            strategy_decision={
+                "action": "HOLD",
+                "conviction": 58,
+                "target_allocation_pct": 0.0,
+                "stop_loss_pct": 0.0,
+                "reasoning": long_reasoning,
+            },
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert long_reasoning in reply
+
     def test_rejected_shows_moderation_detail(self):
         result = _make_result(
             status="rejected",
@@ -484,6 +505,50 @@ class TestFormatRejectedReply:
         assert "GPT-4o (Skeptic): AGREE" in reply
         assert "Gemini (Risk): AGREE" in reply
         assert "max_sector_pct" in reply
+
+    def test_rejected_hides_gpt_placeholder_score_when_missing(self):
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            rejection_reason="Risk VETO: sector cap",
+            moderation_consensus="BLOCKED",
+            moderation_result={
+                "consensus": "BLOCKED",
+                "gpt4o_verdict": {
+                    "verdict": "DISAGREE",
+                    "reasoning": "Technical confirmation is missing.",
+                },
+            },
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "GPT-4o (Skeptic): DISAGREE" in reply
+        assert "score ?" not in reply
+
+    def test_rejected_labels_gemini_scores_and_explains_disagreement(self):
+        result = _make_result(
+            status="rejected",
+            user_action="BUY",
+            rejection_reason="Risk VETO: cash floor",
+            moderation_consensus="BLOCKED",
+            moderation_result={
+                "consensus": "BLOCKED",
+                "gemini_verdict": {
+                    "verdict": "DISAGREE",
+                    "growth_score": 7,
+                    "risk_score": 8,
+                    "confidence_score": 2,
+                    "assessment": "Growth potential is solid due to strong fundamentals and analyst targets.",
+                },
+            },
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "Gemini (Risk): DISAGREE (growth 7/10, risk 8/10, confidence 2/10)" in reply
+        assert "risk is higher than growth (8/10 vs 7/10)" in reply
+        assert "confidence is very low at 2/10" in reply
 
     def test_rejected_no_force_hint_when_not_risk_reject(self):
         """Force hint should only appear when risk VETO is the reason."""

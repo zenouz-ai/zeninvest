@@ -164,6 +164,21 @@ class TestSlackTradeListener:
         final_reply = listener._post_reply.call_args_list[-1].args[2]
         assert "BUY AAPL" in final_reply
 
+    @patch("src.agents.notifications.slack_listener.get_settings")
+    def test_post_reply_chunks_long_messages(self, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        listener = SlackTradeListener()
+        listener._web_client = MagicMock()
+
+        long_text = "\n".join([f"Line {i} " + ("x" * 120) for i in range(40)])
+        listener._post_reply("C123", "123.45", long_text)
+
+        assert listener._web_client.chat_postMessage.call_count >= 2
+        first_text = listener._web_client.chat_postMessage.call_args_list[0].kwargs["text"]
+        second_text = listener._web_client.chat_postMessage.call_args_list[1].kwargs["text"]
+        assert first_text.startswith("Line 0")
+        assert second_text.startswith("(continued)\n")
+
 
 class TestSlackListenerBotFiltering:
     """Tests for bot_user_id filtering in the socket mode handler."""

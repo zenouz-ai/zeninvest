@@ -353,6 +353,32 @@ def _clamp_gemini_scores(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def _normalize_gemini_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Make Gemini output easier to understand when scores and wording diverge."""
+    result = _clamp_gemini_scores(result)
+
+    assessment = str(result.get("assessment") or result.get("reasoning") or "").strip()
+    verdict = str(result.get("verdict", "")).upper()
+    growth = result.get("growth_score")
+    risk = result.get("risk_score")
+    confidence = result.get("confidence_score")
+
+    if verdict == "DISAGREE":
+        clarifiers: list[str] = []
+        if growth is not None and risk is not None and risk >= growth:
+            clarifiers.append(f"risk is {risk}/10 versus growth at {growth}/10")
+        if confidence is not None and confidence <= 3:
+            clarifiers.append(f"confidence is only {confidence}/10")
+
+        if clarifiers:
+            note = "Despite the growth positives, " + " and ".join(clarifiers) + ", so the trade is not supported."
+            if note not in assessment:
+                assessment = f"{assessment} {note}".strip() if assessment else note
+
+    result["assessment"] = assessment
+    return result
+
+
 def _parse_json_with_repair(text: str) -> dict[str, Any]:
     """Parse JSON with repair for common LLM output issues.
 
@@ -361,7 +387,7 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
     """
     # First try normal parse
     try:
-        return _clamp_gemini_scores(json.loads(text))
+        return _normalize_gemini_result(json.loads(text))
     except json.JSONDecodeError:
         pass
 
@@ -388,7 +414,7 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
     try:
         result = json.loads(repaired)
         logger.info("Gemini JSON repaired successfully")
-        return _clamp_gemini_scores(result)
+        return _normalize_gemini_result(result)
     except json.JSONDecodeError:
         pass
 
@@ -404,7 +430,7 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
         growth = max(1, min(10, int(growth_match.group(1)))) if growth_match else 5
         risk = max(1, min(10, int(risk_match.group(1)))) if risk_match else 5
         confidence = max(1, min(10, int(confidence_match.group(1)))) if confidence_match else 5
-        return {
+        return _normalize_gemini_result({
             "verdict": verdict_match.group(1),
             "growth_score": growth,
             "risk_score": risk,
@@ -412,13 +438,13 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
             "assessment": "Extracted from malformed response",
             "high_risk_flag": risk > growth,
             "modifications": None,
-        }
+        })
 
     # Nothing worked — return a safe default instead of raising.
     # Default to DISAGREE — unparseable output should not silently approve trades.
     # (Audit fix H-5.)
     logger.warning("Could not repair Gemini JSON output — returning DISAGREE default")
-    return {
+    return _normalize_gemini_result({
         "verdict": "DISAGREE",
         "growth_score": 3,
         "risk_score": 7,
@@ -426,4 +452,4 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
         "assessment": "Could not parse Gemini response (defaulting to DISAGREE for safety)",
         "high_risk_flag": False,
         "modifications": None,
-    }
+    })

@@ -91,7 +91,7 @@ universe:
   data_fallback_web_search_enabled: true  # Use Brave/Tavily for analyst/news when Finnhub/AV fail or time out
 
 cost_limits:
-  anthropic_daily_gbp: 1.00
+  anthropic_daily_gbp: 1.30
   openai_daily_gbp: 0.75
   google_daily_gbp: 0.50
   total_monthly_gbp: 50.00

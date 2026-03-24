@@ -43,6 +43,7 @@ Scoring guidelines:
 For each proposed trade, respond with ONLY valid JSON:
 {
   "verdict": "AGREE|DISAGREE|MODIFY",
+  "confidence_score": 1-10,
   "reasoning": "2-3 sentence specific reasoning referencing actual data points",
   "risk_flags": ["list of specific risks identified"],
   "modifications": null or {"target_allocation_pct": X, "stop_loss_pct": Y}

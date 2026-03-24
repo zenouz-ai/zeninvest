@@ -26,6 +26,7 @@ def db_session():
     session.add(Instrument(ticker="TSLA_US_EQ", name="Tesla Inc"))
     session.add(Instrument(ticker="MSFT_US_EQ", name="Microsoft Corporation"))
     session.add(Instrument(ticker="BP._UK_EQ", name="BP plc"))
+    session.add(Instrument(ticker="DMYI_US_EQ", name="IonQ"))
     session.commit()
 
     yield session
@@ -59,6 +60,11 @@ class TestResolveTickerToT212:
         """'Apple' resolves via name search."""
         result = resolve_ticker_to_t212("APPLE")
         assert result == "AAPL_US_EQ"
+
+    def test_name_search_handles_internal_t212_symbol(self):
+        """IonQ resolves to the currently-listed Trading 212 instrument id."""
+        result = resolve_ticker_to_t212("IONQ")
+        assert result == "DMYI_US_EQ"
 
     def test_unknown_returns_none(self):
         """Unknown ticker returns None."""

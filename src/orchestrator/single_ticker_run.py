@@ -416,8 +416,7 @@ class SingleTickerRunner:
         """Run pre-flight validation. Returns error message or None if ok."""
         if intent.action == "BUY":
             try:
-                account = self.t212_client.get_account_summary()
-                cash = float(account.get("cash", {}).get("free", 0))
+                cash = self._get_available_cash_gbp()
                 if intent.amount_gbp and cash < intent.amount_gbp:
                     return f"Insufficient cash. Available: £{cash:.2f}, requested: £{intent.amount_gbp:.2f}"
             except Exception as e:
@@ -485,7 +484,7 @@ class SingleTickerRunner:
     def _get_existing_positions(self) -> set[str]:
         """Get set of currently held ticker IDs."""
         try:
-            positions = self.t212_client.get_positions()
+            positions = self.t212_client.get_portfolio()
             return {p.get("ticker", "") for p in positions if p.get("quantity", 0) > 0}
         except Exception:
             return set()
@@ -493,9 +492,25 @@ class SingleTickerRunner:
     def _get_portfolio_data(self) -> dict[str, Any]:
         """Get portfolio summary for strategy context."""
         try:
-            account = self.t212_client.get_account_summary()
-            total = float(account.get("totalValue", 10000))
-            cash = float(account.get("cash", {}).get("free", 0))
+            try:
+                account_summary = self.t212_client.get_account_summary()
+            except Exception as e:
+                logger.warning(f"Account summary unavailable for single-ticker run, using fallback data: {e}")
+                account_summary = {}
+
+            try:
+                cash_data = self.t212_client.get_cash()
+            except Exception as e:
+                logger.warning(f"Cash endpoint unavailable for single-ticker run, falling back to summary cash: {e}")
+                cash_data = account_summary.get("cash", {})
+
+            try:
+                positions = self.t212_client.get_portfolio()
+            except Exception:
+                positions = []
+
+            total = self._get_total_value_gbp(account_summary, cash_data, positions)
+            cash = self._extract_available_cash(cash_data if cash_data else account_summary.get("cash", {}))
             cash_pct = (cash / total * 100) if total > 0 else 10.0
             return {"total_value": total, "cash": cash, "cash_pct": cash_pct}
         except Exception:
@@ -537,9 +552,16 @@ class SingleTickerRunner:
     def _get_current_portfolio_pcts(self) -> dict[str, float]:
         """Get current portfolio allocation percentages."""
         try:
-            positions = self.t212_client.get_positions()
-            account = self.t212_client.get_account_summary()
-            total = float(account.get("totalValue", 1))
+            positions = self.t212_client.get_portfolio()
+            try:
+                account_summary = self.t212_client.get_account_summary()
+            except Exception:
+                account_summary = {}
+            try:
+                cash_data = self.t212_client.get_cash()
+            except Exception:
+                cash_data = account_summary.get("cash", {})
+            total = self._get_total_value_gbp(account_summary, cash_data, positions)
             return {
                 p.get("ticker", ""): float(p.get("currentValue", 0)) / total * 100
                 for p in positions
@@ -547,6 +569,55 @@ class SingleTickerRunner:
             }
         except Exception:
             return {}
+
+    def _extract_available_cash(self, cash_data: Any) -> float:
+        """Extract the free/available-to-trade cash from a T212 cash payload."""
+        if isinstance(cash_data, dict):
+            return float(cash_data.get("free") or cash_data.get("availableToTrade") or 0)
+        return float(cash_data or 0)
+
+    def _extract_reserved_cash(self, cash_data: Any) -> float:
+        """Extract reserved cash from a T212 cash payload."""
+        if isinstance(cash_data, dict):
+            return float(
+                cash_data.get("reservedForOrders")
+                or cash_data.get("blocked")
+                or cash_data.get("reserved")
+                or 0
+            )
+        return 0.0
+
+    def _get_total_value_gbp(
+        self,
+        account_summary: dict[str, Any],
+        cash_data: Any,
+        positions: list[dict[str, Any]],
+    ) -> float:
+        """Compute total value, preferring account summary and falling back to cash + positions."""
+        total_value_raw = account_summary.get("totalValue")
+        if total_value_raw is not None:
+            return float(total_value_raw)
+
+        cash = self._extract_available_cash(cash_data)
+        reserved = self._extract_reserved_cash(cash_data)
+        invested = float((account_summary.get("investments") or {}).get("currentValue", 0) or 0)
+        if invested <= 0:
+            invested = sum(float(p.get("currentValue", 0) or 0) for p in positions)
+        total = cash + invested + reserved
+        return total if total > 0 else 10000.0
+
+    def _get_available_cash_gbp(self) -> float:
+        """Return the free/available-to-trade cash balance."""
+        try:
+            cash_data = self.t212_client.get_cash()
+            cash = self._extract_available_cash(cash_data)
+            if cash > 0:
+                return cash
+        except Exception as e:
+            logger.warning(f"Cash endpoint unavailable during preflight validation: {e}")
+
+        account_summary = self.t212_client.get_account_summary()
+        return self._extract_available_cash(account_summary.get("cash", {}))
 
     def _get_sector_allocations(self) -> dict[str, float]:
         """Get sector allocation percentages."""

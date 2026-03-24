@@ -80,7 +80,8 @@ def mock_runner(db_session):
         mock_t212.get_account_summary.return_value = {
             "totalValue": 10000, "cash": {"free": 5000}
         }
-        mock_t212.get_positions.return_value = []
+        mock_t212.get_cash.return_value = {"free": 5000}
+        mock_t212.get_portfolio.return_value = []
         mock_t212.get_position.return_value = {"quantity": 10}
         runner._t212_client = mock_t212
 
@@ -223,6 +224,36 @@ class TestSingleTickerRunner:
 
     def test_buy_with_amount_gbp(self, mock_runner):
         runner, mocks = mock_runner
+        intent = TradeCommandIntent(
+            action="BUY", ticker="AAPL", amount_gbp=500, raw_message="BUY £500 AAPL"
+        )
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "executed"
+
+    def test_buy_with_available_to_trade_cash_field(self, mock_runner):
+        runner, mocks = mock_runner
+        mocks["t212_client"].get_cash.return_value = {"availableToTrade": 8665.04}
+        mocks["t212_client"].get_account_summary.return_value = {
+            "cash": {"availableToTrade": 8665.04},
+            "investments": {"currentValue": 1334.96},
+        }
+
+        intent = TradeCommandIntent(
+            action="BUY", ticker="AAPL", amount_gbp=500, raw_message="BUY £500 AAPL"
+        )
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "executed"
+
+    def test_buy_uses_account_summary_cash_when_cash_endpoint_unavailable(self, mock_runner):
+        runner, mocks = mock_runner
+        mocks["t212_client"].get_cash.side_effect = RuntimeError("429")
+        mocks["t212_client"].get_account_summary.return_value = {
+            "cash": {"availableToTrade": 8665.04},
+            "investments": {"currentValue": 1334.96},
+        }
+
         intent = TradeCommandIntent(
             action="BUY", ticker="AAPL", amount_gbp=500, raw_message="BUY £500 AAPL"
         )

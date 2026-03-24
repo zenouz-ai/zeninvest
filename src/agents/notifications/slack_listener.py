@@ -20,6 +20,7 @@ from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
 logger = get_logger("slack_listener")
+SLACK_REPLY_MAX_CHARS = 3500
 
 
 @dataclass
@@ -189,6 +190,7 @@ class SlackTradeListener:
             resolved = self.gateway.resolve_request(request)
             status = resolved.get("status", "error")
             ticker_t212 = resolved.get("ticker_t212", "N/A")
+            requested_ticker = getattr(resolved.get("intent"), "ticker", None)
 
             if status == "unparseable":
                 return
@@ -243,7 +245,13 @@ class SlackTradeListener:
                     response_message=reply,
                 )
                 self._post_reply(channel, ts, reply)
-                logger.info(f"Command completed: {text!r} → {final_result.status} ({ticker_t212})")
+                if requested_ticker and requested_ticker.upper() != ticker_t212.upper():
+                    logger.info(
+                        f"Command completed: {text!r} → {final_result.status} "
+                        f"({requested_ticker.upper()} -> {ticker_t212})"
+                    )
+                else:
+                    logger.info(f"Command completed: {text!r} → {final_result.status} ({ticker_t212})")
             finally:
                 runner.close()
 
@@ -321,13 +329,40 @@ class SlackTradeListener:
             logger.warning("WebClient not initialized, cannot post reply")
             return
         try:
-            self._web_client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=text,
-            )
+            for idx, chunk in enumerate(self._chunk_reply(text)):
+                chunk_text = chunk if idx == 0 else f"(continued)\n{chunk}"
+                self._web_client.chat_postMessage(
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    text=chunk_text,
+                )
         except Exception as e:
             logger.error(f"Failed to post Slack reply: {e}")
+
+    def _chunk_reply(self, text: str, *, max_chars: int = SLACK_REPLY_MAX_CHARS) -> list[str]:
+        """Split long Slack replies on line boundaries to preserve full context."""
+        if len(text) <= max_chars:
+            return [text]
+
+        lines = text.splitlines()
+        chunks: list[str] = []
+        current: list[str] = []
+        current_len = 0
+
+        for line in lines:
+            line_len = len(line) + 1
+            if current and current_len + line_len > max_chars:
+                chunks.append("\n".join(current))
+                current = [line]
+                current_len = line_len
+            else:
+                current.append(line)
+                current_len += line_len
+
+        if current:
+            chunks.append("\n".join(current))
+
+        return chunks or [text]
 
     def _cleanup_expired_confirmations(self) -> None:
         """Remove expired pending confirmations."""

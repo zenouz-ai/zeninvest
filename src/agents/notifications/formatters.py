@@ -605,19 +605,15 @@ def _format_review_reply(result: "SingleTickerResult", ticker: str) -> str:
         # GPT-4o (Skeptic)
         gpt = result.moderation_result.get("gpt4o_verdict")
         if gpt:
-            v = gpt.get("verdict", "?")
-            s = gpt.get("score") or gpt.get("confidence_score", "?")
-            lines.append(f"  • GPT-4o (Skeptic): {v} (score {s})")
+            lines.append(f"  • GPT-4o (Skeptic): {_format_gpt_moderator_header(gpt)}")
             r = gpt.get("reasoning", "")
             if r:
                 lines.append(f"    {r}")
         # Gemini (Risk Assessor)
         gem = result.moderation_result.get("gemini_verdict")
         if gem:
-            v = gem.get("verdict", "?")
-            s = gem.get("score") or gem.get("confidence_score", "?")
-            lines.append(f"  • Gemini (Risk): {v} (score {s})")
-            r = gem.get("reasoning") or gem.get("assessment", "")
+            lines.append(f"  • Gemini (Risk): {_format_gemini_moderator_header(gem)}")
+            r = _format_gemini_reasoning(gem)
             if r:
                 lines.append(f"    {r}")
     elif result.moderation_consensus:
@@ -684,27 +680,23 @@ def _format_rejected_reply(result: "SingleTickerResult", ticker: str) -> str:
         lines.append(f"Allocation: {alloc}% | Stop-loss: {stop}%")
         reasoning = result.strategy_decision.get("reasoning", "")
         if reasoning:
-            lines.append(f"Reasoning: {_excerpt(reasoning, 500)}")
+            lines.append(f"Reasoning: {reasoning}")
 
     # Moderation
     if result.moderation_result:
         lines.append(f"\n*Moderation:* {result.moderation_consensus}")
         gpt = result.moderation_result.get("gpt4o_verdict")
         if gpt:
-            v = gpt.get("verdict", "?")
-            s = gpt.get("score") or gpt.get("confidence_score", "?")
-            lines.append(f"  • GPT-4o (Skeptic): {v} (score {s})")
+            lines.append(f"  • GPT-4o (Skeptic): {_format_gpt_moderator_header(gpt)}")
             r = gpt.get("reasoning", "")
             if r:
-                lines.append(f"    {_excerpt(r, 300)}")
+                lines.append(f"    {r}")
         gem = result.moderation_result.get("gemini_verdict")
         if gem:
-            v = gem.get("verdict", "?")
-            s = gem.get("score") or gem.get("confidence_score", "?")
-            lines.append(f"  • Gemini (Risk): {v} (score {s})")
-            r = gem.get("reasoning") or gem.get("assessment", "")
+            lines.append(f"  • Gemini (Risk): {_format_gemini_moderator_header(gem)}")
+            r = _format_gemini_reasoning(gem)
             if r:
-                lines.append(f"    {_excerpt(r, 300)}")
+                lines.append(f"    {r}")
     elif result.moderation_consensus:
         lines.append(f"\n*Moderation:* {result.moderation_consensus}")
 
@@ -725,3 +717,72 @@ def _format_error_reply(result: "SingleTickerResult", ticker: str) -> str:
     """Format error response."""
     error = result.error_message or "Unknown error"
     return f"*Error processing {result.user_action} {ticker}*\n{error}"
+
+
+def _format_gpt_moderator_header(verdict: dict[str, Any]) -> str:
+    """Format GPT moderator header without ambiguous placeholder scores."""
+    status = verdict.get("verdict", "?")
+    confidence = verdict.get("score") or verdict.get("confidence_score")
+    if confidence is None:
+        return status
+    return f"{status} (confidence {confidence}/10)"
+
+
+def _format_gemini_moderator_header(verdict: dict[str, Any]) -> str:
+    """Format Gemini header with explicit score labels."""
+    status = verdict.get("verdict", "?")
+    parts: list[str] = []
+    growth = verdict.get("growth_score")
+    risk = verdict.get("risk_score")
+    confidence = verdict.get("score") or verdict.get("confidence_score")
+    if growth is not None:
+        parts.append(f"growth {growth}/10")
+    if risk is not None:
+        parts.append(f"risk {risk}/10")
+    if confidence is not None:
+        parts.append(f"confidence {confidence}/10")
+    if not parts:
+        return status
+    return f"{status} ({', '.join(parts)})"
+
+
+def _format_gemini_reasoning(verdict: dict[str, Any]) -> str:
+    """Format Gemini reasoning and explain score-driven disagreements clearly."""
+    reasoning = str(verdict.get("reasoning") or verdict.get("assessment") or "").strip()
+    verdict_label = str(verdict.get("verdict", "")).upper()
+    growth = verdict.get("growth_score")
+    risk = verdict.get("risk_score")
+    confidence = verdict.get("score") or verdict.get("confidence_score")
+
+    needs_clarifier = (
+        verdict_label == "DISAGREE"
+        and (
+            confidence is not None
+            or (growth is not None and risk is not None)
+        )
+    )
+    if not needs_clarifier:
+        return reasoning
+
+    clarifier_parts: list[str] = []
+    if growth is not None and risk is not None:
+        if risk > growth:
+            clarifier_parts.append(
+                f"risk is higher than growth ({risk}/10 vs {growth}/10)"
+            )
+        else:
+            clarifier_parts.append(
+                f"the risk/reward balance is still not strong enough ({risk}/10 risk vs {growth}/10 growth)"
+            )
+    if confidence is not None and confidence <= 3:
+        clarifier_parts.append(f"confidence is very low at {confidence}/10")
+
+    if not clarifier_parts:
+        return reasoning
+
+    clarifier = "Despite the positive growth signals, " + " and ".join(clarifier_parts) + ", so Gemini disagreed."
+    if not reasoning:
+        return clarifier
+    if clarifier in reasoning:
+        return reasoning
+    return f"{reasoning} {clarifier}"
