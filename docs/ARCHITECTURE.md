@@ -1,7 +1,7 @@
 ---
 tags: [architecture, pipeline, database, diagrams]
 status: current
-last_updated: 2026-03-17
+last_updated: 2026-03-24
 ---
 
 # Solution Architecture
@@ -207,8 +207,8 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     +-- GET /api/runs, /api/runs/diff, /api/status (state, paused)
     +-- GET /api/universe, /api/universe/{ticker}
     +-- GET /api/portfolio, /api/orders
-    +-- GET /api/events, /api/events/stream (SSE)
-    +-- POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle)
+    +-- GET /api/events, /api/events/stream (SSE, 5s poll cadence)
+    +-- POST /api/runs/trigger (dry-run), POST /api/runs/trigger-live (live cycle; 409 when another cycle is active)
     +-- GET /api/decisions, /api/decisions/waterfall, /api/decisions/{cycle_id}, /api/decisions/ticker/{ticker}
     +-- GET /api/moderation/{cycle_id}, /api/moderation/ticker/{ticker}; GET /api/risk/{cycle_id}
     +-- GET /api/opportunity/config, /api/opportunity/scores, /api/opportunity/queue, /api/opportunity/history/{ticker}
@@ -235,7 +235,44 @@ React frontend (SPA, served by FastAPI when dist/ exists)
 
 **Authentication (US-7.1):** All `/api/*` endpoints are protected by `APIKeyMiddleware` when `DASHBOARD_API_KEY` env var is set. The middleware validates the `X-API-Key` header using `hmac.compare_digest` (constant-time, UTF-8 encoded). Configurable `public_routes` (list of `/api/*` path prefixes) allows GET requests to bypass auth for public/demo exposure; write endpoints (`/api/system/*`, `/api/runs/trigger*`) are always protected. When `DASHBOARD_API_KEY` is unset, the API runs in unauthenticated dev mode with a startup warning. Frontend reads `VITE_API_KEY` at build time or falls back to `localStorage.getItem('dashboard_api_key')`; a nav "API key" modal saves/clears the key. Axios response interceptor + SSE 403 detection set a global auth banner. SSE uses `fetch()` + stream parsing (not native `EventSource`) so the `X-API-Key` header can be sent; exponential backoff on disconnect, no reconnect on 403.
 
-**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. The orchestrator **normalises T212 positions** before saving to `portfolio_snapshots.positions_json` — converting `instrument.ticker` and `walletImpact` (currentValue, unrealizedProfitLoss, totalCost) into flat fields (ticker, value_gbp, pnl_gbp, pnl_pct) for dashboard display. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL when the SPA is same-origin (e.g. `http://VPS_IP:8000`). With `DASHBOARD_API_KEY` set, the browser opens the stream via **`fetch()`** and **`X-API-Key`** (native `EventSource` cannot send that header).
+**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. The orchestrator **normalises T212 positions** before saving to `portfolio_snapshots.positions_json` — converting `instrument.ticker` and `walletImpact` (currentValue, unrealizedProfitLoss, totalCost) into flat fields (ticker, value_gbp, pnl_gbp, pnl_pct) for dashboard display. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL when the SPA is same-origin (e.g. `http://VPS_IP:8000`) and now polls every 5 seconds to keep idle VPS overhead low. With `DASHBOARD_API_KEY` set, the browser opens the stream via **`fetch()`** and **`X-API-Key`** (native `EventSource` cannot send that header).
+
+## Runtime Topology (US-7.6)
+
+For the small-VPS production posture, the recommended runtime model is three long-lived single-instance services plus one one-shot migration service:
+
+```
+systemd
+  |
+  +-- investment-agent-api.service
+  |     -> python -m dashboard.backend
+  |     -> api.lock
+  |
+  +-- investment-agent-scheduler.service
+  |     -> python -m src.scheduler.scheduler
+  |     -> scheduler.lock
+  |
+  +-- investment-agent-slack-listener.service
+  |     -> python -m src.agents.notifications.slack_trade_listener
+  |     -> slack-listener.lock
+  |
+  +-- investment-agent-migrate.service (oneshot)
+        -> scripts/run_migrations.sh
+        -> migrations.lock
+
+orchestrator run_cycle()
+  -> orchestrator-cycle.lock
+  -> shared across scheduled + dashboard-triggered execution
+```
+
+**Operational guarantees:**
+
+- duplicate service starts fail fast instead of silently competing
+- only one cycle can run at a time across manual and scheduled entrypoints
+- Slack command handling is bounded by a worker pool rather than one thread per message
+- the API runs as a single `uvicorn` process (`reload=False`, `workers=1`)
+
+See [VPS Runtime Stability Plan](VPS_RUNTIME_STABILITY_PLAN.md) and [VPS Systemd Runbook](VPS_SYSTEMD_RUNBOOK.md).
 
 ## Risk-Parity Position Sizing (US-3.1)
 

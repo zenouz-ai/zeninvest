@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import {
@@ -26,106 +26,183 @@ type TimelineSection = {
   topic: Topic
   columns: Record<TimelineColumnId, Milestone[]>
 }
+type ArchitectureBlock = {
+  title: string
+  subtitle: string
+  stories: string[]
+  bullets: string[]
+}
+type ArchitectureStage = {
+  step: string
+  title: string
+  summary: string
+  variant: PillVariant
+  blocks: ArchitectureBlock[]
+}
 
 const TIMELINE_COLUMNS: TimelineColumnId[] = ['Delivered', 'Next', 'Soon', 'Later']
 const HORIZON_ORDER: Horizon[] = ['Next', 'Soon', 'Later']
 
-const ARCHITECTURE_MERMAID = `
-graph TB
-    subgraph Ext["External APIs"]
-        YF[yfinance<br/>OHLCV + Fundamentals]
-        FH[Finnhub<br/>Analyst + Insider]
-        AV[Alpha Vantage<br/>News + Sector]
-        BRAVE[Brave Search<br/>+ Answers]
-        TAVILY[Tavily<br/>fallback]
-        SEC[SEC EDGAR<br/>filings]
-        T212[Trading 212<br/>Practice API]
-    end
+const ARCHITECTURE_CONTROL_PLANE = [
+  {
+    title: 'Scheduler & orchestrator',
+    summary: 'Cron-driven cycles, one active run at a time, pause/resume, state transitions, and shared execution ownership.',
+    chips: ['analysis cycles', 'manual trigger', 'state machine'],
+  },
+  {
+    title: 'Budgets & safety rails',
+    summary: 'Provider budgets, moderation/risk vetoes, large-order confirmations, and force-override audit handling.',
+    chips: ['cost guardrails', 'risk vetoes', 'confirmation gate'],
+  },
+  {
+    title: 'Shared data plane',
+    summary: 'SQLite tables power the agent, dashboard APIs, SSE feed, commands audit trail, and chat session skeleton.',
+    chips: ['runs', 'orders', 'command logs', 'chat turns'],
+  },
+] as const
 
-    subgraph Data["Market Data - US-4.1, 4.2, 4.3, 4.5"]
-        DF[Data Fetcher]
-        UNIV[Universe Screener]
-        MACRO[Macro Intelligence]
-        PROMACRO[Proactive Macro Scan<br/>US-4.5 daily regime]
-        FALLBACK[Web Search Fallback<br/>Brave Tavily]
-    end
-
-    subgraph LLM["LLM Providers"]
-        ANTH[Anthropic<br/>Claude]
-        OAI[OpenAI<br/>GPT-4o]
-        GOOG[Google<br/>Gemini]
-    end
-
-    subgraph Research["Agentic Research - US-4.4"]
-        REXEC["ResearchExecutor<br/>5 tools, shared budget 35/cycle"]
-    end
-
-    subgraph Strategy["Strategy Engine - US-2.1, 2.2, 4.4"]
-        CLAUDE[Claude Synthesis<br/>+ Research tools]
-    end
-
-    subgraph Mod["Moderation - US-2.3, 4.4"]
-        GPT4O[GPT-4o Skeptic<br/>+ Research tools]
-        GEMRISK[Gemini Risk<br/>+ Research tools]
-        CONS[Consensus]
-    end
-
-    subgraph RiskRules["Risk Agent - US-3.2, 3.3"]
-        RULES["11 Hard Rules VETO"]
-    end
-
-    subgraph Opp["UOV - US-3.4"]
-        UOV[Scorer + Optimizer]
-    end
-
-    subgraph Exec["Order Mgmt - US-3.5, 3.1"]
-        OM["Order Manager<br/>+ retry"]
-        SL["Stop-Loss Manager<br/>trailing + ATR"]
-    end
-
-    subgraph Out["Output"]
-        JOUR[Trade Journal]
-    end
-
-    YF --> DF
-    FH --> DF
-    AV --> DF
-    AV --> MACRO
-    FH --> MACRO
-    BRAVE --> REXEC
-    TAVILY --> REXEC
-    SEC --> REXEC
-    BRAVE --> FALLBACK
-    TAVILY --> FALLBACK
-    BRAVE --> UNIV
-    TAVILY --> UNIV
-
-    DF --> UNIV
-    DF --> CLAUDE
-    MACRO --> CLAUDE
-    PROMACRO --> CLAUDE
-    PROMACRO --> CONS
-    FALLBACK --> CLAUDE
-
-    REXEC --> CLAUDE
-    REXEC --> GPT4O
-    REXEC --> GEMRISK
-
-    ANTH --> CLAUDE
-    CLAUDE --> GPT4O
-    CLAUDE --> GEMRISK
-    OAI --> GPT4O
-    GOOG --> GEMRISK
-    GPT4O --> CONS
-    GEMRISK --> CONS
-
-    CONS --> RULES
-    RULES --> UOV
-    UOV --> OM
-    OM --> T212
-    OM --> SL
-    OM --> JOUR
-`
+const ARCHITECTURE_STAGES: ArchitectureStage[] = [
+  {
+    step: '01',
+    title: 'Inputs & providers',
+    summary: 'Raw market data, web context, broker state, and specialist model providers enter the system here.',
+    variant: 'live',
+    blocks: [
+      {
+        title: 'Market + broker APIs',
+        subtitle: 'Price, fundamentals, account cash, positions, and orders',
+        stories: ['US-4.1', 'US-4.5', 'US-3.5'],
+        bullets: [
+          'yfinance, Finnhub, Alpha Vantage, Trading 212',
+          'Ticker alias resolution and broker-specific instrument mapping',
+        ],
+      },
+      {
+        title: 'Research sources',
+        subtitle: 'Web and filing context for deeper review loops',
+        stories: ['US-4.4'],
+        bullets: [
+          'Brave primary, Tavily fallback, SEC EDGAR filings',
+          'Shared search surface for strategy and moderators',
+        ],
+      },
+      {
+        title: 'Committee model providers',
+        subtitle: 'Independent model roles rather than one monolith',
+        stories: ['US-2.3', 'US-2.4', 'US-4.4'],
+        bullets: [
+          'Claude for synthesis, GPT-4o for skepticism, Gemini for risk framing',
+          'Model choice and spend tracked separately in cost logs',
+        ],
+      },
+    ],
+  },
+  {
+    step: '02',
+    title: 'Context & research',
+    summary: 'The system normalises raw inputs into reusable context before any trade decision is made.',
+    variant: 'warning',
+    blocks: [
+      {
+        title: 'Data fetcher + screener',
+        subtitle: 'Indicators, fundamentals, and candidate preparation',
+        stories: ['US-3.4', 'US-4.1', 'US-4.3'],
+        bullets: [
+          'OHLCV + factor preparation feeds ranking, screening, and review',
+          'Universe screener and UOV inputs share the same base data layer',
+        ],
+      },
+      {
+        title: 'Macro + news intelligence',
+        subtitle: 'Scheduled regime context and persistent world-news archive',
+        stories: ['US-4.5', 'US-1.7.4'],
+        bullets: [
+          'macro_scan produces regime, confidence, signals, and action plan',
+          'World News page exposes the same archive to operators',
+        ],
+      },
+      {
+        title: 'Research executor',
+        subtitle: 'Tool-use loops with budget, caching, and auditability',
+        stories: ['US-4.4'],
+        bullets: [
+          '5 tool families shared by Strategy, Skeptic, and Risk',
+          'Each research step logs provider, latency, cache hit, and summary',
+        ],
+      },
+    ],
+  },
+  {
+    step: '03',
+    title: 'Decision committee',
+    summary: 'Strategy proposes, moderation challenges, and the risk agent enforces hard rules before execution.',
+    variant: 'draft',
+    blocks: [
+      {
+        title: 'Strategy engine',
+        subtitle: 'Synthesis over quant, macro, research, and portfolio state',
+        stories: ['US-2.1', 'US-2.2', 'US-3.1'],
+        bullets: [
+          'Claude produces action, conviction, reasoning, and target sizing',
+          'Risk-parity overlay can adjust BUY sizing before execution',
+        ],
+      },
+      {
+        title: 'Moderation panel',
+        subtitle: 'Independent challenge function with explicit consensus',
+        stories: ['US-2.3', 'US-2.4', 'US-1.6'],
+        bullets: [
+          'GPT-4o Skeptic + Gemini Risk yield APPROVED, CAUTION, or BLOCKED',
+          'Explicit Slack force overrides are audited instead of silently bypassing review',
+        ],
+      },
+      {
+        title: 'Risk agent',
+        subtitle: 'Non-negotiable portfolio and execution constraints',
+        stories: ['US-3.2', 'US-3.3', 'US-7.0'],
+        bullets: [
+          '11 hard veto rules, cash floor, allocation limits, and correlation checks',
+          'Triggered rules persist to risk decisions and Slack/dashboard explanations',
+        ],
+      },
+    ],
+  },
+  {
+    step: '04',
+    title: 'Execution & visibility',
+    summary: 'Approved decisions become broker actions, operator workflows, and durable audit trails.',
+    variant: 'active',
+    blocks: [
+      {
+        title: 'Opportunity + order management',
+        subtitle: 'Queueing, execution, stops, and post-trade lifecycle',
+        stories: ['US-3.4', 'US-3.5', 'US-7.2', 'US-7.3'],
+        bullets: [
+          'UOV ranking selects what moves first; order manager owns T212 interactions',
+          'Stop-loss manager, pending status mapping, and reconciliation protect state consistency',
+        ],
+      },
+      {
+        title: 'Slack + dashboard surfaces',
+        subtitle: 'Human operator layer for commands, review, and monitoring',
+        stories: ['US-1.6', 'US-1.7', 'US-1.9'],
+        bullets: [
+          'Always-on Slack listener, Commands page, live dashboard APIs, and SSE activity feed',
+          'ChatSession and ChatTurn provide the skeleton for future conversational workflows',
+        ],
+      },
+      {
+        title: 'Journals, logs, and reports',
+        subtitle: 'Everything needed for auditability and iteration',
+        stories: ['US-1.1', 'US-1.2', 'US-7.0'],
+        bullets: [
+          'Runs, orders, trade outcomes, cost logs, API logs, command logs, and snapshots',
+          'Daily and weekly reporting consume the same persisted state as the dashboard',
+        ],
+      },
+    ],
+  },
+] as const
 
 export function resolveRoadmapTab(tabParam: string | null): TabId {
   if (tabParam === 'roadmap') return 'roadmap'
@@ -239,13 +316,13 @@ function TimelineMilestoneCard({
       data-testid={`timeline-card-${milestone.id}`}
       data-horizon={column}
       data-uniform-card="true"
-      className={`relative flex min-h-[15rem] flex-col justify-between rounded-[1.35rem] border p-4 shadow-[0_14px_32px_rgba(0,0,0,0.24)] transition-colors ${timelineCardClass(column)}`}
+      className={`relative min-w-0 overflow-hidden flex min-h-[15rem] flex-col justify-between rounded-[1.35rem] border p-4 shadow-[0_14px_32px_rgba(0,0,0,0.24)] transition-colors ${timelineCardClass(column)}`}
     >
       <div className="absolute right-4 top-4 rounded-full border border-terminal-border bg-terminal-bg/85 px-2.5 py-1 text-[11px] font-mono text-terminal-text-dim">
         #{sequence}
       </div>
 
-      <div className="space-y-3 pr-12">
+      <div className="min-w-0 space-y-3 pr-12">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs uppercase tracking-[0.18em] text-accent">{milestone.id}</span>
           <StatusPill label={column} variant={timelinePillVariant(column)} dot />
@@ -254,7 +331,7 @@ function TimelineMilestoneCard({
 
         <div className="space-y-2">
           <h3
-            className="text-lg font-semibold leading-tight text-terminal-text"
+            className="break-words text-lg font-semibold leading-tight text-terminal-text"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             {milestone.name}
@@ -266,17 +343,19 @@ function TimelineMilestoneCard({
       </div>
 
       <div className="mt-5 space-y-2 border-t border-terminal-border/80 pt-3 text-xs text-terminal-text-dim">
-        <div className="flex items-center justify-between gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
           <span>{column === 'Delivered' ? 'Completed' : 'Timebox'}</span>
-          <span className="font-medium text-terminal-text">{formatMilestoneWindow(milestone)}</span>
+          <span className="min-w-0 text-right font-medium text-terminal-text break-words">
+            {formatMilestoneWindow(milestone)}
+          </span>
         </div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
           <span>Complexity</span>
-          <span className="font-medium text-terminal-text">{milestone.effort}</span>
+          <span className="min-w-0 text-right font-medium text-terminal-text break-words">{milestone.effort}</span>
         </div>
-        <div className="flex items-center justify-between gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
           <span>Scope</span>
-          <span className="font-medium text-terminal-text">
+          <span className="min-w-0 text-right font-medium text-terminal-text break-words">
             {milestone.architectureComponents?.length ?? 0} component{milestone.architectureComponents?.length === 1 ? '' : 's'}
           </span>
         </div>
@@ -333,14 +412,14 @@ function TimelineTabContent() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               {TIMELINE_COLUMNS.map((column) => {
                 const items = section.columns[column]
                 return (
                   <section
                     key={`${section.topic}-${column}`}
                     data-testid={`timeline-column-${section.topic}-${column}`}
-                    className="space-y-3"
+                    className="min-w-0 space-y-3"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <StatusPill label={column} variant={timelinePillVariant(column)} dot />
@@ -559,61 +638,190 @@ function DocViewerModal({
   )
 }
 
+function ArchitectureBlockCard({
+  block,
+  variant,
+}: {
+  block: ArchitectureBlock
+  variant: PillVariant
+}) {
+  return (
+    <div className="rounded-[1.25rem] border border-terminal-border bg-terminal-surface/65 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.22)]">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3
+              className="text-base font-semibold leading-tight text-terminal-text"
+              style={{ fontFamily: 'var(--font-heading)' }}
+            >
+              {block.title}
+            </h3>
+            <p className="mt-1 text-sm leading-relaxed text-terminal-text-dim">{block.subtitle}</p>
+          </div>
+          <StatusPill label={`${block.stories.length} story${block.stories.length === 1 ? '' : 'ies'}`} variant={variant} />
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {block.stories.map((story) => (
+            <span
+              key={`${block.title}-${story}`}
+              className="rounded-full border border-terminal-border/80 bg-terminal-bg/60 px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.18em] text-accent"
+            >
+              {story}
+            </span>
+          ))}
+        </div>
+
+        <ul className="space-y-2 text-sm leading-relaxed text-terminal-text-dim">
+          {block.bullets.map((bullet) => (
+            <li key={`${block.title}-${bullet}`} className="flex gap-2">
+              <span className="mt-1 text-accent">•</span>
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+function ArchitectureStageCard({
+  stage,
+  isLast,
+}: {
+  stage: ArchitectureStage
+  isLast: boolean
+}) {
+  return (
+    <div className="relative min-w-0">
+      {!isLast && (
+        <div className="pointer-events-none absolute right-[-1.35rem] top-12 hidden xl:flex h-8 w-8 items-center justify-center rounded-full border border-terminal-border bg-terminal-bg/90 text-accent">
+          →
+        </div>
+      )}
+      <Panel className="h-full animate-none">
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill label={`Step ${stage.step}`} variant="dim" />
+            <StatusPill label={stage.title} variant={stage.variant} dot />
+          </div>
+          <div>
+            <h2
+              className="text-xl font-semibold leading-tight text-terminal-text"
+              style={{ fontFamily: 'var(--font-heading)' }}
+            >
+              {stage.title}
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-terminal-text-dim">{stage.summary}</p>
+          </div>
+          <div className="space-y-4">
+            {stage.blocks.map((block) => (
+              <ArchitectureBlockCard key={`${stage.step}-${block.title}`} block={block} variant={stage.variant} />
+            ))}
+          </div>
+        </div>
+      </Panel>
+    </div>
+  )
+}
+
 function ArchitectureTabContent() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [svg, setSvg] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [docModal, setDocModal] = useState<{ key: string; title: string } | null>(null)
 
-  useEffect(() => {
-    const id = 'architecture-diagram'
-    if (!containerRef.current) return
-
-    import('mermaid').then(({ default: mermaid }) => {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: 'dark',
-        themeVariables: {
-          primaryColor: '#1f2937',
-          primaryTextColor: '#00d4ff',
-          primaryBorderColor: '#374151',
-          lineColor: '#4b5563',
-          secondaryColor: '#111827',
-          tertiaryColor: '#06060a',
-        },
-      })
-      mermaid
-        .render(id, ARCHITECTURE_MERMAID.trim())
-        .then(({ svg: rendered }) => {
-          setSvg(rendered)
-        })
-        .catch((err: Error) => {
-          setError(err.message)
-        })
-    })
-  }, [])
-
   return (
-    <div className="space-y-4" data-testid="architecture-view">
-      <p className="text-sm text-terminal-text-dim">
-        Pipeline diagram with component-to-US mapping. See{' '}
-        <button
-          type="button"
-          onClick={() => setDocModal({ key: 'ARCHITECTURE', title: 'docs/ARCHITECTURE.md' })}
-          className="rounded text-neutral hover:underline focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg"
-        >
-          docs/ARCHITECTURE.md
-        </button>{' '}
-        and{' '}
-        <button
-          type="button"
-          onClick={() => setDocModal({ key: 'SOPHISTICATION_ROADMAP', title: 'docs/SOPHISTICATION_ROADMAP.md' })}
-          className="rounded text-neutral hover:underline focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg"
-        >
-          docs/SOPHISTICATION_ROADMAP.md
-        </button>{' '}
-        for full detail.
-      </p>
+    <div className="space-y-6" data-testid="architecture-view">
+      <Panel hero className="animate-none">
+        <div className="space-y-5">
+          <SectionHeader
+            eyebrow="System Map"
+            title="Readable flow from signals to execution"
+            subtitle="This view maps the current production system as a staged operating model: inputs and providers feed context and research, the decision committee applies moderation and risk, then execution surfaces and audit trails make the system observable."
+          />
+          <div className="flex flex-wrap gap-2">
+            <StatusPill label="Inputs" variant="live" dot />
+            <StatusPill label="Context" variant="warning" dot />
+            <StatusPill label="Decision" variant="draft" dot />
+            <StatusPill label="Execution" variant="active" dot />
+          </div>
+        </div>
+      </Panel>
+
+      <Panel className="animate-none">
+        <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <SectionHeader
+            eyebrow="Control Plane"
+            title="Shared orchestration and guardrails"
+            subtitle="These capabilities cut across every stage rather than belonging to one box."
+          />
+          <div className="text-xs uppercase tracking-[0.18em] text-terminal-text-dim">
+            Persistent state, budgets, and operator controls span the full pipeline.
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {ARCHITECTURE_CONTROL_PLANE.map((item) => (
+            <div
+              key={item.title}
+              className="rounded-[1.25rem] border border-terminal-border bg-terminal-surface/60 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.22)]"
+            >
+              <h3
+                className="text-base font-semibold text-terminal-text"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                {item.title}
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-terminal-text-dim">{item.summary}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {item.chips.map((chip) => (
+                  <span
+                    key={`${item.title}-${chip}`}
+                    className="rounded-full border border-terminal-border/80 bg-terminal-bg/60 px-2.5 py-1 text-[11px] font-mono uppercase tracking-[0.18em] text-terminal-text-dim"
+                  >
+                    {chip}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+
+      <div className="grid gap-5 xl:grid-cols-4">
+        {ARCHITECTURE_STAGES.map((stage, index) => (
+          <ArchitectureStageCard
+            key={stage.step}
+            stage={stage}
+            isLast={index === ARCHITECTURE_STAGES.length - 1}
+          />
+        ))}
+      </div>
+
+      <Panel className="animate-none">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <p className="text-sm leading-relaxed text-terminal-text-dim">
+            Need the full narrative and data model references? Open{' '}
+            <button
+              type="button"
+              onClick={() => setDocModal({ key: 'ARCHITECTURE', title: 'docs/ARCHITECTURE.md' })}
+              className="rounded text-neutral hover:underline focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg"
+            >
+              docs/ARCHITECTURE.md
+            </button>{' '}
+            or{' '}
+            <button
+              type="button"
+              onClick={() => setDocModal({ key: 'SOPHISTICATION_ROADMAP', title: 'docs/SOPHISTICATION_ROADMAP.md' })}
+              className="rounded text-neutral hover:underline focus:outline-none focus:ring-2 focus:ring-neutral focus:ring-offset-2 focus:ring-offset-terminal-bg"
+            >
+              docs/SOPHISTICATION_ROADMAP.md
+            </button>{' '}
+            directly from the dashboard.
+          </p>
+          <div className="text-xs uppercase tracking-[0.18em] text-terminal-text-dim">
+            Architecture tab is now a custom system map, not a compressed Mermaid export.
+          </div>
+        </div>
+      </Panel>
+
       {docModal && (
         <DocViewerModal
           docKey={docModal.key}
@@ -621,20 +829,6 @@ function ArchitectureTabContent() {
           onClose={() => setDocModal(null)}
         />
       )}
-      <div ref={containerRef} className="card overflow-x-auto bg-terminal-bg/50">
-        {error && <p className="text-loss text-sm">{error}</p>}
-        {svg && (
-          <div
-            className="mermaid-render flex justify-center"
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
-        )}
-        {!svg && !error && (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-          </div>
-        )}
-      </div>
     </div>
   )
 }

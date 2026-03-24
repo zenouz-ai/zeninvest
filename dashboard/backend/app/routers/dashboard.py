@@ -18,6 +18,7 @@ from ..schemas import (
     RunSchema,
     StrategyDecisionSchema,
 )
+from .runs import _build_run_schema
 
 router = APIRouter()
 settings = get_settings()
@@ -196,7 +197,7 @@ async def get_run_feed(
                 .all()
             )
             out.append({
-                "run": RunSchema.model_validate(run),
+                "run": _build_run_schema(session, run),
                 "decisions": [StrategyDecisionSchema.model_validate(d) for d in decisions],
                 "orders": [OrderSchema.model_validate(o) for o in orders],
             })

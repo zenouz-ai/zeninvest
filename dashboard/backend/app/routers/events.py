@@ -4,10 +4,9 @@ import asyncio
 import json
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import desc
-from sqlalchemy.orm import Session
 
 from src.data.database import get_session
 from src.utils.config import get_settings
@@ -55,7 +54,7 @@ async def get_events(
 
 
 @router.get("/stream")
-async def stream_events():
+async def stream_events(request: Request):
     """Server-Sent Events (SSE) stream for real-time event updates."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
@@ -65,14 +64,16 @@ async def stream_events():
 
     async def event_generator():
         """Generate SSE events."""
-        session = get_session()
         try:
-            # Get the last event timestamp to start from
-            last_event = (
-                session.query(EventsLog)
-                .order_by(desc(EventsLog.timestamp))
-                .first()
-            )
+            session = get_session()
+            try:
+                last_event = (
+                    session.query(EventsLog)
+                    .order_by(desc(EventsLog.timestamp))
+                    .first()
+                )
+            finally:
+                session.close()
             last_timestamp = last_event.timestamp if last_event else datetime.now() - timedelta(hours=1)
 
             # Send initial connection message
@@ -80,12 +81,19 @@ async def stream_events():
 
             # Poll for new events
             while True:
-                new_events = (
-                    session.query(EventsLog)
-                    .filter(EventsLog.timestamp > last_timestamp)
-                    .order_by(EventsLog.timestamp)
-                    .all()
-                )
+                if await request.is_disconnected():
+                    break
+
+                session = get_session()
+                try:
+                    new_events = (
+                        session.query(EventsLog)
+                        .filter(EventsLog.timestamp > last_timestamp)
+                        .order_by(EventsLog.timestamp)
+                        .all()
+                    )
+                finally:
+                    session.close()
 
                 for event in new_events:
                     event_data = {
@@ -102,12 +110,10 @@ async def stream_events():
                 # Keep-alive ping every 30 seconds
                 yield ": keepalive\n\n"
 
-                await asyncio.sleep(1)  # Poll every second
+                await asyncio.sleep(settings.dashboard_sse_poll_interval_seconds)
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-        finally:
-            session.close()
 
     return StreamingResponse(
         event_generator(),

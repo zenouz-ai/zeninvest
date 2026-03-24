@@ -10,6 +10,11 @@ from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from sqlalchemy import create_engine, inspect, text
 
 from src.data.database import DATABASE_URL
+from src.runtime import (
+    DUPLICATE_INSTANCE_EXIT_CODE,
+    RuntimeLockHeldError,
+    acquire_runtime_lock,
+)
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -140,6 +145,8 @@ def _run_analysis_cycle() -> None:
                         "run_type": "scheduled",
                         "status": result.get("status", "completed"),
                         "duration_seconds": duration_seconds,
+                        "stocks_screened": result.get("stocks_screened", 0),
+                        "stocks_reviewed": result.get("stocks_reviewed", 0),
                         "num_trades": result.get("num_trades", 0),
                         "num_rejected": len(result.get("rejected_stocks", [])),
                     },
@@ -153,6 +160,9 @@ def _run_analysis_cycle() -> None:
                             run.completed_at = cycle_end_time
                             run.status = result.get("status", "completed")
                             run.summary_json = {
+                                "stocks_screened": result.get("stocks_screened", 0),
+                                "stocks_reviewed": result.get("stocks_reviewed", 0),
+                                "decisions_made": result.get("stocks_reviewed", 0),
                                 "num_trades": result.get("num_trades", 0),
                                 "num_rejected": len(result.get("rejected_stocks", [])),
                                 "duration_seconds": duration_seconds,
@@ -416,6 +426,19 @@ def create_scheduler() -> BlockingScheduler:
 
 def run_scheduler() -> None:
     """Run the scheduler with graceful shutdown."""
+    try:
+        service_lock = acquire_runtime_lock(
+            "scheduler",
+            metadata={"service": "scheduler"},
+        )
+    except RuntimeLockHeldError as exc:
+        logger.error(
+            "Another scheduler instance is already running (lock=%s owner=%s)",
+            exc.lock_path,
+            exc.details.get("pid"),
+        )
+        sys.exit(DUPLICATE_INSTANCE_EXIT_CODE)
+
     scheduler = create_scheduler()
 
     def _shutdown(signum: int, frame: object) -> None:
@@ -435,6 +458,8 @@ def run_scheduler() -> None:
         scheduler.start()
     except (KeyboardInterrupt, SystemExit):
         logger.info("Scheduler stopped.")
+    finally:
+        service_lock.release()
 
 
 if __name__ == "__main__":

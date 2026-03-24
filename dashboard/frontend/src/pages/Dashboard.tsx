@@ -66,6 +66,8 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ sseEvents, sseConnectionState }: DashboardProps) {
+  const recentActivityLimit = 100
+
   // --- Independent data sections ---
   const fetchStatus = useCallback(() => statusApi.get(), [])
   const statusResult = useAsyncData(fetchStatus)
@@ -88,7 +90,7 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const fetchMonthly = useCallback(() => dashboardApi.getMonthlySummary(currentYear, currentMonth), [currentYear, currentMonth])
   const monthlyResult = useAsyncData<MonthlySummary>(fetchMonthly)
 
-  const fetchEvents = useCallback(() => eventsApi.list({ limit: 50 }), [])
+  const fetchEvents = useCallback(() => eventsApi.list({ limit: 200 }), [])
   const historicalEventsResult = useAsyncData<Event[]>(fetchEvents)
 
   const fetchOrders = useCallback(() => ordersApi.list({ limit: 15 }), [])
@@ -117,6 +119,22 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const nextRunUtc = status?.next_run_utc ?? null
   const portfolio = portfolioResult.data
   const latestRun = latestRunResult.data
+  const latestRunReviewedCount = useMemo(() => {
+    const summary = latestRun?.summary_json
+    if (!summary) return null
+    if (summary.stocks_reviewed != null) return summary.stocks_reviewed
+    if (summary.decisions_made != null) return summary.decisions_made
+    if (summary.num_trades != null || summary.num_rejected != null) {
+      return (summary.num_trades ?? 0) + (summary.num_rejected ?? 0)
+    }
+    return null
+  }, [latestRun?.summary_json])
+  const latestRunScreenedCount = useMemo(() => {
+    const summary = latestRun?.summary_json
+    if (!summary) return null
+    if (summary.stocks_screened != null) return summary.stocks_screened
+    return null
+  }, [latestRun?.summary_json])
   const monthlySummary = monthlyResult.data
   const latestOrders = ordersResult.data ?? []
   const runFeed = runFeedResult.data ?? []
@@ -144,7 +162,7 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
     const historical = historicalEventsResult.data ?? []
     const seen = new Set(sseEvents.map((e) => e.id))
     const fromHistory = historical.filter((e) => !seen.has(e.id))
-    return [...sseEvents, ...fromHistory].slice(0, 100)
+    return [...sseEvents, ...fromHistory].slice(0, 200)
   }, [sseEvents, historicalEventsResult.data])
 
   // LLM detail for expanded trade row
@@ -512,7 +530,13 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
             {latestRun.summary_json && (
               <>
                 <span className="text-terminal-text-dim">·</span>
-                <span>{latestRun.summary_json.stocks_reviewed ?? '?'} reviewed</span>
+                {latestRunScreenedCount != null && (
+                  <>
+                    <span>{latestRunScreenedCount} screened</span>
+                    <span className="text-terminal-text-dim">·</span>
+                  </>
+                )}
+                <span>{latestRunReviewedCount ?? 0} reviewed</span>
                 <span className="text-terminal-text-dim">·</span>
                 <span>{latestRun.summary_json.num_trades ?? 0} trades</span>
                 <span className="text-terminal-text-dim">·</span>
@@ -569,11 +593,11 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
           {/* Recent activity — always visible (IA-1) */}
           <div className="card">
             <h2 className="text-lg font-semibold tracking-wide mb-3">Recent Activity</h2>
-            <div className="space-y-1.5 max-h-80 overflow-y-auto" aria-live="polite">
+            <div className="space-y-1.5 max-h-[32rem] overflow-y-auto" aria-live="polite">
               {events.length === 0 ? (
                 <div className="text-terminal-text-dim text-sm py-4">No events yet. Waiting for activity...</div>
               ) : (
-                events.slice(0, 15).map((event) => (
+                events.slice(0, recentActivityLimit).map((event) => (
                   <div key={event.id} className="flex items-start gap-2 py-1.5 border-b border-terminal-border/50 last:border-0">
                     <span className={`text-sm ${getEventColor(event.event_type)}`}>{getEventIcon(event.event_type)}</span>
                     <div className="flex-1 min-w-0">

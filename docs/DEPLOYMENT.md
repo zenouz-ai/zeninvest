@@ -1,7 +1,7 @@
 ---
 tags: [deployment, vps, docker, monitoring, operations]
 status: current
-last_updated: 2026-03-21
+last_updated: 2026-03-24
 ---
 
 # Deployment & Monitoring Guide
@@ -13,6 +13,8 @@ last_updated: 2026-03-21
 This guide covers end-to-end deployment of the investment agent on a VPS: server setup, Docker and non-Docker paths, monitoring, log management, backups, updates, troubleshooting, data retrieval for local analysis, backtesting on VPS, and dashboard deployment.
 
 > Path and username note: examples use `/home/deploy` and user `deploy`. If your VPS user differs (for example `deploy_invest_ai`), replace those values consistently in all commands and service files.
+>
+> Runtime note (2026-03-24): for non-Docker operation on a small VPS, prefer the committed multi-service `systemd` layout from §4.6 and [VPS Runtime Stability Plan](VPS_RUNTIME_STABILITY_PLAN.md). Some older fallback examples in this guide still reference the legacy single `investment-agent` service; treat those as historical rather than the recommended current posture.
 
 ---
 
@@ -444,69 +446,59 @@ poetry run alembic upgrade head
 poetry run python -m src.orchestrator.main --dry-run
 ```
 
-### 4.6 Create a systemd Service
+### 4.6 Create systemd Services (Recommended Small-VPS Layout)
 
-Create `/etc/systemd/system/investment-agent.service`:
+For the current non-Docker production posture, use the committed multi-service layout instead of one monolithic service. This keeps API, scheduler, Slack listener, and migrations separate and lets runtime locks reject duplicate starts cleanly.
 
-```ini
-[Unit]
-Description=Investment Agent Scheduler
-After=network-online.target
-Wants=network-online.target
+Committed units:
 
-[Service]
-Type=simple
-User=deploy
-Group=deploy
-WorkingDirectory=/home/deploy/investment-agent
-Environment="PATH=/home/deploy/.pyenv/versions/3.12/bin:/home/deploy/.local/bin:/usr/local/bin:/usr/bin:/bin"
-EnvironmentFile=/home/deploy/investment-agent/.env
-ExecStart=/home/deploy/.local/bin/poetry run python -m src.scheduler.scheduler
-Restart=always
-RestartSec=30
+- `deploy/systemd/investment-agent-api.service`
+- `deploy/systemd/investment-agent-scheduler.service`
+- `deploy/systemd/investment-agent-slack-listener.service`
+- `deploy/systemd/investment-agent-migrate.service`
 
-# Security hardening
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths=/home/deploy/investment-agent/data
-ReadWritePaths=/home/deploy/investment-agent/journals
-ReadWritePaths=/home/deploy/investment-agent/logs
-
-# Resource limits
-MemoryMax=2G
-CPUQuota=150%
-
-# Graceful shutdown
-KillSignal=SIGTERM
-TimeoutStopSec=30
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=investment-agent
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
+Install them:
 
 ```bash
+sudo cp deploy/systemd/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable investment-agent
-sudo systemctl start investment-agent
-sudo systemctl status investment-agent
+sudo systemctl enable investment-agent-api.service
+sudo systemctl enable investment-agent-scheduler.service
+sudo systemctl enable investment-agent-slack-listener.service
 ```
 
-### 4.7 Verify Scheduler Operation
+Recommended restart order after a deploy:
 
 ```bash
-# View live logs
-journalctl -u investment-agent -f
+sudo systemctl stop investment-agent-slack-listener.service
+sudo systemctl stop investment-agent-scheduler.service
+sudo systemctl stop investment-agent-api.service
 
-# Check scheduled jobs registered
-journalctl -u investment-agent | grep "Scheduled jobs" -A 5
+sudo systemctl start investment-agent-migrate.service
+
+sudo systemctl start investment-agent-api.service
+sudo systemctl start investment-agent-scheduler.service
+sudo systemctl start investment-agent-slack-listener.service
+```
+
+Detailed rationale, verification commands, and the target architecture are documented in:
+
+- [VPS Runtime Stability Plan](VPS_RUNTIME_STABILITY_PLAN.md)
+- [VPS Systemd Runbook](VPS_SYSTEMD_RUNBOOK.md)
+
+### 4.7 Verify Service Operation
+
+```bash
+systemctl status investment-agent-api.service
+systemctl status investment-agent-scheduler.service
+systemctl status investment-agent-slack-listener.service
+
+journalctl -u investment-agent-api.service -f
+journalctl -u investment-agent-scheduler.service -f
+journalctl -u investment-agent-slack-listener.service -f
+
+pgrep -af "dashboard.backend|src.scheduler.scheduler|slack_trade_listener"
+ls /home/deploy_invest_ai/investment-agent/data/runtime
 ```
 
 ---
@@ -535,19 +527,27 @@ docker compose logs investment-agent 2>&1 | grep -i "order\|trade\|filled\|BUY\|
 
 ```bash
 # Follow live
-journalctl -u investment-agent -f
+journalctl -u investment-agent-api.service -f
+journalctl -u investment-agent-scheduler.service -f
+journalctl -u investment-agent-slack-listener.service -f
 
 # Last hour
-journalctl -u investment-agent --since "1 hour ago"
+journalctl -u investment-agent-api.service --since "1 hour ago"
+journalctl -u investment-agent-scheduler.service --since "1 hour ago"
+journalctl -u investment-agent-slack-listener.service --since "1 hour ago"
 
 # Today only
-journalctl -u investment-agent --since today
+journalctl -u investment-agent-api.service --since today
+journalctl -u investment-agent-scheduler.service --since today
+journalctl -u investment-agent-slack-listener.service --since today
 
 # Errors only
-journalctl -u investment-agent -p err
+journalctl -u investment-agent-api.service -p err
+journalctl -u investment-agent-scheduler.service -p err
+journalctl -u investment-agent-slack-listener.service -p err
 
-# Specific cycle (search by time window)
-journalctl -u investment-agent --since "07:00" --until "07:30"
+# Specific cycle window
+journalctl -u investment-agent-scheduler.service --since "07:00" --until "07:30"
 ```
 
 ### 5.2 Per-Component Log Files
@@ -993,7 +993,10 @@ rclone sync /home/deploy/investment-agent/backups/ remote:investment-agent-backu
 ```bash
 # Stop the agent
 docker compose down
-# or: sudo systemctl stop investment-agent
+# or:
+# sudo systemctl stop investment-agent-slack-listener.service
+# sudo systemctl stop investment-agent-scheduler.service
+# sudo systemctl stop investment-agent-api.service
 
 # Restore database
 gunzip -k backups/daily/investment_agent_20260101_020000.db.gz
@@ -1001,7 +1004,11 @@ cp backups/daily/investment_agent_20260101_020000.db data/investment_agent.db
 
 # Restart
 docker compose up -d
-# or: sudo systemctl start investment-agent
+# or:
+# sudo systemctl start investment-agent-migrate.service
+# sudo systemctl start investment-agent-api.service
+# sudo systemctl start investment-agent-scheduler.service
+# sudo systemctl start investment-agent-slack-listener.service
 ```
 
 ---
@@ -1043,11 +1050,13 @@ git pull origin main
 poetry install --without dev
 
 # Run any new migrations
-poetry run alembic upgrade head
+sudo systemctl start investment-agent-migrate.service
 
-# Restart the service
-sudo systemctl restart investment-agent
-journalctl -u investment-agent -f --since "1 minute ago"
+# Restart services
+sudo systemctl restart investment-agent-api.service
+sudo systemctl restart investment-agent-scheduler.service
+sudo systemctl restart investment-agent-slack-listener.service
+journalctl -u investment-agent-api.service -f --since "1 minute ago"
 ```
 
 ### 8.3 Mirror `main` to zenouz-ai/zeninvest (manual, current default)
@@ -1178,7 +1187,9 @@ docker stats investment-agent --no-stream
 dmesg | grep -i "oom\|killed" | tail -10
 
 # Non-Docker
-journalctl -u investment-agent | grep -i "memory\|oom\|killed"
+journalctl -u investment-agent-api.service | grep -i "memory\|oom\|killed"
+journalctl -u investment-agent-scheduler.service | grep -i "memory\|oom\|killed"
+journalctl -u investment-agent-slack-listener.service | grep -i "memory\|oom\|killed"
 ```
 
 **Fix**:

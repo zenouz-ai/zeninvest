@@ -505,6 +505,7 @@ class DataFetcher:
         exclude_tickers: set[str] | None = None,
         max_candidates: int | None = None,
         positions_count: int | None = None,
+        cycle_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Screen the instrument universe for diverse candidates.
 
@@ -516,6 +517,7 @@ class DataFetcher:
             exclude_tickers: Tickers to skip (e.g. current positions).
             max_candidates: Override for settings.max_candidates.
             positions_count: Number of portfolio holdings re-evaluated this cycle (for event metadata).
+            cycle_id: Optional cycle identifier for linking screener events to a run.
 
         Returns:
             List of candidate dicts with keys: ticker, name, sector,
@@ -701,6 +703,8 @@ class DataFetcher:
                     cumul_orders = session.query(Order).count()
                     msg += f" | cumul: {cumul_screened} screened, {cumul_reviewed} reviewed, {cumul_orders} orders"
                     meta: dict[str, Any] = {
+                        "cycle_id": cycle_id,
+                        "stocks_screened": len(candidates),
                         "num_candidates": len(candidates),
                         "total_available": total_available,
                         "tickers": tickers_list[:50],  # Limit to first 50 for storage

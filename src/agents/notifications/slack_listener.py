@@ -6,6 +6,7 @@ runs the single-ticker pipeline, and posts threaded replies.
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -41,6 +42,11 @@ class SlackTradeListener:
         self.settings = get_settings()
         self.gateway = CommandGateway()
         self._pending: dict[str, PendingConfirmation] = {}
+        worker_count = max(1, int(getattr(self.settings, "slack_trade_worker_count", 1)))
+        self._executor = ThreadPoolExecutor(
+            max_workers=worker_count,
+            thread_name_prefix="SlackTradeWorker",
+        )
 
         # Lazy imports — slack-sdk may not be installed in all environments
         self._web_client = None
@@ -133,21 +139,24 @@ class SlackTradeListener:
             # Check for confirmation reply in thread
             thread_ts = event.get("thread_ts")
             if thread_ts and thread_ts in self._pending:
-                threading.Thread(
-                    target=self._handle_confirmation,
-                    args=(msg_channel, thread_ts, user_id, text),
-                    daemon=True,
-                    name=f"SlackConfirm-{ts}",
-                ).start()
+                self._submit_task(
+                    self._handle_confirmation,
+                    msg_channel,
+                    thread_ts,
+                    user_id,
+                    text,
+                )
                 return
 
-            # Process as new command in background thread
-            threading.Thread(
-                target=self._process_command,
-                args=(msg_channel, ts, user_id, text),
-                daemon=True,
-                name=f"SlackCmd-{ts}",
-            ).start()
+            # Process as new command via a bounded worker pool so bursts do not
+            # create unbounded daemon threads on a small VPS.
+            self._submit_task(
+                self._process_command,
+                msg_channel,
+                ts,
+                user_id,
+                text,
+            )
 
         self._socket_client.socket_mode_request_listeners.append(handler)
 
@@ -171,7 +180,15 @@ class SlackTradeListener:
                 self._socket_client.close()
             except Exception:
                 pass
+            self._executor.shutdown(wait=False, cancel_futures=False)
             logger.info("Slack listener stopped.")
+
+    def _submit_task(self, fn: Any, *args: Any) -> None:
+        """Submit a Slack command task to the bounded worker pool."""
+        try:
+            self._executor.submit(fn, *args)
+        except RuntimeError as e:
+            logger.warning(f"Slack worker pool rejected task: {e}")
 
     def _process_command(
         self, channel: str, ts: str, user_id: str, text: str

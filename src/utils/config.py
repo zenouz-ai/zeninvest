@@ -681,6 +681,10 @@ class Settings:
     def slack_trade_confirmation_timeout_minutes(self) -> int:
         return int(self._slack_trade_commands.get("confirmation_timeout_minutes", 10))
 
+    @property
+    def slack_trade_worker_count(self) -> int:
+        return max(1, int(self._slack_trade_commands.get("worker_count", 1)))
+
     # --- Environment variables ---
     @staticmethod
     def get_env(key: str) -> str:
@@ -780,6 +784,10 @@ class Settings:
     @property
     def dashboard_events_enabled(self) -> bool:
         return bool(self.dashboard.get("events_enabled", True))
+
+    @property
+    def dashboard_sse_poll_interval_seconds(self) -> float:
+        return max(1.0, float(self.dashboard.get("sse_poll_interval_seconds", 5.0)))
 
     @property
     def dashboard_cors_origins(self) -> list[str] | None:

@@ -37,6 +37,7 @@ from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
 from src.data.models import Base, Instrument, OpportunityQueue, PerformanceMetric, PortfolioSnapshot
 from src.orchestrator.state_machine import StateMachine
+from src.runtime import RuntimeLockHeldError, acquire_runtime_lock
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
 from src.utils.logger import get_logger
@@ -75,6 +76,8 @@ class Orchestrator:
         self._t212_client: T212Client | None = None
         self._order_manager: OrderManager | None = None
         self._stop_loss_manager: StopLossManager | None = None
+        self._last_screened_candidate_count = 0
+        self._last_screening_skipped_no_data = 0
 
     @property
     def t212_client(self) -> T212Client:
@@ -110,7 +113,42 @@ class Orchestrator:
             cycle_id = scheduled_cycle_id
         else:
             cycle_id = f"cycle_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
+
+        result: dict[str, Any] = {
+            "cycle_id": cycle_id,
+            "trades": [],
+            "rejected_stocks": [],
+            "errors": [],
+            "opportunity_ranking": [],
+            "queued_candidates": [],
+            "swap_candidates": [],
+        }
+        cycle_lock = None
+        try:
+            cycle_lock = acquire_runtime_lock(
+                "orchestrator-cycle",
+                metadata={
+                    "cycle_id": cycle_id,
+                    "dry_run": self.dry_run,
+                    "scheduled_cycle_id": scheduled_cycle_id,
+                },
+            )
+        except RuntimeLockHeldError as exc:
+            logger.warning(
+                "Skipping cycle %s because another cycle is already running (lock=%s owner=%s)",
+                cycle_id,
+                exc.lock_path,
+                exc.details.get("pid"),
+            )
+            result["status"] = "skipped_locked"
+            result["lock_path"] = str(exc.lock_path)
+            if exc.details:
+                result["lock_details"] = exc.details
+            return result
+
         logger.info(f"Starting cycle {cycle_id} (dry_run={self.dry_run})")
+        self._last_screened_candidate_count = 0
+        self._last_screening_skipped_no_data = 0
 
         # Ensure dashboard tables exist (fail-open; idempotent)
         if DASHBOARD_AVAILABLE and self.settings.dashboard_enabled and self.settings.dashboard_events_enabled:
@@ -159,15 +197,6 @@ class Orchestrator:
             except Exception:
                 pass  # Fail-open
 
-        result: dict[str, Any] = {
-            "cycle_id": cycle_id,
-            "trades": [],
-            "rejected_stocks": [],
-            "errors": [],
-            "opportunity_ranking": [],
-            "queued_candidates": [],
-            "swap_candidates": [],
-        }
         strategy_decisions: list[dict[str, Any]] = []
         opportunity_evaluations: list[dict[str, Any]] = []
         stocks_data: list[dict[str, Any]] = []
@@ -192,6 +221,9 @@ class Orchestrator:
         def _finalize(status: str) -> dict[str, Any]:
             result["status"] = status
             result["num_trades"] = len(result["trades"])
+            result["stocks_reviewed"] = len(strategy_decisions)
+            result["stocks_screened"] = self._last_screened_candidate_count
+            result["stocks_skipped_no_data"] = self._last_screening_skipped_no_data
             rejected = result["rejected_stocks"]
             result["num_rejected"] = len(rejected)
             result["rejected_by_action"] = dict(Counter(r.get("action", "HOLD") for r in rejected))
@@ -226,6 +258,8 @@ class Orchestrator:
                             "run_type": "manual" if not self.dry_run else "dry_run",
                             "status": status,
                             "duration_seconds": duration_seconds,
+                            "stocks_screened": result["stocks_screened"],
+                            "stocks_reviewed": result["stocks_reviewed"],
                             "num_trades": result["num_trades"],
                             "num_rejected": result["num_rejected"],
                         },
@@ -240,6 +274,9 @@ class Orchestrator:
                                 run.completed_at = cycle_end_time
                                 run.status = status
                                 run.summary_json = {
+                                    "stocks_screened": result["stocks_screened"],
+                                    "stocks_reviewed": result["stocks_reviewed"],
+                                    "decisions_made": result["stocks_reviewed"],
                                     "num_trades": result["num_trades"],
                                     "num_rejected": result["num_rejected"],
                                     "duration_seconds": duration_seconds,
@@ -255,6 +292,9 @@ class Orchestrator:
                                     completed_at=cycle_end_time,
                                     status=status,
                                     summary_json={
+                                        "stocks_screened": result["stocks_screened"],
+                                        "stocks_reviewed": result["stocks_reviewed"],
+                                        "decisions_made": result["stocks_reviewed"],
                                         "num_trades": result["num_trades"],
                                         "num_rejected": result["num_rejected"],
                                         "duration_seconds": duration_seconds,
@@ -415,6 +455,7 @@ class Orchestrator:
                 current_positions=portfolio_data.get("positions", []),
                 exclude_tickers=existing_tickers,
                 system_state=current_state,
+                cycle_id=cycle_id,
             )
 
             # --- STEP 4: Run strategies ---
@@ -595,7 +636,7 @@ class Orchestrator:
                 macro_context_summary = "\n".join(macro_context_lines)[:1500]
 
             # Build company profiles for top candidates
-            all_stock_tickers = [s.get("ticker", "") for s in stocks_data if s.get("ticker")][:35]
+            all_stock_tickers = [s.get("ticker", "") for s in stocks_data if s.get("ticker")][:self.settings.max_candidates]
             company_profiles = self._build_company_profiles(stocks_data, all_stock_tickers)
             uov_swap_context = self.opportunity_scorer.build_swap_context(existing_tickers)
 
@@ -1294,6 +1335,8 @@ class Orchestrator:
                         signal.signal(signal.SIGALRM, _prev_alarm_handler)
             except (ValueError, OSError):
                 pass
+            if cycle_lock is not None:
+                cycle_lock.release()
 
     # --- Helper methods ---
 
@@ -1404,6 +1447,7 @@ class Orchestrator:
         current_positions: list[dict],
         exclude_tickers: set[str] | None = None,
         system_state: str = "ACTIVE",
+        cycle_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch analysis data for current positions + screened universe candidates.
 
@@ -1452,7 +1496,9 @@ class Orchestrator:
             candidates = self.data_fetcher.get_screened_universe(
                 exclude_tickers=all_exclude,
                 positions_count=len(current_positions),
+                cycle_id=cycle_id,
             )
+            self._last_screened_candidate_count = len(candidates)
             self.data_fetcher.mark_instruments_screened(
                 [c["ticker"] for c in candidates],
             )
@@ -1487,6 +1533,7 @@ class Orchestrator:
                     logger.warning(f"Failed to fetch data for candidate {c_ticker}: {e}")
                 analyzed_tickers.add(c_ticker)
             if skipped_no_data:
+                self._last_screening_skipped_no_data = skipped_no_data
                 logger.info(f"Skipped {skipped_no_data} candidates with no OHLCV data")
         except Exception as e:
             logger.warning(f"Universe screening failed: {e}")
@@ -1996,7 +2043,7 @@ class Orchestrator:
             data_by_ticker[stock.get("ticker", "")] = stock
 
         # Fallback: load Instrument industry/summary for tickers missing from fundamentals
-        t212_tickers = [t for t in (top_tickers[:35] or []) if t]
+        t212_tickers = [t for t in (top_tickers[:self.settings.max_candidates] or []) if t]
         inst_by_ticker: dict[str, Instrument] = {}
         if t212_tickers:
             session = get_session()
@@ -2009,7 +2056,7 @@ class Orchestrator:
             finally:
                 session.close()
 
-        for ticker in top_tickers[:35]:
+        for ticker in top_tickers[:self.settings.max_candidates]:
             stock = data_by_ticker.get(ticker, {})
             fundamentals = stock.get("fundamentals", {})
             summary = (fundamentals.get("business_summary") or "").strip()

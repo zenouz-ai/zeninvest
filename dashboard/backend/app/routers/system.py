@@ -7,6 +7,7 @@ from src.data.models import SystemState
 from src.utils.config import get_settings
 
 from ..schemas import SystemStateSchema
+from ..services.run_dispatcher import submit_cycle
 
 router = APIRouter()
 settings = get_settings()
@@ -40,12 +41,8 @@ async def trigger_cycle():
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
-    import threading
-
-    from .runs import _run_dry_cycle
-
-    t = threading.Thread(target=_run_dry_cycle, daemon=True, name="TriggeredDryRun")
-    t.start()
+    if not submit_cycle(dry_run=True):
+        raise HTTPException(status_code=409, detail="Another cycle is already running")
     return {"message": "Dry-run cycle triggered in background", "status": "started"}
 
 

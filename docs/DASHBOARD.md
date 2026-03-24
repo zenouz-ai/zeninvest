@@ -343,13 +343,15 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 **Roadmap tab:**
 - Project evolution from day 0 (2026-02-22) to now; days-in-development counter
-- Summary cards: 19 delivered · 17 pipeline · 53% complete
+- Summary cards: 24 delivered · 16 pipeline · 60% complete
 - Topic filter: All, Foundation, Calibration, Portfolio & Risk, Signals, Validation, Hardening, ML / Advanced, Open-Source / Community
 - Larger milestone cards grouped by topic with clearer badges for status, priority, effort, and delivery/planning window
 - Architecture components surfaced as chips for each story
 
 **Architecture tab:**
-- Pipeline diagram (Mermaid) with component-to-US mapping
+- Custom staged system map with a top-level control plane and four readable execution stages:
+  `Inputs & providers` → `Context & research` → `Decision committee` → `Execution & visibility`
+- Larger cards explain the real runtime components, linked user stories, and responsibilities
 - Links to `docs/ARCHITECTURE.md` and `docs/SOPHISTICATION_ROADMAP.md` served via `GET /api/docs/ARCHITECTURE` and `GET /api/docs/SOPHISTICATION_ROADMAP`
 
 **Docs links:** In-app modal fetches and displays ARCHITECTURE.md and SOPHISTICATION_ROADMAP.md (avoids new-tab issues).
@@ -388,6 +390,8 @@ POST /api/runs/trigger              # Trigger dry-run cycle
 POST /api/runs/trigger-live         # Trigger live cycle (executes real trades)
 POST /api/system/trigger-cycle      # Alias for dry-run trigger
 ```
+
+Manual trigger protection: when a cycle is already active, the trigger endpoints now return `409` instead of spawning overlapping background work.
 
 ### Universe
 

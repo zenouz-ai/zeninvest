@@ -286,6 +286,41 @@ class TestStrategyEngine:
         assert len(results["mean_reversion"]) == 1
         assert len(results["factor"]) == 1
 
+    def test_strategy_prompt_formatters_respect_max_candidates_setting(self):
+        engine = StrategyEngine()
+        engine.settings._config.setdefault("universe", {})["max_candidates"] = 40
+
+        momentum_signals = [
+            MagicMock(ticker=f"SIG{i}", action="BUY", score=100 - i, reasoning=f"momentum {i}")
+            for i in range(45)
+        ]
+        mean_reversion_signals = [
+            MagicMock(ticker=f"MR{i}", action="HOLD", score=90 - i, reasoning=f"mean reversion {i}")
+            for i in range(45)
+        ]
+        factor_scores = [
+            MagicMock(
+                ticker=f"FAC{i}",
+                composite_score=80 - i,
+                value_score=70 - i,
+                quality_score=75 - i,
+                momentum_score=65 - i,
+                reasoning=f"factor {i}",
+            )
+            for i in range(45)
+        ]
+
+        momentum_text = engine._format_momentum_proposals(momentum_signals)
+        mean_reversion_text = engine._format_mean_reversion_proposals(mean_reversion_signals)
+        factor_text = engine._format_factor_proposals(factor_scores)
+
+        assert momentum_text.count("\n") + 1 == 40
+        assert mean_reversion_text.count("\n") + 1 == 40
+        assert factor_text.count("\n") + 1 == 40
+        assert "SIG40" not in momentum_text
+        assert "MR40" not in mean_reversion_text
+        assert "FAC40" not in factor_text
+
     @patch("src.agents.strategy.engine.check_budget", return_value=True)
     @patch("src.agents.strategy.engine.log_cost")
     def test_synthesize_with_claude(self, mock_log_cost, mock_budget, db_session):

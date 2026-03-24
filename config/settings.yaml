@@ -183,10 +183,12 @@ notifications:
     channel_id: "C0ANG26SBD0"
     confirmation_threshold_gbp: 2000
     confirmation_timeout_minutes: 10
+    worker_count: 1
 
 dashboard:
   enabled: true
   events_enabled: true
+  sse_poll_interval_seconds: 5
   # CORS origins for dashboard API — restrict to your VPS IP in production
   # Default (when absent): localhost:3000, localhost:8000, 127.0.0.1:3000, 127.0.0.1:8000
   # cors_origins:

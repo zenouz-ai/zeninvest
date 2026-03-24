@@ -56,7 +56,9 @@ describe('Roadmap page rendering', () => {
     expect(roadmapMarkup).toContain('data-testid="roadmap-detail-view"')
     expect(roadmapMarkup).toContain('Readable story cards with factual history')
     expect(architectureMarkup).toContain('data-testid="architecture-view"')
+    expect(architectureMarkup).toContain('Readable flow from signals to execution')
     expect(architectureMarkup).toContain('docs/ARCHITECTURE.md')
+    expect(architectureMarkup).not.toContain('<svg')
   })
 
   it('renders one uniform timeline card per milestone with factual delivered dates and short-cycle planned windows', () => {

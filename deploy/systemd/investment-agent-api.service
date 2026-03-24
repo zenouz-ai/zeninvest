@@ -1,0 +1,30 @@
+[Unit]
+Description=Investment Agent API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy_invest_ai
+Group=deploy_invest_ai
+WorkingDirectory=/home/deploy_invest_ai/investment-agent
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/deploy_invest_ai/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/home/deploy_invest_ai/investment-agent/.env
+ExecStart=/home/deploy_invest_ai/.local/bin/poetry run python -m dashboard.backend
+Restart=on-failure
+RestartSec=10
+RestartPreventExitStatus=75
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/deploy_invest_ai/investment-agent/data
+ReadWritePaths=/home/deploy_invest_ai/investment-agent/logs
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=investment-agent-api
+
+[Install]
+WantedBy=multi-user.target

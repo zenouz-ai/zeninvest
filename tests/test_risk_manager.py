@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.data.models import Base
 from src.agents.risk.risk_manager import RiskManager
+from src.utils.config import get_settings
 
 
 @pytest.fixture
@@ -38,12 +39,13 @@ class TestMaxSingleStock:
         assert result.passed
 
     def test_exceeds_limit(self, risk_mgr):
-        result = risk_mgr.check_max_single_stock("AAPL", 20.0, {})
+        max_pct = get_settings().max_single_stock_pct
+        result = risk_mgr.check_max_single_stock("AAPL", max_pct + 5.0, {})
         assert not result.passed
-        assert result.adjusted_allocation == 15.0
+        assert result.adjusted_allocation == max_pct
 
     def test_at_limit(self, risk_mgr):
-        result = risk_mgr.check_max_single_stock("AAPL", 15.0, {})
+        result = risk_mgr.check_max_single_stock("AAPL", get_settings().max_single_stock_pct, {})
         assert result.passed
 
 
@@ -53,9 +55,11 @@ class TestMaxSector:
         assert result.passed
 
     def test_exceeds_limit(self, risk_mgr):
-        result = risk_mgr.check_max_sector("AAPL", "Technology", 15.0, {"Technology": 25.0})
+        max_sector = get_settings().max_sector_pct
+        current_sector = max_sector - 10.0
+        result = risk_mgr.check_max_sector("AAPL", "Technology", 15.0, {"Technology": current_sector})
         assert not result.passed
-        assert result.adjusted_allocation == 10.0  # 35 - 25 = 10% room
+        assert result.adjusted_allocation == 10.0
 
     def test_empty_sector(self, risk_mgr):
         result = risk_mgr.check_max_sector("AAPL", "Technology", 10.0, {})
@@ -261,12 +265,13 @@ class TestEvaluateTrade:
         assert verdict.adjusted_allocation_pct == 8.0
 
     def test_reject_over_stock_limit(self, risk_mgr):
+        max_pct = get_settings().max_single_stock_pct
         verdict = risk_mgr.evaluate_trade(**self._default_params(
-            proposed_allocation_pct=20.0,
+            proposed_allocation_pct=max_pct + 5.0,
             cash_pct=50.0,
         ))
         assert verdict.verdict == "RESIZE"
-        assert verdict.adjusted_allocation_pct == 15.0
+        assert verdict.adjusted_allocation_pct == max_pct
 
     def test_reject_on_halt_drawdown(self, risk_mgr):
         # 45% drawdown triggers HALT (halt_drawdown_pct=40)

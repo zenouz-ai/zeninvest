@@ -16,6 +16,7 @@ export interface Run {
   completed_at: string | null
   status: 'running' | 'completed' | 'failed'
   summary_json?: {
+    stocks_screened?: number
     num_trades?: number
     num_rejected?: number
     duration_seconds?: number

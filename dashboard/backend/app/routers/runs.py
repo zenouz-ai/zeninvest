@@ -2,8 +2,7 @@
 
 import json
 import logging
-import threading
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -14,8 +13,9 @@ from src.data.database import get_session
 from src.data.models import PortfolioSnapshot, StrategyDecision
 from src.utils.config import get_settings
 
-from ..database import Run
+from ..database import EventsLog, Run
 from ..schemas import RunCreateSchema, RunSchema
+from ..services.run_dispatcher import submit_cycle
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -88,29 +88,70 @@ def _positions_from_snapshot(snapshot: PortfolioSnapshot) -> dict[str, float]:
     return {p.get("ticker", ""): float(p.get("quantity", 0)) for p in data if p.get("ticker")}
 
 
-def _run_dry_cycle() -> None:
-    """Run a dry-run cycle in background (daemon thread)."""
-    try:
-        from src.orchestrator.main import Orchestrator
+def _derive_screened_count(session: Session, run: Run) -> int | None:
+    """Best-effort screened count for a run from universe_updated events.
 
-        orch = Orchestrator(dry_run=True)
-        orch.run_cycle()
-        orch.close()
-    except Exception as e:
-        logger.error("Triggered dry-run failed: %s", e, exc_info=True)
+    Newer events may carry an exact cycle_id; older rows can still be matched
+    by timestamp because only one cycle runs at a time.
+    """
+    query = session.query(EventsLog).filter(EventsLog.event_type == "universe_updated")
+    cycle_end = run.completed_at or (run.started_at + timedelta(hours=1))
+
+    exact_event = (
+        query.filter(EventsLog.metadata_json["cycle_id"].as_string() == run.cycle_id)
+        .order_by(desc(EventsLog.timestamp))
+        .first()
+    )
+    event = exact_event or (
+        query
+        .filter(EventsLog.timestamp >= run.started_at, EventsLog.timestamp <= cycle_end)
+        .order_by(desc(EventsLog.timestamp))
+        .first()
+    )
+    if not event or not isinstance(event.metadata_json, dict):
+        return None
+
+    metadata = event.metadata_json
+    for key in ("stocks_screened", "num_candidates"):
+        value = metadata.get(key)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
-def _run_live_cycle() -> None:
-    """Run a live cycle in background (daemon thread)."""
-    try:
-        from src.orchestrator.main import Orchestrator
+def _build_run_schema(session: Session, run: Run) -> RunSchema:
+    """Return a run schema with derived summary fields filled in when missing."""
+    summary: dict[str, Any] = dict(run.summary_json) if isinstance(run.summary_json, dict) else {}
 
-        orch = Orchestrator(dry_run=False)
-        orch.run_cycle()
-        orch.close()
-    except Exception as e:
-        logger.error("Triggered live run failed: %s", e, exc_info=True)
+    if summary.get("stocks_reviewed") is None or summary.get("decisions_made") is None:
+        decision_count = (
+            session.query(func.count(StrategyDecision.id))
+            .filter(StrategyDecision.cycle_id == run.cycle_id)
+            .scalar()
+        ) or 0
+        summary.setdefault("stocks_reviewed", int(decision_count))
+        summary.setdefault("decisions_made", int(decision_count))
 
+    if summary.get("stocks_screened") is None:
+        screened_count = _derive_screened_count(session, run)
+        if screened_count is not None:
+            summary["stocks_screened"] = screened_count
+
+    return RunSchema.model_validate(
+        {
+            "id": run.id,
+            "cycle_id": run.cycle_id,
+            "run_type": run.run_type,
+            "started_at": run.started_at,
+            "completed_at": run.completed_at,
+            "status": run.status,
+            "summary_json": summary or None,
+        }
+    )
 
 @router.get("/", response_model=list[RunSchema])
 async def get_runs(
@@ -139,7 +180,7 @@ async def get_runs(
             query = query.filter(Run.started_at <= end_date)
 
         runs = query.order_by(desc(Run.started_at)).offset(offset).limit(limit).all()
-        return runs
+        return [_build_run_schema(session, run) for run in runs]
     finally:
         session.close()
 
@@ -196,7 +237,7 @@ async def get_run(run_id: int):
         run = session.query(Run).filter(Run.id == run_id).first()
         if not run:
             raise HTTPException(status_code=404, detail="Run not found")
-        return run
+        return _build_run_schema(session, run)
     finally:
         session.close()
 
@@ -212,7 +253,7 @@ async def get_run_by_cycle_id(cycle_id: str):
         run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
         if not run:
             raise HTTPException(status_code=404, detail="Run not found")
-        return run
+        return _build_run_schema(session, run)
     finally:
         session.close()
 
@@ -249,8 +290,8 @@ async def trigger_manual_run():
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
-    t = threading.Thread(target=_run_dry_cycle, daemon=True, name="TriggeredDryRun")
-    t.start()
+    if not submit_cycle(dry_run=True):
+        raise HTTPException(status_code=409, detail="Another cycle is already running")
     return {"message": "Dry-run cycle triggered in background", "status": "started"}
 
 
@@ -260,6 +301,6 @@ async def trigger_live_run():
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
-    t = threading.Thread(target=_run_live_cycle, daemon=True, name="TriggeredLiveRun")
-    t.start()
+    if not submit_cycle(dry_run=False):
+        raise HTTPException(status_code=409, detail="Another cycle is already running")
     return {"message": "Live cycle triggered in background", "status": "started"}

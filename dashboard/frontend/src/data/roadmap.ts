@@ -123,7 +123,7 @@ export const MILESTONES: Milestone[] = [
     effort: 'L',
     priority: 'P1',
     description:
-      'Web dashboard: 8 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Costs, Roadmap & Architecture); full API',
+      'Web dashboard: 10 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Commands, World News, Costs, Roadmap & Architecture); full API',
     architectureComponents: ['Dashboard', 'FastAPI', 'React'],
   },
   {
@@ -308,6 +308,19 @@ export const MILESTONES: Milestone[] = [
     description:
       'Skeleton delivered: ChatSession/ChatTurn DB models, SessionManager CRUD stub, dashboard chat API endpoints, request validation, missing-session 404 handling, and chat-turn FK + unique turn-order protection. Full multi-turn workflow (LLM reasoning, Slack thread continuity, research tools) deferred.',
     architectureComponents: ['Notifications', 'Dashboard', 'Orchestrator'],
+  },
+  {
+    id: 'US-7.6',
+    name: 'VPS Runtime Stability & Service Isolation',
+    topic: 'Hardening',
+    status: 'delivered',
+    start: '2026-03-24',
+    end: '2026-03-24',
+    effort: 'M',
+    priority: 'P0',
+    description:
+      'Single-instance runtime locks for API/scheduler/Slack/cycle execution, production-safe single-process dashboard entrypoint, bounded dashboard trigger dispatcher, bounded Slack worker pool, lower-overhead SSE polling, separate migration service, and committed systemd units for a small VPS.',
+    architectureComponents: ['Dashboard', 'Scheduler', 'Notifications', 'Orchestrator', 'systemd'],
   },
   {
     id: 'US-2.4',

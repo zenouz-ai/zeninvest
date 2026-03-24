@@ -42,14 +42,18 @@ def setup_logger(
     # File handler
     if log_file is None:
         log_file = str(_LOG_DIR / f"{name}.log")
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.DEBUG)
-    file_fmt = logging.Formatter(
-        "%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    file_handler.setFormatter(file_fmt)
-    logger.addHandler(file_handler)
+
+    try:
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        file_fmt = logging.Formatter(
+            "%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        file_handler.setFormatter(file_fmt)
+        logger.addHandler(file_handler)
+    except (OSError, PermissionError) as exc:
+        logger.warning("File logging disabled for %s: %s", name, exc)
 
     return logger
 

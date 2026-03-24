@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.data.models import Base, CostLog
+from src.utils.config import get_settings
 from src.utils.cost_tracker import (
     calculate_cost,
     log_cost,
@@ -113,14 +114,15 @@ class TestBudgetStatus:
         assert not status.is_over_monthly
 
     def test_over_daily(self, db_session):
-        # Add entries exceeding daily limit (£1.00 for anthropic)
+        settings = get_settings()
+        # Add entries exceeding the current configured daily limit.
         db_session.add(CostLog(
             timestamp=datetime.now(timezone.utc),
             provider="anthropic",
             model="test",
             input_tokens=0,
             output_tokens=0,
-            cost_gbp=1.50,
+            cost_gbp=settings.anthropic_daily_gbp + 0.01,
         ))
         db_session.commit()
         status = get_budget_status("anthropic")
@@ -133,39 +135,42 @@ class TestDegradation:
         assert level == DegradationLevel.FULL
 
     def test_no_gemini_when_google_over(self, db_session):
+        settings = get_settings()
         db_session.add(CostLog(
             timestamp=datetime.now(timezone.utc),
             provider="google",
             model="test",
             input_tokens=0,
             output_tokens=0,
-            cost_gbp=0.60,
+            cost_gbp=settings.google_daily_gbp + 0.01,
         ))
         db_session.commit()
         level = get_degradation_level()
         assert level == DegradationLevel.NO_GEMINI
 
     def test_no_strategy_when_anthropic_over(self, db_session):
+        settings = get_settings()
         db_session.add(CostLog(
             timestamp=datetime.now(timezone.utc),
             provider="anthropic",
             model="test",
             input_tokens=0,
             output_tokens=0,
-            cost_gbp=1.50,
+            cost_gbp=settings.anthropic_daily_gbp + 0.01,
         ))
         db_session.commit()
         level = get_degradation_level()
         assert level == DegradationLevel.NO_STRATEGY
 
     def test_no_gpt4o_when_openai_over(self, db_session):
+        settings = get_settings()
         db_session.add(CostLog(
             timestamp=datetime.now(timezone.utc),
             provider="openai",
             model="test",
             input_tokens=0,
             output_tokens=0,
-            cost_gbp=0.80,
+            cost_gbp=settings.openai_daily_gbp + 0.01,
         ))
         db_session.commit()
         level = get_degradation_level()

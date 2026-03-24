@@ -10,13 +10,13 @@ last_updated: 2026-03-24
 
 ## Purpose
 
-This document tracks every planned and delivered enhancement to the investment agent, ordered by priority and feasibility. It serves as the single backlog for sprint planning and as a record of what has been shipped. The dashboard **Roadmap** page (`/roadmap`) visualises this backlog with a short-cycle **Timeline** board, a detailed story-card view, and an architecture-to-component mapping.
+This document tracks every planned and delivered enhancement to the investment agent, ordered by priority and feasibility. It serves as the single backlog for sprint planning and as a record of what has been shipped. The dashboard **Roadmap** page (`/roadmap`) visualises this backlog with a short-cycle **Timeline** board, a detailed story-card view, and a staged architecture map that groups the production system into inputs, context, decisioning, and execution.
 
 ---
 
 ## Roadmap overview (Delivered vs pipeline)
 
-**At a glance:** Delivered **19** · Pipeline **17** (order by priority and feasibility below)
+**At a glance:** Delivered **24** · Pipeline **16** (order by priority and feasibility below)
 
 ### Timeline view
 
@@ -44,9 +44,10 @@ timeline
         US-7.4 : Integration Test Coverage
         US-1.7.3 : Dashboard Visual Design System
         US-1.7.4 : World News Dashboard Tab
-    section Pipeline (priority order)
         US-1.6 : Slack NL Trade Commands
         US-1.9 : Conversational Trading Workflow
+        US-7.6 : VPS Runtime Stability & Service Isolation
+    section Pipeline (priority order)
         US-2.1 : Conviction Calibration
         US-2.2 : Dynamic Strategy Weighting
         US-2.3 : Moderator Effectiveness
@@ -92,22 +93,23 @@ timeline
 | | 21 | US-1.7.4 | World News Dashboard Tab (persistent headline archive, keyword categorisation, 5 macro REST endpoints, regime + headline feed + action plan page, Dashboard Home macro card, 23 tests) |
 | | 22 | US-1.6 | Slack NL Trade Commands (regex-first NL parser with company-name support, single-ticker pipeline, real confirmation gate, force override audit trail, dashboard Commands page, part of 113-test focused regression suite) |
 | | 23 | US-1.9 | Conversational Trading Workflow skeleton (ChatSession/ChatTurn models, SessionManager CRUD, dashboard chat API stubs, 404/422 validation hardening, chat-turn integrity constraints) |
-| | 3 | US-2.1 | Conviction Calibration |
-| | 4 | US-2.2 | Dynamic Strategy Weighting |
-| | 5 | US-2.3 | Moderator Effectiveness |
-| | 6 | US-2.4 | Nemotron Integration Investigation |
-| | 7 | US-5.2 | Parameter Sensitivity |
-| | 8 | US-3.2 | Regime Detection |
-| | 9 | US-3.3 | Correlation Screening |
-| | 10 | US-4.2 | Earnings Calendar |
-| | 11 | US-4.3 | Sector Rotation |
-| | 12 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
-| | 13 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
-| | 14 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
-| | 15 | US-6.1 | ML Trade Scoring (investigation) |
-| | 16 | US-6.2 | Journal Embeddings |
-| | 17 | US-6.3 | RL Investigation |
-| **Open-Source / Community** | 1 | US-8.1 | Open-Source Launch Preparation |
+| | 24 | US-7.6 | VPS Runtime Stability & Service Isolation (runtime locks, single-process API entrypoint, bounded trigger/Slack execution, systemd split, separate migrations, 68 focused regression tests + broader verification) |
+| **Pipeline** | 1 | US-2.1 | Conviction Calibration |
+| | 2 | US-2.2 | Dynamic Strategy Weighting |
+| | 3 | US-2.3 | Moderator Effectiveness |
+| | 4 | US-2.4 | Nemotron Integration Investigation |
+| | 5 | US-5.2 | Parameter Sensitivity |
+| | 6 | US-3.2 | Regime Detection |
+| | 7 | US-3.3 | Correlation Screening |
+| | 8 | US-4.2 | Earnings Calendar |
+| | 9 | US-4.3 | Sector Rotation |
+| | 10 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
+| | 11 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
+| | 12 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
+| | 13 | US-6.1 | ML Trade Scoring (investigation) |
+| | 14 | US-6.2 | Journal Embeddings |
+| | 15 | US-6.3 | RL Investigation |
+| | 16 | US-8.1 | Open-Source Launch Preparation |
 
 ---
 
@@ -143,6 +145,7 @@ timeline
 | **US-7.0a** | Agent Logic Audit Fixes | 27 findings (5C+7H+9M+6L). All Critical + High fixed: MODIFY verdicts as conditional AGREE (C-1), CAUTION 25% allocation reduction (C-2), conviction/allocation clamping (C-3), Gemini score bounds (C-4), orphaned "submitting" sync (C-5), risk-driven exit bypass (H-1), entry_type in schema (H-2), strategy timeout 120s (H-3), consensus on all moderator rows (H-4), repaired-decision validation (H-5), ticker dedup (H-6). 36 new tests. See `docs/AGENT_LOGIC_AUDIT.md`. | Eliminates 5 critical + 7 high LLM output parsing and consensus bugs | **Delivered** |
 | **US-7.0b** | Formal Verification Fixes | 18 findings (3C+7W+8I). Phase 1: scheduler `max_instances=1` (concurrent cycle prevention), resume warns HALTED/CAUTIOUS. Phase 2: `trade_without_stop` alert (P2-5), OpportunityQueue `queue_status` lifecycle QUEUED→EXECUTING→EXECUTED + orphan reconciliation (P2-6), portfolio re-query before BUY after SELL/REDUCE (P2-4), decision chain integrity check (P2-3). 18 new tests. 12 invariants verified. See `docs/FORMAL_VERIFICATION_AUDIT.md`. | Crash safety, state machine correctness, DB atomicity | **Delivered** |
 | **US-7.5** | Remaining Audit Backlog | Consolidated backlog from three audits: 15 medium/low findings (agent logic), 22 medium/low (trading system), 7 phase 3+4 items (formal verification). Includes: HALTED auto-recovery, market hours check, DB CHECK constraints, atomic cost budget, peak inflation detection, halted ticker denial list. | Hardening for eventual live-account transition | **Planned** |
+| **US-7.6** | VPS Runtime Stability & Service Isolation | Single-instance runtime locks for API/scheduler/Slack/cycle execution; bounded manual trigger and Slack worker execution; separate migration service; lean systemd deployment for small VPS operation | Prevents duplicate/runaway processes and keeps idle CPU low on a resource-constrained host | **Delivered** |
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Delivered** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
@@ -759,6 +762,40 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
+**US-7.6: VPS Runtime Stability & Service Isolation**
+**Value:** Critical on small VPS infrastructure — prevents duplicate or runaway Python processes from saturating CPU, raising load average, and destabilising the host
+**Effort:** Medium (delivered in one hardening pass)
+**Data Sources:** None (runtime/process architecture hardening)
+**Stage:** Delivered (2026-03-24)
+
+**Status (2026-03-24):** Delivered. The runtime model was reworked around three single-instance long-lived services (API, scheduler, Slack listener) plus a separate migration service. Cross-process advisory locks now prevent duplicate starts, dashboard/manual triggers refuse overlapping cycle execution, Slack command handling is bounded by a worker pool, and the dashboard SSE feed now uses a much lower idle poll rate suited to a 1 vCPU VPS.
+
+**Delivered scope:**
+- [x] Runtime lock helper (`src/runtime/locking.py`) for API, scheduler, Slack listener, and orchestrator cycle execution
+- [x] Production-safe dashboard server entrypoint (`dashboard/backend/server.py`) with `uvicorn` single-process mode (`reload=False`, `workers=1`)
+- [x] Global cycle lock in `Orchestrator.run_cycle()` so scheduled and manual runs cannot overlap
+- [x] Bounded background dispatcher for dashboard-triggered cycles with HTTP `409` on overlap
+- [x] Slack Socket Mode listener switched from unbounded per-message threads to a bounded worker pool
+- [x] Dashboard SSE polling reduced from 1s to 5s with disconnect detection and shorter-lived DB sessions
+- [x] Locked migration script plus dedicated `investment-agent-migrate.service`
+- [x] Dedicated `systemd` units for API, scheduler, Slack listener, and migrations
+- [x] Logger setup made fail-open when a log file path is not writable
+- [x] Operations documentation added in `docs/VPS_RUNTIME_STABILITY_PLAN.md` and `docs/VPS_SYSTEMD_RUNBOOK.md`
+
+**Acceptance Criteria:**
+- [x] Exactly one API process can hold the runtime lock at a time
+- [x] Exactly one scheduler process can hold the runtime lock at a time
+- [x] Exactly one Slack listener process can hold the runtime lock at a time
+- [x] Only one orchestrator cycle can run at a time across all entrypoints
+- [x] Database migrations are no longer chained into long-lived service startup
+- [x] systemd deployment instructions document logs, health checks, verification commands, and startup order
+- [x] Focused runtime-lock and dispatch tests added
+- [x] Broader backend and frontend verification completed after delivery
+
+**Detailed plan and runbook:** `docs/VPS_RUNTIME_STABILITY_PLAN.md`, `docs/VPS_SYSTEMD_RUNBOOK.md`
+
+---
+
 **US-7.0a: Agent Logic Audit Fixes**
 **Value:** Critical — 5 critical + 7 high LLM output parsing and consensus logic bugs; moderation verdicts silently ignored, allocation scores unbounded, orphaned orders
 **Effort:** Medium (delivered in one session)
@@ -918,11 +955,12 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Completed:**
 - **US-1.7** — Dashboard full spec merged to main
 - **US-1.4** — POC deployed to VPS (Docker, first cycle logged, health/backup confirmed)
+- **US-7.6** — VPS runtime stability hardening delivered (runtime locks, systemd split, bounded workers, separate migrations)
 
 **Immediate (current focus):**
-- **US-4.4** — Agentic Research: **Delivered**. All 3 members (Strategy, Skeptic, Risk) have tool-use loops; 5 tools; shared budget; 37 tests. See `docs/AGENTIC_RESEARCH.md`.
 - **US-2.4** — Nemotron integration investigation (evaluation only; no production switch). See `docs/Nemotron_3_Super_Integration_Investigation.md`.
-- **US-7.1** — Dashboard authentication (audit critical finding — required before VPS exposure)
+- **US-7.5** — Remaining audit backlog (carry remaining medium/low hardening before any live-account posture change)
+- **US-7.3** — Execution quality & slippage (pre-live prerequisite)
 
 **Audit hardening (delivered 2026-03-17):**
 - US market holiday calendar — scheduler skips analysis cycles on NYSE holidays (`src/utils/market_holidays.py`)
@@ -933,12 +971,8 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Deferred (await data or later sprint):**
 - **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (requires ~50 trades)
 - **US-5.2 prep** — Parameter sensitivity harness
-- **US-1.6** — Slack NL trade commands (Phase 2 chat)
-- **US-1.9** — Conversational trading workflow (multi-turn Slack + dashboard chat)
-- **US-4.5** — Proactive macro news intelligence (stateful macro layer + action planner)
 - **US-7.2** — Partial fill resubmission (expand US-3.5)
-- **US-7.3** — Execution quality & slippage (pre-live prerequisite)
-- **US-7.4** — Integration test coverage (partially addressed in audit)
+- **US-8.1** — Open-source launch preparation
 
 **Delivery references:**
 - `docs/ORDER_MANAGEMENT_PROJECT.md`

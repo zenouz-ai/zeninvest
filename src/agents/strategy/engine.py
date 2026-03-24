@@ -79,8 +79,8 @@ class StrategyEngine:
             factor_score = calculate_factor_score(ticker, fundamentals, indicators, rs, six_mo_return)
             factor_scores.append(factor_score)
 
-        # Rank by factor score (top 30 for 60-90 decisions/day target)
-        top_factor = rank_by_factor(factor_scores, top_n=30)
+        # Rank factor ideas using the same candidate cap that drives the screening universe.
+        top_factor = rank_by_factor(factor_scores, top_n=self.settings.max_candidates)
 
         return {
             "momentum": momentum_signals,
@@ -90,25 +90,25 @@ class StrategyEngine:
         }
 
     def _format_momentum_proposals(self, signals: list[MomentumSignal]) -> str:
-        """Format momentum signals for the prompt. Include all tickers (up to 35) for one-decision-per-ticker."""
+        """Format momentum signals for the prompt using the configured candidate cap."""
         sorted_sigs = sorted(signals, key=lambda s: s.score, reverse=True)
         lines = []
-        for s in sorted_sigs[:35]:
+        for s in sorted_sigs[:self.settings.max_candidates]:
             lines.append(f"- {s.ticker}: {s.action} (score: {s.score:.0f}) — {s.reasoning}")
         return "\n".join(lines) if lines else "No momentum signals"
 
     def _format_mean_reversion_proposals(self, signals: list[MeanReversionSignal]) -> str:
-        """Format mean reversion signals for the prompt. Include all tickers (up to 35)."""
+        """Format mean reversion signals for the prompt using the configured candidate cap."""
         sorted_sigs = sorted(signals, key=lambda s: s.score, reverse=True)
         lines = []
-        for s in sorted_sigs[:35]:
+        for s in sorted_sigs[:self.settings.max_candidates]:
             lines.append(f"- {s.ticker}: {s.action} (score: {s.score:.0f}) — {s.reasoning}")
         return "\n".join(lines) if lines else "No mean reversion signals"
 
     def _format_factor_proposals(self, scores: list[FactorScore]) -> str:
-        """Format factor scores for the prompt. Include top 30."""
+        """Format factor scores for the prompt using the configured candidate cap."""
         lines = []
-        for s in scores[:30]:
+        for s in scores[:self.settings.max_candidates]:
             lines.append(
                 f"- {s.ticker}: composite={s.composite_score:.0f} "
                 f"(V={s.value_score:.0f} Q={s.quality_score:.0f} M={s.momentum_score:.0f}) — {s.reasoning}"
@@ -205,7 +205,7 @@ class StrategyEngine:
             max_pos_pct = 8.0
 
         all_tickers = [s.ticker for s in sub_strategy_results["momentum"]]
-        tickers_list = ", ".join(all_tickers[:35])
+        tickers_list = ", ".join(all_tickers[:self.settings.max_candidates])
 
         prompt = build_strategy_prompt(
             portfolio_state=portfolio_state,
@@ -311,7 +311,7 @@ class StrategyEngine:
             max_pos_pct = 8.0
 
         all_tickers = [s.ticker for s in sub_strategy_results["momentum"]]
-        tickers_list = ", ".join(all_tickers[:35])
+        tickers_list = ", ".join(all_tickers[:self.settings.max_candidates])
 
         prompt = build_strategy_prompt(
             portfolio_state=portfolio_state,
