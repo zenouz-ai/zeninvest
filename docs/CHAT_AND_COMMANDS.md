@@ -1,7 +1,7 @@
 ---
 tags: [notifications, slack, commands, chat]
 status: current
-last_updated: 2026-03-10
+last_updated: 2026-03-24
 ---
 
 # Chat Interface and Trade Commands
@@ -14,7 +14,7 @@ Provide a reliable, auditable chat and command layer for the Investment Agent th
 
 - Gives operators immediate visibility into trade decisions and outcomes (Phase 1: delivered).
 - Never interferes with execution safety or core trading flow.
-- Enables secure, explicit manual trade control via Slack natural language commands (Phase 2: planned).
+- Enables secure, explicit manual trade control via Slack natural language commands (Phase 2: delivered).
 - Maintains consistent audit trails for all trades—autonomous or manual.
 - Provides a foundation for future web chat UI (Phase 3: future).
 
@@ -260,7 +260,7 @@ US-1.5 Phase 1 was implemented and deployed to VPS with the following execution 
 
 ---
 
-## Phase 2: Inbound Trade Commands (Planned)
+## Phase 2: Inbound Trade Commands (Delivered)
 
 ### Design Principle: Manual Instance of the Agent
 
@@ -270,7 +270,7 @@ US-1.5 Phase 1 was implemented and deployed to VPS with the following execution 
 
 **REVIEW:** Run full pipeline, no execution; post strategy + moderation + risk + fundamentals/news summary to Slack.
 
-**Risk:** RiskManager still runs and can VETO (e.g. sector cap, single-stock cap). User intent is applied only after risk checks pass.
+**Risk:** RiskManager still runs and can VETO (e.g. sector cap, single-stock cap). User intent is applied only after risk checks pass. **Force override:** When the user explicitly prefixes a command with `force`, `override`, or `!` (e.g. `force buy MSFT`), the risk VETO is bypassed and execution proceeds. The override is logged as `OVERRIDDEN` in the risk verdict, and the Slack reply clearly shows which risk rules were bypassed.
 
 **Trade-off:** Latency (~15–30 seconds) and LLM cost per Slack command; acceptable for explicit manual triggers.
 
@@ -430,9 +430,9 @@ slack_trade_commands:
 
 #### 9. Slack Reply Format
 
-- **REVIEW:** "Review AAPL — Strategy: HOLD (conviction 72). Moderation: cautious. Risk: pass. Fundamentals: [sector, P/E]. Recent: [headline]. No order placed."
-- **BUY/SELL (executed):** "Executed: Bought 10 AAPL @ £X.XX = £XXX. (Strategy had suggested HOLD; you overrode to BUY.) Order ID: ..."
-- **Rejected (risk/cash/ticker):** "Rejected: [reason]. Strategy said X; Moderation Y; Risk: veto (sector cap)."
+- **REVIEW:** Full pipeline detail — price, strategy action/conviction/allocation/stop-loss/reasoning (not truncated), per-moderator GPT-4o/Gemini verdicts with scores and reasoning. "No order placed."
+- **BUY/SELL (executed):** Quantity, price (native currency), value (GBP), execution status, moderation consensus, risk verdict, order ID. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override: "Risk: *OVERRIDDEN* (force buy — risk VETO bypassed)" with overridden rules listed.
+- **Rejected (risk/cash/ticker):** Full pipeline detail — price, strategy reasoning, per-moderator verdicts, risk triggered rules. Includes hint: "Tip: Use `force buy <ticker>` to override risk VETO."
 
 #### 10. Entry Point and Deployment
 
@@ -448,7 +448,8 @@ slack_trade_commands:
 | Insufficient cash (BUY) | Reject with current cash |
 | No position (SELL) | Reject |
 | Order > threshold | Require "yes" confirmation |
-| Risk VETO | Reject after pipeline; log reason |
+| Risk VETO | Reject after pipeline; log reason. Hint suggests `force buy` to override. |
+| Risk VETO + force prefix | **Override:** execute despite risk rejection; log as `OVERRIDDEN` with triggered rules |
 
 #### 12. Documentation Updates (When Implementing)
 
@@ -497,7 +498,7 @@ slack_trade_commands:
 
 ### Safety Checks
 
-**Risk remains final authority.** User intent is applied only after passing RiskManager checks. If risk VETO occurs, the order is not executed and the user receives a clear rejection message with the reason (e.g., "sector cap exceeded", "single-stock limit").
+**Risk is the default final authority.** User intent is applied only after passing RiskManager checks. If risk VETO occurs, the order is rejected and the user receives a detailed message with the reason, triggered rules, and full pipeline context. **Force override:** The user can explicitly bypass risk VETO by prefixing the command with `force`, `override`, or `!` (e.g. `force buy MSFT`, `!buy AAPL`). The override is logged as `OVERRIDDEN`, the triggered rules are recorded, and the Slack reply clearly indicates which rules were bypassed. This is intentional for situations where the human operator has conviction beyond what the risk rules capture (e.g. cash floor with incoming deposit, known temporary conditions).
 
 **Portfolio validation is mandatory** before any execution. BUY orders must have sufficient cash; SELL orders must have the position. Rejections are immediate and descriptive.
 
@@ -542,6 +543,7 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 - [x] 43 tests cover parser (16), ticker resolution (6), single-ticker pipeline (11), listener + gateway (5), and chat session stub (5).
 - [x] **Dashboard Commands page** (`/commands`): Stats cards (total, executed, rejected, review), action/status filters, command history table with expandable rows showing cycle_id, order linkage, rejection reasons, and response messages. Backend: `GET /api/commands/` (filtered + paginated), `GET /api/commands/stats`. 9 additional tests (5 parser company-name + 4 commands API). Total: 52 tests across US-1.6/1.9.
 - [x] **Post-deployment fixes (2026-03-24):** Bot self-message loop prevention (`_resolve_bot_user_id` via `auth.test` + `bot_id`/user_id filtering); error message propagation from pipeline to Slack reply (gateway now surfaces `error_message`/`rejection_reason`); price extraction fix (`indicators.current_price` not `.close`); REVIEW reply shows full details — price, allocation %, stop-loss %, full reasoning (no truncation), per-moderator GPT-4o/Gemini verdicts with scores and reasoning; completion log lines for all terminal states (review_only, executed, rejected, error).
+- [x] **Force buy/sell + enhanced replies (2026-03-24):** `force buy`, `override buy`, `!buy` prefixes bypass risk VETO (logged as `OVERRIDDEN` with triggered rules). Rejected replies now show full pipeline detail: price, strategy reasoning, per-moderator verdicts with scores, risk triggered rules, and hint about force override. Executed replies show native-currency price. Console logs completion status after every command. Graceful shutdown via `threading.Event` (no more `[Request interrupted by user]`). 21 new tests (force parsing 9, strip prefix 6, force execution 2, enhanced formatting 4). Total: 73 tests across US-1.6/1.9.
 
 ### Phase 3 (Web Chat UI — Future)
 
@@ -561,7 +563,7 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 | Latency in Slack commands | 15–30s acceptable for explicit manual triggers; async processing + background thread. |
 | Unrecognised ticker | Reject before pipeline; clear error message to user. |
 | Insufficient cash/position | Validation before execution; descriptive rejection. |
-| Risk VETO overrides user intent | Design intent: Risk is final gate; all rejections logged and communicated. |
+| Risk VETO blocks user intent | Risk is default final gate; all rejections logged and communicated. `force` prefix available for explicit human override (logged as OVERRIDDEN). |
 
 ---
 
