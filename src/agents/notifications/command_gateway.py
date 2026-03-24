@@ -5,8 +5,10 @@ command logging, and result formatting.
 """
 
 from dataclasses import dataclass
+import re
 from typing import Any
 
+from src.agents.notifications.trade_command_parser import _strip_force_prefix
 from src.agents.notifications.trade_command_parser import TradeCommandIntent, parse_trade_command
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
@@ -41,6 +43,41 @@ class CommandGateway:
     def enabled(self) -> bool:
         return self.settings.slack_trade_commands_enabled
 
+    def _extract_subject_phrase(self, text: str) -> str:
+        """Extract the user-typed subject phrase after BUY/SELL/REVIEW."""
+        cleaned, _ = _strip_force_prefix(text or "")
+        cleaned = cleaned.strip()
+        cleaned = re.sub(r"^\s*(BUY|SELL|REVIEW)\s+", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"^(?:[£$]\d+(?:\.\d+)?\s+(?:of\s+|worth\s+(?:of\s+)?)?)",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(
+            r"^(?:\d+(?:\.\d+)?\s+(?:shares?\s+(?:of\s+)?)?)",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(r"\s+[£$]\d+(?:\.\d+)?\s*$", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s+\d+(?:\.\d+)?\s*$", "", cleaned, flags=re.IGNORECASE)
+        return " ".join(cleaned.split()).strip()
+
+    def _unknown_ticker_message(self, intent: TradeCommandIntent, text: str) -> str:
+        """Build a contextual unknown-ticker reply from the original user input."""
+        action = intent.action.upper()
+        subject_phrase = self._extract_subject_phrase(text)
+        if subject_phrase and " " in subject_phrase:
+            return (
+                f"Unknown ticker: {intent.ticker}. Check the symbol and try again. "
+                f"Tip: try the company name directly, for example `{action} {subject_phrase}`."
+            )
+        return (
+            f"Unknown ticker: {intent.ticker}. Check the symbol and try again. "
+            "Tip: try the company name instead, for example `REVIEW Rocket Lab`."
+        )
+
     def resolve_request(self, request: CommandRequest) -> dict[str, Any]:
         """Parse and resolve an inbound command without running the pipeline."""
         if not self.enabled:
@@ -57,10 +94,7 @@ class CommandGateway:
             return {
                 "status": "unknown_ticker",
                 "ticker": intent.ticker,
-                "message": (
-                    f"Unknown ticker: {intent.ticker}. Check the symbol and try again. "
-                    "Tip: try the company name instead, for example `REVIEW Rocket Lab`."
-                ),
+                "message": self._unknown_ticker_message(intent, text),
             }
 
         return {

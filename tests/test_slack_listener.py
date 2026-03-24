@@ -297,6 +297,24 @@ class TestCommandGateway:
     @patch("src.agents.notifications.command_gateway.get_settings")
     @patch("src.agents.notifications.command_gateway.parse_trade_command")
     @patch("src.agents.notifications.command_gateway.resolve_ticker_to_t212")
+    def test_unknown_ticker_uses_original_company_phrase_when_available(self, mock_resolve, mock_parse, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        mock_parse.return_value = MagicMock(ticker="RKLB", action="REVIEW")
+        mock_resolve.return_value = None
+        gw = CommandGateway()
+        from src.agents.notifications.command_gateway import CommandRequest
+        req = CommandRequest(
+            source="slack", user_id="U1", channel_id="C1",
+            command="Review Rocket Lab Corporation",
+            args=[], raw_payload={"text": "Review Rocket Lab Corporation"},
+        )
+        result = gw.handle(req)
+        assert result["status"] == "unknown_ticker"
+        assert "REVIEW Rocket Lab Corporation" in result["message"]
+
+    @patch("src.agents.notifications.command_gateway.get_settings")
+    @patch("src.agents.notifications.command_gateway.parse_trade_command")
+    @patch("src.agents.notifications.command_gateway.resolve_ticker_to_t212")
     def test_error_propagation_includes_message(self, mock_resolve, mock_parse, mock_settings):
         """When pipeline returns status='error' with error_message, gateway response includes 'message'."""
         mock_settings.return_value.slack_trade_commands_enabled = True
