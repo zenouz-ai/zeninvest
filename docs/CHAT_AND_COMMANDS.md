@@ -530,7 +530,7 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 
 ### Phase 2 (Inbound Trade Commands — Delivered)
 
-- [x] Natural language parser (`trade_command_parser.py`) extracts intent (BUY/SELL/REVIEW), ticker, quantity, and amount_gbp — regex-first (zero cost) with Claude fallback.
+- [x] Natural language parser (`trade_command_parser.py`) extracts intent (BUY/SELL/REVIEW), ticker, quantity, and amount_gbp — regex-first (zero cost, supports ticker symbols and single-word company names like "buy apple", "sell google") with Claude fallback for ambiguous messages.
 - [x] Single-ticker pipeline (`single_ticker_run.py`) runs full data → strategy → moderation → risk flow with user intent override.
 - [x] RiskManager veto prevents execution; rejection message posted to Slack with reason.
 - [x] `SlackCommandLog` table captures all Slack-triggered runs; linked to Order and cycle_id.
@@ -540,6 +540,7 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 - [x] Cash/position validation prevents insufficient-fund and non-existent-position orders.
 - [x] All trades (autonomous and Slack-initiated) visible in portfolio and audit logs with consistent cycle_id format (`slack-{timestamp}`).
 - [x] 43 tests cover parser (16), ticker resolution (6), single-ticker pipeline (11), listener + gateway (5), and chat session stub (5).
+- [x] **Dashboard Commands page** (`/commands`): Stats cards (total, executed, rejected, review), action/status filters, command history table with expandable rows showing cycle_id, order linkage, rejection reasons, and response messages. Backend: `GET /api/commands/` (filtered + paginated), `GET /api/commands/stats`. 9 additional tests (5 parser company-name + 4 commands API). Total: 52 tests across US-1.6/1.9.
 
 ### Phase 3 (Web Chat UI — Future)
 
