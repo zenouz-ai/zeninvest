@@ -1,13 +1,16 @@
 """FastAPI application for dashboard backend."""
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.datastructures import Headers
+from starlette.types import Receive, Scope, Send
 
 from src.utils.config import get_settings
 
@@ -42,6 +45,11 @@ from .routers import (
 from .services.auth import require_dashboard_auth_config
 
 settings = get_settings()
+_CANONICAL_DASHBOARD_PORT = settings.dashboard_canonical_port
+_PORT_GUARD_BYPASS = (
+    os.environ.get("DASHBOARD_DISABLE_PORT_GUARD", "false").strip().lower()
+    in {"1", "true", "yes", "y", "on"}
+)
 
 # Path to built frontend (set at runtime; default for Docker)
 _FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
@@ -67,6 +75,105 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+
+
+def _request_port(request: Request) -> int | None:
+    """Return the request port using Host first, then Starlette URL parsing."""
+    host = request.headers.get("host", "").strip()
+    if host:
+        if host.startswith("[") and "]:" in host:
+            _, _, port = host.rpartition(":")
+            try:
+                return int(port)
+            except (TypeError, ValueError):
+                return None
+        if ":" in host:
+            _, _, port = host.rpartition(":")
+            try:
+                return int(port)
+            except (TypeError, ValueError):
+                return None
+    return request.url.port
+
+
+def _port_from_host_value(host: str) -> int | None:
+    host = host.strip()
+    if not host:
+        return None
+    if host.startswith("[") and "]:" in host:
+        _, _, port = host.rpartition(":")
+    elif ":" in host:
+        _, _, port = host.rpartition(":")
+    else:
+        return None
+    try:
+        return int(port)
+    except (TypeError, ValueError):
+        return None
+
+
+def _scope_port(scope: Scope) -> int | None:
+    headers = Headers(scope=scope)
+    host = headers.get("host", "")
+    port = _port_from_host_value(host)
+    if port is not None:
+        return port
+    server = scope.get("server")
+    if isinstance(server, tuple) and len(server) >= 2:
+        try:
+            return int(server[1])
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+class CanonicalPortStaticFiles(StaticFiles):
+    """Static frontend that refuses requests on non-canonical ports."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        request_port = _scope_port(scope)
+        if (
+            not _PORT_GUARD_BYPASS
+            and _CANONICAL_DASHBOARD_PORT is not None
+            and request_port is not None
+            and request_port != _CANONICAL_DASHBOARD_PORT
+        ):
+            response = JSONResponse(
+                status_code=404,
+                content={
+                    "detail": (
+                        f"Dashboard is only served on port {_CANONICAL_DASHBOARD_PORT}."
+                    )
+                },
+            )
+            await response(scope, receive, send)
+            return
+        await super().__call__(scope, receive, send)
+
+
+@app.middleware("http")
+async def canonical_port_middleware(request: Request, call_next):
+    """Serve the dashboard only on the configured canonical port.
+
+    This prevents accidentally exposing a second copy of the same app on an
+    ad-hoc local port such as 8001.
+    """
+    request_port = _request_port(request)
+    if (
+        not _PORT_GUARD_BYPASS
+        and _CANONICAL_DASHBOARD_PORT is not None
+        and request_port is not None
+        and request_port != _CANONICAL_DASHBOARD_PORT
+    ):
+        return JSONResponse(
+            status_code=404,
+            content={
+                "detail": (
+                    f"Dashboard is only served on port {_CANONICAL_DASHBOARD_PORT}."
+                )
+            },
+        )
+    return await call_next(request)
 
 # CORS middleware for frontend — restrict to same-origin and VPS IP
 _settings = get_settings()
@@ -122,14 +229,25 @@ async def health():
 
 # Serve built frontend (SPA fallback for client-side routing)
 if _FRONTEND_DIST.exists():
-    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")
+    app.mount(
+        "/",
+        CanonicalPortStaticFiles(directory=str(_FRONTEND_DIST), html=True),
+        name="frontend",
+    )
 
     @app.middleware("http")
     async def spa_fallback_middleware(request: Request, call_next):
         """Serve index.html for non-API 404s so client-side routing works."""
         response = await call_next(request)
+        request_port = _request_port(request)
         if (
             response.status_code == 404
+            and (
+                _PORT_GUARD_BYPASS
+                or _CANONICAL_DASHBOARD_PORT is None
+                or request_port is None
+                or request_port == _CANONICAL_DASHBOARD_PORT
+            )
             and not request.url.path.startswith("/api")
             and request.url.path != "/health"
         ):
