@@ -35,7 +35,7 @@ Use this document alongside:
 
 **Long-running components in scope:**
 
-1. FastAPI dashboard API (`uvicorn dashboard.backend.app.main:app --host 0.0.0.0 --port 8000`)
+1. FastAPI dashboard API (`python -m dashboard.backend.server`)
 2. APScheduler service (`python -m src.scheduler.scheduler`)
 3. Slack Socket Mode listener (`python -m src.agents.notifications.slack_trade_listener`)
 

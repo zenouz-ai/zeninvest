@@ -12,6 +12,7 @@ from dashboard.backend.app.middleware.auth import DashboardSessionMiddleware
 from dashboard.backend.app.routers import auth as auth_router
 from dashboard.backend.app.services.auth import (
     SESSION_COOKIE_NAME,
+    create_session_token,
     hash_password,
     require_dashboard_auth_config,
 )
@@ -156,6 +157,52 @@ class TestDashboardSessionMiddleware:
             )
             assert resp.status_code == 200
             assert SESSION_COOKIE_NAME in resp.cookies
+
+    def test_forwarded_https_login_works_behind_proxy(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "DASHBOARD_OPERATOR_USERNAME": "operator",
+                "DASHBOARD_OPERATOR_PASSWORD_HASH": hash_password("super-secret-password"),
+                "DASHBOARD_SESSION_SECRET": "session-secret-1234567890",
+                "DASHBOARD_INSECURE_DEV_MODE": "false",
+            },
+            clear=False,
+        ):
+            client = TestClient(_make_app(), base_url="http://zeninvest.zenouz.ai")
+            resp = client.post(
+                "/api/auth/login",
+                json={"username": "operator", "password": "super-secret-password"},
+                headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "zeninvest.zenouz.ai"},
+            )
+            assert resp.status_code == 200
+            assert "Secure" in resp.headers["set-cookie"]
+
+    def test_forwarded_https_allows_protected_route_after_login(self):
+        with patch.dict(
+            "os.environ",
+            {
+                "DASHBOARD_OPERATOR_USERNAME": "operator",
+                "DASHBOARD_OPERATOR_PASSWORD_HASH": hash_password("super-secret-password"),
+                "DASHBOARD_SESSION_SECRET": "session-secret-1234567890",
+                "DASHBOARD_INSECURE_DEV_MODE": "false",
+            },
+            clear=False,
+        ):
+            client = TestClient(_make_app(), base_url="http://zeninvest.zenouz.ai")
+            client.cookies.set(
+                SESSION_COOKIE_NAME,
+                create_session_token("operator"),
+                domain="zeninvest.zenouz.ai",
+                path="/",
+            )
+
+            private_resp = client.get(
+                "/api/private",
+                headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "zeninvest.zenouz.ai"},
+            )
+            assert private_resp.status_code == 200
+            assert private_resp.json()["operator"] == "operator"
 
 
 class TestDashboardAuthConfig:

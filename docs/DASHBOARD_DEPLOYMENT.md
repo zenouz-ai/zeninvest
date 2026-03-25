@@ -1,7 +1,7 @@
 ---
 tags: [dashboard, deployment, vps, docker]
 status: delivered
-last_updated: 2026-03-10
+last_updated: 2026-03-25
 ---
 
 # Dashboard Deployment
@@ -10,32 +10,33 @@ last_updated: 2026-03-10
 
 ## Purpose
 
-Deploy the dashboard backend (FastAPI + SSE) and frontend (built SPA) as a Docker service on the VPS, sharing the agent's SQLite database.
+Deploy the dashboard backend (FastAPI + SSE) and frontend (built SPA) on the VPS behind a canonical HTTPS ingress, sharing the agent's SQLite database.
 
 ## Domain / Access Options
 
 | Option | Pros | Cons |
 |--------|------|------|
 | **Cloudflare + domain** (recommended) | One canonical HTTPS URL, operator login works safely, origin can stay internal-only behind Nginx | Requires DNS + reverse proxy setup |
-| **VPS IP only** | No cost, no extra setup. Access via `http://YOUR_VPS_IP:8000` | No HTTPS; operator login over public HTTP is blocked by design |
+| **VPS IP only** | Useful as an emergency rollback posture | Not the target production ingress; public `:8000` exposure should be removed in normal operation |
 | **Purchase domain (no Cloudflare)** | HTTPS via reverse proxy / Let's Encrypt, cleaner URL | More origin-facing ops than Cloudflare-proxied setup |
 | **GitHub Pages** | Free static hosting | Not suitable: frontend must call VPS API. HTTPS page → HTTP API = mixed content blocked. Backend still needs VPS. |
 
-**Recommended:** Use `https://zeninvest.zenouz.ai` behind Cloudflare-proxied DNS and an Nginx reverse proxy. Keep raw VPS/IP access only as an emergency or local fallback. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`.
+**Recommended:** Use `https://zeninvest.zenouz.ai` behind Cloudflare-proxied DNS and an Nginx reverse proxy. Keep raw VPS/IP access only as an operational rollback. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`.
 
 ---
 
 ## Docker Architecture
 
-Three services in `docker-compose.yml`, using two Dockerfiles:
+Four services in `docker-compose.yml`, using two app Dockerfiles plus an Nginx ingress:
 
 | Service | Dockerfile | Purpose | Entry point |
 |---------|-----------|---------|-------------|
 | `investment-agent` | `Dockerfile.agent` | Python-only — runs scheduler | `alembic upgrade head && python -m src.scheduler.scheduler` |
 | `slack-listener` | `Dockerfile.agent` | Python-only — keeps Slack Socket Mode connected | `alembic upgrade head && python -m src.agents.notifications.slack_trade_listener` |
-| `dashboard` | `Dockerfile` | Multi-stage (Node + Python) — builds frontend, runs FastAPI | `uvicorn dashboard.backend.app.main:app` |
+| `dashboard` | `Dockerfile` | Multi-stage (Node + Python) — builds frontend, runs FastAPI | `python -m dashboard.backend.server` |
+| `nginx` | `nginx:alpine` | Public ingress, TLS termination, canonical host enforcement | `/etc/nginx/conf.d/default.conf` |
 
-All three share the same SQLite DB via `./data` volume. The split avoids building the frontend twice and halves memory usage on low-RAM VPS instances.
+The three app services share the same SQLite DB via `./data` volume. The `dashboard` service is internal-only on the Compose network and is reachable publicly only through the `nginx` service on `80/443`.
 
 - `Dockerfile.agent`: Python 3.12-slim, Poetry deps, application code. No Node.js, no frontend build.
 - `Dockerfile`: Stage 1 (Node 20-slim) builds the React/Vite frontend with no secrets injected at build time. Stage 2 (Python 3.12-slim) installs Poetry deps, copies app code + built frontend dist.
@@ -44,23 +45,29 @@ All three share the same SQLite DB via `./data` volume. The split avoids buildin
 
 **Authentication:** Public, read-only routes live under `/api/public/*`. Operator routes require backend login and a signed session cookie. Operator login is blocked on plain HTTP except localhost-only development mode.
 
-### VPS Firewall (one-time)
+### Cloudflare and TLS prerequisites
 
 ```bash
-sudo ufw allow 8000/tcp comment "Dashboard"
-sudo ufw reload
+mkdir -p /home/deploy_invest_ai/certs/zeninvest.zenouz.ai
+chmod 700 /home/deploy_invest_ai/certs/zeninvest.zenouz.ai
 ```
 
-### Recommended: Cloudflare + nginx Reverse Proxy
+Cloudflare dashboard settings:
+- proxied `A` record: `zeninvest` -> VPS public IP
+- SSL/TLS mode: `Full (strict)`
+- enable `Always Use HTTPS`
+- do not enable HSTS, Cloudflare Tunnel, or Cloudflare Access in this story
 
-Target production posture:
-- Cloudflare proxied DNS for `zeninvest.zenouz.ai`
-- nginx publishes `80/443`
-- dashboard service is internal-only
-- nginx proxies to the dashboard service and forwards `X-Forwarded-Proto: https`
-- Disable buffering for SSE: `proxy_buffering off` on `/api/events/stream`
+Origin cert files on VPS:
+- `/home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.crt`
+- `/home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.key`
 
-Detailed implementation/runbook: `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`
+Suggested permissions:
+
+```bash
+chmod 600 /home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.key
+chmod 644 /home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.crt
+```
 
 ---
 
@@ -76,20 +83,24 @@ git pull origin main   # or: git pull origin feature/dashboard-full-spec
 # Ensure dashboard enabled in config/settings.yaml
 # dashboard.enabled: true, dashboard.events_enabled: true
 
-# Allow dashboard port (one-time per VPS)
-sudo ufw allow 8000/tcp comment "Dashboard"
+# Ensure dashboard auth is production-safe
+# DASHBOARD_INSECURE_DEV_MODE=false in .env
+
+# Firewall: canonical HTTPS ingress only
+sudo ufw allow 80/tcp comment "Dashboard HTTP redirect"
+sudo ufw allow 443/tcp comment "Dashboard HTTPS"
+sudo ufw delete allow 8000/tcp || true
 sudo ufw reload
 
 docker compose up -d --build
 
 docker compose ps
-curl http://localhost:8000/health
-curl http://localhost:8000/api/events/?limit=3
+docker compose exec nginx nginx -t
 ```
 
 Access from your machine:
 - preferred: `https://zeninvest.zenouz.ai`
-- fallback/emergency: `http://YOUR_VPS_IP:8000` only until the domain rollout is complete
+- fallback/emergency: `http://YOUR_VPS_IP:8000` only if you intentionally revert Compose and firewall settings as part of rollback
 
 ### Updating / Rebuilding the dashboard
 
@@ -101,16 +112,17 @@ git pull origin main
 docker compose up -d --build
 ```
 
-To rebuild only the dashboard service (keeps agent running):
+To rebuild only the dashboard service (keeps agent + ingress running):
 
 ```bash
 docker compose up -d --build dashboard
 ```
 
 Verify:
-- `curl http://localhost:8000/health`
-- open `https://zeninvest.zenouz.ai` once the domain rollout is complete
-- or use `http://YOUR_VPS_IP:8000` only as the temporary pre-domain path
+- `docker compose exec nginx nginx -t`
+- open `https://zeninvest.zenouz.ai`
+- confirm `/api/public/*` loads anonymously
+- confirm operator login succeeds only on HTTPS
 
 **Local development:** Build the frontend with `cd dashboard/frontend && npm run build`. The dashboard Docker image (`Dockerfile`) runs a multi-stage build (Node → Python) that includes the built SPA. The agent image (`Dockerfile.agent`) is Python-only and is reused by both the scheduler and the Slack listener.
 
@@ -129,22 +141,38 @@ docker exec -it investment-agent poetry run python -m src.orchestrator.main
 
 When the operator has run the steps above on a VPS:
 
-- [x] Code: scheduler + always-on Slack listener + dashboard services in docker-compose; multi-stage frontend build; FastAPI serves SPA
+- [x] Code: scheduler + always-on Slack listener + internal-only dashboard + public nginx services in docker-compose; multi-stage frontend build; FastAPI serves SPA
 - [x] Config: `dashboard.enabled: true`, `dashboard.events_enabled: true` in `config/settings.yaml`
-- [x] Firewall: `ufw allow 8000/tcp` for the current raw-dashboard path
+- [x] Cloudflare DNS + TLS: proxied `A` record, `Full (strict)`, `Always Use HTTPS`, Cloudflare Origin CA cert installed on VPS
+- [x] Firewall: `80/tcp` and `443/tcp` open; public `8000/tcp` removed
 - [x] Build & run: `docker compose up -d --build`
-- [x] Verify: `curl http://localhost:8000/health` and open the dashboard in a browser
+- [x] Verify: `docker compose exec nginx nginx -t`, open the dashboard in a browser, and confirm HTTPS login + anonymous public routes
 
-**Next hardening step:** `US-7.7 Dashboard HTTPS Domain & Canonical Access` moves the dashboard to `https://zeninvest.zenouz.ai`, adds Cloudflare + nginx, and removes public raw `:8000` exposure.
-
-**Outcome:** Dashboard is running on VPS. Today it can run on the raw Docker/IP path; the planned production target is `https://zeninvest.zenouz.ai` with Cloudflare + nginx and no public `:8000` exposure. Portfolio page includes Cash, Investments, Positions (T212 positions normalised for display), sector allocation, and chronological value history chart.
+**Outcome:** Dashboard is running on VPS at `https://zeninvest.zenouz.ai` with Cloudflare + nginx and no public raw `:8000` exposure. Portfolio page includes Cash, Investments, Positions (T212 positions normalised for display), sector allocation, and chronological value history chart.
 
 ---
 
+## Verification and Rollback
+
+Verification:
+- `http://zeninvest.zenouz.ai` returns `301` to `https://zeninvest.zenouz.ai`
+- `https://zeninvest.zenouz.ai/health` returns `200`
+- `/api/public/*` remains anonymous
+- operator login works on `https://zeninvest.zenouz.ai`
+- protected routes return `401/403` when signed out
+- SSE-backed activity feed updates through the canonical domain
+- raw public `http://YOUR_VPS_IP:8000` no longer works
+
+Rollback:
+- stop/remove the `nginx` service from Compose
+- restore `dashboard` port publishing on `8000`
+- reopen firewall `8000/tcp`
+- redeploy with `docker compose up -d --build`
+- use the raw path only until HTTPS ingress is fixed
+
 ## Security Note
 
-With VPS IP and HTTP:
-- Use firewall to restrict access (e.g. only your IP) if desired.
+With the canonical HTTPS domain:
 - **Public vs operator split:** Only `/api/public/*` routes are anonymous. All trading controls, holdings, strategy data, runs, events, commands, and research remain operator-only.
 - **Operator login:** Set these in `.env`:
   ```
@@ -160,12 +188,12 @@ With VPS IP and HTTP:
   print(hash_password("choose-a-strong-password"))
   PY
   ```
-- **Transport requirement:** Operator login and operator API access are blocked over raw HTTP. Until TLS is available, use SSH tunnelling/VPN/local-only binding for operator work.
+- **Transport requirement:** Operator login and operator API access are blocked over raw HTTP. Production requires HTTPS via the canonical domain; localhost-only development can still use `DASHBOARD_INSECURE_DEV_MODE=true`.
 - **Public routes:** Use only the explicit public endpoints:
   - `/api/public/docs/*`
   - `/api/public/costs/*`
   - `/api/public/performance/*`
-- **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: localhost only. For production, add the canonical HTTPS domain and keep localhost origins for local development:
+- **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: `https://zeninvest.zenouz.ai` plus localhost dev origins. If you override it, keep the canonical HTTPS domain and localhost origins:
   ```yaml
   dashboard:
     cors_origins:

@@ -49,9 +49,10 @@ poetry run python -m src.orchestrator.main
 - ✅ Isolated - doesn't affect local Python environment
 - ✅ Consistent across different machines
 - ✅ Easy to reset (just restart container)
+ - ✅ Includes the nginx ingress used in production
 
 **Cons:**
-- ⚠️ Dashboard needs port mapping (8000:8000)
+- ⚠️ Production compose now expects Cloudflare-origin certs for the nginx ingress
 - ⚠️ Harder to debug - need `docker logs` or exec into container
 - ⚠️ Slower iteration - need to rebuild/restart container
 - ⚠️ Database file is in volume - need to access via Docker
@@ -59,10 +60,11 @@ poetry run python -m src.orchestrator.main
 
 **Setup:**
 ```bash
-# Need to modify docker-compose.yml to expose dashboard port
-# Then:
+# Production-style compose:
 docker compose up -d
 docker compose logs -f investment-agent
+
+# Public ingress is via nginx on 80/443, not a direct dashboard port mapping
 ```
 
 ## Recommendation for Your Use Case
@@ -97,16 +99,12 @@ But this requires:
 
 The existing `docker-compose.yml` runs:
 - Agent scheduler (main process)
+- Nginx ingress (80/443)
+- Internal-only dashboard service on the Compose network
 - Database in volume (`./data`)
 - Logs in volume (`./logs`)
 
-**To add dashboard to Docker**, you'd need to:
-1. Add dashboard service to docker-compose.yml
-2. Expose port 8000
-3. Run both agent and dashboard in containers
-4. Set up networking between them
-
-This is more complex than needed for testing.
+This matches production, but it is still more complex than needed for rapid dashboard debugging.
 
 ## Bottom Line
 

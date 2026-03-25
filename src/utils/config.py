@@ -832,17 +832,6 @@ class Settings:
         return max(1.0, float(self.dashboard.get("sse_poll_interval_seconds", 5.0)))
 
     @property
-    def dashboard_canonical_port(self) -> int | None:
-        raw = self.dashboard.get("canonical_port")
-        if raw is None:
-            return 8000
-        try:
-            value = int(raw)
-        except (TypeError, ValueError):
-            return 8000
-        return value if value > 0 else None
-
-    @property
     def dashboard_cors_origins(self) -> list[str] | None:
         origins = self.dashboard.get("cors_origins")
         if isinstance(origins, list) and origins:
