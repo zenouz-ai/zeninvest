@@ -68,9 +68,9 @@ Alpha Vantage --->-+        |     (8 fields — see docs/DATA_RATIONALE.md)
                    |              [Runs every cycle regardless of state; Risk blocks new BUYs in CAUTIOUS]
                    |              [Sector-balanced, cap-tiered sampling:
                    |               70% large, 20% mid, 10% small cap]
-                   |              [Cooldown: effective_screening_cooldown_override if set (e.g. 12h); else intraday=min(base, cycle_hours), standard=base; prevents re-screening within window]
+                   |              [Cooldown: effective_screening_cooldown_override if set (active-swing default 4h); else intraday=min(base, cycle_hours), standard=base; prevents re-screening within window]
                    |              [When pool exhausted: order by last_screened_at ASC to rotate; proactive seed when pool < 2×max_candidates]
-                   |              [Autonomous re-reviews gated by 6-day cooldown and 5-per-30d cap; fresh-share targeted via uninvestigated_target_pct]
+                   |              [Autonomous re-reviews gated by 2-day cooldown and 10-per-30d cap; fresh-share targeted via uninvestigated_target_pct]
                    |              [Batch enrichment job (daily 06:00): cascade yfinance → Finnhub → AV OVERVIEW → BRAVE_ANSWERS for sector/market_cap/industry/business_summary; ticker conversion via ticker_utils.t212_to_yf]
                    |
                    |        +-- WEB SEARCH FALLBACK (get_news_sentiment_fallback)
@@ -611,11 +611,14 @@ sequenceDiagram
 ```
 
 Execution floor guardrails:
-- `min_order_value_gbp` is enforced for BUY, REDUCE, and limit BUY order paths.
-- For MARKET BUYs, the floor check uses the target trade value (pre share flooring) to avoid rounding creating tiny sub-£500 logged orders.
+- `min_order_value_gbp` is enforced as a minimum BUY ticket size for MARKET BUY and limit BUY paths: requests below the floor are upgraded to the floor when enough cash is available after the cash-floor guard.
+- If there is not enough spendable cash to place the minimum BUY ticket, the BUY is skipped with a cash-floor reason.
+- REDUCE still treats `min_order_value_gbp` as a true floor.
 - Explicit market SELL decisions are exempt from the floor so small positions can be fully exited.
 - Protective stop-loss SELL orders are also exempt so small positions remain risk-protected.
 - If a REDUCE would leave a residual position below the floor, the orchestrator converts it to full SELL before execution.
+- Deterministic take-profit exits upgrade positions at or above `take_profit_full_sell_pct` (default `15%` unrealized gain) to full SELL before the ordinary SELL/REDUCE path. This take-profit path may bypass the ordinary 24h minimum-holding rule when enabled.
+- Small-position cleanup liquidates holdings below `small_position_cleanup_value_gbp` (default `£200`) on the configured final intraday cleanup cycle once they are at least `small_position_cleanup_min_holding_hours` old.
 - **FX-aware BUY quantity:** For `_US_EQ` instruments the orchestrator derives a GBP-equivalent price (`current_price × account-level GBP/USD scale`) before calling `calculate_quantity()`. The scale comes from `_compute_position_value_scale(positions, invested_gbp)` which divides T212's GBP `invested` value by the sum of native-currency positions. This prevents ~21% under-allocation caused by dividing a GBP target by a USD price. Controlled by `trading.fx_aware_quantity: true`; falls back to scale=1.0 when portfolio is empty. Stop prices sent to T212 always remain in native currency.
 - **Market orders:** `OrderManager` calls T212 `POST /equity/orders/market` once per decision (no retry wrapper). Mutating POSTs are never auto-retried; only safe GETs use tenacity retries in `T212Client`.
 - **SELL/REDUCE:** After cancelling conflicting stop orders, execution clamps share quantity to `GET /equity/portfolio/{ticker}` so a value/price-derived size cannot exceed the broker-reported position (reduces spurious 400 responses). Stop cancel failures with HTTP 404/400/409 “already gone” style bodies are treated as idempotent success.

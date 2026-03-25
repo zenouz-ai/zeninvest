@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-24
+last_updated: 2026-03-25
 ---
 
 # Sophistication Roadmap
@@ -14,102 +14,37 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ---
 
-## Roadmap overview (Delivered vs pipeline)
+## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **24** · Pipeline **16** (order by priority and feasibility below)
+**At a glance:** Delivered **24** · Pipeline **17**
 
-### Timeline view
+### Priority rules
 
-```mermaid
-timeline
-    title Roadmap
-    section Delivered
-        US-1.1 : Performance Tracking
-        US-1.2 : Trade Outcome Tracker
-        US-1.3 : CLI Dashboard
-        US-1.5 : Chat Interface & Alerts
-        US-3.4 : UOV Ranking & Queue
-        US-3.5 : Intelligent Order Management
-        US-5.1 : Backtesting Engine
-        US-1.8 : Dashboard VPS Deployment
-        US-1.7 : Dashboard & Visualisation
-        US-1.4 : Deploy POC to VPS
-        US-4.4 : Agentic Research
-        US-4.5 : Proactive Macro News Intelligence
-        US-4.1 : Volume Signals
-        US-7.0 : Production Audit & Safety Fixes
-        US-7.0a : Agent Logic Audit Fixes
-        US-7.0b : Formal Verification Fixes
-        US-7.1 : Dashboard Authentication
-        US-7.4 : Integration Test Coverage
-        US-1.7.3 : Dashboard Visual Design System
-        US-1.7.4 : World News Dashboard Tab
-        US-1.6 : Slack NL Trade Commands
-        US-1.9 : Conversational Trading Workflow
-        US-7.6 : VPS Runtime Stability & Service Isolation
-    section Pipeline (priority order)
-        US-2.1 : Conviction Calibration
-        US-2.2 : Dynamic Strategy Weighting
-        US-2.3 : Moderator Effectiveness
-        US-2.4 : Nemotron Integration Investigation
-        US-5.2 : Parameter Sensitivity
-        US-3.2 : Regime Detection
-        US-3.3 : Correlation Screening
-        US-4.2 : Earnings Calendar
-        US-4.3 : Sector Rotation
-        US-7.2 : Partial Fill Resubmission
-        US-7.3 : Execution Quality & Slippage
-        US-7.5 : Remaining Audit Backlog
-        US-6.1 : ML Trade Scoring (investigation)
-        US-6.2 : Journal Embeddings
-        US-6.3 : RL Investigation
-        US-8.1 : Open-Source Launch Preparation
-```
+1. **Production safety before new capability**  
+2. **Execution quality before any live-account posture change**  
+3. **Data-gated learning stories only after enough `trade_outcomes` exist**  
+4. **Lower-leverage investigations stay later unless tied to an immediate business need**  
 
-### Scannable roadmap (no diagram needed)
+### Remaining week order (through March 25, 2026)
 
-| Status | # | ID | Project |
-|--------|---|-----|---------|
-| **Delivered** | 1 | US-1.1 | Performance Tracking |
-| | 2 | US-1.2 | Trade Outcome Tracker |
-| | 3 | US-1.3 | CLI Dashboard |
-| | 4 | US-1.5 | Chat Interface & Alerts |
-| | 5 | US-3.4 | UOV Ranking & Queue |
-| | 6 | US-3.5 | Intelligent Order Management |
-| | 7 | US-5.1 | Backtesting Engine |
-| | 8 | US-1.8 | Dashboard VPS Deployment |
-| | 9 | US-1.7 | Dashboard & Visualisation (full API + 8 pages) |
-| | 10 | US-1.4 | Deploy POC to VPS |
-| | 11 | US-4.4 | Agentic Research (5 tools, all 3 members, shared budget, 37 tests) |
-| | 12 | US-7.0 | Production Audit & Safety Fixes (34 findings; Phase 1+2: 12 fixed) |
-| | 13 | US-7.0a | Agent Logic Audit Fixes (27 findings; 5C+7H all fixed, 36 tests) |
-| | 14 | US-7.0b | Formal Verification Fixes (18 findings; Phase 1+2: scheduler safety, crash recovery, DB atomicity, 18 tests) |
-| | 15 | US-7.1 | Dashboard Authentication (X-API-Key middleware, `hmac.compare_digest`, auth banner + API key modal, SSE 403 alignment; 36 tests in `test_dashboard_auth.py`) |
-| | 16 | US-4.1 | Volume Signals (OBV + 20-day volume ratio, `volume_signals_enabled` flag, momentum/mean-reversion scoring, moderation context, 6 tests) |
-| | 17 | US-3.1 | Risk-Parity Position Sizing (60-day inverse-vol BUY overlay, strategy/risk waterfall audit fields, delta-to-target BUY execution, 10 tests) |
-| | 18 | US-1.7.3 | Dashboard Visual Design System (Syne font, full CSS token system, glass-dark panels, 72px violet grid, shadow/radius tokens, brand gradient, blurred nav, pill active state, 4 new shared primitives) |
-| | 19 | US-4.5 | Proactive Macro News Intelligence (daily scheduled `macro_scan`, persisted `macro_state`, `macro_signal_logs`, structured `macro_action_plan`, strategy/moderation context injection) |
-| | 20 | US-7.4 | Integration Test Coverage (audit findings I4, I5) |
-| | 21 | US-1.7.4 | World News Dashboard Tab (persistent headline archive, keyword categorisation, 5 macro REST endpoints, regime + headline feed + action plan page, Dashboard Home macro card, 23 tests) |
-| | 22 | US-1.6 | Slack NL Trade Commands (regex-first NL parser with company-name support, single-ticker pipeline, real confirmation gate, force override audit trail, dashboard Commands page, part of 113-test focused regression suite) |
-| | 23 | US-1.9 | Conversational Trading Workflow skeleton (ChatSession/ChatTurn models, SessionManager CRUD, dashboard chat API stubs, 404/422 validation hardening, chat-turn integrity constraints) |
-| | 24 | US-7.6 | VPS Runtime Stability & Service Isolation (runtime locks, single-process API entrypoint, bounded trigger/Slack execution, systemd split, separate migrations, 68 focused regression tests + broader verification) |
-| **Pipeline** | 1 | US-2.1 | Conviction Calibration |
-| | 2 | US-2.2 | Dynamic Strategy Weighting |
-| | 3 | US-2.3 | Moderator Effectiveness |
-| | 4 | US-2.4 | Nemotron Integration Investigation |
-| | 5 | US-5.2 | Parameter Sensitivity |
-| | 6 | US-3.2 | Regime Detection |
-| | 7 | US-3.3 | Correlation Screening |
-| | 8 | US-4.2 | Earnings Calendar |
-| | 9 | US-4.3 | Sector Rotation |
-| | 10 | US-7.2 | Partial Fill Resubmission (audit finding I1) |
-| | 11 | US-7.3 | Execution Quality & Slippage (audit finding I2; pre-live prerequisite) |
-| | 12 | US-7.5 | Remaining Audit Backlog (15 medium/low agent-logic, 22 medium/low trading-system, 7 formal-verification phase 3+4) |
-| | 13 | US-6.1 | ML Trade Scoring (investigation) |
-| | 14 | US-6.2 | Journal Embeddings |
-| | 15 | US-6.3 | RL Investigation |
-| | 16 | US-8.1 | Open-Source Launch Preparation |
+| Order | Story | Why it matters now | Success criteria |
+|------|-------|--------------------|------------------|
+| 1 | **US-7.7** Dashboard HTTPS Domain & Canonical Access | Highest-leverage production posture fix; app-side HTTPS/session pieces already exist | No public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy |
+| 2 | **US-7.5** Quick Hardening Slice | Fast, material safety wins without opening the full backlog | Hardening slice shipped with tests and no broader backlog creep |
+| 3 | **US-1.9** Conversational Trading Workflow MVP | Turns the delivered skeleton into a real operator workflow | Real operator workflow MVP, not just CRUD skeleton |
+| 4 | **US-8.1** Open-Source Launch Preparation | Repo must be public-ready once posture and workflow work land | Repo can be made public without legal, CI, or contributor-experience gaps |
+
+### Near-term umbrella tracks
+
+| Track | Included stories | Status | Why now |
+|-------|------------------|--------|---------|
+| **Production Access & Safety** | `US-7.7`, `US-7.5`, `US-7.3`, `US-7.2` | **Active now** | Production posture and execution reliability are the highest-leverage remaining gaps |
+| **Conversational Operator Workflow** | delivered foundation `US-1.6`, active MVP `US-1.9` | **Active now** | Existing Slack + chat plumbing is already in place; the next step adds real operator value |
+| **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
+| **Execution Quality & Fill Recovery** | `US-7.3` then `US-7.2` | **Next after current week** | Required before any move from practice posture toward live-account readiness |
+| **Entry Quality Guards** | `US-4.2` + `US-3.3` | **Next after current week** | Small, material improvements that reduce bad entries faster than model experimentation |
+| **Calibration & Adaptation** | `US-2.1`, `US-2.2`, `US-2.3` | **Data-gated** | Useful only once trade-outcome volume is high enough to justify the math |
+| **Research / Advanced optional work** | `US-2.4`, `US-3.2`, `US-4.3`, `US-5.2`, `US-6.1`, `US-6.2`, `US-6.3` | **Later / optional** | Valid ideas, but not materially more urgent than current posture, workflow, and launch work |
 
 ---
 
@@ -128,37 +63,38 @@ timeline
 | **US-1.7.2** | Dashboard UX Phase 2 | Force Sell from Portfolio, data freshness indicators, keyboard-accessible tables, focus trap on modals, colour accessibility (▲/▼ arrows + aria-labels), chart colour alignment. See `docs/UX_AUDIT.md`. | 19/28 audit findings resolved; full keyboard + screen reader accessibility | **Delivered** |
 | **US-1.7.3** | Dashboard Visual Design System | Formalised ZENOUZ.ai visual language from `dashboard-style-guide.md`: Syne heading font, full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`), violet soft-fill accents, glass-dark card treatment (radial-gradient + panel shadow + 1.5rem radius), brand gradient updated to violet→cyan→emerald, 72px violet atmospheric grid, blurred sticky nav bar, pill active state. Tailwind: `font-heading`, `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`. Four new shared primitives: `Panel` (glass-dark surface), `MetricCard` (Syne KPI), `StatusPill` (brand pill/badge), `SectionHeader` (Syne heading + mono eyebrow). | Unified, polished visual identity across the entire dashboard; primitives unblock consistent page migration | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_DEPLOYMENT.md` | Operational visibility on live VPS | **Delivered** |
-| **US-1.9** | Conversational Trading Workflow | Multi-turn, session-based Slack + dashboard chat workflow with shared session backend, explicit confirmation gate, deterministic risk veto, and full conversation/research/action audit trail; see `docs/CONVERSATIONAL_TRADING_WORKFLOW.md` | Human-in-the-loop collaborative trading with traceable decisions and safer execution control | **Delivered (skeleton)** |
-| **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually | **Planned** |
-| **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that aren't working | **Planned** |
-| **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Informs cost optimisation; flag underperforming moderators | **Planned** |
-| **US-2.4** | Nemotron Integration Investigation | Investigate NVIDIA Nemotron 3 Super as candidate risk scorer using shadow-mode evaluation, provider/cost comparison, and promotion gates | Potential cost/latency gains, provider diversification, and stronger long-context risk analysis if validated | **Planned (investigation)** |
+| **US-1.9** | Conversational Trading Workflow | Skeleton delivered; active MVP this week focuses on multi-turn continuity, explicit confirmation, deterministic risk veto preservation, and auditable operator workflow across Slack + dashboard | Highest-leverage next operator workflow improvement after US-1.6 | **Active now (skeleton delivered)** |
+| **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually once evidence is sufficient | **Data-gated** |
+| **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that are not working once the trade sample is large enough | **Data-gated** |
+| **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Useful spend governance once trade-outcome volume supports the analysis | **Data-gated** |
+| **US-2.4** | Nemotron Integration Investigation | Investigate NVIDIA Nemotron 3 Super as candidate risk scorer using shadow-mode evaluation, provider/cost comparison, and promotion gates | Potential cost/latency gains, but not on the critical path while posture and workflow work remain open | **Later / optional** |
 | **US-3.1** | Risk-Parity Position Sizing | Size positions inversely to trailing volatility; equal risk contribution | Reduces volatility without reducing returns; strong academic evidence | **Delivered** |
-| **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Regime-aware strategy selection improves hit rate | **Planned** |
-| **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; soft signal to committee | **Planned** |
+| **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Useful later, but not more urgent than current posture, execution, and entry-quality work | **Later / optional** |
+| **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; one of the next small, useful entry-quality upgrades | **Next after current week** |
 | **US-3.4** | UOV Ranking & Queueing | Hybrid score, z-score, EWMA; ranked BUY execution; queue + swap suggestions | Solves capital saturation; deterministic opportunity ranking | **Delivered** |
 | **US-3.5** | Intelligent Order Management | Stop-loss (GTC) after BUY, ATR-based stop reassessment, software trailing stops, and limit dip-buy orders | More robust downside protection and smarter entries without manual intervention | **Delivered** |
+| **US-3.6** | Active Swing Rotation Strategy | Active swing posture: more permissive BUY throughput, deterministic +15% take-profit SELLs, final-cycle small-position cleanup, and clearer operator notifications/reporting | Promotes more frequent realized winners and lower idle cash without a major architectural rewrite | **Delivered** |
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Delivered** |
-| **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; position for post-earnings drift | **Planned** |
-| **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Sector momentum is real; long-term improvement | **Planned** |
+| **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; one of the next small, useful entry-quality upgrades | **Next after current week** |
+| **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Valid long-term signal work, but not material enough to outrank current safety and workflow work | **Later / optional** |
 | **US-4.4** | Agentic Research | 5 tools (web_search, news_search, sector_search, sec_search, macro_search) with caps 20/8/7 (total 35/cycle). All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have full tool-use loops. Pipeline-wide shared budget enforcement. Brave primary, Tavily fallback. SEC EDGAR free. Latency/cost recorded. 37 unit tests. Phase 0/0.2 notebooks validated. | Stale context mitigation, follow-up ability, broader coverage | **Delivered** |
 | **US-7.0a** | Agent Logic Audit Fixes | 27 findings (5C+7H+9M+6L). All Critical + High fixed: MODIFY verdicts as conditional AGREE (C-1), CAUTION 25% allocation reduction (C-2), conviction/allocation clamping (C-3), Gemini score bounds (C-4), orphaned "submitting" sync (C-5), risk-driven exit bypass (H-1), entry_type in schema (H-2), strategy timeout 120s (H-3), consensus on all moderator rows (H-4), repaired-decision validation (H-5), ticker dedup (H-6). 36 new tests. See `docs/AGENT_LOGIC_AUDIT.md`. | Eliminates 5 critical + 7 high LLM output parsing and consensus bugs | **Delivered** |
 | **US-7.0b** | Formal Verification Fixes | 18 findings (3C+7W+8I). Phase 1: scheduler `max_instances=1` (concurrent cycle prevention), resume warns HALTED/CAUTIOUS. Phase 2: `trade_without_stop` alert (P2-5), OpportunityQueue `queue_status` lifecycle QUEUED→EXECUTING→EXECUTED + orphan reconciliation (P2-6), portfolio re-query before BUY after SELL/REDUCE (P2-4), decision chain integrity check (P2-3). 18 new tests. 12 invariants verified. See `docs/FORMAL_VERIFICATION_AUDIT.md`. | Crash safety, state machine correctness, DB atomicity | **Delivered** |
-| **US-7.5** | Remaining Audit Backlog | Consolidated backlog from three audits: 15 medium/low findings (agent logic), 22 medium/low (trading system), 7 phase 3+4 items (formal verification). Includes: HALTED auto-recovery, market hours check, DB CHECK constraints, atomic cost budget, peak inflation detection, halted ticker denial list. | Hardening for eventual live-account transition | **Planned** |
+| **US-7.5** | Remaining Audit Backlog | This week only ships the quick hardening slice: market hours check, HALTED auto-recovery, peak inflation detection, and DB CHECK constraints; the wider backlog remains parked under the same story | Material hardening before execution-quality and live-account posture work | **Active now** |
 | **US-7.6** | VPS Runtime Stability & Service Isolation | Single-instance runtime locks for API/scheduler/Slack/cycle execution; bounded manual trigger and Slack worker execution; separate migration service; current Docker Compose production posture plus optional lean systemd split for small VPS operation | Prevents duplicate/runaway processes and keeps idle CPU low on a resource-constrained host | **Delivered** |
-| **US-7.7** | Dashboard HTTPS Domain & Canonical Access | Expose the dashboard at `https://zeninvest.zenouz.ai` via Cloudflare-proxied DNS and Nginx TLS termination; keep public overview anonymous, keep operator routes session-protected, remove public port 8000 exposure, enforce canonical host access, and update deployment/runbook documentation. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. | One safe, canonical public dashboard URL with working operator login over HTTPS | **Planned** |
+| **US-7.7** | Dashboard HTTPS Domain & Canonical Access | Expose the dashboard at `https://zeninvest.zenouz.ai` via Cloudflare-proxied DNS and Nginx TLS termination; keep public overview anonymous, keep operator routes session-protected, remove public port 8000 exposure, enforce canonical host access, and update deployment/runbook documentation. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. | One safe, canonical public dashboard URL with working operator login over HTTPS | **Active now** |
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Delivered** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
-| **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Focus tuning effort on parameters that matter | **Planned** |
-| **US-7.1** | Dashboard Authentication | API key or token-based auth on all dashboard endpoints; required before exposing beyond localhost | Critical security hardening; prevents unauthorized live cycle triggers | **Delivered** |
-| **US-7.2** | Partial Fill Resubmission | Detect partial fills and resubmit unfilled remainder in next cycle | Ensures intended position sizes are achieved | **Planned** |
-| **US-7.3** | Execution Quality & Slippage | VWAP/TWAP awareness, execution timing, slippage tracking; pre-live prerequisite | Required before transitioning from practice to live account | **Planned** |
+| **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Useful later, but not more material than current production and operator milestones | **Later / optional** |
+| **US-7.1** | Dashboard Authentication | Session-based operator auth with secure cookies, signed backend-issued sessions, and explicit `/api/public/*` routes | Critical security hardening; prevents unauthorized operator access and aligns with the HTTPS proxy rollout | **Delivered** |
+| **US-7.2** | Partial Fill Resubmission | Detect partial fills and resubmit unfilled remainder in next cycle | Immediate follow-on to US-7.3 inside the first post-8.1 execution-quality track | **Next after current week** |
+| **US-7.3** | Execution Quality & Slippage | VWAP/TWAP awareness, execution timing, slippage tracking; pre-live prerequisite | First post-8.1 execution-quality story and prerequisite for any live-account posture shift | **Next after current week** |
 | **US-7.0** | Production Audit & Safety Fixes | Full codebase audit (34 findings: 3C+6H+12M+13L). Phase 1: no-retry on POST, write-before-execute, liquidate_all status mapping, stop atomicity, moderator parse-failure safety, session leaks. Phase 2: committed cash tracking, correlation/daily-loss activation, cycle timeout, exception safety, HALTED data. 12 of 34 fixed. See `docs/TRADING_SYSTEM_AUDIT.md`. | Eliminates 3 critical + 6 high severity financial-risk bugs; activates 2 previously disabled risk rules | **Delivered** |
 | **US-7.4** | Integration Test Coverage | End-to-end orchestrator run_cycle test, state machine transition tests | Catch pipeline regressions early; quality gate for new features | **Delivered** |
-| **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially +3–7% annual; requires 500+ trades | **Planned** |
-| **US-6.2** | Trade Journal Embeddings | Embeddings for journals; similarity search on new proposals | "Have we seen this pattern before?" context | **Planned** |
-| **US-6.3** | RL Investigation | Literature + data assessment; decision gate before any implementation | Evidence-based decision on RL; document findings | **Planned** |
-| **US-8.1** | Open-Source Launch Preparation | Remove nested repo, clean remotes, add MIT LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GitHub issue/PR templates, and GitHub Actions CI (pytest + mypy); see `docs/OPEN_SOURCE_LAUNCH.md` | Community-ready infrastructure; prerequisite for repo going public as ZenInvest by Zenouz.ai | **Planned** |
+| **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially useful long-term, but premature before more trade and execution data exist | **Later / optional** |
+| **US-6.2** | Trade Journal Embeddings | Embeddings for journals; similarity search on new proposals | Interesting retrieval aid, but not crucial right now | **Later / optional** |
+| **US-6.3** | RL Investigation | Literature + data assessment; decision gate before any implementation | Evidence-based decision on RL; intentionally a distant investigation | **Later / optional** |
+| **US-8.1** | Open-Source Launch Preparation | Remove nested repo, clean remotes, add MIT LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GitHub issue/PR templates, and GitHub Actions CI (pytest + mypy); see `docs/OPEN_SOURCE_LAUNCH.md` | Community-ready infrastructure; prerequisite for repo going public as ZenInvest by Zenouz.ai | **Active now** |
 
 ---
 
@@ -171,14 +107,15 @@ The POC is a fully functional autonomous trading agent running on Trading 212 Pr
 - Multi-LLM adversarial architecture (Claude + GPT-4o + Gemini)
 - Deterministic risk guardrails with VETO power
 - Deterministic UOV opportunity layer (shadow/active modes, ranked BUY queue, swap suggestions)
+- Deterministic active-swing exits: full SELL at +15% unrealized gain and scheduled cleanup of sub-£200 residual holdings
 - Cost-aware degradation; comprehensive logging and audit trail
 - **Feedback loop:** performance_metrics, trade_outcomes, CLI `--performance` / `--dashboard`
 - **Backtesting:** engine, paper broker, walk-forward validation, promotion report; yfinance fetch + CSV cache
 
 **What the POC still lacks:**
-- Calibration of strategy weights and conviction using live + backtest evidence
-- Portfolio-level optimisation (e.g. risk-parity sizing)
-- Learning/adaptation (static strategy parameters)
+- Calibration of strategy weights and conviction using enough live + backtest evidence
+- Production access hardening and execution-quality follow-through for the live-control path
+- Learning/adaptation beyond the currently delivered deterministic sizing and signal stack
 
 ---
 
@@ -194,7 +131,7 @@ The POC is a fully functional autonomous trading agent running on Trading 212 Pr
 
 ## Priority matrix
 
-Ordered by **priority** (P0 → P3) then **feasibility** (Easy → Medium → Hard).
+This table is a historical impact/feasibility view of the backlog, not the current sprint queue. Active execution order is governed by the **Remaining week order** and the umbrella tracks above.
 
 | # | User Story | Value | Feasibility | Effort | Data Needed | Priority |
 |---|------------|-------|-------------|--------|-------------|----------|
@@ -398,11 +335,35 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
+**US-3.6: Active Swing Rotation Strategy**
+
+**Value:** Promotes more frequent realized winners and pushes more qualified BUYs through each cycle  
+**Effort:** Medium (implemented)  
+**Data Sources:** Existing strategy outputs, portfolio snapshots, trade_outcomes, notification stack  
+**Stage:** Delivered  
+
+**Summary:**  
+Repositions the system from a conservative medium-term allocator toward an **active swing** posture without changing the core architecture:
+- Strategy prompt now targets **2-15 trading day** swings and allows BUYs at lower conviction when supported by catalyst/valuation context.
+- Universe and UOV gates are loosened so more approved BUYs can execute in-cycle (`effective_screening_cooldown_override=4`, `review_cooldown_days=2`, `max_reviews_per_30_days=10`, `immediate_threshold_z=0.0`, `queue_threshold_z=-0.15`).
+- Adds deterministic **full SELL take-profit** when unrealized gain reaches `15%`, even before the ordinary 24h minimum-holding rule when enabled.
+- Adds deterministic **small-position cleanup** on the final intraday cycle for holdings below `£200` once they are at least 24h old.
+- Updates Slack/email summaries and strategy-performance reporting so operators can distinguish submitted, queued, skipped, take-profit, cleanup, and risk-driven outcomes in plain English.
+
+**Integration:**  
+- `Strategy` prompt updated in `src/agents/strategy/prompts.py` for active swing posture.
+- `Orchestrator` now applies deterministic take-profit and cleanup overrides before ordinary SELL/REDUCE handling and updates cycle-summary reason codes.
+- `performance_metrics` + `trade_outcomes` now feed the strategy-performance summary using the live wide-schema tables rather than the legacy metric-name/value shape.
+
+---
+
 **US-2.1: Conviction Calibration**
 **Value:** Position sizing by calibrated conviction can add 2–5% annually  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** trade_outcomes, strategy_decisions  
-**Stage:** Delivered  
+**Stage:** Planned / data-gated  
+
+**Why not now:** This story stays in the roadmap, but it should not activate until the system has enough `trade_outcomes` to support statistically meaningful calibration bins.
 
 **Acceptance Criteria:**
 - [ ] Calibration curve: conviction vs win rate (bins 50–60, 60–70, 70–80, 80+)
@@ -418,7 +379,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Stops allocating to strategies that aren't working in current regime  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** trade_outcomes, strategy_decisions  
-**Stage:** Planned  
+**Stage:** Planned / data-gated  
 
 **Acceptance Criteria:**
 - [ ] Rolling 30-day hit rate per sub-strategy (momentum, mean_reversion, factor)
@@ -455,7 +416,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Multi-turn collaborative trading across Slack and dashboard with persistent context and explicit action confirmation
 **Effort:** Large (8–12 days, phased delivery)
 **Data Sources:** Existing pipeline + new chat session/turn/action tables + optional agentic research tools
-**Stage:** Delivered (skeleton); full workflow pending
+**Stage:** Active now (skeleton delivered; MVP in current week)
 
 **Detailed plan:** `docs/CONVERSATIONAL_TRADING_WORKFLOW.md`.
 
@@ -466,14 +427,19 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 - [x] Missing-session `404`s, `channel_type` / `role` validation, and FK + unique turn-order protections
 - [x] Focused US-1.6/US-1.9 regression suite: 117 passing tests
 
-**Full workflow (pending):**
+**Current-week MVP scope:**
 - [ ] Session management supports start/resume/end/timeout with persistent multi-turn context
 - [ ] Shared backend supports Slack thread and dashboard chat continuity
-- [ ] Agent provides structured research summaries and follow-up refinements by turn
 - [ ] Every trade action requires explicit confirmation; no execution on ambiguous intent
 - [ ] RiskManager remains final deterministic veto with clear rejection reasons
-- [ ] Full audit trail for turns, research calls, recommendations, confirmations, and executions
+- [ ] Full audit trail for turns, recommendations, confirmations, and executions
 - [ ] Dashboard chat APIs and SSE events support real-time conversational updates
+
+**Deferred beyond MVP:**
+- [ ] Agent provides structured research summaries and follow-up refinements by turn
+- [ ] Deeper research tool orchestration and richer assistant-led iteration
+
+**Why now:** US-1.6 already delivered the operator-side command foundation. The immediate next win is turning the delivered chat/session skeleton into a real, auditable conversational operator workflow instead of leaving it as plumbing.
 
 **Dependencies:**
 - Requires US-1.6 for robust inbound Slack handling baseline (delivered)
@@ -510,7 +476,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Potential moderation/risk model cost reduction, faster inference, and provider diversification if quality is maintained
 **Effort:** Investigation (2-4 days for smoke + shadow setup planning)
 **Data Sources:** Existing committee inputs, moderation logs, risk decisions, cost logs
-**Stage:** Planned (investigation)
+**Stage:** Later / optional investigation
 
 **Detailed plan:** `docs/Nemotron_3_Super_Integration_Investigation.md`.
 
@@ -583,11 +549,13 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** One safe, canonical public dashboard URL with working operator login over HTTPS  
 **Effort:** Medium (1-2 days)  
 **Data Sources:** Same DB as agent (shared volume)  
-**Stage:** Planned  
+**Stage:** Active now  
 
 **Detailed plan:** `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`
 
 **Target state:** The dashboard is available at `https://zeninvest.zenouz.ai`, fronted by Cloudflare-proxied DNS and Dockerized Nginx TLS termination. The public overview remains anonymous, operator routes remain session-protected, and raw public port `8000` access is removed.
+
+**Why now:** This is the highest-leverage remaining production posture task. The dashboard already has session-based auth and proxy-aware HTTPS handling, so the remaining work is operationally narrow and immediately valuable.
 
 **Acceptance Criteria:**
 - [ ] Cloudflare proxied `A` record for `zeninvest.zenouz.ai` points at the VPS; SSL/TLS mode set to `Full (strict)`
@@ -606,7 +574,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Understand which moderator adds value; informs cost optimisation  
 **Effort:** Small (2–3 days)  
 **Data Sources:** moderation_logs, trade_outcomes  
-**Stage:** Planned  
+**Stage:** Planned / data-gated  
 
 **Acceptance Criteria:**
 - [ ] Track: trades GPT-4o blocked that would have lost (correct) vs made money (opportunity cost); same for Gemini
@@ -619,7 +587,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Regime-aware strategy selection improves hit rate  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** Existing macro (VIX, S&P, yields)  
-**Stage:** Planned  
+**Stage:** Later / optional  
 
 **Acceptance Criteria:**
 - [ ] Continuous regime score (not binary BULL/BEAR/SIDEWAYS)
@@ -635,7 +603,9 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Prevents positions that duplicate existing risk exposure  
 **Effort:** Small (2–3 days)  
 **Data Sources:** Historical returns from market_data_cache  
-**Stage:** Planned  
+**Stage:** Next after current week  
+
+**Why now:** This is one of the highest-value small follow-ons after the current week because it directly improves entry quality without adding much system complexity.
 
 **Acceptance Criteria:**
 - [ ] Before BUY: correlation of candidate with each existing position
@@ -663,7 +633,9 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Avoid buying before earnings; position for post-earnings drift  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** yfinance earnings calendar (free)  
-**Stage:** Planned  
+**Stage:** Next after current week  
+
+**Why now:** This pairs naturally with US-3.3 as the next small bundle of entry-quality guards once the current posture and workflow stories are done.
 
 **Acceptance Criteria:**
 - [ ] Fetch next earnings date per candidate
@@ -677,7 +649,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Focus tuning on parameters that matter  
 **Effort:** Medium (3–4 days)  
 **Data Sources:** Backtesting engine output  
-**Stage:** Planned  
+**Stage:** Later / optional  
 
 **Acceptance Criteria:**
 - [ ] Vary RSI, MA periods, strategy weights, allocation limits
@@ -690,7 +662,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Potentially +3–7% annual; requires 500+ trade outcomes  
 **Effort:** Large (investigation + implementation); investigate before committing  
 **Data Sources:** trade_outcomes, strategy_decisions, indicators, fundamentals  
-**Stage:** Planned  
+**Stage:** Later / optional  
 
 **Investigation (before building):**
 - [ ] Literature review; feature importance on trade data
@@ -714,17 +686,15 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Audit finding:** C1
 
 **Acceptance Criteria:**
-- [x] `X-API-Key` header authentication on all `/api/*` endpoints via `APIKeyMiddleware`
-- [x] Auth middleware reads `DASHBOARD_API_KEY` from env; no-op when unset (backward-compatible dev mode)
-- [x] Health check (`/health`), `/docs`, `/openapi.json`, `/redoc` remain unauthenticated
-- [x] Frontend Axios client attaches `X-API-Key` via request interceptor (build-time `VITE_API_KEY` → `localStorage` fallback)
-- [x] Existing CORS settings unchanged; `X-API-Key` added to `allow_headers`
-- [x] 21 unit tests covering: no-key mode, correct key, wrong key, empty key, public paths, `get_api_key()`, startup warning
-- [x] `DASHBOARD_API_KEY` documented in `config/.env.example` with generation command
-- [x] Docker build arg `DASHBOARD_API_KEY` → Vite `VITE_API_KEY` in `Dockerfile` stage 1; runtime env in `docker-compose.yml`
+- [x] Operator login is session-based with secure cookies and signed backend-issued tokens
+- [x] Public overview routes remain anonymous under `/api/public/*`
+- [x] Protected operator routes require a valid session and return `401/403` when missing or insecure
+- [x] Operator login is blocked on insecure transport outside localhost dev mode
+- [x] Backend auth config validates required env-backed secrets before use
+- [x] Dashboard auth coverage includes session handling, public/private split, and HTTPS transport checks
 
-**Implementation:** `dashboard/backend/app/middleware/auth.py` (`APIKeyMiddleware`, `get_api_key`, `warn_if_unauthenticated`); wired in `main.py`.
-**Note:** When `DASHBOARD_API_KEY` is not set the dashboard runs in unauthenticated mode with a startup warning — safe for localhost-only dev. Set it in `.env` before VPS exposure.
+**Implementation:** `dashboard/backend/app/middleware/auth.py` and `dashboard/backend/app/services/auth.py` with session middleware, secure-cookie auth, and proxy-aware HTTPS checks.
+**Note:** This story is already aligned with the intended `US-7.7` reverse-proxy rollout because operator access already respects `X-Forwarded-Proto`.
 
 ---
 
@@ -732,7 +702,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Medium — currently unfilled portions of partial fills are lost, meaning intended position sizes may not be achieved
 **Effort:** Small (2–3 days)
 **Data Sources:** Existing orders table, T212 order history
-**Stage:** Planned
+**Stage:** Next after current week (bundled immediately after US-7.3)
 **Audit finding:** I1
 
 **Acceptance Criteria:**
@@ -750,7 +720,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** High — required before transitioning from practice to live account. Currently no VWAP/TWAP, no slippage tracking, no execution timing
 **Effort:** Medium (3–5 days)
 **Data Sources:** Orders (filled price vs decision-time price), T212 execution reports
-**Stage:** Planned
+**Stage:** Next after current week
 **Audit finding:** I2
 
 **Acceptance Criteria:**
@@ -871,24 +841,20 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Medium — hardening items required before live-account transition
 **Effort:** Large (estimated 15–20 hours across multiple sprints)
 **Data Sources:** None
-**Stage:** Planned
+**Stage:** Active now (quick slice this week; broader backlog later)
 
-**From Agent Logic Audit (15 findings):**
-- [ ] 9 Medium findings (M-1 through M-9)
-- [ ] 6 Low findings (L-1 through L-6)
-
-**From Trading System Audit (22 findings):**
-- [ ] ~8 Medium findings (M-1 through M-12 minus 4 fixed in Phase 2)
-- [ ] 13 Low findings (L-1 through L-13)
-
-**From Formal Verification Audit (7 items):**
+**This week only:**
 - [ ] P3-1: HALTED auto-recovery after N cycles below threshold
 - [ ] P3-2: Market hours check before order placement
-- [ ] P4-1: SQL-level atomic cost budget
-- [ ] P4-2: DB thread safety (threading.Lock if async added)
 - [ ] P4-3: Peak inflation detection
-- [ ] P4-4: Halted ticker denial list (cache T212 rejections)
 - [ ] P4-5: DB-level CHECK constraints
+
+**Later backlog remains parked under this story:**
+- [ ] Remaining medium/low agent-logic items
+- [ ] Remaining medium/low trading-system items
+- [ ] P4-1: SQL-level atomic cost budget
+- [ ] P4-2: DB thread safety
+- [ ] P4-4: Halted ticker denial list
 
 ---
 
@@ -898,7 +864,7 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Sector momentum over long term  
 **Effort:** Medium (3–5 days)  
 **Data Sources:** Sector ETFs via yfinance (XLK, XLF, etc.)  
-**Stage:** Planned  
+**Stage:** Later / optional  
 
 **Acceptance Criteria:**
 - [ ] Relative performance of 11 GICS sectors via ETF proxies
@@ -973,29 +939,31 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 
 ---
 
-## Next sprint focus
+## Remaining week focus
 
-**Completed:**
-- **US-1.7** — Dashboard full spec merged to main
-- **US-1.4** — POC deployed to VPS (Docker, first cycle logged, health/backup confirmed)
-- **US-7.6** — VPS runtime stability hardening delivered (runtime locks, systemd split, bounded workers, separate migrations)
+**Canonical order through 2026-03-25:**
+1. **US-7.7** — Dashboard HTTPS Domain & Canonical Access
+2. **US-7.5** — Quick Hardening Slice
+3. **US-1.9** — Conversational Trading Workflow MVP
+4. **US-8.1** — Open-Source Launch Preparation
 
-**Immediate (current focus):**
-- **US-2.4** — Nemotron integration investigation (evaluation only; no production switch). See `docs/Nemotron_3_Super_Integration_Investigation.md`.
-- **US-7.5** — Remaining audit backlog (carry remaining medium/low hardening before any live-account posture change)
-- **US-7.3** — Execution quality & slippage (pre-live prerequisite)
+**Success criteria:**
+- **US-7.7** — no public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy
+- **US-7.5** — hardening slice shipped with tests and no broader backlog creep
+- **US-1.9** — real operator workflow MVP, not just CRUD skeleton
+- **US-8.1** — repo can be made public without legal, CI, or contributor-experience gaps
 
-**Audit hardening (delivered 2026-03-17):**
-- US market holiday calendar — scheduler skips analysis cycles on NYSE holidays (`src/utils/market_holidays.py`)
-- Opportunity scorer batch EWMA query — eliminated N+1 queries
-- Opportunity optimizer test coverage — +7 tests (TTL expiry, capacity gating, cash floor, dequeue, rejection details)
-- Holiday calendar tests — +7 tests
+**Next after 8.1:**
+- **US-7.3** then **US-7.2** as the first execution-quality and fill-recovery track
+- **US-4.2** + **US-3.3** as the next small, useful entry-quality bundle
+- **US-2.1** + **US-2.2** + **US-2.3** only once trade-outcome volume is sufficient
 
-**Deferred (await data or later sprint):**
-- **US-2.1 / US-2.2** — Conviction calibration and dynamic strategy weighting (requires ~50 trades)
-- **US-5.2 prep** — Parameter sensitivity harness
-- **US-7.2** — Partial fill resubmission (expand US-3.5)
-- **US-8.1** — Open-source launch preparation
+**Explicitly not near-term right now:**
+- **US-2.4** — Nemotron integration investigation
+- **US-3.2** — Enhanced regime detection
+- **US-4.3** — Sector rotation
+- **US-5.2** — Parameter sensitivity
+- **US-6.1**, **US-6.2**, **US-6.3** — advanced / optional investigations
 
 **Delivery references:**
 - `docs/ORDER_MANAGEMENT_PROJECT.md`
@@ -1016,9 +984,11 @@ All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_a
 **Value:** Community-ready infrastructure enabling the repo to go public as ZenInvest by Zenouz.ai with clear onboarding, legal clarity, and automated quality gates
 **Effort:** Medium (2–3 days, 8 discrete deliverables across 3 phases)
 **Data Sources:** N/A — repo hygiene and doc files only
-**Stage:** Planned (P0 — prerequisite for Private → Public flip)
+**Stage:** Active now (P0 — prerequisite for Private → Public flip)
 
 **Detailed plan:** `docs/OPEN_SOURCE_LAUNCH.md`.
+
+**Why now:** This story becomes valuable once the current production posture and operator workflow work are in place. It is still a current-week item, but it comes after `US-7.7`, `US-7.5`, and `US-1.9`.
 
 **Phase A — Repo hygiene:** Remove nested `Investment-agent/` subdirectory; remove `old-origin` remote (KayvanNejabati); confirm `origin → https://github.com/zenouz-ai/zeninvest.git`. All tests must still pass.
 

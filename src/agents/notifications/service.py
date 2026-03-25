@@ -76,7 +76,7 @@ class NotificationService:
         payload: dict[str, Any],
         source: str = "orchestrator",
     ) -> None:
-        severity = "warning" if payload.get("execution_status") in {"failed", "skipped"} else "info"
+        severity = self._trade_execution_severity(payload)
         self._emit(
             event_type="trade_execution_result",
             severity=severity,
@@ -164,6 +164,26 @@ class NotificationService:
             source=source,
             dedup_parts=[cycle_id, payload.get("ticker"), payload.get("action")],
         )
+
+    @staticmethod
+    def _trade_execution_severity(payload: dict[str, Any]) -> str:
+        status = str(payload.get("execution_status", "")).strip().lower()
+        stop_status = str(payload.get("stop_loss_status", "")).strip().lower()
+        reason_code = str(payload.get("reason_code") or payload.get("error_message") or "").strip().lower()
+        if stop_status == "failed":
+            return "warning"
+        if status == "failed":
+            return "warning"
+        if status == "skipped":
+            if reason_code in {
+                "below_min_order_value",
+                "below_min_reduce_pct",
+                "target_already_met",
+                "cash_floor_guard",
+            }:
+                return "info"
+            return "warning"
+        return "info"
 
     def emit_critical_cycle_failure(
         self,

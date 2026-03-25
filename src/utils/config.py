@@ -124,6 +124,46 @@ class Settings:
         val = self.trading.get("reduce_tiers_pct", [25, 50, 70, 100])
         return [float(x) for x in val] if isinstance(val, list) else [25.0, 50.0, 70.0, 100.0]
 
+    @property
+    def reduce_requires_gain_or_risk(self) -> bool:
+        """Only allow REDUCE when the position is a meaningful winner or over a risk limit."""
+        return bool(self.trading.get("reduce_requires_gain_or_risk", True))
+
+    @property
+    def reduce_min_unrealized_gain_pct(self) -> float:
+        """Minimum unrealized gain before REDUCE is allowed without a hard risk breach."""
+        return float(self.trading.get("reduce_min_unrealized_gain_pct", 10.0))
+
+    @property
+    def take_profit_full_sell_pct(self) -> float:
+        """Deterministic take-profit threshold for full position exits."""
+        return float(self.trading.get("take_profit_full_sell_pct", 15.0))
+
+    @property
+    def take_profit_allow_before_min_hold(self) -> bool:
+        """Whether take-profit SELL may bypass the ordinary minimum holding rule."""
+        return bool(self.trading.get("take_profit_allow_before_min_hold", True))
+
+    @property
+    def small_position_cleanup_enabled(self) -> bool:
+        """Whether residual small holdings should be liquidated on the cleanup cycle."""
+        return bool(self.trading.get("small_position_cleanup_enabled", False))
+
+    @property
+    def small_position_cleanup_value_gbp(self) -> float:
+        """Full-sell threshold for residual small holdings during cleanup."""
+        return float(self.trading.get("small_position_cleanup_value_gbp", 200.0))
+
+    @property
+    def small_position_cleanup_cycle_utc(self) -> str:
+        """Configured UTC cycle time used for small-position cleanup."""
+        return str(self.trading.get("small_position_cleanup_cycle_utc", "16:00"))
+
+    @property
+    def small_position_cleanup_min_holding_hours(self) -> int:
+        """Minimum age before a small position can be cleaned up automatically."""
+        return int(self.trading.get("small_position_cleanup_min_holding_hours", 24))
+
     # --- Risk ---
     @property
     def risk(self) -> dict[str, Any]:

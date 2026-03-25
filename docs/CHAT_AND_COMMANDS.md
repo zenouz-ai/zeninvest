@@ -1,7 +1,7 @@
 ---
 tags: [notifications, slack, commands, chat]
 status: current
-last_updated: 2026-03-24
+last_updated: 2026-03-25
 ---
 
 # Chat Interface and Trade Commands
@@ -28,11 +28,13 @@ Provide a reliable, auditable chat and command layer for the Investment Agent th
 - Slack webhook alerts.
 - Email alerts (SMTP).
 - Event triggers from orchestrator/state machine:
-  - `trade_instruction_approved` (post moderation+risk, pre execution)
-  - `trade_execution_result` (filled/dry_run/failed/skipped)
-  - `cycle_run_summary` (end-of-run report with all ticker decisions)
+  - `trade_instruction_approved` (operator-facing decision status on the instruction channel: queued, filtered, skipped, rejected, or otherwise not yet sent to broker)
+  - `trade_execution_result` (actual execution outcome once a broker submission is attempted or an execution-time skip/failure is known)
+  - `cycle_run_summary` (end-of-run report with account context, readable statuses, explicit counts, and reasons)
   - `state_transition` (ACTIVE/CAUTIOUS/HALTED)
   - `critical_cycle_failure` (cycle-aborting exceptions)
+  - `order_adjustment` (stop-loss / trailing-stop adjustments)
+  - `trade_without_stop` (execution completed but protective stop placement failed)
 - `notification_logs` database table.
 - Config flags, channel routing, retries/timeouts, dedup/idempotency.
 - Unit tests + integration-style dry-run checks.
@@ -65,8 +67,9 @@ Orchestrator + StateMachine + CLI actions
 ### Integration Points in Current Codebase
 
 - `src/orchestrator/main.py`
-  - Decision loop after moderation+risk approval emits `trade_instruction_approved`.
-  - `Orchestrator._execute_trade()` emits `trade_execution_result`.
+  - Decision loop emits `trade_instruction_approved` only for operator-facing decision outcomes (for example `BUY-QUEUED`, `BUY-SKIPPED`, `RISK-REJECTED`) rather than as a pre-execution promise that a broker order has been sent.
+  - `Orchestrator._execute_trade()` emits `trade_execution_result` only once the execution path knows the real submission outcome (`ORDER-SUBMITTED`, `ORDER-SKIPPED`, `ORDER-FAILED`, etc.).
+  - Stop management emits `order_adjustment`, and missing-stop remediation emits `trade_without_stop`.
   - Top-level cycle exception handling emits `critical_cycle_failure`.
 - `src/orchestrator/state_machine.py`
   - `StateMachine.transition()` emits `state_transition`.
@@ -80,7 +83,7 @@ Each outbound event must include:
 | Field | Type | Purpose |
 |-------|------|---------|
 | `event_id` | uuid4 | Unique identifier |
-| `event_type` | string | One of: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure` |
+| `event_type` | string | One of: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop` |
 | `occurred_at` | ISO8601 UTC | Event timestamp |
 | `cycle_id` | string \| null | Associated cycle (nullable for non-cycle events) |
 | `severity` | enum | `info` \| `warning` \| `critical` |
@@ -88,16 +91,22 @@ Each outbound event must include:
 | `dedup_key` | string | Stable hashable key per event intent |
 | `payload` | object | Typed event-specific data |
 
-**`trade_instruction_approved` payload:**
+**`trade_instruction_approved` payload:** decision-status event on the instruction channel
 - `ticker` (string)
 - `action` (string)
 - `target_allocation_pct` (float)
+- `final_allocation_pct` (float)
 - `conviction` (float)
 - `moderation_consensus` (string; "not invoked" for HOLD/QUEUED — moderation not run)
 - `risk_verdict` (string; "not invoked" for HOLD/QUEUED — risk not run)
+- `notification_kind` (string; for example `BUY-QUEUED`, `BUY-SKIPPED`, `RISK-REJECTED`)
+- `reason_code` (string | null)
+- `reason_detail` (string | null)
+- `account_label` (string | null; `practice/demo` or `live`)
 - `reasoning_summary` (string)
+- `occurred_at` (ISO8601 UTC)
 
-**`trade_execution_result` payload:**
+**`trade_execution_result` payload:** execution-only result once submission/skip/failure is known
 - `ticker` (string)
 - `action` (string)
 - `target_allocation_pct` (float)
@@ -105,9 +114,15 @@ Each outbound event must include:
 - `quantity` (float)
 - `price` (float)
 - `value_gbp` (float)
-- `order_id` (string | null)
 - `stop_loss_status` (string | null)
+- `stop_loss_error` (string | null)
 - `error_message` (string | null)
+- `reason_code` (string | null)
+- `reason_detail` (string | null)
+- `notification_kind` (string | null; for example `ORDER-SUBMITTED`, `BUY-SKIPPED`, `ORDER-FAILED`)
+- `account_label` (string | null; `practice/demo` or `live`)
+- `order_type` (string | null)
+- `execution_note` (string | null)
 
 **`cycle_run_summary` payload:**
 - `cycle_id` (string)
@@ -130,8 +145,8 @@ Each outbound event must include:
 
 ### Message Rendering
 
-- **Slack:** Concise, single-message summary with severity prefix. Environment, cycle ID, and UTC timestamp always included.
-- **Email:** Subject line includes `[Investment-Agent][SEVERITY]`; body contains full event details with timestamps and cycle context.
+- **Slack:** Outcome-first, concise operator message with severity prefix, account label, and a mandatory plain-English `Reason:` for non-submitted decisions.
+- **Email:** Subject line includes `[Investment-Agent][SEVERITY]`; body contains the same account-aware decision/execution semantics plus richer cycle counts and execution notes.
 
 ### Delivery and Reliability
 
@@ -183,6 +198,7 @@ notifications:
     state_transition: ["slack", "email"]
     critical_cycle_failure: ["slack", "email"]
     order_adjustment: ["slack"]
+    trade_without_stop: ["slack", "email"]
   timeout_seconds: 5
   max_retries: 2
   dedup_window_seconds: 300
@@ -231,7 +247,7 @@ US-1.5 Phase 1 was implemented and deployed to VPS with the following execution 
 1. Created Slack Incoming Webhook.
 2. Set `SLACK_WEBHOOK_URL` in VPS `.env`.
 3. Restarted container with `docker compose up -d --build`.
-4. Verified receipt of `trade_instruction_approved` and `cycle_run_summary` Slack messages.
+4. Verified receipt of decision-status (`trade_instruction_approved`) and `cycle_run_summary` Slack messages.
 
 **Email hookup steps used:**
 
@@ -525,7 +541,7 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 ### Phase 1 (Outbound Alerts — Delivered)
 
 - [x] Notification service exists under `src/agents/notifications/` with provider abstraction.
-- [x] Five event types emit from the defined integration points (`trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`).
+- [x] Notification events emit from the defined integration points, including decision-status, execution-result, cycle-summary, state-transition, critical-failure, stop-adjustment, and missing-stop alerts.
 - [x] Slack and email channels work independently and can be enabled/disabled by config.
 - [x] Notification failures never block or fail a trading cycle.
 - [x] Retries/timeouts/dedup operate as configured.

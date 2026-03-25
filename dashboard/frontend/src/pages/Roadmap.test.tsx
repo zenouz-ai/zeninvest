@@ -37,6 +37,7 @@ describe('Roadmap page rendering', () => {
 
     expect(markup).toContain('data-testid="timeline-board"')
     expect(markup).toContain('Short-cycle roadmap by work stream')
+    expect(markup).toContain('Safety first, evidence before adaptation')
     expect(markup).not.toContain('data-testid="roadmap-detail-view"')
     expect(markup).not.toContain('gantt')
   })
@@ -55,6 +56,7 @@ describe('Roadmap page rendering', () => {
 
     expect(roadmapMarkup).toContain('data-testid="roadmap-detail-view"')
     expect(roadmapMarkup).toContain('Readable story cards with factual history')
+    expect(roadmapMarkup).toContain('Track bundle:')
     expect(architectureMarkup).toContain('data-testid="architecture-view"')
     expect(architectureMarkup).toContain('Readable flow from signals to execution')
     expect(architectureMarkup).toContain('docs/ARCHITECTURE.md')
@@ -94,10 +96,12 @@ describe('timeline section grouping', () => {
     const sections = getTimelineSections()
     const calibration = sections.find((section) => section.topic === 'Calibration')
     const hardening = sections.find((section) => section.topic === 'Hardening')
+    const foundation = sections.find((section) => section.topic === 'Foundation')
 
-    expect(calibration?.columns.Next.map((milestone) => milestone.id)).toContain('US-2.4')
-    expect(calibration?.columns.Soon.map((milestone) => milestone.id)).toContain('US-2.1')
+    expect(foundation?.columns.Next.map((milestone) => milestone.id)).toContain('US-1.9')
+    expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.4')
     expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.2')
+    expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.1')
     expect(hardening?.columns.Next.map((milestone) => milestone.id)).toContain('US-7.5')
     expect(hardening?.columns.Soon.map((milestone) => milestone.id)).toContain('US-7.3')
   })

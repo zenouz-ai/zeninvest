@@ -157,7 +157,7 @@ class TestOrderManager:
         assert len(orders) == 1
         assert orders[0].status == "dry_run"
 
-    def test_buy_below_min_order_value_skipped_and_not_logged(self, db_session):
+    def test_buy_below_min_order_value_upgrades_to_floor(self, db_session):
         mock_client = MagicMock()
         manager = OrderManager(client=mock_client, dry_run=True)
 
@@ -168,9 +168,10 @@ class TestOrderManager:
             current_price=100.0,
         )
 
-        assert result["status"] == "skipped"
-        assert result["reason"] == "below_min_order_value"
-        assert db_session.query(Order).count() == 0
+        assert result["status"] == "dry_run"
+        assert result["value_gbp"] == 500.0
+        assert db_session.query(Order).count() == 1
+        assert db_session.query(Order).first().value_gbp == 500.0
 
     def test_buy_at_floor_allows_quantity_rounding_dip(self, db_session):
         """Target>=min should allow BUY even if quantity flooring makes computed value dip slightly below."""

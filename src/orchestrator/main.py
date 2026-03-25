@@ -10,6 +10,7 @@ import sys
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from statistics import median
 from typing import Any, Callable
 
 import click
@@ -35,7 +36,7 @@ from src.agents.risk.risk_parity import RiskParitySizer
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
-from src.data.models import Base, Instrument, OpportunityQueue, PerformanceMetric, PortfolioSnapshot
+from src.data.models import Base, Instrument, OpportunityQueue, Order, PerformanceMetric, PortfolioSnapshot, TradeOutcome
 from src.orchestrator.state_machine import StateMachine
 from src.runtime import RuntimeLockHeldError, acquire_runtime_lock
 from src.utils.config import get_settings
@@ -100,6 +101,135 @@ class Orchestrator:
                 dry_run=self.dry_run,
             )
         return self._stop_loss_manager
+
+    def _account_label(self) -> str:
+        return "practice/demo" if self.settings.account_type == "practice" else "live"
+
+    @staticmethod
+    def _parse_cycle_clock_time_utc(cycle_id: str | None) -> str | None:
+        if not cycle_id:
+            return None
+        parts = str(cycle_id).split("_")
+        try:
+            if len(parts) >= 3 and parts[0] == "scheduled":
+                return datetime.strptime(parts[2][:4], "%H%M").strftime("%H:%M")
+            if len(parts) >= 3 and parts[0] == "cycle":
+                return datetime.strptime(parts[2][:4], "%H%M").strftime("%H:%M")
+        except ValueError:
+            return None
+        return None
+
+    def _current_cycle_clock_time_utc(self, cycle_id: str | None) -> str:
+        parsed = self._parse_cycle_clock_time_utc(cycle_id)
+        if parsed:
+            return parsed
+        return datetime.now(timezone.utc).strftime("%H:%M")
+
+    def _is_small_position_cleanup_cycle(self, cycle_id: str | None) -> bool:
+        if self.settings.cycle_frequency != "intraday":
+            return False
+        return self._current_cycle_clock_time_utc(cycle_id) == self.settings.small_position_cleanup_cycle_utc
+
+    def _apply_deterministic_exit_overrides(
+        self,
+        *,
+        decisions: list[dict[str, Any]],
+        position_context: dict[str, dict[str, Any]],
+        cycle_id: str | None,
+    ) -> None:
+        if not decisions or not position_context:
+            return
+
+        cleanup_cycle = self._is_small_position_cleanup_cycle(cycle_id)
+        for decision in decisions:
+            ticker = str(decision.get("ticker", "")).strip().upper()
+            if not ticker:
+                continue
+            position = position_context.get(ticker)
+            if not position:
+                continue
+
+            take_profit_reason = self._take_profit_reason(position)
+            if take_profit_reason:
+                self._apply_deterministic_sell_override(
+                    decision=decision,
+                    reason_code="take_profit_full_sell",
+                    reason_detail=take_profit_reason,
+                    conviction_floor=90,
+                )
+                continue
+
+            cleanup_reason = self._small_position_cleanup_reason(position, cleanup_cycle=cleanup_cycle)
+            if cleanup_reason:
+                self._apply_deterministic_sell_override(
+                    decision=decision,
+                    reason_code="small_position_cleanup",
+                    reason_detail=cleanup_reason,
+                    conviction_floor=75,
+                )
+
+    def _take_profit_reason(self, position: dict[str, Any]) -> str | None:
+        pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
+        threshold = self.settings.take_profit_full_sell_pct
+        if pnl_pct < threshold:
+            return None
+        return (
+            f"Deterministic take-profit SELL: unrealized gain {pnl_pct:.1f}% "
+            f"meets or exceeds the {threshold:.1f}% threshold"
+        )
+
+    def _small_position_cleanup_reason(
+        self,
+        position: dict[str, Any],
+        *,
+        cleanup_cycle: bool,
+    ) -> str | None:
+        if not self.settings.small_position_cleanup_enabled or not cleanup_cycle:
+            return None
+        value_gbp = float(position.get("value_gbp", 0.0) or 0.0)
+        if value_gbp >= self.settings.small_position_cleanup_value_gbp:
+            return None
+        held_hours = position.get("held_hours")
+        min_hours = self.settings.small_position_cleanup_min_holding_hours
+        if held_hours is None or float(held_hours) < min_hours:
+            return None
+        return (
+            f"Deterministic cleanup SELL: holding value GBP {value_gbp:.2f} is below "
+            f"the GBP {self.settings.small_position_cleanup_value_gbp:.2f} cleanup threshold"
+        )
+
+    @staticmethod
+    def _apply_deterministic_sell_override(
+        *,
+        decision: dict[str, Any],
+        reason_code: str,
+        reason_detail: str,
+        conviction_floor: int,
+    ) -> None:
+        original_action = str(decision.get("action", "HOLD")).strip().upper() or "HOLD"
+        decision["action"] = "SELL"
+        decision["target_allocation_pct"] = 0.0
+        decision.pop("claude_target_allocation_pct", None)
+        decision["deterministic_exit_reason_code"] = reason_code
+        decision["deterministic_exit_reason"] = reason_detail
+        if original_action != "SELL":
+            decision["deterministic_exit_original_action"] = original_action
+        current_conviction = int(decision.get("conviction", 0) or 0)
+        if current_conviction < conviction_floor:
+            decision["conviction"] = conviction_floor
+        reasoning = str(decision.get("reasoning", "") or "").strip()
+        if reason_detail and reason_detail not in reasoning:
+            decision["reasoning"] = f"{reasoning} {reason_detail}".strip() if reasoning else reason_detail
+        if not decision.get("exit_conditions"):
+            decision["exit_conditions"] = reason_detail
+        if not decision.get("expected_holding_period"):
+            decision["expected_holding_period"] = "2-15 trading days"
+
+    def _should_skip_min_holding_for_decision(self, decision: dict[str, Any]) -> bool:
+        return bool(
+            self.settings.take_profit_allow_before_min_hold
+            and decision.get("deterministic_exit_reason_code") == "take_profit_full_sell"
+        )
 
     def run_cycle(self, scheduled_cycle_id: str | None = None) -> dict[str, Any]:
         """Run a full investment cycle.
@@ -749,6 +879,15 @@ class Orchestrator:
                 if decision.get("action") == "BUY":
                     decision["claude_target_allocation_pct"] = target_alloc
 
+            portfolio_allocs = self._get_position_allocations(portfolio_data)
+            sector_allocs = self._get_sector_allocations(portfolio_data)
+            position_context = self._build_position_context_map(portfolio_data)
+            self._apply_deterministic_exit_overrides(
+                decisions=decisions,
+                position_context=position_context,
+                cycle_id=cycle_id,
+            )
+
             risk_parity_rejections: list[dict[str, Any]] = []
             if self.settings.risk_parity_enabled:
                 decisions, risk_parity_rejections = self._apply_risk_parity_sizing(
@@ -782,14 +921,38 @@ class Orchestrator:
                 action = decision.get("action", "HOLD")
                 conviction = int(decision.get("conviction", 0) or 0)
                 target_alloc = float(decision.get("target_allocation_pct", 0.0) or 0.0)
+                sector = self._get_sector(ticker, stocks_data)
+
+                if action == "REDUCE":
+                    allow_reduce, guardrail_code, guardrail_reason = self._evaluate_reduce_guardrail(
+                        ticker=ticker,
+                        sector=sector,
+                        position_context=position_context,
+                        current_allocations=portfolio_allocs,
+                        sector_allocations=sector_allocs,
+                    )
+                    if not allow_reduce:
+                        decision["action"] = "HOLD"
+                        decision["guardrail_original_action"] = "REDUCE"
+                        decision["guardrail_reason_code"] = guardrail_code
+                        decision["guardrail_reason"] = guardrail_reason
+                        action = "HOLD"
 
                 if action in ("HOLD", "QUEUED"):
-                    hold_reason = decision.get("reasoning", f"{action} — no action this cycle")
+                    hold_reason = (
+                        decision.get("guardrail_reason")
+                        or decision.get("reasoning", f"{action} — no action this cycle")
+                    )
+                    reason_code = decision.get("guardrail_reason_code")
+                    if action == "QUEUED" and not reason_code:
+                        reason_code = "strategy_deferred"
                     result["rejected_stocks"].append({
                         "ticker": ticker,
                         "action": action,
                         "stage": "strategy_hold" if action == "HOLD" else "strategy_queued",
                         "reason": hold_reason,
+                        "reason_code": reason_code,
+                        "stage_reason_code": reason_code,
                         "conviction": conviction,
                         "moderation_consensus": "not invoked",
                         **self._get_stock_metadata(ticker, stocks_data),
@@ -800,6 +963,7 @@ class Orchestrator:
                         "stage": "strategy_queued" if action == "QUEUED" else "strategy_hold",
                         "decision": decision,
                         "reason": hold_reason,
+                        "reason_code": reason_code,
                         "moderation_consensus": "not invoked",
                         "risk_verdict": "not invoked",
                         "final_allocation_pct": None,
@@ -810,7 +974,6 @@ class Orchestrator:
                 logger.info(f"Moderating {action} {ticker}...")
                 yf_ticker_for_news = t212_to_yf(ticker)
                 ticker_news = per_ticker_news.get(yf_ticker_for_news, "")
-                sector = self._get_sector(ticker, stocks_data)
                 market_context = self._build_market_context(
                     ticker=ticker,
                     stocks_data=stocks_data,
@@ -883,10 +1046,6 @@ class Orchestrator:
 
                 # Risk check
                 logger.info(f"Risk check for {action} {ticker}...")
-                sector = self._get_sector(ticker, stocks_data)
-                sector_allocs = self._get_sector_allocations(portfolio_data)
-                portfolio_allocs = self._get_position_allocations(portfolio_data)
-
                 risk_verdict = self.risk_manager.evaluate_trade(
                     ticker=ticker,
                     action=action,
@@ -907,6 +1066,7 @@ class Orchestrator:
                     cycle_id=cycle_id,
                     conviction=conviction,
                     is_losing_position=self._is_losing_position(ticker, portfolio_data),
+                    skip_min_holding_period=self._should_skip_min_holding_for_decision(decision),
                 )
 
                 # Log risk decision
@@ -952,6 +1112,25 @@ class Orchestrator:
                         "risk_verdict": risk_verdict.verdict,
                         "final_allocation_pct": None,
                     })
+                    self.notification_service.emit_trade_instruction_approved(
+                        cycle_id=cycle_id,
+                        payload={
+                            "cycle_id": cycle_id,
+                            "dry_run": self.dry_run,
+                            "ticker": ticker,
+                            "action": action,
+                            "target_allocation_pct": target_alloc,
+                            "conviction": conviction,
+                            "moderation_consensus": mod_result.consensus,
+                            "risk_verdict": risk_verdict.verdict,
+                            "reason_code": "risk_rejected",
+                            "reason_detail": risk_verdict.reasoning,
+                            "notification_kind": "risk_rejected",
+                            "account_label": self._account_label(),
+                            "reasoning_summary": decision.get("reasoning", ""),
+                            **self._get_stock_metadata(ticker, stocks_data),
+                        },
+                    )
                     continue
 
                 final_alloc = risk_verdict.adjusted_allocation_pct or target_alloc
@@ -985,23 +1164,6 @@ class Orchestrator:
                     "final_allocation_pct": final_alloc,
                 })
 
-                self.notification_service.emit_trade_instruction_approved(
-                    cycle_id=cycle_id,
-                    payload={
-                        "cycle_id": cycle_id,
-                        "dry_run": self.dry_run,
-                        "ticker": ticker,
-                        "action": action,
-                        "target_allocation_pct": target_alloc,
-                        "final_allocation_pct": final_alloc,
-                        "conviction": conviction,
-                        "moderation_consensus": mod_result.consensus,
-                        "risk_verdict": risk_verdict.verdict,
-                        "reasoning_summary": decision.get("reasoning", ""),
-                        **self._get_stock_metadata(ticker, stocks_data),
-                    },
-                )
-
                 if action == "BUY":
                     pending_buys.append({
                         "ticker": ticker,
@@ -1010,6 +1172,8 @@ class Orchestrator:
                         "moderation": mod_result,
                         "risk_verdict": risk_verdict,
                         "final_allocation_pct": final_alloc,
+                        "conviction": conviction,
+                        "target_allocation_pct": target_alloc,
                     })
                     continue
 
@@ -1035,8 +1199,17 @@ class Orchestrator:
                     portfolio_data=portfolio_data,
                 )
                 if trade_entry:
-                    result["trades"].append(trade_entry)
-                    if action == "SELL" and trade_entry.get("execution", {}).get("status") in ("filled", "dry_run"):
+                    exec_status = trade_entry.get("execution", {}).get("status")
+                    if exec_status in self._submitted_execution_statuses():
+                        result["trades"].append(trade_entry)
+                    else:
+                        result["rejected_stocks"].append(
+                            self._build_rejected_from_trade_entry(
+                                trade_entry=trade_entry,
+                                stocks_data=stocks_data,
+                            )
+                        )
+                    if action == "SELL" and exec_status in ("filled", "dry_run"):
                         projected_num_positions = max(0, projected_num_positions - 1)
 
             # Re-query portfolio before BUY phase (P2-4: avoid stale data after SELL/REDUCE)
@@ -1114,6 +1287,29 @@ class Orchestrator:
                             if uov_z is not None:
                                 rejected_entry["uov_z"] = round(float(uov_z), 4)
                             result["rejected_stocks"].append(rejected_entry)
+                            notification_kind = "buy_queued" if stage == "opportunity_queue" else "buy_skipped"
+                            self.notification_service.emit_trade_instruction_approved(
+                                cycle_id=cycle_id,
+                                payload={
+                                    "cycle_id": cycle_id,
+                                    "dry_run": self.dry_run,
+                                    "ticker": ticker,
+                                    "action": "BUY",
+                                    "target_allocation_pct": pending.get("target_allocation_pct"),
+                                    "final_allocation_pct": pending.get("final_allocation_pct"),
+                                    "conviction": pending.get("conviction", 0),
+                                    "moderation_consensus": pending["moderation"].consensus,
+                                    "risk_verdict": pending["risk_verdict"].verdict,
+                                    "reason_code": details.get("reason_code"),
+                                    "reason_detail": reason,
+                                    "notification_kind": notification_kind,
+                                    "account_label": self._account_label(),
+                                    "reasoning_summary": pending.get("decision", {}).get("reasoning", ""),
+                                    "uov_ewma": round(float(uov_ewma), 4) if uov_ewma is not None else None,
+                                    "uov_z": round(float(uov_z), 4) if uov_z is not None else None,
+                                    **self._get_stock_metadata(ticker, stocks_data),
+                                },
+                            )
 
             pending_by_ticker = {b["ticker"]: b for b in pending_buys}
             for ticker in selected_buy_order:
@@ -1131,10 +1327,48 @@ class Orchestrator:
                     and self.settings.limit_orders_enabled
                 ):
                     final_alloc = float(pending.get("final_allocation_pct", 0.0))
-                    trade_value = current_value * final_alloc / 100
-                    if trade_value < self.settings.min_order_value_gbp:
-                        logger.info(
-                            f"Limit BUY skipped: trade value £{trade_value:.2f} below minimum"
+                    requested_trade_value = current_value * final_alloc / 100
+                    trade_value = max(requested_trade_value, self.settings.min_order_value_gbp)
+                    available_cash = cash_gbp - committed_cash
+                    available_cash_pct = (available_cash / current_value * 100) if current_value > 0 else 0
+                    cash_floor = self.settings.cash_floor_pct
+                    if available_cash_pct - (trade_value / current_value * 100 if current_value > 0 else 0) < cash_floor:
+                        reason_detail = (
+                            f"Insufficient cash to place minimum BUY order of £{trade_value:.2f} "
+                            f"(available {available_cash_pct:.1f}% cash)"
+                        )
+                        logger.info(f"Limit BUY {ticker} skipped: {reason_detail}")
+                        result["rejected_stocks"].append({
+                            "ticker": ticker,
+                            "action": "BUY",
+                            "stage": "cash_floor_guard",
+                            "reason": reason_detail,
+                            "reason_code": "cash_floor_guard",
+                            "stage_reason_code": "cash_floor_guard",
+                            "conviction": pending.get("conviction", 0),
+                            "moderation_consensus": pending["moderation"].consensus,
+                            "risk_verdict": pending["risk_verdict"].verdict,
+                            **self._get_stock_metadata(ticker, stocks_data),
+                        })
+                        self.notification_service.emit_trade_instruction_approved(
+                            cycle_id=cycle_id,
+                            payload={
+                                "cycle_id": cycle_id,
+                                "dry_run": self.dry_run,
+                                "ticker": ticker,
+                                "action": "BUY",
+                                "target_allocation_pct": pending.get("target_allocation_pct"),
+                                "final_allocation_pct": final_alloc,
+                                "conviction": pending.get("conviction", 0),
+                                "moderation_consensus": pending["moderation"].consensus,
+                                "risk_verdict": pending["risk_verdict"].verdict,
+                                "reason_code": "cash_floor_guard",
+                                "reason_detail": reason_detail,
+                                "notification_kind": "buy_skipped",
+                                "account_label": self._account_label(),
+                                "reasoning_summary": decision.get("reasoning", ""),
+                                **self._get_stock_metadata(ticker, stocks_data),
+                            },
                         )
                         continue
                     price = self._get_current_price(ticker, stocks_data)
@@ -1160,16 +1394,29 @@ class Orchestrator:
                         # Track committed cash for limit BUYs (audit fix H-2)
                         if limit_result.get("status") in ("placed", "pending", "dry_run"):
                             committed_cash += trade_value
-                        self.notification_service.emit_order_adjustment(
+                        self.notification_service.emit_trade_execution_result(
                             cycle_id=cycle_id,
                             payload={
                                 "cycle_id": cycle_id,
                                 "dry_run": self.dry_run,
                                 "ticker": ticker,
-                                "adjustment_type": "limit_order",
-                                "new_stop_price": limit_result.get("limit_price"),
-                                "current_price": price,
-                                "status": limit_result.get("status"),
+                                "action": "BUY",
+                                "target_allocation_pct": final_alloc,
+                                "execution_status": limit_result.get("status"),
+                                "quantity": limit_result.get("quantity"),
+                                "price": price,
+                                "value_gbp": limit_result.get("value_gbp", trade_value),
+                                "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                                "stop_loss_status": None,
+                                "reason_code": None,
+                                "reason_detail": None,
+                                "reasoning_summary": decision.get("reasoning", ""),
+                                "moderation_consensus": pending["moderation"].consensus,
+                                "risk_verdict": pending["risk_verdict"].verdict,
+                                "order_type": "limit",
+                                "notification_kind": "order_submitted",
+                                "account_label": self._account_label(),
+                                "occurred_at": datetime.now(timezone.utc).isoformat(),
                             },
                         )
                     continue
@@ -1178,21 +1425,53 @@ class Orchestrator:
                 # Check remaining cash before BUY (audit fix H-2)
                 available_cash = cash_gbp - committed_cash
                 available_cash_pct = (available_cash / current_value * 100) if current_value > 0 else 0
-                buy_value = current_value * buy_alloc / 100
+                requested_buy_value = current_value * buy_alloc / 100
+                buy_value = max(requested_buy_value, self.settings.min_order_value_gbp)
                 cash_floor = self.settings.cash_floor_pct
                 if available_cash_pct - (buy_value / current_value * 100 if current_value > 0 else 0) < cash_floor:
                     logger.info(
                         f"BUY {ticker} skipped: would breach cash floor "
-                        f"(available={available_cash_pct:.1f}%, buy={buy_alloc:.1f}%, floor={cash_floor}%)"
+                        f"(available={available_cash_pct:.1f}%, requested=£{requested_buy_value:.2f}, "
+                        f"effective=£{buy_value:.2f}, floor={cash_floor}%)"
                     )
                     result["rejected_stocks"].append({
                         "ticker": ticker,
                         "action": "BUY",
                         "stage": "cash_floor_guard",
-                        "reason": f"Insufficient cash after prior BUYs (available {available_cash_pct:.1f}%)",
+                        "reason": (
+                            f"Insufficient cash to place minimum BUY order of £{buy_value:.2f} "
+                            f"(available {available_cash_pct:.1f}% cash)"
+                        ),
+                        "reason_code": "cash_floor_guard",
+                        "stage_reason_code": "cash_floor_guard",
                         "conviction": decision.get("conviction", 0),
+                        "moderation_consensus": pending["moderation"].consensus,
+                        "risk_verdict": pending["risk_verdict"].verdict,
                         **self._get_stock_metadata(ticker, stocks_data),
                     })
+                    self.notification_service.emit_trade_instruction_approved(
+                        cycle_id=cycle_id,
+                        payload={
+                            "cycle_id": cycle_id,
+                            "dry_run": self.dry_run,
+                            "ticker": ticker,
+                            "action": "BUY",
+                            "target_allocation_pct": pending.get("target_allocation_pct"),
+                            "final_allocation_pct": buy_alloc,
+                            "conviction": pending.get("conviction", 0),
+                            "moderation_consensus": pending["moderation"].consensus,
+                            "risk_verdict": pending["risk_verdict"].verdict,
+                            "reason_code": "cash_floor_guard",
+                            "reason_detail": (
+                                f"Insufficient cash to place minimum BUY order of £{buy_value:.2f} "
+                                f"(available {available_cash_pct:.1f}% cash)"
+                            ),
+                            "notification_kind": "buy_skipped",
+                            "account_label": self._account_label(),
+                            "reasoning_summary": decision.get("reasoning", ""),
+                            **self._get_stock_metadata(ticker, stocks_data),
+                        },
+                    )
                     continue
 
                 trade_entry = self._execute_trade(
@@ -1217,11 +1496,17 @@ class Orchestrator:
                     portfolio_data=portfolio_data,
                 )
                 if trade_entry:
-                    result["trades"].append(trade_entry)
-                    # Track committed cash so subsequent BUYs see reduced availability
                     exec_result = trade_entry.get("execution", {})
-                    if exec_result.get("status") in ("filled", "pending", "dry_run"):
+                    if exec_result.get("status") in self._submitted_execution_statuses():
+                        result["trades"].append(trade_entry)
                         committed_cash += exec_result.get("value_gbp", buy_value)
+                    else:
+                        result["rejected_stocks"].append(
+                            self._build_rejected_from_trade_entry(
+                                trade_entry=trade_entry,
+                                stocks_data=stocks_data,
+                            )
+                        )
 
             # Dequeue executed BUY tickers from opportunity queue (P2-6)
             if self.settings.opportunity_enabled:
@@ -1605,31 +1890,87 @@ class Orchestrator:
         """Execute an approved trade and generate journal + stop-loss where relevant."""
         current_price = self._get_current_price(ticker, stocks_data)
         price_gbp = self._compute_fx_price_gbp(current_price, ticker, portfolio_data)
+        conviction = decision.get("conviction", 0)
+        stop_loss_pct = decision.get("stop_loss_pct", 0)
+        min_order = self.settings.min_order_value_gbp
+        decision_reason_code = decision.get("deterministic_exit_reason_code")
+        decision_reason_detail = decision.get("deterministic_exit_reason")
 
-        if current_price <= 0:
-            logger.warning(f"No price for {ticker}, skipping")
+        def _emit_and_build_entry(
+            *,
+            execution_status: str,
+            reason_code: str | None,
+            reason_detail: str,
+            value_gbp: float | None,
+            quantity: float | int | None = 0,
+            effective_action: str | None = None,
+            stage: str | None = None,
+        ) -> dict[str, Any]:
+            actual_action = effective_action or action
             self.notification_service.emit_trade_execution_result(
                 cycle_id=cycle_id,
                 payload={
                     "cycle_id": cycle_id,
                     "dry_run": self.dry_run,
                     "ticker": ticker,
-                    "action": action,
-                    "execution_status": "skipped",
-                    "quantity": 0,
-                    "price": None,
-                    "value_gbp": None,
-                    "stop_loss_pct": decision.get("stop_loss_pct", 0),
+                    "action": actual_action,
+                    "execution_status": execution_status,
+                    "quantity": quantity,
+                    "price": current_price,
+                    "value_gbp": value_gbp,
+                    "stop_loss_pct": stop_loss_pct,
                     "stop_loss_status": None,
-                    "error_message": "no_price",
+                    "error_message": reason_code,
+                    "reason_code": reason_code,
+                    "reason_detail": reason_detail,
                     "reasoning_summary": decision.get("reasoning", ""),
                     "target_allocation_pct": final_alloc,
+                    "order_type": "market",
+                    "notification_kind": (
+                        "order_failed"
+                        if execution_status == "failed"
+                        else "buy_skipped" if actual_action == "BUY" else "order_skipped"
+                    ),
+                    "account_label": self._account_label(),
+                    "min_order_gbp": min_order,
+                    "min_reduce_pct": self.settings.min_reduce_pct_of_position,
                     "occurred_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
-            return None
+            return {
+                "ticker": ticker,
+                "action": actual_action,
+                "allocation_pct": final_alloc,
+                "reasoning": decision.get("reasoning", ""),
+                "execution": {
+                    "status": execution_status,
+                    "quantity": quantity,
+                    "value_gbp": value_gbp,
+                    "price": current_price,
+                    "reason": reason_code,
+                    "error": reason_detail if execution_status == "failed" else None,
+                },
+                "moderation": mod_result.consensus,
+                "risk": risk_verdict.verdict,
+                "stop_loss": None,
+                "execution_note": None,
+                "stage": stage or ("execution_failed" if execution_status == "failed" else "execution_skipped"),
+                "stage_reason": reason_detail,
+                "reason_code": reason_code,
+                "reason_detail": reason_detail,
+                "conviction": conviction,
+            }
 
-        min_order = self.settings.min_order_value_gbp
+        if current_price <= 0:
+            logger.warning(f"No price for {ticker}, skipping")
+            return _emit_and_build_entry(
+                execution_status="skipped",
+                reason_code="no_price",
+                reason_detail="No current price was available, so no order was sent",
+                value_gbp=None,
+                quantity=0,
+            )
+
         execution_note: str | None = None
         trade_value: float
 
@@ -1645,48 +1986,25 @@ class Orchestrator:
                     f"BUY skipped for {ticker}: target {final_alloc:.2f}% already met "
                     f"(current {current_position_pct:.2f}%)"
                 )
-                self.notification_service.emit_trade_execution_result(
-                    cycle_id=cycle_id,
-                    payload={
-                        "cycle_id": cycle_id,
-                        "dry_run": self.dry_run,
-                        "ticker": ticker,
-                        "action": action,
-                        "execution_status": "skipped",
-                        "quantity": 0,
-                        "price": current_price,
-                        "value_gbp": trade_value,
-                        "stop_loss_pct": decision.get("stop_loss_pct", 0),
-                        "stop_loss_status": None,
-                        "error_message": "target_already_met",
-                        "reasoning_summary": decision.get("reasoning", ""),
-                        "target_allocation_pct": final_alloc,
-                        "occurred_at": datetime.now(timezone.utc).isoformat(),
-                    },
+                return _emit_and_build_entry(
+                    execution_status="skipped",
+                    reason_code="target_already_met",
+                    reason_detail=(
+                        f"Target allocation {final_alloc:.2f}% was already met "
+                        f"(current {current_position_pct:.2f}%)"
+                    ),
+                    value_gbp=trade_value,
+                    quantity=0,
                 )
-                return None
             if trade_value < min_order:
-                logger.info(f"BUY skipped: trade value £{trade_value:.2f} below minimum £{min_order}")
-                self.notification_service.emit_trade_execution_result(
-                    cycle_id=cycle_id,
-                    payload={
-                        "cycle_id": cycle_id,
-                        "dry_run": self.dry_run,
-                        "ticker": ticker,
-                        "action": action,
-                        "execution_status": "skipped",
-                        "quantity": 0,
-                        "price": current_price,
-                        "value_gbp": trade_value,
-                        "stop_loss_pct": decision.get("stop_loss_pct", 0),
-                        "stop_loss_status": None,
-                        "error_message": "below_min_order_value",
-                        "reasoning_summary": decision.get("reasoning", ""),
-                        "target_allocation_pct": final_alloc,
-                        "occurred_at": datetime.now(timezone.utc).isoformat(),
-                    },
+                logger.info(
+                    f"BUY {ticker} upgraded from trade value £{trade_value:.2f} "
+                    f"to minimum £{min_order:.2f}"
                 )
-                return None
+                execution_note = (
+                    f"buy_upgraded_to_min_order_value: £{trade_value:.2f} -> £{min_order:.2f}"
+                )
+                trade_value = min_order
         else:
             # REDUCE or SELL: compute reduction amount and apply tiers
             portfolio = portfolio_data or {}
@@ -1730,54 +2048,33 @@ class Orchestrator:
                         logger.info(
                             f"REDUCE skipped: reduction £{trade_value:.2f} below minimum £{min_order}"
                         )
-                        self.notification_service.emit_trade_execution_result(
-                            cycle_id=cycle_id,
-                            payload={
-                                "cycle_id": cycle_id,
-                                "dry_run": self.dry_run,
-                                "ticker": ticker,
-                                "action": action,
-                                "execution_status": "skipped",
-                                "quantity": 0,
-                                "price": current_price,
-                                "value_gbp": trade_value,
-                                "stop_loss_pct": decision.get("stop_loss_pct", 0),
-                                "stop_loss_status": None,
-                                "error_message": "below_min_order_value",
-                                "reasoning_summary": decision.get("reasoning", ""),
-                                "target_allocation_pct": final_alloc,
-                                "occurred_at": datetime.now(timezone.utc).isoformat(),
-                            },
+                        return _emit_and_build_entry(
+                            execution_status="skipped",
+                            reason_code="below_min_order_value",
+                            reason_detail=(
+                                f"Target trim value GBP {trade_value:.2f} is below minimum "
+                                f"GBP {min_order:.2f}"
+                            ),
+                            value_gbp=trade_value,
+                            quantity=0,
                         )
-                        return None
 
                     min_reduce_pct = self.settings.min_reduce_pct_of_position
                     if reduction_pct < min_reduce_pct:
                         logger.info(
                             f"REDUCE skipped: {reduction_pct:.1f}% below minimum {min_reduce_pct}%"
                         )
-                        self.notification_service.emit_trade_execution_result(
-                            cycle_id=cycle_id,
-                            payload={
-                                "cycle_id": cycle_id,
-                                "dry_run": self.dry_run,
-                                "ticker": ticker,
-                                "action": action,
-                                "execution_status": "skipped",
-                                "quantity": 0,
-                                "price": current_price,
-                                "value_gbp": trade_value,
-                                "stop_loss_pct": decision.get("stop_loss_pct", 0),
-                                "stop_loss_status": None,
-                                "error_message": "below_min_reduce_pct",
-                                "reasoning_summary": decision.get("reasoning", ""),
-                                "target_allocation_pct": final_alloc,
-                                "occurred_at": datetime.now(timezone.utc).isoformat(),
-                            },
+                        return _emit_and_build_entry(
+                            execution_status="skipped",
+                            reason_code="below_min_reduce_pct",
+                            reason_detail=(
+                                f"Requested trim {reduction_pct:.1f}% is below minimum "
+                                f"{min_reduce_pct:.1f}%"
+                            ),
+                            value_gbp=trade_value,
+                            quantity=0,
                         )
-                        return None
 
-        conviction = decision.get("conviction", 0)
         logger.info(f"Executing {action} {ticker} at {final_alloc:.1f}%...")
         exec_result = self.order_manager.execute_market_order(
             ticker=ticker,
@@ -1925,9 +2222,25 @@ class Orchestrator:
                 "stop_loss_status": (stop_loss_result or {}).get("status"),
                 "stop_loss_error": (stop_loss_result or {}).get("error"),
                 "error_message": exec_result.get("error"),
+                "reason_code": exec_result.get("reason") or exec_result.get("error") or decision_reason_code,
+                "reason_detail": (
+                    exec_result.get("error")
+                    or exec_result.get("reason")
+                    or decision_reason_detail
+                    or execution_note
+                ),
                 "reasoning_summary": decision.get("reasoning", ""),
                 "moderation_consensus": mod_result.consensus,
                 "risk_verdict": risk_verdict.verdict,
+                "order_type": "market",
+                "notification_kind": (
+                    "order_submitted"
+                    if exec_result.get("status") in self._submitted_execution_statuses()
+                    else "order_failed" if exec_result.get("status") == "failed" else "buy_skipped"
+                ),
+                "account_label": self._account_label(),
+                "min_order_gbp": min_order,
+                "min_reduce_pct": self.settings.min_reduce_pct_of_position,
                 "execution_note": execution_note,
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
             },
@@ -1944,6 +2257,23 @@ class Orchestrator:
             "risk": risk_verdict.verdict,
             "stop_loss": stop_loss_result,
             "execution_note": execution_note,
+            "stage": "approved" if exec_result.get("status") in self._submitted_execution_statuses() else (
+                "execution_failed" if exec_result.get("status") == "failed" else "execution_skipped"
+            ),
+            "stage_reason": (
+                exec_result.get("error")
+                or exec_result.get("reason")
+                or decision_reason_detail
+                or execution_note
+            ),
+            "reason_code": exec_result.get("reason") or exec_result.get("error") or decision_reason_code,
+            "reason_detail": (
+                exec_result.get("error")
+                or exec_result.get("reason")
+                or decision_reason_detail
+                or execution_note
+            ),
+            "conviction": conviction,
         }
 
     def _get_top_tickers(self, sub_results: dict[str, Any]) -> list[str]:
@@ -2275,7 +2605,7 @@ class Orchestrator:
         stocks_data: list[dict[str, Any]],
         per_ticker_news: dict[str, str],
         dry_run: bool,
-    ) -> dict[str, Any]:
+        ) -> dict[str, Any]:
         """Build full cycle summary payload for notifications."""
         decisions = self._collect_decision_records(
             strategy_decisions=strategy_decisions,
@@ -2287,25 +2617,79 @@ class Orchestrator:
         )
 
         rejected = result.get("rejected_stocks", [])
-        queued = sum(1 for r in rejected if r.get("stage") == "opportunity_queue")
-        filtered = sum(1 for r in rejected if r.get("stage") == "opportunity_filtered")
+        queued = sum(1 for d in decisions if d.get("notification_status") == "Queued for next cycle")
+        filtered = sum(1 for d in decisions if d.get("notification_status") == "Filtered out")
+        skipped = sum(1 for d in decisions if d.get("notification_status") == "Skipped")
+        broker_orders_submitted = sum(1 for d in decisions if d.get("notification_status") == "Submitted")
+        risk_rejected = sum(1 for d in decisions if d.get("stage") in ("risk", "risk_reject"))
+        strategy_deferred = sum(1 for d in decisions if d.get("stage") in ("strategy_hold", "strategy_queued"))
+        stop_adjustments = len(result.get("order_adjustments", []))
 
         return {
             "cycle_id": cycle_id,
             "status": result.get("status", "unknown"),
             "dry_run": dry_run,
+            "account_label": self._account_label(),
             "occurred_at": datetime.now(timezone.utc).isoformat(),
             "num_trades": len(result.get("trades", [])),
             "num_rejected": len(rejected),
             "counts": {
                 "decisions": len(strategy_decisions),
                 "trades": len(result.get("trades", [])),
+                "broker_orders_submitted": broker_orders_submitted,
+                "stop_adjustments": stop_adjustments,
                 "rejected": len(rejected),
                 "queued": queued,
                 "filtered": filtered,
+                "skipped": skipped,
+                "risk_rejected": risk_rejected,
+                "strategy_deferred": strategy_deferred,
             },
             "decisions": decisions,
         }
+
+    @staticmethod
+    def _decision_notification_status(stage: str, execution_status: str | None) -> str:
+        exec_status = str(execution_status or "").strip().lower()
+        stage_norm = str(stage or "").strip().lower()
+        if exec_status in {"filled", "pending", "dry_run", "placed"}:
+            return "Submitted"
+        if exec_status == "skipped" or stage_norm in {"execution_skipped", "cash_floor_guard"}:
+            return "Skipped"
+        if exec_status == "failed":
+            return "Rejected"
+        if stage_norm == "opportunity_queue":
+            return "Queued for next cycle"
+        if stage_norm == "opportunity_filtered":
+            return "Filtered out"
+        if stage_norm in {"risk", "risk_reject", "moderation", "moderation_blocked", "execution_failed"}:
+            return "Rejected"
+        return "Held"
+
+    @staticmethod
+    def _decision_reason_code(
+        *,
+        stage: str,
+        rejected: dict[str, Any],
+        trade: dict[str, Any],
+        action: str,
+    ) -> str | None:
+        if rejected.get("reason_code") or rejected.get("stage_reason_code"):
+            return rejected.get("reason_code") or rejected.get("stage_reason_code")
+        if trade.get("reason_code"):
+            return trade.get("reason_code")
+        stage_norm = str(stage or "").strip().lower()
+        if stage_norm == "strategy_queued":
+            return "strategy_deferred"
+        if stage_norm in {"opportunity_queue", "opportunity_filtered"}:
+            return rejected.get("stage_reason_code")
+        if stage_norm == "cash_floor_guard":
+            return "cash_floor_guard"
+        if stage_norm == "execution_failed" and trade.get("reason_detail"):
+            return "execution_failed"
+        if stage_norm == "risk" and action == "BUY":
+            return "risk_rejected"
+        return None
 
     def _collect_decision_records(
         self,
@@ -2354,7 +2738,20 @@ class Orchestrator:
                 or evaluation.get("stage")
                 or ("executed" if trade else "unrated")
             )
-            stage_reason = rejected.get("reason") or evaluation.get("reason")
+            stage_reason = (
+                rejected.get("reason")
+                or evaluation.get("reason")
+                or trade.get("stage_reason")
+                or trade.get("reason_detail")
+            )
+            execution_status = trade_exec.get("status") or rejected.get("execution_status")
+            reason_code = self._decision_reason_code(
+                stage=stage,
+                rejected=rejected,
+                trade=trade,
+                action=action,
+            )
+            notification_status = self._decision_notification_status(stage, execution_status)
 
             # HOLD/QUEUED skip moderation and risk — show "not invoked" instead of null
             mod_consensus = evaluation.get("moderation_consensus") or rejected.get("moderation_consensus")
@@ -2389,12 +2786,15 @@ class Orchestrator:
                 "debt_equity": fundamentals.get("debt_equity"),
                 "earnings_growth": fundamentals.get("earnings_growth"),
                 "news_excerpt": self._excerpt(news_excerpt, max_len=400),
-                "execution_status": trade_exec.get("status"),
-                "quantity": trade_exec.get("quantity"),
-                "value_gbp": trade_exec.get("value_gbp"),
+                "execution_status": execution_status,
+                "quantity": trade_exec.get("quantity") or rejected.get("quantity"),
+                "value_gbp": trade_exec.get("value_gbp") or rejected.get("value_gbp"),
                 "stop_loss_pct": decision.get("stop_loss_pct"),
                 "stop_loss_status": stop_loss.get("status"),
                 "stage_reason": stage_reason,
+                "reason_code": reason_code,
+                "notification_status": notification_status,
+                "notification_reason": stage_reason,
             })
             if rejected.get("uov_ewma") is not None:
                 records[-1]["uov_ewma"] = rejected["uov_ewma"]
@@ -2575,6 +2975,87 @@ class Orchestrator:
         return result
 
     @staticmethod
+    def _normalize_utc_timestamp(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @classmethod
+    def _get_last_buy_rows(cls, tickers: set[str]) -> dict[str, Order]:
+        if not tickers:
+            return {}
+        session = get_session()
+        try:
+            rows = (
+                session.query(Order)
+                .filter(
+                    Order.ticker.in_(sorted(tickers)),
+                    Order.action == "BUY",
+                    Order.status.in_(["filled", "dry_run"]),
+                )
+                .order_by(Order.timestamp.desc())
+                .all()
+            )
+            result: dict[str, Order] = {}
+            for row in rows:
+                ticker = str(row.ticker).strip().upper()
+                if ticker and ticker not in result:
+                    result[ticker] = row
+            return result
+        finally:
+            session.close()
+
+    @classmethod
+    def _build_position_context_map(cls, portfolio_data: dict) -> dict[str, dict[str, Any]]:
+        positions = portfolio_data.get("positions", [])
+        if not positions:
+            return {}
+        tickers = {
+            cls._ticker_from_position(pos)
+            for pos in positions
+            if cls._ticker_from_position(pos)
+        }
+        last_buy_rows = cls._get_last_buy_rows(tickers)
+        value_scale = cls._compute_position_value_scale(
+            positions,
+            float(portfolio_data.get("invested", 0) or 0),
+        )
+        now_utc = datetime.now(timezone.utc)
+        context: dict[str, dict[str, Any]] = {}
+        for pos in positions:
+            ticker = cls._ticker_from_position(pos)
+            if not ticker:
+                continue
+            norm = cls._normalize_position_for_snapshot(pos, value_scale=value_scale)
+            avg_price = float(pos.get("averagePrice", 0) or 0)
+            entry_price_gbp = (avg_price * value_scale) if avg_price > 0 else None
+            last_buy = last_buy_rows.get(ticker)
+            last_buy_ts = cls._normalize_utc_timestamp(last_buy.timestamp) if last_buy else None
+            held_hours = (
+                round((now_utc - last_buy_ts).total_seconds() / 3600, 1)
+                if last_buy_ts is not None
+                else None
+            )
+            if last_buy and last_buy.value_gbp and last_buy.quantity:
+                try:
+                    entry_price_gbp = abs(float(last_buy.value_gbp)) / abs(float(last_buy.quantity))
+                except (TypeError, ValueError, ZeroDivisionError):
+                    pass
+            context[ticker] = {
+                "ticker": ticker,
+                "quantity": float(norm.get("quantity", 0) or 0),
+                "value_gbp": float(norm.get("value_gbp", 0) or 0),
+                "pnl_gbp": float(norm.get("pnl_gbp", 0) or 0),
+                "pnl_pct": float(norm.get("pnl_pct", 0) or 0),
+                "entry_price_gbp": entry_price_gbp,
+                "last_buy_at": last_buy_ts,
+                "held_hours": held_hours,
+            }
+        return context
+
+    @staticmethod
     def _get_close_prices_by_ticker(stocks_data: list[dict[str, Any]]) -> dict[str, list[float]]:
         """Extract close-price history per ticker for risk-parity sizing."""
         result: dict[str, list[float]] = {}
@@ -2621,67 +3102,157 @@ class Orchestrator:
                 returns[ticker] = daily_returns
         return returns
 
-    @staticmethod
-    def _build_position_pnl_summary(portfolio_data: dict) -> str:
+    @classmethod
+    def _build_position_pnl_summary(cls, portfolio_data: dict) -> str:
         """Build a tabular position P&L summary for the strategy prompt."""
-        positions = portfolio_data.get("positions", [])
-        if not positions:
+        position_context = cls._build_position_context_map(portfolio_data)
+        if not position_context:
             return ""
-        lines = ["Ticker | Value (GBP) | P&L (GBP) | P&L (%) | Qty"]
-        lines.append("--- | --- | --- | --- | ---")
-        value_scale = Orchestrator._compute_position_value_scale(
-            positions,
-            float(portfolio_data.get("invested", 0) or 0),
-        )
-        for pos in positions:
-            ticker = Orchestrator._ticker_from_position(pos)
-            if not ticker:
-                continue
-            norm = Orchestrator._normalize_position_for_snapshot(pos, value_scale=value_scale)
+        lines = [
+            "Ticker | Entry (GBP) | Last BUY UTC | Held (h) | Value (GBP) | P&L (GBP) | P&L (%) | Qty"
+        ]
+        lines.append("--- | --- | --- | --- | --- | --- | --- | ---")
+        for ticker, norm in position_context.items():
+            last_buy_at = norm.get("last_buy_at")
+            entry_price = norm.get("entry_price_gbp")
+            entry_display = f"{entry_price:.2f}" if entry_price is not None else "N/A"
+            held_hours = norm.get("held_hours")
+            held_display = f"{held_hours}" if held_hours is not None else "N/A"
             lines.append(
-                f"{ticker} | {norm['value_gbp']:.0f} | {norm['pnl_gbp']:.2f} | {norm['pnl_pct']:.1f}% | {norm['quantity']:.2f}"
+                f"{ticker} | "
+                f"{entry_display} | "
+                f"{last_buy_at.strftime('%Y-%m-%d %H:%M') if last_buy_at else 'N/A'} | "
+                f"{held_display} | "
+                f"{norm['value_gbp']:.0f} | {norm['pnl_gbp']:.2f} | {norm['pnl_pct']:.1f}% | {norm['quantity']:.2f}"
             )
         return "\n".join(lines)
 
     @staticmethod
+    def _submitted_execution_statuses() -> set[str]:
+        return {"filled", "pending", "dry_run", "placed"}
+
+    def _evaluate_reduce_guardrail(
+        self,
+        *,
+        ticker: str,
+        sector: str,
+        position_context: dict[str, dict[str, Any]],
+        current_allocations: dict[str, float],
+        sector_allocations: dict[str, float],
+    ) -> tuple[bool, str | None, str | None]:
+        if not self.settings.reduce_requires_gain_or_risk:
+            return True, None, None
+        position = position_context.get(ticker, {})
+        pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
+        position_pct = float(current_allocations.get(ticker, 0.0) or 0.0)
+        sector_pct = float(sector_allocations.get(sector, 0.0) or 0.0)
+
+        gain_threshold = self.settings.reduce_min_unrealized_gain_pct
+        over_position_limit = position_pct > self.settings.max_single_stock_pct
+        over_sector_limit = sector_pct > self.settings.max_sector_pct
+        meaningful_gain = pnl_pct >= gain_threshold
+
+        if meaningful_gain or over_position_limit or over_sector_limit:
+            return True, None, None
+
+        reason = (
+            f"Held instead of reducing: unrealized gain {pnl_pct:.1f}% is below {gain_threshold:.1f}% "
+            f"and no risk limit is breached (position {position_pct:.1f}%, sector {sector_pct:.1f}%)"
+        )
+        return False, "reduce_guardrail_no_gain_or_risk", reason
+
+    def _build_rejected_from_trade_entry(
+        self,
+        *,
+        trade_entry: dict[str, Any],
+        stocks_data: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        execution = trade_entry.get("execution", {}) or {}
+        stage = trade_entry.get("stage") or (
+            "execution_failed" if execution.get("status") == "failed" else "execution_skipped"
+        )
+        reason_code = trade_entry.get("reason_code") or execution.get("reason") or execution.get("error")
+        reason = (
+            trade_entry.get("stage_reason")
+            or trade_entry.get("reason")
+            or trade_entry.get("reason_detail")
+            or str(reason_code or "")
+        )
+        rejected = {
+            "ticker": trade_entry.get("ticker"),
+            "action": trade_entry.get("action"),
+            "stage": stage,
+            "reason": reason,
+            "reason_code": reason_code,
+            "stage_reason_code": reason_code,
+            "conviction": trade_entry.get("conviction", 0),
+            "moderation_consensus": trade_entry.get("moderation"),
+            "risk_verdict": trade_entry.get("risk"),
+            "execution_status": execution.get("status"),
+            "quantity": execution.get("quantity"),
+            "value_gbp": execution.get("value_gbp"),
+            **self._get_stock_metadata(str(trade_entry.get("ticker", "")), stocks_data),
+        }
+        return rejected
+
+    @staticmethod
     def _build_strategy_performance_summary() -> str:
-        """Query PerformanceMetric for latest win rates by strategy."""
+        """Query latest performance snapshot plus recent trade-outcome context."""
         session = get_session()
         try:
-            metrics = (
+            latest = (
                 session.query(PerformanceMetric)
-                .filter(PerformanceMetric.metric_name.in_([
-                    "win_rate_momentum", "win_rate_mean_reversion", "win_rate_factor",
-                    "total_trades", "sharpe_ratio_30d", "sortino_ratio_30d",
-                    "max_drawdown_pct",
-                ]))
-                .order_by(PerformanceMetric.calculated_at.desc())
-                .limit(20)
+                .order_by(PerformanceMetric.snapshot_date.desc())
+                .first()
+            )
+
+            recent_closed = (
+                session.query(TradeOutcome)
+                .order_by(TradeOutcome.sell_timestamp.desc())
+                .limit(100)
                 .all()
             )
-            if not metrics:
+            if latest is None and not recent_closed:
                 return ""
-            latest: dict[str, float] = {}
-            for m in metrics:
-                if m.metric_name not in latest and m.metric_value is not None:
-                    latest[m.metric_name] = m.metric_value
-            if not latest:
-                return ""
+
             lines = []
-            if "win_rate_momentum" in latest:
-                lines.append(f"- Momentum win rate: {latest['win_rate_momentum']:.0f}%")
-            if "win_rate_mean_reversion" in latest:
-                lines.append(f"- Mean Reversion win rate: {latest['win_rate_mean_reversion']:.0f}%")
-            if "win_rate_factor" in latest:
-                lines.append(f"- Factor win rate: {latest['win_rate_factor']:.0f}%")
-            if "total_trades" in latest:
-                lines.append(f"- Total completed trades: {latest['total_trades']:.0f}")
-            if "sharpe_ratio_30d" in latest:
-                lines.append(f"- Sharpe ratio (30d): {latest['sharpe_ratio_30d']:.2f}")
-            if "sortino_ratio_30d" in latest:
-                lines.append(f"- Sortino ratio (30d): {latest['sortino_ratio_30d']:.2f}")
-            if "max_drawdown_pct" in latest:
-                lines.append(f"- Max drawdown: {latest['max_drawdown_pct']:.1f}%")
+            if latest is not None:
+                if latest.win_rate_momentum is not None:
+                    lines.append(f"- Momentum win rate: {latest.win_rate_momentum:.0f}%")
+                if latest.win_rate_mean_reversion is not None:
+                    lines.append(f"- Mean Reversion win rate: {latest.win_rate_mean_reversion:.0f}%")
+                if latest.win_rate_factor is not None:
+                    lines.append(f"- Factor win rate: {latest.win_rate_factor:.0f}%")
+                if latest.num_trades is not None:
+                    lines.append(f"- Total completed trades: {latest.num_trades:.0f}")
+                if latest.sharpe_30d is not None:
+                    lines.append(f"- Sharpe ratio (30d): {latest.sharpe_30d:.2f}")
+                if latest.sortino_30d is not None:
+                    lines.append(f"- Sortino ratio (30d): {latest.sortino_30d:.2f}")
+                if latest.max_drawdown_pct is not None:
+                    lines.append(f"- Max drawdown: {latest.max_drawdown_pct:.1f}%")
+
+            holding_days = [
+                float(outcome.holding_days)
+                for outcome in recent_closed
+                if outcome.holding_days is not None
+            ]
+            if holding_days:
+                lines.append(f"- Median holding days: {median(holding_days):.1f}")
+
+            threshold = get_settings().take_profit_full_sell_pct
+            take_profit_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
+            take_profit_count = (
+                session.query(TradeOutcome)
+                .filter(
+                    TradeOutcome.sell_timestamp >= take_profit_cutoff,
+                    TradeOutcome.pnl_pct >= threshold,
+                )
+                .count()
+            )
+            lines.append(
+                f"- Realized take-profit exits (>= {threshold:.1f}% pnl): {take_profit_count} in last 30d"
+            )
             return "\n".join(lines) if lines else ""
         except Exception:
             return ""

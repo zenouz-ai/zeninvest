@@ -23,6 +23,14 @@ export interface Run {
     stocks_reviewed?: number
     decisions_made?: number
     orders_placed?: number
+    counts?: {
+      broker_orders_submitted?: number
+      stop_adjustments?: number
+      queued?: number
+      skipped?: number
+      risk_rejected?: number
+      strategy_deferred?: number
+    }
   }
 }
 

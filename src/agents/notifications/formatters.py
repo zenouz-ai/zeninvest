@@ -71,8 +71,8 @@ def _render_email(event: NotificationEvent) -> list[NotificationMessage]:
 
 def _title_for_event(event: NotificationEvent) -> str:
     mapping = {
-        "trade_instruction_approved": "Trade Instruction Approved",
-        "trade_execution_result": "Trade Execution Result",
+        "trade_instruction_approved": "Trade Decision Status",
+        "trade_execution_result": "Trade Execution Status",
         "cycle_run_summary": "Cycle Run Summary",
         "state_transition": "State Transition",
         "critical_cycle_failure": "Critical Cycle Failure",
@@ -85,20 +85,28 @@ def _title_for_event(event: NotificationEvent) -> str:
 def _slack_trade_instruction(payload: dict[str, Any], *, prefix: str) -> str:
     ticker = payload.get("ticker", "N/A")
     action = payload.get("action", "N/A")
+    kind = _trade_decision_heading(payload)
     alloc = payload.get("final_allocation_pct") or payload.get("target_allocation_pct")
     qty_display = f"Target: {alloc}% allocation" if alloc is not None else "Target: pending"
     committee = _committee_summary(
         payload.get("moderation_consensus"),
         payload.get("risk_verdict"),
     )
-    reasoning = _excerpt(payload.get("reasoning_summary", ""), 300)
-    return (
-        f"{prefix} [TRADE-INSTRUCTION]\n"
-        f"Ticker: {ticker} | Action: {action} | {qty_display}\n"
-        f"Committee: {committee}\n"
-        f"Conviction: {payload.get('conviction', 'N/A')}\n"
-        f"Reasoning: {reasoning or 'N/A'}"
+    reason = _human_reason(
+        payload.get("reason_code"),
+        fallback=payload.get("reason_detail") or payload.get("reasoning_summary", ""),
+        context=payload,
     )
+    lines = [
+        f"{prefix} [{kind}]",
+        f"Ticker: {ticker} | Action: {action} | {qty_display}",
+        f"Account: {payload.get('account_label', 'N/A')}",
+        f"Committee: {committee}",
+        f"Conviction: {payload.get('conviction', 'N/A')}",
+    ]
+    if reason:
+        lines.append(f"Reason: {reason}")
+    return "\n".join(lines)
 
 
 def _slack_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
@@ -108,23 +116,30 @@ def _slack_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
     qty_display = qty if qty is not None else "N/A"
     execution_status = _display_exec_status(payload.get("execution_status"))
     stop_status = _display_stop_status(payload.get("stop_loss_status"))
+    heading = _trade_execution_heading(payload)
     committee = _committee_summary(
         payload.get("moderation_consensus"),
         payload.get("risk_verdict"),
     )
     reasoning = _excerpt(payload.get("reasoning_summary", ""), 250)
-    error_msg = _excerpt(payload.get("error_message", ""), 150)
+    reason = _human_reason(
+        payload.get("reason_code") or payload.get("error_message"),
+        fallback=payload.get("reason_detail") or payload.get("error_message", ""),
+        context=payload,
+    )
     stop_loss_error = _excerpt(payload.get("stop_loss_error", ""), 150)
     lines = [
-        f"{prefix} [TRADE-EXECUTION]",
+        f"{prefix} [{heading}]",
         f"Ticker: {ticker} | Action: {action} | Qty: {qty_display} | Status: {execution_status}",
-        f"Value GBP: {payload.get('value_gbp', 'N/A')} | Stop-loss: {stop_status} ({payload.get('stop_loss_pct', 'N/A')}%)",
-        f"Committee: {committee}",
+        f"Account: {payload.get('account_label', 'N/A')} | Value GBP: {payload.get('value_gbp', 'N/A')}",
+        f"Stop-loss: {stop_status} ({payload.get('stop_loss_pct', 'N/A')}%) | Committee: {committee}",
     ]
-    if reasoning:
-        lines.append(f"Reasoning: {reasoning}")
-    if error_msg:
-        lines.append(f"Error: {error_msg}")
+    if payload.get("order_type"):
+        lines.insert(2, f"Order type: {payload.get('order_type')}")
+    if reason:
+        lines.append(f"Reason: {reason}")
+    elif reasoning:
+        lines.append(f"Reason: {reasoning}")
     if stop_loss_error:
         lines.append(f"Stop-loss error: {stop_loss_error}")
     return "\n".join(lines)
@@ -155,14 +170,24 @@ def _slack_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
         f"Cycle: {payload.get('cycle_id', 'N/A')} | Status: {payload.get('status', 'N/A')} | "
         f"Dry-run: {payload.get('dry_run', False)}"
     )
+    lines.append(f"Account: {payload.get('account_label', 'N/A')}")
     counts = payload.get("counts", {})
+    lines.append(
+        "Overview: "
+        f"broker_orders_submitted={counts.get('broker_orders_submitted', 0)} "
+        f"stop_adjustments={counts.get('stop_adjustments', 0)} "
+        f"queued_buys={counts.get('queued', 0)} "
+        f"skipped_buys={counts.get('skipped', 0)}"
+    )
     lines.append(
         "Counts: "
         f"decisions={counts.get('decisions', 0)} "
         f"trades={counts.get('trades', 0)} "
         f"rejected={counts.get('rejected', 0)} "
         f"queued={counts.get('queued', 0)} "
-        f"filtered={counts.get('filtered', 0)}"
+        f"filtered={counts.get('filtered', 0)} "
+        f"risk_rejected={counts.get('risk_rejected', 0)} "
+        f"strategy_deferred={counts.get('strategy_deferred', 0)}"
     )
     lines.append("")
     lines.append("Ticker rows:")
@@ -175,29 +200,30 @@ def _slack_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
     for d in rows_for_slack:
         ticker = d.get("ticker", "N/A")
         action = d.get("action", "N/A")
-        stage = d.get("stage", "N/A")
+        status_label = d.get("notification_status") or _summary_status_label(d)
         qty = d.get("quantity")
         qty_display = qty if qty is not None else "queued"
         exec_status = _display_exec_status(d.get("execution_status"))
         stop_status = _display_stop_status(d.get("stop_loss_status"))
         committee = _committee_summary(d.get("moderation_consensus"), d.get("risk_verdict"))
-        reasoning = _excerpt(d.get("strategy_reasoning_excerpt", ""), 120)
-        stage_reason = d.get("stage_reason", "")
-        lines.append(
-            f"- {ticker} {action} | Qty: {qty_display} | Stage: {stage} | {committee}"
+        reason = d.get("notification_reason") or _human_reason(
+            d.get("reason_code"),
+            fallback=d.get("stage_reason") or d.get("strategy_reasoning_excerpt", ""),
+            context=d,
         )
-        lines.append(f"  Conv={d.get('conviction', 'N/A')} exec={exec_status} stop={stop_status}")
-        if stage_reason and stage in ("opportunity_queue", "opportunity_filtered"):
-            lines.append(f"  Reason: {stage_reason}")
-            if d.get("uov_ewma") is not None or d.get("uov_z") is not None:
-                uov_parts = []
-                if d.get("uov_ewma") is not None:
-                    uov_parts.append(f"uov_ewma={d['uov_ewma']}")
-                if d.get("uov_z") is not None:
-                    uov_parts.append(f"uov_z={d['uov_z']}")
-                lines.append(f"  UOV: {', '.join(uov_parts)}")
-        if reasoning:
-            lines.append(f"  Reasoning: {reasoning}")
+        lines.append(
+            f"- {ticker} | {status_label} | Action: {action} | Qty: {qty_display}"
+        )
+        lines.append(f"  Conv={d.get('conviction', 'N/A')} exec={exec_status} stop={stop_status} | {committee}")
+        if reason:
+            lines.append(f"  Reason: {reason}")
+        if d.get("uov_ewma") is not None or d.get("uov_z") is not None:
+            uov_parts = []
+            if d.get("uov_ewma") is not None:
+                uov_parts.append(f"uov_ewma={d['uov_ewma']}")
+            if d.get("uov_z") is not None:
+                uov_parts.append(f"uov_z={d['uov_z']}")
+            lines.append(f"  UOV: {', '.join(uov_parts)}")
 
     if hold_count > 0 and non_hold_rows:
         lines.append(f"- (trimmed {hold_count} HOLD rows; see email for full detail)")
@@ -207,25 +233,31 @@ def _slack_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
 
 def _email_trade_instruction(payload: dict[str, Any], *, prefix: str) -> str:
     return (
-        f"{prefix} Trade Instruction Approved\n"
+        f"{prefix} Trade Decision Status\n"
         f"Timestamp UTC: {payload.get('occurred_at', 'N/A')}\n"
         f"Cycle: {payload.get('cycle_id', 'N/A')}\n"
         f"Dry-run: {payload.get('dry_run', False)}\n\n"
         f"Ticker: {payload.get('ticker', 'N/A')}\n"
         f"Action: {payload.get('action', 'N/A')}\n"
+        f"Account: {payload.get('account_label', 'N/A')}\n"
+        f"Notification kind: {payload.get('notification_kind', 'N/A')}\n"
         f"Target Allocation %: {payload.get('target_allocation_pct', 'N/A')}\n"
         f"Final Allocation %: {payload.get('final_allocation_pct', 'N/A')}\n"
         f"Conviction: {payload.get('conviction', 'N/A')}\n"
         f"Moderation: {payload.get('moderation_consensus', 'N/A')}\n"
         f"Risk: {payload.get('risk_verdict', 'N/A')}\n"
-        f"Reasoning: {payload.get('reasoning_summary', '')}\n"
+        f"Reason: {_human_reason(payload.get('reason_code'), fallback=payload.get('reason_detail') or payload.get('reasoning_summary', ''), context=payload)}\n"
     )
 
 
 def _email_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
     execution_status = _display_exec_status(payload.get("execution_status"))
     stop_status = _display_stop_status(payload.get("stop_loss_status"))
-    error_line = payload.get("error_message") or ""
+    error_line = _human_reason(
+        payload.get("reason_code") or payload.get("error_message"),
+        fallback=payload.get("reason_detail") or payload.get("error_message") or "",
+        context=payload,
+    )
     stop_loss_error = payload.get("stop_loss_error") or ""
     if stop_loss_error:
         error_section = f"Error: {error_line}\nStop-loss error: {stop_loss_error}" if error_line else f"Stop-loss error: {stop_loss_error}"
@@ -238,12 +270,16 @@ def _email_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
         f"Dry-run: {payload.get('dry_run', False)}\n\n"
         f"Ticker: {payload.get('ticker', 'N/A')}\n"
         f"Action: {payload.get('action', 'N/A')}\n"
+        f"Account: {payload.get('account_label', 'N/A')}\n"
+        f"Notification kind: {payload.get('notification_kind', 'N/A')}\n"
+        f"Order type: {payload.get('order_type', 'market')}\n"
         f"Status: {execution_status}\n"
         f"Quantity: {payload.get('quantity', 'N/A')}\n"
         f"Price: {payload.get('price', 'N/A')}\n"
         f"Value GBP: {payload.get('value_gbp', 'N/A')}\n"
         f"Stop-loss %: {payload.get('stop_loss_pct', 'N/A')}\n"
         f"Stop-loss status: {stop_status}\n"
+        f"Execution note: {payload.get('execution_note', 'N/A')}\n"
         f"{error_section}\n"
     )
 
@@ -278,15 +314,21 @@ def _email_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
     lines.append(f"Cycle ID: {payload.get('cycle_id', 'N/A')}")
     lines.append(f"Status: {payload.get('status', 'N/A')}")
     lines.append(f"Dry-run: {payload.get('dry_run', False)}")
+    lines.append(f"Account: {payload.get('account_label', 'N/A')}")
 
     counts = payload.get("counts", {})
     lines.append("")
     lines.append("Counts")
     lines.append(f"- Decisions: {counts.get('decisions', 0)}")
     lines.append(f"- Trades: {counts.get('trades', 0)}")
+    lines.append(f"- Broker orders submitted: {counts.get('broker_orders_submitted', 0)}")
+    lines.append(f"- Stop adjustments: {counts.get('stop_adjustments', 0)}")
     lines.append(f"- Rejected: {counts.get('rejected', 0)}")
     lines.append(f"- Queued: {counts.get('queued', 0)}")
     lines.append(f"- Filtered: {counts.get('filtered', 0)}")
+    lines.append(f"- Skipped: {counts.get('skipped', 0)}")
+    lines.append(f"- Risk rejected: {counts.get('risk_rejected', 0)}")
+    lines.append(f"- Strategy deferred: {counts.get('strategy_deferred', 0)}")
 
     decisions = payload.get("decisions", [])
     if not decisions:
@@ -298,9 +340,14 @@ def _email_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
     for idx, decision in enumerate(decisions, start=1):
         lines.append("")
         lines.append(f"{idx}. {decision.get('ticker', 'N/A')} {decision.get('action', 'N/A')}")
-        lines.append(f"   Stage: {decision.get('stage', 'N/A')}")
-        if decision.get("stage_reason"):
-            lines.append(f"   Reason: {decision.get('stage_reason')}")
+        lines.append(f"   Status: {decision.get('notification_status') or _summary_status_label(decision)}")
+        reason = decision.get("notification_reason") or _human_reason(
+            decision.get("reason_code"),
+            fallback=decision.get("stage_reason") or decision.get("strategy_reasoning_excerpt", ""),
+            context=decision,
+        )
+        if reason:
+            lines.append(f"   Reason: {reason}")
         if decision.get("stage") in ("opportunity_queue", "opportunity_filtered") and (
             decision.get("uov_ewma") is not None or decision.get("uov_z") is not None
         ):
@@ -516,6 +563,105 @@ def _severity_prefix(severity: str) -> str:
     if sev == "warning":
         return "⚠️ WARN"
     return "ℹ️ INFO"
+
+
+def _trade_decision_heading(payload: dict[str, Any]) -> str:
+    kind = str(payload.get("notification_kind", "")).strip().lower()
+    return {
+        "buy_queued": "BUY-QUEUED",
+        "buy_skipped": "BUY-SKIPPED",
+        "risk_rejected": "RISK-REJECTED",
+    }.get(kind, "TRADE-DECISION")
+
+
+def _trade_execution_heading(payload: dict[str, Any]) -> str:
+    kind = str(payload.get("notification_kind", "")).strip().lower()
+    if kind:
+        return {
+            "order_submitted": "ORDER-SUBMITTED",
+            "buy_skipped": "BUY-SKIPPED",
+            "order_skipped": "ORDER-SKIPPED",
+            "order_failed": "ORDER-FAILED",
+        }.get(kind, "TRADE-EXECUTION")
+    status = str(payload.get("execution_status", "")).strip().lower()
+    if status in {"filled", "pending", "dry_run", "placed"}:
+        return "ORDER-SUBMITTED"
+    if status == "skipped":
+        return "BUY-SKIPPED" if str(payload.get("action", "")).upper() == "BUY" else "ORDER-SKIPPED"
+    if status == "failed":
+        return "ORDER-FAILED"
+    return "TRADE-EXECUTION"
+
+
+def _summary_status_label(decision: dict[str, Any]) -> str:
+    status = str(decision.get("execution_status", "")).strip().lower()
+    stage = str(decision.get("stage", "")).strip().lower()
+    if status in {"filled", "pending", "dry_run", "placed"}:
+        return "Submitted"
+    if status == "skipped" or stage in {"execution_skipped", "cash_floor_guard"}:
+        return "Skipped"
+    if status == "failed":
+        return "Rejected"
+    if stage == "opportunity_queue":
+        return "Queued for next cycle"
+    if stage == "opportunity_filtered":
+        return "Filtered out"
+    if stage in {"risk", "risk_reject"}:
+        return "Rejected"
+    if stage in {"strategy_hold", "strategy_queued"}:
+        return "Held"
+    return "Held"
+
+
+def _human_reason(reason_code: Any, *, fallback: Any = "", context: dict[str, Any] | None = None) -> str:
+    code = str(reason_code or "").strip().lower()
+    ctx = context or {}
+    if code == "below_min_order_value":
+        value = ctx.get("value_gbp")
+        min_order = ctx.get("min_order_gbp", 500)
+        try:
+            return f"Target order value GBP {float(value):.2f} is below minimum GBP {float(min_order):.2f}"
+        except (TypeError, ValueError):
+            return "Target order value is below the configured minimum order size"
+    if code == "no_price":
+        return "No current price was available, so no order was sent"
+    if code == "target_already_met":
+        return "Target allocation was already met, so no order was sent"
+    if code == "below_min_reduce_pct":
+        threshold = ctx.get("min_reduce_pct")
+        if threshold is not None:
+            return f"Requested trim is below the minimum reduce threshold of {threshold}%"
+        return "Requested trim is below the minimum reduce threshold"
+    if code == "awaiting_promotion":
+        return "Approved buy is queued until it survives a second cycle"
+    if code == "capacity_gated":
+        return "Approved buy is queued because there is no slot or cash available this cycle"
+    if code == "below_immediate":
+        return "Approved buy stayed in the queue because it is below the immediate execution threshold"
+    if code == "below_queue":
+        return "Candidate was filtered out because its UOV score is below the queue threshold"
+    if code == "queue_expired":
+        return "Candidate was removed from the queue after exceeding the queue lifetime"
+    if code == "no_longer_eligible":
+        return "Candidate was removed from the queue because it no longer qualified"
+    if code == "cash_floor_guard":
+        return "No order was sent because available cash would have fallen below the cash floor"
+    if code == "reduce_guardrail_no_gain_or_risk":
+        return "Held instead of reducing because there is no significant gain or portfolio risk breach"
+    if code == "take_profit_full_sell":
+        return "Full SELL triggered because unrealized gain reached the take-profit threshold"
+    if code == "small_position_cleanup":
+        return "Full SELL triggered because the holding fell below the small-position cleanup threshold"
+    if code == "risk_rejected":
+        text = _excerpt(fallback, 180)
+        return text or "Risk rules rejected this trade"
+    if code == "execution_failed":
+        text = _excerpt(fallback, 180)
+        return text or "Order submission failed"
+    if code == "strategy_deferred":
+        text = _excerpt(fallback, 160)
+        return text or "Strategy deferred this ticker before moderation and risk review"
+    return _excerpt(fallback, 180)
 
 
 def _committee_summary(moderation: Any, risk: Any) -> str:

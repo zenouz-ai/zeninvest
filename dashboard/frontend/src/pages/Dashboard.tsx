@@ -163,6 +163,7 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
     if (summary.stocks_screened != null) return summary.stocks_screened
     return null
   }, [latestRun?.summary_json])
+  const latestRunCounts = latestRun?.summary_json?.counts
   const monthlySummary = monthlyResult.data
   const latestOrders = ordersResult.data ?? []
   const runFeed = runFeedResult.data ?? []
@@ -527,6 +528,24 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
                 <span>{latestRunReviewedCount ?? 0} reviewed</span>
                 <span className="text-terminal-text-dim">·</span>
                 <span>{latestRun.summary_json.num_trades ?? 0} trades</span>
+                {latestRunCounts?.broker_orders_submitted != null && (
+                  <>
+                    <span className="text-terminal-text-dim">·</span>
+                    <span>{latestRunCounts.broker_orders_submitted} broker orders</span>
+                  </>
+                )}
+                {latestRunCounts?.queued != null && latestRunCounts.queued > 0 && (
+                  <>
+                    <span className="text-terminal-text-dim">·</span>
+                    <span>{latestRunCounts.queued} queued</span>
+                  </>
+                )}
+                {latestRunCounts?.skipped != null && latestRunCounts.skipped > 0 && (
+                  <>
+                    <span className="text-terminal-text-dim">·</span>
+                    <span>{latestRunCounts.skipped} skipped</span>
+                  </>
+                )}
                 <span className="text-terminal-text-dim">·</span>
                 <span>{latestRun.summary_json.num_rejected ?? 0} rejected</span>
                 {latestRun.summary_json.duration_seconds != null && (

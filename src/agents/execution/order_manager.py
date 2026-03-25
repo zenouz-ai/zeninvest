@@ -353,6 +353,15 @@ class OrderManager:
             quantity_override: When set, use this quantity directly instead of calculating
                 from target_amount_gbp. Used by Slack trade commands with explicit share count.
         """
+        if action == "BUY" and quantity_override is None:
+            min_order = float(self.settings.min_order_value_gbp)
+            if 0 < target_amount_gbp < min_order:
+                logger.info(
+                    f"Upgrading BUY {ticker} target from £{target_amount_gbp:.2f} "
+                    f"to minimum order £{min_order:.2f}"
+                )
+                target_amount_gbp = min_order
+
         if quantity_override is not None and quantity_override > 0:
             quantity = quantity_override
         else:

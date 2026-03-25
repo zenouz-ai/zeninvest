@@ -17,13 +17,19 @@ def _cycle_event() -> NotificationEvent:
             "cycle_id": "cycle_x",
             "status": "completed",
             "dry_run": True,
+            "account_label": "practice/demo",
             "occurred_at": datetime.now(timezone.utc).isoformat(),
             "counts": {
                 "decisions": 2,
                 "trades": 1,
+                "broker_orders_submitted": 1,
+                "stop_adjustments": 0,
                 "rejected": 1,
                 "queued": 0,
                 "filtered": 0,
+                "skipped": 0,
+                "risk_rejected": 0,
+                "strategy_deferred": 1,
             },
             "decisions": [
                 {
@@ -100,7 +106,9 @@ def test_render_cycle_summary_slack_contains_rows() -> None:
     text = messages[0].body
     assert "ℹ️ INFO" in text
     assert "[CYCLE-SUMMARY]" in text
-    assert "AAPL_US_EQ BUY" in text
+    assert "AAPL_US_EQ |" in text
+    assert "Submitted" in text
+    assert "Account: practice/demo" in text
     assert "TSLA_US_EQ HOLD" not in text
     assert "trimmed 1 HOLD rows" in text
 
@@ -140,16 +148,54 @@ def test_render_cycle_summary_email_uses_readable_non_execution_labels() -> None
 def test_render_cycle_summary_slack_includes_queued_reason() -> None:
     event = _cycle_event()
     event.payload["decisions"][0]["stage"] = "opportunity_queue"
+    event.payload["decisions"][0]["execution_status"] = None
     event.payload["decisions"][0]["quantity"] = None
     event.payload["decisions"][0]["stage_reason"] = "Awaiting 2nd cycle for promotion"
 
     messages = render_event(event, "slack", slack_max_chars=10_000)
     text = messages[0].body
 
-    assert "AAPL_US_EQ BUY" in text
-    assert "queued" in text
-    assert "opportunity_queue" in text
+    assert "AAPL_US_EQ |" in text
+    assert "Queued for next cycle" in text
     assert "Awaiting 2nd cycle for promotion" in text
+
+
+def _trade_instruction_event() -> NotificationEvent:
+    return NotificationEvent(
+        event_id="evt-instr-1",
+        event_type="trade_instruction_approved",
+        occurred_at=datetime.now(timezone.utc),
+        cycle_id="cycle_20260325_120008",
+        severity="info",
+        source="orchestrator",
+        dedup_key="instr-dedup-1",
+        payload={
+            "cycle_id": "cycle_20260325_120008",
+            "dry_run": False,
+            "ticker": "EQNR_US_EQ",
+            "action": "BUY",
+            "target_allocation_pct": 5.0,
+            "final_allocation_pct": 5.0,
+            "conviction": 77,
+            "moderation_consensus": "APPROVED",
+            "risk_verdict": "APPROVE",
+            "reasoning_summary": "Energy winner with supportive catalyst.",
+            "notification_kind": "buy_queued",
+            "reason_code": "awaiting_promotion",
+            "reason_detail": "Awaiting 2nd cycle for promotion",
+            "account_label": "practice/demo",
+            "occurred_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+def test_trade_instruction_email_includes_account_kind_and_reason() -> None:
+    messages = render_event(_trade_instruction_event(), "email")
+    body = messages[0].body
+
+    assert "Account: practice/demo" in body
+    assert "Notification kind: buy_queued" in body
+    assert "queued until it survives a second cycle" in body
 
 
 def _trade_execution_event(
@@ -182,9 +228,23 @@ def _trade_execution_event(
             "reasoning_summary": "Strong fundamentals",
             "moderation_consensus": "APPROVED",
             "risk_verdict": "APPROVE",
+            "notification_kind": "order_submitted",
+            "account_label": "practice/demo",
+            "execution_note": "buy_upgraded_to_min_order_value",
             "occurred_at": datetime.now(timezone.utc).isoformat(),
         },
     )
+
+
+def test_trade_execution_email_includes_account_kind_and_execution_note() -> None:
+    event = _trade_execution_event()
+
+    messages = render_event(event, "email")
+    body = messages[0].body
+
+    assert "Account: practice/demo" in body
+    assert "Notification kind: order_submitted" in body
+    assert "Execution note: buy_upgraded_to_min_order_value" in body
 
 
 def test_trade_execution_email_includes_stop_loss_error_when_failed() -> None:
@@ -224,6 +284,38 @@ def test_trade_execution_no_error_when_stop_loss_placed() -> None:
 
     assert "Stop-loss status: placed" in body
     assert "Stop-loss error:" not in body
+
+
+def test_trade_execution_slack_labels_expected_buy_skip_clearly() -> None:
+    event = _trade_execution_event(
+        error_message="below_min_order_value",
+    )
+    event.severity = "info"
+    event.payload["execution_status"] = "skipped"
+    event.payload["reason_code"] = "below_min_order_value"
+    event.payload["notification_kind"] = "buy_skipped"
+    event.payload["value_gbp"] = 224.95
+    event.payload["account_label"] = "practice/demo"
+
+    messages = render_event(event, "slack")
+    text = messages[0].body
+
+    assert "[BUY-SKIPPED]" in text
+    assert "practice/demo" in text
+    assert "below minimum" in text
+
+
+def test_trade_execution_slack_humanizes_take_profit_reason() -> None:
+    event = _trade_execution_event()
+    event.payload["action"] = "SELL"
+    event.payload["reason_code"] = "take_profit_full_sell"
+    event.payload["reason_detail"] = "Deterministic take-profit SELL"
+
+    messages = render_event(event, "slack")
+    text = messages[0].body
+
+    assert "[ORDER-SUBMITTED]" in text
+    assert "take-profit threshold" in text
 
 
 # --- Slack Trade Command Reply Formatters (US-1.6) ---

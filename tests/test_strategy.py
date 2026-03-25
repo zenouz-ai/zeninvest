@@ -12,7 +12,7 @@ from src.agents.strategy.momentum import evaluate_momentum
 from src.agents.strategy.mean_reversion import evaluate_mean_reversion
 from src.agents.strategy.factor import calculate_factor_score, rank_by_factor
 from src.agents.strategy.engine import StrategyEngine
-from src.agents.strategy.prompts import build_strategy_prompt
+from src.agents.strategy.prompts import STRATEGY_SYSTEM_PROMPT, build_strategy_prompt
 
 
 @pytest.fixture
@@ -217,6 +217,12 @@ class TestFactor:
 
 
 class TestPrompts:
+    def test_active_swing_prompt_language(self):
+        assert "active swing trader" in STRATEGY_SYSTEM_PROMPT.lower()
+        assert "2-15 trading days" in STRATEGY_SYSTEM_PROMPT
+        assert "underpriced-with-catalyst setups" in STRATEGY_SYSTEM_PROMPT
+        assert "SELL vs REDUCE" in STRATEGY_SYSTEM_PROMPT
+
     def test_build_prompt(self):
         prompt = build_strategy_prompt(
             portfolio_state="Cash: £5000, Positions: AAPL 10%",
@@ -242,6 +248,7 @@ class TestPrompts:
         assert "AAPL" in prompt
         assert "BULL" in prompt
         assert "50.0%" in prompt
+        assert '"expected_holding_period": "2-15 trading days"' in prompt
 
     def test_cautious_mode_prompt(self):
         prompt = build_strategy_prompt(

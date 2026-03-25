@@ -1,7 +1,7 @@
 ---
 tags: [dashboard, frontend, api]
 status: current
-last_updated: 2026-03-24
+last_updated: 2026-03-25
 ---
 
 # Dashboard System
@@ -33,7 +33,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **10 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
+| **React Frontend** | Complete | **10 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. Active swing follow-through (2026-03-25): Dashboard home can now surface richer cycle summary counts such as broker orders submitted, queued buys, and skipped buys when present in the run summary payload, and the roadmap data includes the delivered Active Swing Rotation story. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -125,11 +125,11 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│              React Frontend (Vite) — 8 pages                                  │
-│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┬────────┐ │
-│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Costs  │ Roadmap│ │
-│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │        │ & Arch │ │
-│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┴────────┘ │
+│              React Frontend (Vite) — 10 pages                                 │
+│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┬────────┬────────┬─────────┐ │
+│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Commands│ World  │ Costs  │ Roadmap │ │
+│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │         │ News   │        │ & Arch  │ │
+│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┴────────┴────────┴─────────┘ │
 │       Recharts / TanStack Table / ZENOUZ.ai brand (dark #06060a, violet→cyan→emerald)    │
 └──────────────────┬──────────────────────────────────────────────────────────┘
                     │ REST + Server-Sent Events (SSE)
@@ -183,6 +183,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 **Last cycle summary (always visible):**
 - Full-width card showing cycle_id, timestamp, status, stocks screened, stocks reviewed, trades, rejections, duration
+- When present in `summary_json.counts`, the home card also surfaces richer operator counts such as broker orders submitted, queued buys, and skipped buys
 - Never collapsed — primary "what just happened" signal
 
 **Two-column layout:**

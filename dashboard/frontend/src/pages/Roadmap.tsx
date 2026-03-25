@@ -141,10 +141,11 @@ const ARCHITECTURE_STAGES: ArchitectureStage[] = [
       {
         title: 'Strategy engine',
         subtitle: 'Synthesis over quant, macro, research, and portfolio state',
-        stories: ['US-2.1', 'US-2.2', 'US-3.1'],
+        stories: ['US-2.1', 'US-2.2', 'US-3.1', 'US-3.6'],
         bullets: [
           'Claude produces action, conviction, reasoning, and target sizing',
           'Risk-parity overlay can adjust BUY sizing before execution',
+          'Active swing posture favors underpriced-with-catalyst entries over slower 6-12 month allocations',
         ],
       },
       {
@@ -176,18 +177,20 @@ const ARCHITECTURE_STAGES: ArchitectureStage[] = [
       {
         title: 'Opportunity + order management',
         subtitle: 'Queueing, execution, stops, and post-trade lifecycle',
-        stories: ['US-3.4', 'US-3.5', 'US-7.2', 'US-7.3'],
+        stories: ['US-3.4', 'US-3.5', 'US-3.6', 'US-7.2', 'US-7.3'],
         bullets: [
           'UOV ranking selects what moves first; order manager owns T212 interactions',
+          'Deterministic take-profit exits and small-position cleanup sit alongside broker execution and stop handling',
           'Stop-loss manager, pending status mapping, and reconciliation protect state consistency',
         ],
       },
       {
         title: 'Slack + dashboard surfaces',
         subtitle: 'Human operator layer for commands, review, and monitoring',
-        stories: ['US-1.6', 'US-1.7', 'US-1.9'],
+        stories: ['US-1.6', 'US-1.7', 'US-1.9', 'US-3.6'],
         bullets: [
           'Always-on Slack listener, Commands page, live dashboard APIs, and SSE activity feed',
+          'Notifications now distinguish submitted, queued, skipped, filtered, and deterministic exit outcomes in plain English',
           'ChatSession and ChatTurn provide the skeleton for future conversational workflows',
         ],
       },
@@ -225,6 +228,7 @@ function sortPipeline(a: Milestone, b: Milestone): number {
   const aHorizon = HORIZON_ORDER.indexOf(a.horizon ?? 'Later')
   const bHorizon = HORIZON_ORDER.indexOf(b.horizon ?? 'Later')
   if (aHorizon !== bHorizon) return aHorizon - bHorizon
+  if ((a.activeOrder ?? 999) !== (b.activeOrder ?? 999)) return (a.activeOrder ?? 999) - (b.activeOrder ?? 999)
   if ((a.timeboxDays ?? 2) !== (b.timeboxDays ?? 2)) return (a.timeboxDays ?? 2) - (b.timeboxDays ?? 2)
   return a.id.localeCompare(b.id)
 }
@@ -302,6 +306,12 @@ function clampTextStyle(lines: number) {
   }
 }
 
+function materialityPillVariant(materiality?: Milestone['materiality']): PillVariant {
+  if (materiality === 'crucial') return 'alert'
+  if (materiality === 'useful') return 'warning'
+  return 'dim'
+}
+
 function TimelineMilestoneCard({
   milestone,
   column,
@@ -327,9 +337,20 @@ function TimelineMilestoneCard({
           <span className="font-mono text-xs uppercase tracking-[0.18em] text-accent">{milestone.id}</span>
           <StatusPill label={column} variant={timelinePillVariant(column)} dot />
           <StatusPill label={milestone.priority} variant={priorityPillVariant(milestone.priority)} />
+          {milestone.materiality && (
+            <StatusPill
+              label={milestone.materiality}
+              variant={materialityPillVariant(milestone.materiality)}
+            />
+          )}
         </div>
 
         <div className="space-y-2">
+          {milestone.track && (
+            <div className="text-[11px] font-mono uppercase tracking-[0.18em] text-terminal-text-dim">
+              {milestone.track}
+            </div>
+          )}
           <h3
             className="break-words text-lg font-semibold leading-tight text-terminal-text"
             style={{ fontFamily: 'var(--font-heading)' }}
@@ -359,6 +380,14 @@ function TimelineMilestoneCard({
             {milestone.architectureComponents?.length ?? 0} component{milestone.architectureComponents?.length === 1 ? '' : 's'}
           </span>
         </div>
+        {milestone.activeOrder && (
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+            <span>Active order</span>
+            <span className="min-w-0 text-right font-medium text-terminal-text break-words">
+              #{milestone.activeOrder}
+            </span>
+          </div>
+        )}
       </div>
     </article>
   )
@@ -462,8 +491,16 @@ function MilestoneDetailCard({ milestone }: { milestone: Milestone }) {
             <StatusPill label={statusLabel} variant={timelinePillVariant(statusLabel === 'Planned' ? 'Later' : statusLabel as TimelineColumnId)} dot />
             <StatusPill label={milestone.priority} variant={priorityPillVariant(milestone.priority)} />
             <StatusPill label={milestone.effort} variant="dim" />
+            {milestone.materiality && (
+              <StatusPill label={milestone.materiality} variant={materialityPillVariant(milestone.materiality)} />
+            )}
           </div>
           <div>
+            {milestone.track && (
+              <div className="mb-2 text-[11px] font-mono uppercase tracking-[0.18em] text-terminal-text-dim">
+                {milestone.track}
+              </div>
+            )}
             <h3
               className="text-lg font-semibold leading-tight text-terminal-text"
               style={{ fontFamily: 'var(--font-heading)' }}
@@ -483,8 +520,32 @@ function MilestoneDetailCard({ milestone }: { milestone: Milestone }) {
             <span>Components</span>
             <span className="font-medium text-terminal-text">{milestone.architectureComponents?.length ?? 0}</span>
           </div>
+          {milestone.activeOrder && (
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span>Active order</span>
+              <span className="font-medium text-terminal-text">#{milestone.activeOrder}</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {milestone.successCriteria && (
+        <div className="mt-4 rounded-2xl border border-terminal-border/70 bg-terminal-bg/45 p-3 text-sm text-terminal-text-dim">
+          <span className="font-medium text-terminal-text">Success:</span> {milestone.successCriteria}
+        </div>
+      )}
+
+      {milestone.gate && (
+        <div className="mt-4 rounded-2xl border border-warning/40 bg-warning/10 p-3 text-sm text-terminal-text-dim">
+          <span className="font-medium text-terminal-text">Gate:</span> {milestone.gate}
+        </div>
+      )}
+
+      {milestone.legacyIds && milestone.legacyIds.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-terminal-border/70 bg-terminal-bg/45 p-3 text-sm text-terminal-text-dim">
+          <span className="font-medium text-terminal-text">Track bundle:</span> {milestone.legacyIds.join(', ')}
+        </div>
+      )}
 
       {milestone.architectureComponents && milestone.architectureComponents.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
@@ -872,6 +933,14 @@ export default function Roadmap() {
           <div className="text-2xl font-bold text-accent">{PROGRESS_PCT}%</div>
         </div>
       </div>
+
+      <Panel className="animate-none">
+        <SectionHeader
+          eyebrow="Canonical Planning Rules"
+          title="Safety first, evidence before adaptation"
+          subtitle="Production posture and operator safety come first. Execution quality lands before any live-account posture change. Data-gated learning stories stay parked until trade_outcomes support them."
+        />
+      </Panel>
 
       <div className="flex gap-1 border-b border-terminal-border">
         <button

@@ -11,7 +11,7 @@ NotificationStatus = Literal["sent", "failed", "skipped", "deduped"]
 
 
 class TradeInstructionPayload(TypedDict, total=False):
-    """Payload shape for trade_instruction_approved events."""
+    """Payload shape for trade decision status events routed on the instruction channel."""
 
     cycle_id: str
     dry_run: bool
@@ -23,6 +23,10 @@ class TradeInstructionPayload(TypedDict, total=False):
     moderation_consensus: str | None
     risk_verdict: str | None
     reasoning_summary: str
+    notification_kind: str
+    reason_code: str | None
+    reason_detail: str | None
+    account_label: str | None
     occurred_at: str
 
 
@@ -41,9 +45,17 @@ class TradeExecutionPayload(TypedDict, total=False):
     stop_loss_status: str | None
     stop_loss_error: str | None
     error_message: str | None
+    reason_code: str | None
+    reason_detail: str | None
     reasoning_summary: str
     moderation_consensus: str | None
     risk_verdict: str | None
+    order_type: str | None
+    notification_kind: str | None
+    account_label: str | None
+    min_order_gbp: float | None
+    min_reduce_pct: float | None
+    execution_note: str | None
     occurred_at: str
 
 

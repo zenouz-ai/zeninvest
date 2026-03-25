@@ -1,6 +1,6 @@
 /**
  * Project roadmap data for the Roadmap & Architecture dashboard tab.
- * Dates derived from git log. See docs/SOPHISTICATION_ROADMAP.md for full specs.
+ * docs/SOPHISTICATION_ROADMAP.md is the canonical planning source of truth.
  */
 
 export const PROJECT_START = '2026-02-22'
@@ -19,35 +19,34 @@ export const TOPICS = [
 export type Topic = (typeof TOPICS)[number]
 
 export type MilestoneStatus = 'delivered' | 'pipeline'
-
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
-export type Effort = 'S' | 'M' | 'L' | 'M–L'
+export type Effort = 'S' | 'M' | 'L' | 'M-L'
 export type Horizon = 'Next' | 'Soon' | 'Later'
 export type TimeboxDays = 1 | 2
+export type Materiality = 'crucial' | 'useful' | 'optional'
 
 export interface Milestone {
   id: string
   name: string
   topic: Topic
   status: MilestoneStatus
-  /** ISO date string; only for delivered items */
   start?: string
-  /** ISO date string; only for delivered items; pipeline items have no end */
   end?: string
   effort: Effort
   priority: Priority
-  /** Planning bucket for pipeline items */
   horizon?: Horizon
-  /** Typical delivery timebox for pipeline items */
   timeboxDays?: TimeboxDays
   description: string
-  /** Architecture component(s) this US maps to */
   architectureComponents?: string[]
+  track?: string
+  legacyIds?: string[]
+  materiality?: Materiality
+  gate?: string
+  activeOrder?: number
+  successCriteria?: string
 }
 
-/** All milestones from SOPHISTICATION_ROADMAP shown in dashboard roadmap */
 export const MILESTONES: Milestone[] = [
-  // --- Delivered ---
   {
     id: 'US-1.1',
     name: 'Performance Tracking',
@@ -57,8 +56,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-05',
     effort: 'M',
     priority: 'P0',
-    description:
-      'Daily Sharpe/Sortino/drawdown, win rate by strategy, alpha vs benchmark; performance_metrics table, CLI --performance',
+    description: 'Daily Sharpe, Sortino, drawdown, alpha, and trade-count reporting via performance_metrics.',
     architectureComponents: ['Orchestrator', 'Reporting'],
   },
   {
@@ -70,8 +68,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-05',
     effort: 'M',
     priority: 'P0',
-    description:
-      'Link each BUY to SELL/REDUCE; per-trade P&L, conviction linkage; trade_outcomes table',
+    description: 'BUY-to-SELL linkage, per-trade P&L, and conviction-linked trade_outcomes.',
     architectureComponents: ['Orchestrator', 'Reporting'],
   },
   {
@@ -83,8 +80,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-02-24',
     effort: 'S',
     priority: 'P1',
-    description:
-      'CLI --dashboard: portfolio value, Sharpe, win rate, costs, active positions',
+    description: 'CLI summary for portfolio value, Sharpe, win rate, costs, and active positions.',
     architectureComponents: ['Orchestrator', 'Reporting'],
   },
   {
@@ -96,8 +92,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-10',
     effort: 'S',
     priority: 'P0',
-    description:
-      'Docker on VPS, health check, backup, first cycle logged',
+    description: 'Dockerized VPS deployment with first cycle logged, health checks, and backups.',
     architectureComponents: ['Docker', 'VPS', 'systemd'],
   },
   {
@@ -109,9 +104,23 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-04',
     effort: 'M',
     priority: 'P1',
-    description:
-      'Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; notification_logs',
+    description: 'Slack and email alerts for trades, cycle summaries, failures, and state transitions.',
     architectureComponents: ['Notifications', 'Orchestrator'],
+  },
+  {
+    id: 'US-1.6',
+    name: 'Slack NL Trade Commands',
+    topic: 'Foundation',
+    status: 'delivered',
+    start: '2026-03-23',
+    end: '2026-03-23',
+    effort: 'M-L',
+    priority: 'P1',
+    description: 'Regex-first Slack commands with confirmation flow, force override audit trail, and dashboard command history.',
+    architectureComponents: ['Notifications', 'Orchestrator', 'Dashboard'],
+    track: 'Conversational Operator Workflow',
+    legacyIds: ['US-1.6', 'US-1.9'],
+    materiality: 'crucial',
   },
   {
     id: 'US-1.7',
@@ -122,9 +131,32 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-10',
     effort: 'L',
     priority: 'P1',
-    description:
-      'Web dashboard: 10 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Commands, World News, Costs, Roadmap & Architecture); full API',
+    description: 'Ten-page dashboard with full operator API surface and live SSE activity feed.',
     architectureComponents: ['Dashboard', 'FastAPI', 'React'],
+  },
+  {
+    id: 'US-1.7.3',
+    name: 'Dashboard Visual Design System',
+    topic: 'Foundation',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-22',
+    effort: 'M',
+    priority: 'P1',
+    description: 'Shared dashboard design tokens, glass-dark primitives, typography system, and navigation polish.',
+    architectureComponents: ['Dashboard', 'React'],
+  },
+  {
+    id: 'US-1.7.4',
+    name: 'World News Dashboard Tab',
+    topic: 'Foundation',
+    status: 'delivered',
+    start: '2026-03-23',
+    end: '2026-03-23',
+    effort: 'M',
+    priority: 'P1',
+    description: 'Persistent macro headline archive, regime timeline, and action-plan visibility in the dashboard.',
+    architectureComponents: ['Dashboard', 'Data Fetcher', 'React'],
   },
   {
     id: 'US-1.8',
@@ -135,9 +167,121 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-10',
     effort: 'S',
     priority: 'P1',
-    description:
-      'Deploy dashboard to VPS via Docker; access via VPS IP',
+    description: 'Multi-stage dashboard Docker deployment sharing the same SQLite and journal volumes.',
     architectureComponents: ['Dashboard', 'Docker'],
+  },
+  {
+    id: 'US-1.9',
+    name: 'Conversational Trading Workflow MVP',
+    topic: 'Foundation',
+    status: 'pipeline',
+    effort: 'L',
+    priority: 'P1',
+    horizon: 'Next',
+    timeboxDays: 2,
+    description: 'Skeleton is delivered; this week scopes the real MVP: multi-turn continuity, explicit confirmations, risk-veto preservation, and auditable session flow across Slack and dashboard.',
+    architectureComponents: ['Notifications', 'Dashboard', 'Orchestrator'],
+    track: 'Conversational Operator Workflow',
+    legacyIds: ['US-1.6', 'US-1.9'],
+    materiality: 'crucial',
+    activeOrder: 3,
+    successCriteria: 'Real operator workflow MVP, not just CRUD skeleton.',
+  },
+  {
+    id: 'US-2.1',
+    name: 'Conviction Calibration',
+    topic: 'Calibration',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P1',
+    horizon: 'Later',
+    timeboxDays: 2,
+    description: 'Calibrate conviction to observed win-rate bands and use it for size only when evidence is statistically meaningful.',
+    architectureComponents: ['Strategy Engine', 'Reporting'],
+    materiality: 'useful',
+    gate: 'Need at least 30 trade_outcomes in each conviction band before activation.',
+  },
+  {
+    id: 'US-2.2',
+    name: 'Dynamic Strategy Weighting',
+    topic: 'Calibration',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P1',
+    horizon: 'Later',
+    timeboxDays: 2,
+    description: 'Adjust momentum, mean-reversion, and factor weights using observed hit rates once enough trades exist.',
+    architectureComponents: ['Strategy Engine'],
+    materiality: 'useful',
+    gate: 'Need roughly 50 trade_outcomes and calibration baselines before shipping.',
+  },
+  {
+    id: 'US-2.3',
+    name: 'Moderator Effectiveness',
+    topic: 'Calibration',
+    status: 'pipeline',
+    effort: 'S',
+    priority: 'P2',
+    horizon: 'Later',
+    timeboxDays: 1,
+    description: 'Measure moderator value-add versus opportunity cost and spend so committee complexity earns its keep.',
+    architectureComponents: ['Moderation Panel', 'Reporting'],
+    materiality: 'useful',
+    gate: 'Need enough trade_outcomes and moderation_logs to compare avoided losses versus missed gains.',
+  },
+  {
+    id: 'US-2.4',
+    name: 'Nemotron Integration Investigation',
+    topic: 'Calibration',
+    status: 'pipeline',
+    effort: 'S',
+    priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 1,
+    description: 'Optional model investigation for moderator diversification; not on the critical path while production posture gaps remain.',
+    architectureComponents: ['Moderation Panel', 'Risk Agent'],
+    materiality: 'optional',
+  },
+  {
+    id: 'US-3.1',
+    name: 'Risk-Parity Position Sizing',
+    topic: 'Portfolio & Risk',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-22',
+    effort: 'M',
+    priority: 'P1',
+    description: 'Inverse-volatility BUY overlay with audit fields and delta-to-target execution.',
+    architectureComponents: ['Strategy Engine', 'Risk Agent', 'Order Manager', 'Dashboard'],
+  },
+  {
+    id: 'US-3.2',
+    name: 'Enhanced Regime Detection',
+    topic: 'Portfolio & Risk',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 2,
+    description: 'Continuous regime scoring is useful later, but it is not as urgent as safety, execution quality, or entry-quality guards.',
+    architectureComponents: ['Data Fetcher', 'Strategy Engine'],
+    materiality: 'optional',
+  },
+  {
+    id: 'US-3.3',
+    name: 'Correlation-Aware Screening',
+    topic: 'Portfolio & Risk',
+    status: 'pipeline',
+    effort: 'S',
+    priority: 'P2',
+    horizon: 'Soon',
+    timeboxDays: 1,
+    description: 'Flag candidates that duplicate portfolio exposure before they reach the committee.',
+    architectureComponents: ['Risk Agent', 'Universe Screener'],
+    track: 'Entry Quality Guards',
+    legacyIds: ['US-4.2', 'US-3.3'],
+    materiality: 'useful',
+    successCriteria: 'High-correlation entries are surfaced before they become duplicate risk.',
   },
   {
     id: 'US-3.4',
@@ -148,8 +292,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-03',
     effort: 'M',
     priority: 'P1',
-    description:
-      'Hybrid score, z-score, EWMA; ranked BUY execution; queue + swap suggestions',
+    description: 'UOV scoring, ranked BUY queueing, EWMA persistence, and swap suggestions.',
     architectureComponents: ['UOV Scorer', 'Opportunity Optimizer'],
   },
   {
@@ -161,22 +304,61 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-06',
     effort: 'M',
     priority: 'P1',
-    description:
-      'Stop-loss (GTC) after BUY, ATR reassessment, trailing stops, limit dip-buy orders',
+    description: 'Stop-loss placement, ATR reassessment, trailing stops, and limit dip-buy entries.',
     architectureComponents: ['Order Manager', 'Stop-Loss Manager'],
   },
   {
-    id: 'US-5.1',
-    name: 'Backtesting Engine',
-    topic: 'Validation',
+    id: 'US-3.6',
+    name: 'Active Swing Rotation Strategy',
+    topic: 'Portfolio & Risk',
     status: 'delivered',
-    start: '2026-03-05',
-    end: '2026-03-06',
-    effort: 'L',
+    start: '2026-03-25',
+    end: '2026-03-25',
+    effort: 'M',
     priority: 'P1',
-    description:
-      'Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache',
-    architectureComponents: ['Backtesting module'],
+    description: 'Active swing posture with more permissive BUY throughput, deterministic +15% take-profit SELLs, final-cycle small-position cleanup, and updated operator notifications.',
+    architectureComponents: ['Strategy Engine', 'Opportunity Optimizer', 'Risk Agent', 'Order Manager', 'Notifications', 'Dashboard'],
+  },
+  {
+    id: 'US-4.1',
+    name: 'Volume-Weighted Signals',
+    topic: 'Signals',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-22',
+    effort: 'S',
+    priority: 'P2',
+    description: 'OBV and 20-day volume ratio added to indicators, scoring, and moderation context.',
+    architectureComponents: ['Data Fetcher', 'Strategy Engine', 'Moderation Panel'],
+  },
+  {
+    id: 'US-4.2',
+    name: 'Earnings Calendar Integration',
+    topic: 'Signals',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P2',
+    horizon: 'Soon',
+    timeboxDays: 2,
+    description: 'Add earnings-date awareness so the system avoids obvious pre-earnings risk and can reason about post-earnings drift.',
+    architectureComponents: ['Data Fetcher', 'Strategy Engine'],
+    track: 'Entry Quality Guards',
+    legacyIds: ['US-4.2', 'US-3.3'],
+    materiality: 'useful',
+    successCriteria: 'Imminent earnings risk is visible before a BUY reaches execution.',
+  },
+  {
+    id: 'US-4.3',
+    name: 'Sector Rotation Signal',
+    topic: 'Signals',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 1,
+    description: 'Sector rotation remains a valid idea, but it is lower leverage than current execution and operator workflow work.',
+    architectureComponents: ['Data Fetcher', 'Universe Screener'],
+    materiality: 'optional',
   },
   {
     id: 'US-4.4',
@@ -187,9 +369,85 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-13',
     effort: 'L',
     priority: 'P1',
-    description:
-      '5 tools (web_search, news_search, sector_search, sec_search, macro_search); all 3 members (Strategy, GPT-4o Skeptic, Gemini Risk) have tool-use loops; shared pipeline-wide budget (35/cycle); Brave primary, Tavily fallback; 37 unit tests',
+    description: 'Shared research tool-use loops for strategy and moderation with caching, budgets, and full audit logs.',
     architectureComponents: ['Strategy Engine', 'Moderation Panel', 'Research Executor'],
+  },
+  {
+    id: 'US-4.5',
+    name: 'Proactive Macro News Intelligence',
+    topic: 'Signals',
+    status: 'delivered',
+    start: '2026-03-22',
+    end: '2026-03-23',
+    effort: 'L',
+    priority: 'P1',
+    description: 'Scheduled macro scans, persisted regime state, signal logs, and action-plan context injection.',
+    architectureComponents: ['Data Fetcher', 'Scheduler', 'Strategy Engine', 'Risk Agent'],
+  },
+  {
+    id: 'US-5.1',
+    name: 'Backtesting Engine',
+    topic: 'Validation',
+    status: 'delivered',
+    start: '2026-03-05',
+    end: '2026-03-06',
+    effort: 'L',
+    priority: 'P1',
+    description: 'Historical replay, paper broker, walk-forward, and promotion reporting with cached yfinance data.',
+    architectureComponents: ['Backtesting module'],
+  },
+  {
+    id: 'US-5.2',
+    name: 'Parameter Sensitivity',
+    topic: 'Validation',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 2,
+    description: 'Sensitivity harness is valuable later, but it follows after this week’s higher-leverage shipping work.',
+    architectureComponents: ['Backtesting module'],
+    materiality: 'optional',
+  },
+  {
+    id: 'US-6.1',
+    name: 'ML Trade Scoring (Investigation)',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'L',
+    priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 2,
+    description: 'Potentially useful long-term, but materially premature before more trade data and execution telemetry exist.',
+    architectureComponents: ['Strategy Engine', 'Future ML layer'],
+    materiality: 'optional',
+    gate: 'Needs far more trade_outcomes and baseline execution-quality data.',
+  },
+  {
+    id: 'US-6.2',
+    name: 'Journal Embeddings',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 1,
+    description: 'Interesting retrieval aid, but not critical while core safety and workflow milestones remain open.',
+    architectureComponents: ['Reporting', 'Future ML layer'],
+    materiality: 'optional',
+  },
+  {
+    id: 'US-6.3',
+    name: 'RL Investigation',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P3',
+    horizon: 'Later',
+    timeboxDays: 1,
+    description: 'Document only after more conventional, auditable improvements are exhausted.',
+    architectureComponents: ['Future ML layer'],
+    materiality: 'optional',
   },
   {
     id: 'US-7.0',
@@ -200,8 +458,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-20',
     effort: 'M',
     priority: 'P0',
-    description:
-      '34 findings (3C+6H+12M+13L). Phase 1: no-retry on POST/DELETE, write-before-execute, liquidate_all status mapping, stop atomicity, parse-failure safety, session leaks. Phase 2: committed cash tracking, cycle timeout, exception safety. 12 of 34 fixed.',
+    description: 'Initial critical audit remediation across execution safety, retry semantics, and crash consistency.',
     architectureComponents: ['Order Manager', 'Execution', 'Risk Agent', 'Orchestrator'],
   },
   {
@@ -213,8 +470,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-20',
     effort: 'M',
     priority: 'P0',
-    description:
-      '27 findings (5C+7H+9M+6L). All Critical+High fixed: MODIFY verdicts as conditional AGREE, CAUTION 25% allocation reduction, conviction/allocation clamping, Gemini score bounds, orphaned "submitting" sync, ticker dedup. 36 new tests.',
+    description: 'Critical and high-severity moderation, parsing, and decision-flow bugs fixed with regression coverage.',
     architectureComponents: ['Strategy Engine', 'Moderation Panel', 'Order Manager', 'Orchestrator'],
   },
   {
@@ -226,8 +482,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-21',
     effort: 'M',
     priority: 'P0',
-    description:
-      '18 findings (3C+7W+8I). Phase 1: scheduler max_instances=1, resume warnings. Phase 2: trade_without_stop alert, OpportunityQueue QUEUED→EXECUTING→EXECUTED lifecycle, portfolio re-query before BUY, decision chain integrity check. 18 new tests. 12 invariants verified.',
+    description: 'Scheduler, queue lifecycle, decision-chain integrity, and crash-safety hardening from formal verification review.',
     architectureComponents: ['Scheduler', 'Orchestrator', 'Opportunity Optimizer', 'Notifications'],
   },
   {
@@ -239,75 +494,20 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-21',
     effort: 'S',
     priority: 'P0',
-    description:
-      'Session-based operator auth, explicit /api/public/* read-only routes, secure cookies, and protected operator tabs backed by backend login',
+    description: 'Session-based operator auth, secure cookies, and explicit public/private API split.',
     architectureComponents: ['Dashboard', 'FastAPI'],
   },
   {
-    id: 'US-1.7.3',
-    name: 'Dashboard Visual Design System',
-    topic: 'Foundation',
+    id: 'US-7.4',
+    name: 'Integration Test Coverage',
+    topic: 'Hardening',
     status: 'delivered',
     start: '2026-03-22',
     end: '2026-03-22',
     effort: 'M',
     priority: 'P1',
-    description:
-      'Syne heading font, full CSS token system (--color-*, --shadow-*, --radius-*, --transition-*), glass-dark panels, 72px violet grid, brand gradient violet→cyan→emerald, blurred nav, pill active state, 4 shared primitives (Panel, MetricCard, StatusPill, SectionHeader)',
-    architectureComponents: ['Dashboard', 'React'],
-  },
-  {
-    id: 'US-4.5',
-    name: 'Proactive Macro News Intelligence',
-    topic: 'Signals',
-    status: 'delivered',
-    start: '2026-03-22',
-    end: '2026-03-23',
-    effort: 'L',
-    priority: 'P1',
-    description:
-      'Daily scheduled macro_scan (06:00 UTC), persisted MacroState (regime/confidence/top_signals/action_plan) + MacroSignalLog audit trail, deterministic regime derivation (RISK_ON/RISK_OFF/NEUTRAL) with optional Claude-backed second-order reasoning, cycle-time injection into strategy prompt and moderation market context, 48h staleness guard, 25 tests',
-    architectureComponents: ['Data Fetcher', 'Scheduler', 'Strategy Engine', 'Risk Agent'],
-  },
-  {
-    id: 'US-1.7.4',
-    name: 'World News Dashboard Tab',
-    topic: 'Foundation',
-    status: 'delivered',
-    start: '2026-03-23',
-    end: '2026-03-23',
-    effort: 'M',
-    priority: 'P1',
-    description:
-      'Persistent MacroHeadline archive with keyword-based categorisation (fed, rates, trade, earnings, inflation, jobs, gdp, market), 5 REST endpoints (/api/macro/*), World News page with regime card, regime timeline, expandable headline feed with category filters, action plan section, sector snapshot. Compact macro conditions bar on Dashboard Home. No LLMs/Brave/Tavily required — uses existing Finnhub + AV data. 23 new tests.',
-    architectureComponents: ['Dashboard', 'Data Fetcher', 'React'],
-  },
-  // --- Pipeline ---
-  {
-    id: 'US-1.6',
-    name: 'Slack NL Trade Commands',
-    topic: 'Foundation',
-    status: 'delivered',
-    start: '2026-03-23',
-    end: '2026-03-23',
-    effort: 'M–L',
-    priority: 'P1',
-    description:
-      'Inbound Slack trade commands via Socket Mode: regex-first NL parser (BUY/SELL/REVIEW + ticker/company name + quantity/amount), single-ticker pipeline with user intent override, moderation reviewing the final user action/size, real large-order confirmation gate, force buy/sell to bypass explicit moderation/risk blocks (force/override/! prefix, logged as OVERRIDDEN), FX-aware GBP sizing for explicit amount orders on foreign listings, CommandGateway, persisted response_message audit trail, graceful shutdown, CLI entry point, and always-on Docker slack-listener service. Dashboard Commands page with stats, filters, expandable audit rows. Focused US-1.6/US-1.9 regression suite: 117 passing tests.',
-    architectureComponents: ['Notifications', 'Orchestrator', 'Dashboard'],
-  },
-  {
-    id: 'US-1.9',
-    name: 'Conversational Trading Workflow',
-    topic: 'Foundation',
-    status: 'delivered',
-    start: '2026-03-23',
-    end: '2026-03-23',
-    effort: 'L',
-    priority: 'P1',
-    description:
-      'Skeleton delivered: ChatSession/ChatTurn DB models, SessionManager CRUD stub, dashboard chat API endpoints, request validation, missing-session 404 handling, and chat-turn FK + unique turn-order protection. Full multi-turn workflow (LLM reasoning, Slack thread continuity, research tools) deferred.',
-    architectureComponents: ['Notifications', 'Dashboard', 'Orchestrator'],
+    description: 'Shared in-memory harness with end-to-end run_cycle, orphan detection, and state transition coverage.',
+    architectureComponents: ['Orchestrator', 'State Machine', 'Testing'],
   },
   {
     id: 'US-7.6',
@@ -318,8 +518,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-24',
     effort: 'M',
     priority: 'P0',
-    description:
-      'Single-instance runtime locks for API/scheduler/Slack/cycle execution, production-safe single-process dashboard entrypoint, bounded dashboard trigger dispatcher, bounded Slack worker pool, lower-overhead SSE polling, separate migration service, and an optional systemd split alongside the current Docker Compose VPS posture.',
+    description: 'Runtime locks, bounded workers, single-process dashboard entrypoint, and migration isolation for small VPS stability.',
     architectureComponents: ['Dashboard', 'Scheduler', 'Notifications', 'Orchestrator', 'Docker', 'systemd'],
   },
   {
@@ -331,204 +530,30 @@ export const MILESTONES: Milestone[] = [
     priority: 'P0',
     horizon: 'Next',
     timeboxDays: 2,
-    description:
-      'Expose the dashboard at https://zeninvest.zenouz.ai via Cloudflare-proxied DNS and Nginx TLS termination; keep public overview anonymous, keep operator routes session-protected, remove public port 8000 exposure, enforce canonical host access, and update deployment/runbook documentation.',
+    description: 'Highest-leverage remaining production posture task: move from public raw :8000 to canonical HTTPS with Cloudflare and Nginx.',
     architectureComponents: ['Dashboard', 'Docker', 'FastAPI', 'Nginx', 'Cloudflare'],
+    track: 'Production Access & Safety',
+    legacyIds: ['US-7.7', 'US-7.5', 'US-7.3', 'US-7.2'],
+    materiality: 'crucial',
+    activeOrder: 1,
+    successCriteria: 'No public raw :8000, canonical HTTPS domain, operator auth works behind proxy.',
   },
   {
-    id: 'US-2.4',
-    name: 'Nemotron Integration Investigation',
-    topic: 'Calibration',
-    status: 'pipeline',
-    effort: 'S',
-    priority: 'P2',
-    horizon: 'Next',
-    timeboxDays: 1,
-    description:
-      'Investigate Nemotron 3 Super as candidate moderator/risk model with smoke tests, shadow comparison, and promotion gates',
-    architectureComponents: ['Moderation Panel', 'Risk Agent'],
-  },
-  {
-    id: 'US-2.1',
-    name: 'Conviction Calibration',
-    topic: 'Calibration',
-    status: 'pipeline',
-    effort: 'M',
-    priority: 'P1',
-    horizon: 'Soon',
-    timeboxDays: 2,
-    description:
-      'Calibration curve: conviction vs win rate; position sizing by calibrated confidence',
-    architectureComponents: ['Strategy Engine'],
-  },
-  {
-    id: 'US-2.2',
-    name: 'Dynamic Strategy Weighting',
-    topic: 'Calibration',
-    status: 'pipeline',
-    effort: 'M',
-    priority: 'P1',
-    horizon: 'Later',
-    timeboxDays: 2,
-    description:
-      'Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap',
-    architectureComponents: ['Strategy Engine'],
-  },
-  {
-    id: 'US-2.3',
-    name: 'Moderator Effectiveness',
-    topic: 'Calibration',
-    status: 'pipeline',
-    effort: 'S',
-    priority: 'P2',
-    horizon: 'Soon',
-    timeboxDays: 1,
-    description:
-      'Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost',
-    architectureComponents: ['Moderation Panel'],
-  },
-  {
-    id: 'US-3.1',
-    name: 'Risk-Parity Position Sizing',
-    topic: 'Portfolio & Risk',
-    status: 'delivered',
-    start: '2026-03-22',
-    end: '2026-03-22',
-    effort: 'M',
-    priority: 'P1',
-    description:
-      '60-day inverse-vol BUY overlay with vol floor + target-vol scaler; persist Claude size vs risk-parity size; BUY execution uses delta-to-target semantics',
-    architectureComponents: ['Strategy Engine', 'Risk Agent', 'Order Manager', 'Dashboard'],
-  },
-  {
-    id: 'US-3.2',
-    name: 'Enhanced Regime Detection',
-    topic: 'Portfolio & Risk',
-    status: 'pipeline',
-    effort: 'M',
-    priority: 'P2',
-    horizon: 'Soon',
-    timeboxDays: 2,
-    description:
-      'Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting',
-    architectureComponents: ['Data Fetcher', 'Strategy Engine'],
-  },
-  {
-    id: 'US-3.3',
-    name: 'Correlation-Aware Screening',
-    topic: 'Portfolio & Risk',
-    status: 'pipeline',
-    effort: 'S',
-    priority: 'P2',
-    horizon: 'Next',
-    timeboxDays: 1,
-    description:
-      'Flag BUY candidates with high avg correlation to portfolio',
-    architectureComponents: ['Risk Agent', 'Universe Screener'],
-  },
-  {
-    id: 'US-4.1',
-    name: 'Volume-Weighted Signals',
-    topic: 'Signals',
-    status: 'delivered',
-    start: '2026-03-22',
-    end: '2026-03-22',
-    effort: 'S',
-    priority: 'P2',
-    description:
-      'OBV + 20-day volume ratio in indicator output; momentum and mean-reversion scoring; moderator context surfaced',
-    architectureComponents: ['Data Fetcher', 'Strategy Engine', 'Moderation Panel'],
-  },
-  {
-    id: 'US-4.2',
-    name: 'Earnings Calendar',
-    topic: 'Signals',
-    status: 'pipeline',
-    effort: 'M',
-    priority: 'P2',
-    horizon: 'Next',
-    timeboxDays: 2,
-    description:
-      'Next earnings date; flag "earnings imminent"; post-earnings drift signal',
-    architectureComponents: ['Data Fetcher'],
-  },
-  {
-    id: 'US-4.3',
-    name: 'Sector Rotation Signal',
-    topic: 'Signals',
-    status: 'pipeline',
-    effort: 'M',
-    priority: 'P3',
-    horizon: 'Later',
-    timeboxDays: 1,
-    description:
-      '11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening',
-    architectureComponents: ['Data Fetcher', 'Universe Screener'],
-  },
-  {
-    id: 'US-5.2',
-    name: 'Parameter Sensitivity',
-    topic: 'Validation',
-    status: 'pipeline',
-    effort: 'M',
-    priority: 'P2',
-    horizon: 'Soon',
-    timeboxDays: 2,
-    description:
-      'Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges',
-    architectureComponents: ['Backtesting module'],
-  },
-  {
-    id: 'US-6.1',
-    name: 'ML Trade Scoring (investigation)',
-    topic: 'ML / Advanced',
-    status: 'pipeline',
-    effort: 'L',
-    priority: 'P2',
-    horizon: 'Soon',
-    timeboxDays: 2,
-    description:
-      'Investigation then (if justified) XGBoost on indicators + fundamentals → forward return',
-    architectureComponents: ['Strategy Engine', 'Future ML layer'],
-  },
-  {
-    id: 'US-6.2',
-    name: 'Journal Embeddings',
-    topic: 'ML / Advanced',
-    status: 'pipeline',
-    effort: 'M',
-    priority: 'P3',
-    horizon: 'Later',
-    timeboxDays: 1,
-    description:
-      'Embeddings for journals; similarity search on new proposals',
-    architectureComponents: ['Reporting', 'Future ML layer'],
-  },
-  {
-    id: 'US-6.3',
-    name: 'RL Investigation',
-    topic: 'ML / Advanced',
-    status: 'pipeline',
-    effort: 'M',
-    priority: 'P3',
-    horizon: 'Later',
-    timeboxDays: 1,
-    description:
-      'Literature + data assessment; decision gate before any implementation',
-    architectureComponents: ['Future ML layer'],
-  },
-  {
-    id: 'US-7.2',
-    name: 'Partial Fill Resubmission',
+    id: 'US-7.5',
+    name: 'Quick Hardening Slice',
     topic: 'Hardening',
     status: 'pipeline',
     effort: 'M',
-    priority: 'P2',
+    priority: 'P0',
     horizon: 'Next',
-    timeboxDays: 1,
-    description:
-      'Detect partial fills and resubmit unfilled remainder in the next cycle',
-    architectureComponents: ['Order Manager', 'Execution'],
+    timeboxDays: 2,
+    description: 'This week ships the highest-value audit leftovers only: market-hours check, HALTED auto-recovery, peak inflation detection, and DB constraints. The broader backlog stays parked.',
+    architectureComponents: ['Orchestrator', 'Order Manager', 'Risk Agent', 'Scheduler'],
+    track: 'Production Access & Safety',
+    legacyIds: ['US-7.7', 'US-7.5', 'US-7.3', 'US-7.2'],
+    materiality: 'crucial',
+    activeOrder: 2,
+    successCriteria: 'Hardening slice shipped with tests and no broader backlog creep.',
   },
   {
     id: 'US-7.3',
@@ -536,38 +561,31 @@ export const MILESTONES: Milestone[] = [
     topic: 'Hardening',
     status: 'pipeline',
     effort: 'M',
-    priority: 'P2',
+    priority: 'P1',
     horizon: 'Soon',
     timeboxDays: 2,
-    description:
-      'Track slippage and improve execution quality with timing and benchmark metrics',
-    architectureComponents: ['Order Manager', 'Reporting'],
+    description: 'First post-8.1 execution-quality track: record decision-time price, slippage, and execution-health metrics before any live-account posture.',
+    architectureComponents: ['Order Manager', 'Reporting', 'Dashboard'],
+    track: 'Execution Quality & Fill Recovery',
+    legacyIds: ['US-7.3', 'US-7.2'],
+    materiality: 'crucial',
+    successCriteria: 'Decision-time price and slippage metrics exist before live trading posture changes.',
   },
   {
-    id: 'US-7.4',
-    name: 'Integration Test Coverage',
-    topic: 'Hardening',
-    status: 'delivered',
-    start: '2026-03-22',
-    end: '2026-03-22',
-    effort: 'M',
-    priority: 'P1',
-    description:
-      'Shared in-memory orchestrator harness; end-to-end run_cycle coverage, orphaned-decision detection, live state transitions, and manual reset recovery',
-    architectureComponents: ['Orchestrator', 'State Machine', 'Testing'],
-  },
-  {
-    id: 'US-7.5',
-    name: 'Remaining Audit Backlog',
+    id: 'US-7.2',
+    name: 'Partial Fill Resubmission',
     topic: 'Hardening',
     status: 'pipeline',
-    effort: 'L',
-    priority: 'P2',
-    horizon: 'Next',
-    timeboxDays: 2,
-    description:
-      'Consolidated backlog: 15 medium/low (agent logic), 22 medium/low (trading system), 7 phase 3+4 (formal verification). Includes HALTED auto-recovery, market hours check, DB constraints, atomic cost budget.',
-    architectureComponents: ['Orchestrator', 'Order Manager', 'Risk Agent', 'Scheduler'],
+    effort: 'S',
+    priority: 'P1',
+    horizon: 'Soon',
+    timeboxDays: 1,
+    description: 'Immediate follow-on to US-7.3: recover unfilled remainder safely once fill telemetry and execution context exist.',
+    architectureComponents: ['Order Manager', 'Execution'],
+    track: 'Execution Quality & Fill Recovery',
+    legacyIds: ['US-7.3', 'US-7.2'],
+    materiality: 'useful',
+    successCriteria: 'Unfilled remainder can be resubmitted safely when the thesis still holds.',
   },
   {
     id: 'US-8.1',
@@ -578,13 +596,17 @@ export const MILESTONES: Milestone[] = [
     priority: 'P0',
     horizon: 'Next',
     timeboxDays: 2,
-    description:
-      'Remove nested repo, clean git remotes, add MIT LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GitHub issue/PR templates, and GitHub Actions CI (pytest + mypy). Prerequisite for zenouz-ai/zeninvest going public.',
+    description: 'Repo hygiene, legal docs, community templates, and CI so the project can be made public cleanly after this week’s posture and workflow work.',
     architectureComponents: ['CI/CD', 'GitHub Actions'],
+    track: 'Open-Source Launch Readiness',
+    legacyIds: ['US-8.1'],
+    materiality: 'crucial',
+    activeOrder: 4,
+    successCriteria: 'Repo can be made public without legal, contributor, or CI gaps.',
   },
 ]
 
-export const DELIVERED_COUNT = MILESTONES.filter((m) => m.status === 'delivered').length
-export const PIPELINE_COUNT = MILESTONES.filter((m) => m.status === 'pipeline').length
+export const DELIVERED_COUNT = MILESTONES.filter((milestone) => milestone.status === 'delivered').length
+export const PIPELINE_COUNT = MILESTONES.filter((milestone) => milestone.status === 'pipeline').length
 export const TOTAL_COUNT = MILESTONES.length
 export const PROGRESS_PCT = Math.round((DELIVERED_COUNT / TOTAL_COUNT) * 100)

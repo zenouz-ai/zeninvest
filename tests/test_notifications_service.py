@@ -203,6 +203,35 @@ def test_dedup_suppresses_second_send(session_factory) -> None:
         session.close()
 
 
+def test_expected_skip_is_logged_as_info(session_factory) -> None:
+    provider = FakeProvider("slack")
+    service = NotificationService(
+        settings=_settings(enabled=True),
+        session_factory=session_factory,
+        providers={"slack": provider},
+    )
+
+    service.emit_trade_execution_result(
+        cycle_id="c6",
+        payload={
+            "cycle_id": "c6",
+            "ticker": "VIST_US_EQ",
+            "action": "BUY",
+            "execution_status": "skipped",
+            "reason_code": "below_min_order_value",
+            "value_gbp": 224.95,
+        },
+    )
+
+    session = session_factory()
+    try:
+        logs = session.query(NotificationLog).order_by(NotificationLog.id).all()
+        assert len(logs) == 1
+        assert logs[0].severity == "info"
+    finally:
+        session.close()
+
+
 def test_dry_run_suppressed_by_setting(session_factory) -> None:
     s = _settings(enabled=True)
     s._config["notifications"]["include_dry_run_alerts"] = False

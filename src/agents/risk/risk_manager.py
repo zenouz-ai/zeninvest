@@ -466,6 +466,7 @@ class RiskManager:
         cycle_id: str | None = None,
         conviction: int = 0,
         is_losing_position: bool = False,
+        skip_min_holding_period: bool = False,
     ) -> RiskVerdict:
         """Run all risk checks on a proposed trade.
 
@@ -504,15 +505,24 @@ class RiskManager:
             results.append(self.check_min_positions(
                 num_positions, action, conviction=conviction, is_losing_position=is_losing_position,
             ))
-            results.append(
-                self.check_min_holding_period(
-                    ticker=ticker,
-                    action=action,
-                    current_portfolio=current_portfolio,
-                    sector=sector,
-                    sector_allocations=sector_allocations,
+            if skip_min_holding_period:
+                results.append(
+                    RuleResult(
+                        rule_name="min_holding_period",
+                        passed=True,
+                        message="Bypassed minimum holding period for deterministic take-profit exit",
+                    )
                 )
-            )
+            else:
+                results.append(
+                    self.check_min_holding_period(
+                        ticker=ticker,
+                        action=action,
+                        current_portfolio=current_portfolio,
+                        sector=sector,
+                        sector_allocations=sector_allocations,
+                    )
+                )
 
         # Evaluate results
         rules_checked = [r.rule_name for r in results]

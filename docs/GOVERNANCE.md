@@ -201,7 +201,7 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 - **Pending semantics**: `pending` is not always an issue. For `MARKET` orders it means accepted but not yet executed (`NEW`, often outside market hours). For `STOP` orders it usually means a live protective order waiting for trigger price; this can remain pending for multiple days.
 - **FX-aware BUY quantity and value logging**: For `_US_EQ` instruments, BUY quantity is calculated using a GBP-equivalent price (`current_price × GBP/USD scale`) derived from `_compute_position_value_scale()` in the orchestrator. This ensures `floor(target_gbp / price_gbp)` shares are purchased rather than `floor(target_gbp / price_usd)`, preventing ~21% under-allocation. `Order.value_gbp` for BUY remains the GBP target amount. Stop-loss `Order.value_gbp` uses `current_price_gbp` when available for accurate GBP logging. Config: `trading.fx_aware_quantity: true` (default on; falls back to scale=1.0 on empty portfolio).
 - After successful BUY executions (or when status is pending — optimistic placement), the system automatically places a GTC stop-loss order via `OrderManager.place_stop_loss()` using the `stop_loss_pct` from Claude's decision. `StopLossManager.place_missing_stops()` runs each cycle to place stops for positions without one (using `default_stop_loss_pct` when no ATR). This protects against downside risk without requiring manual intervention.
-- The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation. **Min holding period**: Risk blocks REDUCE/SELL on positions held &lt; 24h unless over max_single_stock or max_sector (config: `min_holding_hours_before_reduce`). **Min order value**: BUY/REDUCE/limit paths are skipped when trade value &lt; £500 (config: `min_order_value_gbp`), while for MARKET BUYs the floor check uses the target trade value (pre share flooring) so rounding does not create tiny sub-£500 logged orders. Explicit market SELL decisions and protective stop-loss SELL orders are allowed below the floor to fully exit/protect small holdings. **Residual floor safeguard**: if a REDUCE would leave a position below £500, execution is converted to a full SELL. **Reduction tiers**: REDUCE is rounded to nearest tier (25%, 50%, 70%, 100%); reductions below 25% are skipped unless the residual-floor safeguard triggers (config: `min_reduce_pct_of_position`, `reduce_tiers_pct`).
+- The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation. **Min holding period**: Risk blocks REDUCE/SELL on positions held &lt; 24h unless over max_single_stock or max_sector (config: `min_holding_hours_before_reduce`). **Deterministic take-profit**: when `take_profit_full_sell_pct` is reached (default `15%` unrealized gain), the orchestrator upgrades the position to a full SELL before ordinary SELL/REDUCE handling. This take-profit path may bypass the ordinary 24h minimum-holding rule when `take_profit_allow_before_min_hold` is enabled. **Small-position cleanup**: holdings below `small_position_cleanup_value_gbp` (default `£200`) are liquidated on the configured final intraday cleanup cycle once they are at least `small_position_cleanup_min_holding_hours` old. **Min order value**: MARKET BUY and limit-BUY requests below `min_order_value_gbp` are upgraded to the floor when enough cash remains after the cash-floor guard; otherwise the BUY is skipped. REDUCE still uses `min_order_value_gbp` as a true floor. Explicit market SELL decisions and protective stop-loss SELL orders are allowed below the floor to fully exit/protect small holdings. **Residual floor safeguard**: if a REDUCE would leave a position below £500, execution is converted to a full SELL. **Reduction tiers**: REDUCE is rounded to nearest tier (25%, 50%, 70%, 100%); reductions below 25% are skipped unless the residual-floor safeguard triggers (config: `min_reduce_pct_of_position`, `reduce_tiers_pct`). **Deterministic REDUCE guardrail**: when `reduce_requires_gain_or_risk` is enabled, REDUCE is downgraded to HOLD unless unrealized gain is at least `reduce_min_unrealized_gain_pct` or a max single-stock / sector risk limit is breached.
 
 **Intelligent Order Management**
 
@@ -822,7 +822,10 @@ universe:
   large_cap_min: 10000000000
   mid_cap_min: 2000000000
   small_cap_min: 300000000
-  screening_cooldown_hours: 24    # Hours before re-screening a stock
+  screening_cooldown_hours: 12
+  effective_screening_cooldown_override: 4
+  review_cooldown_days: 2
+  max_reviews_per_30_days: 10
 
 cost_limits:
   anthropic_daily_gbp: 1.00
@@ -834,9 +837,9 @@ cost_limits:
 opportunity:
   enabled: true
   mode: shadow                      # shadow or active
-  immediate_threshold_z: 1.0
-  queue_threshold_z: 0.2
-  queue_ttl_cycles: 3
+  immediate_threshold_z: 0.0
+  queue_threshold_z: -0.15
+  queue_ttl_cycles: 6
   swap_delta_z: 1.0
   ewma_half_life_cycles: 6
   weights: {...}                    # deterministic weighted hybrid features
