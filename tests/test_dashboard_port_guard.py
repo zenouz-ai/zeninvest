@@ -23,6 +23,14 @@ def test_dashboard_health_serves_on_noncanonical_local_port():
     assert response.json() == {"status": "ok"}
 
 
+def test_dashboard_health_head_serves_successfully():
+    client = TestClient(app, base_url="http://127.0.0.1:8000")
+
+    response = client.head("/health")
+
+    assert response.status_code == 200
+
+
 def test_dashboard_spa_route_uses_fallback_without_port_guard():
     client = TestClient(app, base_url="http://127.0.0.1:8001")
 

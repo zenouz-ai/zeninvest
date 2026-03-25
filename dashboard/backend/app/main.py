@@ -123,6 +123,12 @@ async def health():
     return {"status": "ok"}
 
 
+@app.head("/health")
+async def health_head():
+    """HEAD health check for reverse proxies and CLI probes."""
+    return {"status": "ok"}
+
+
 # Serve built frontend (SPA fallback for client-side routing)
 if _FRONTEND_DIST.exists():
     app.mount(

@@ -31,6 +31,10 @@ def _make_app() -> FastAPI:
     async def public_ping():
         return {"public": True}
 
+    @app.get("/api/public/performance/metrics")
+    async def public_performance_metrics():
+        return {"public": True, "scope": "performance"}
+
     @app.get("/api/private")
     async def private_ping(request: Request):
         return {"operator": getattr(request.state, "dashboard_operator", None)}
@@ -68,6 +72,12 @@ class TestDashboardSessionMiddleware:
         resp = client.get("/api/public/ping")
         assert resp.status_code == 200
         assert resp.json() == {"public": True}
+
+    def test_public_performance_namespace_is_public(self, operator_env):
+        client = TestClient(_make_app(), base_url="http://localhost")
+        resp = client.get("/api/public/performance/metrics")
+        assert resp.status_code == 200
+        assert resp.json() == {"public": True, "scope": "performance"}
 
     def test_protected_route_requires_login(self, operator_env):
         client = TestClient(_make_app(), base_url="http://localhost")
