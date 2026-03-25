@@ -12,7 +12,7 @@ The core insight: no single LLM should have unchecked authority over real money.
 
 1. **Data Fetcher** — yfinance (OHLCV + fundamentals), Finnhub (analyst recs, insider sentiment), Alpha Vantage (per-ticker news sentiment, broad market, sector performance). Macro intelligence: S&P 500 sector performance + economic headlines. When intraday mode, Finnhub/AV are deferred to active-review tickers only. Web search fallback (Brave/Tavily) when Finnhub or AV times out.
 
-2. **Universe Screener** — sector-balanced, cap-tiered candidate discovery. ~6900 US equities from T212 seed. 70/20/10% large/mid/small cap. Review vs new buckets (50/50 target). Configurable cooldown. Runs every cycle regardless of state.
+2. **Universe Screener** — sector-balanced, cap-tiered candidate discovery. ~6900 US equities from T212 seed. 70/20/10% large/mid/small cap. Configurable cooldown plus autonomous re-review guardrails: 6-day minimum gap and 5 reviews max per rolling 30 days. Fresh-share is controlled by `uninvestigated_target_pct`. Runs every cycle regardless of state.
 
 3. **Strategy Engine** — three sub-strategies (Momentum 35%, Mean Reversion 30%, Factor 35%) produce rule-based scores. Claude Sonnet synthesises them with company profiles, news sentiment, analyst data, and portfolio state into BUY/SELL/HOLD/REDUCE/QUEUED decisions with conviction scores. When research is enabled, Strategy has a tool-use loop with 5 search tools (capped at 20 calls).
 

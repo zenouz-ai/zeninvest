@@ -485,7 +485,8 @@ Used for batch universe enrichment and Agentic Research. Limits: Brave Search 2,
 | 2026-03-12 | Batch enrichment: Finnhub profile2 + Brave/Tavily+Gemini | `enrich_instruments_batch()` uses Finnhub /stock/profile2 first, Brave Search or Tavily + Gemini when Finnhub fails. Daily 06:00 UTC scheduler job. |
 | 2026-03-12 | Search API limits (Brave, Tavily) | 2,000 calls/month each (config: `search_api_limits`). Logged to `api_logs`; enforced before each call by `search_api_tracker`. |
 | 2026-03-12 | Search API pricing (Section 12.1) | Documented Brave Search ($5/1k, 50 RPS), Brave Answers ($4/1k + tokens, 2 RPS), Tavily ($0.008/credit; $30 for 4k). |
-| 2026-03-12 | Review/new screening buckets | Replaced binary "investigated" with time-based buckets: review = last StrategyDecision in 24–48h ago; new = never or >48h ago. Targets 50% each via `review_window_hours`, `uninvestigated_target_pct`. |
+| 2026-03-12 | Review/new screening buckets | Replaced binary "investigated" with a fresh-vs-repeat split controlled by `uninvestigated_target_pct`. |
+| 2026-03-25 | Autonomous review guardrails | Added ticker-level autonomous review limits: re-review only after `review_cooldown_days` (default 6) and while under `max_reviews_per_30_days` (default 5). Slack-triggered single-ticker reviews bypass the screener gate. |
 | 2026-03-12 | Screening cooldown 24h | Reduced from 48h to enable 60–90 decisions/day with 3 intraday cycles. |
 | 2026-03-12 | Enrichment cascade (yf → Finnhub → AV → BRAVE_ANSWERS) | `enrich_instruments_batch` tries yfinance first (fast, free), then Finnhub, Alpha Vantage OVERVIEW, BRAVE_ANSWERS. Enriches S&P 1500 seed universe. |
 | 2026-03-12 | Web search fallback for analyst/news | When Finnhub analyst or Alpha Vantage ticker sentiment times out/fails, `get_news_sentiment_fallback` (Brave/Tavily) supplies analyst/news snippets. Config: `data_fallback_web_search_enabled`. |

@@ -382,12 +382,14 @@ class Settings:
         return base
 
     @property
-    def review_window_hours(self) -> list[int]:
-        """Review = investigated in this window [min_h, max_h]. E.g. [24, 48] = 24-48h ago."""
-        val = self.universe.get("review_window_hours", [24, 48])
-        if isinstance(val, list) and len(val) >= 2:
-            return [int(val[0]), int(val[1])]
-        return [24, 48]
+    def review_cooldown_days(self) -> int:
+        """Minimum full-day gap before an autonomously reviewed ticker is eligible again."""
+        return int(self.universe.get("review_cooldown_days", 6))
+
+    @property
+    def max_reviews_per_30_days(self) -> int:
+        """Maximum autonomous reviews for a ticker in a rolling 30-day window."""
+        return int(self.universe.get("max_reviews_per_30_days", 5))
 
     @property
     def data_fallback_web_search_enabled(self) -> bool:
@@ -396,7 +398,7 @@ class Settings:
 
     @property
     def uninvestigated_target_pct(self) -> float:
-        """Share of per-cycle candidates from "new" pool (never investigated or >48h ago). Maps to new_share."""
+        """Share of per-cycle candidates from the "new" pool (never reviewed)."""
         return float(self.universe.get("uninvestigated_target_pct", 0.5))
 
     @property

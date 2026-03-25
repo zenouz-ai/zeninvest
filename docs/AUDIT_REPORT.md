@@ -282,7 +282,7 @@ When `cycle_frequency: intraday`, screening uses `get_stock_analysis_lite` (yfin
 - Max candidates: 35 per cycle
 - Cap tiers: 70% large / 20% mid / 10% small
 - Screening cooldown: 12h (overridable)
-- Two pools: **review** (investigated 24-48h ago) and **new** (never/stale), 50/50 target
+- Two pools: **review** (previously reviewed but past the 6-day gap and still below 5 reviews in 30 days) and **new** (never reviewed), with fresh-share controlled by `uninvestigated_target_pct`
 - When pool exhausted: fallback by `last_screened_at ASC` (least recent first)
 - Proactive seed: merge additional instruments when eligible pool < 2× max_candidates
 - Tickers failing yfinance OHLCV flagged `data_available=False` — permanently excluded

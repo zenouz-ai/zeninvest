@@ -59,7 +59,8 @@ def mock_settings():
     settings.small_cap_min = 300_000_000
     settings.screening_cooldown_hours = 72
     settings.effective_screening_cooldown_hours = None  # Use base when None
-    settings.review_window_hours = [24, 48]
+    settings.review_cooldown_days = 6
+    settings.max_reviews_per_30_days = 5
     settings.uninvestigated_target_pct = 0.5
     return settings
 
@@ -221,8 +222,8 @@ class TestDataAvailableFiltering:
         assert "AAPL_US_EQ" not in tickers
 
 
-class TestReviewNewBucketing:
-    """Tests for time-based review (24-48h) vs new (never or >48h) bucketing."""
+class TestReviewEligibilityGuardrails:
+    """Tests for autonomous re-review cooldown and rolling monthly cap."""
 
     def _add_decision(self, session, ticker: str, hours_ago: float):
         """Add a StrategyDecision for ticker at given hours ago."""
@@ -235,19 +236,18 @@ class TestReviewNewBucketing:
         ))
         session.commit()
 
-    def test_review_bucket_includes_24_to_48h_investigated(self, db_session, fetcher):
-        """Tickers investigated 24-48h ago should be in review pool and eligible."""
-        # Screened 80h ago so past 72h cooldown; AAPL investigated 36h ago (review window), MSFT 60h ago (new)
+    def test_recently_reviewed_tickers_are_excluded_until_six_days_pass(self, db_session, fetcher):
+        """Autonomous screening should skip tickers reviewed less than 6 days ago."""
         now = datetime.now(timezone.utc)
-        screened_80h = now - timedelta(hours=80)
-        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_80h)
-        _make_instrument(db_session, "MSFT_US_EQ", "Technology", 2.5e12, last_screened_at=screened_80h)
-        self._add_decision(db_session, "AAPL_US_EQ", 36)  # investigated 36h ago = review (24-48h)
-        self._add_decision(db_session, "MSFT_US_EQ", 60)  # 60h ago = new bucket
+        screened_8d = now - timedelta(days=8)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_8d)
+        _make_instrument(db_session, "MSFT_US_EQ", "Technology", 2.5e12, last_screened_at=screened_8d)
+        self._add_decision(db_session, "AAPL_US_EQ", 5 * 24)
+        self._add_decision(db_session, "MSFT_US_EQ", 7 * 24)
 
         candidates = fetcher.get_screened_universe()
         tickers = {c["ticker"] for c in candidates}
-        assert "AAPL_US_EQ" in tickers
+        assert "AAPL_US_EQ" not in tickers
         assert "MSFT_US_EQ" in tickers
 
     def test_new_bucket_includes_never_investigated(self, db_session, fetcher):
@@ -260,17 +260,33 @@ class TestReviewNewBucketing:
         assert "AAPL_US_EQ" in tickers
         assert "MSFT_US_EQ" in tickers
 
-    def test_new_bucket_includes_over_48h_investigated(self, db_session, fetcher):
-        """Tickers last investigated >48h ago should be in new pool."""
-        # Screened 80h ago so past 72h cooldown; investigated 60h ago = new bucket
+    def test_previously_reviewed_ticker_returns_after_six_days(self, db_session, fetcher):
+        """A previously reviewed ticker should return once the 6-day gap has passed."""
         now = datetime.now(timezone.utc)
-        screened_80h = now - timedelta(hours=80)
-        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_80h)
-        self._add_decision(db_session, "AAPL_US_EQ", 60)
+        screened_8d = now - timedelta(days=8)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_8d)
+        self._add_decision(db_session, "AAPL_US_EQ", 7 * 24)
 
         candidates = fetcher.get_screened_universe()
         tickers = {c["ticker"] for c in candidates}
         assert "AAPL_US_EQ" in tickers
+
+    def test_ticker_with_five_reviews_in_last_30_days_is_excluded(self, db_session, fetcher):
+        """Autonomous screening should cap a ticker at 5 reviews in a rolling 30-day window."""
+        now = datetime.now(timezone.utc)
+        screened_8d = now - timedelta(days=8)
+        _make_instrument(db_session, "AAPL_US_EQ", "Technology", 3e12, last_screened_at=screened_8d)
+        _make_instrument(db_session, "MSFT_US_EQ", "Technology", 2.5e12, last_screened_at=screened_8d)
+
+        for days_ago in (7, 13, 19, 24, 29):
+            self._add_decision(db_session, "AAPL_US_EQ", days_ago * 24)
+        for days_ago in (7, 13, 19, 24):
+            self._add_decision(db_session, "MSFT_US_EQ", days_ago * 24)
+
+        candidates = fetcher.get_screened_universe()
+        tickers = {c["ticker"] for c in candidates}
+        assert "AAPL_US_EQ" not in tickers
+        assert "MSFT_US_EQ" in tickers
 
 
 class TestEffectiveCooldownAndProactiveSeed:

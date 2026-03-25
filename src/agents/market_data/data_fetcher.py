@@ -573,34 +573,14 @@ class DataFetcher:
                 )
                 return self._get_fallback_universe(exclude, total, session, cooldown_cutoff)
 
-            # Last-investigated timestamp per ticker (max of StrategyDecision.timestamp)
-            tickers = [inst.ticker for inst in instruments]
-            last_inv_rows = (
-                session.query(StrategyDecision.ticker, func.max(StrategyDecision.timestamp).label("last_ts"))
-                .filter(StrategyDecision.ticker.in_(tickers))
-                .group_by(StrategyDecision.ticker)
-                .all()
+            review_history = self._get_review_history(
+                session,
+                [inst.ticker for inst in instruments],
             )
-            last_investigated: dict[str, datetime] = {r.ticker: r.last_ts for r in last_inv_rows}
 
-            # Review vs new: review = investigated 24-48h ago; new = never or >48h ago
-            rw = getattr(settings, "review_window_hours", None) or [24, 48]
-            try:
-                min_h, max_h = int(rw[0]), int(rw[1])
-            except (TypeError, IndexError, ValueError):
-                min_h, max_h = 24, 48
-            cutoff_newer = datetime.now(timezone.utc) - timedelta(hours=min_h)
-            cutoff_older = datetime.now(timezone.utc) - timedelta(hours=max_h)
-
-            def _is_review(t: str) -> bool:
-                ts = last_investigated.get(t)
-                if ts is None:
-                    return False
-                if ts.tzinfo is None:
-                    ts = ts.replace(tzinfo=timezone.utc)
-                return cutoff_older <= ts <= cutoff_newer
-
-            # Bucket by market-cap tier and review/new status
+            # Bucket by market-cap tier and review/new status.
+            # "New" = never reviewed; "review" = previously reviewed, but only once the
+            # per-ticker cooldown has expired and the rolling 30-day cap has headroom.
             large_new: list[Instrument] = []
             large_review: list[Instrument] = []
             mid_new: list[Instrument] = []
@@ -611,8 +591,11 @@ class DataFetcher:
             for inst in instruments:
                 if inst.ticker in exclude:
                     continue
+                history = review_history.get(inst.ticker, self._empty_review_history())
+                if not history["eligible"]:
+                    continue
                 cap = inst.market_cap or 0
-                is_review = _is_review(inst.ticker)
+                is_review = not history["is_new"]
                 target_list = None
                 if cap >= settings.large_cap_min:
                     target_list = large_review if is_review else large_new
@@ -648,22 +631,36 @@ class DataFetcher:
                     selected.extend(self._sector_balanced_sample(leftover_new, n - len(selected), settings.candidates_per_sector))
                 return selected[:n]
 
-            # Sample within each tier: 50% new, 50% review (sector-balanced)
+            # Sample within each tier using the configured fresh-vs-review split.
             selected: list[Instrument] = []
             selected.extend(_sample_tier(large_new, large_review, n_large))
             selected.extend(_sample_tier(mid_new, mid_review, n_mid))
             selected.extend(_sample_tier(small_new, small_review, n_small))
 
-            review_count = sum(1 for i in selected if _is_review(i.ticker))
+            if not selected:
+                logger.warning(
+                    "No instruments passed autonomous review limits; retrying via fallback rotation.",
+                )
+                return self._get_fallback_universe(exclude, total, session, cooldown_cutoff)
+
+            review_count = sum(
+                1
+                for i in selected
+                if not review_history.get(i.ticker, self._empty_review_history())["is_new"]
+            )
             new_count = len(selected) - review_count
+            review_cooldown_days = self._review_cooldown_days
+            review_limit = self._max_reviews_per_30_days
 
             logger.info(
-                "Screened universe: %s candidates (large=%s, mid=%s, small=%s, cooldown=%sh, new_share=%.2f)",
+                "Screened universe: %s candidates (large=%s, mid=%s, small=%s, cooldown=%sh, review_gap=%sd, review_cap=%s/30d, new_share=%.2f)",
                 len(selected),
                 n_large,
                 n_mid,
                 n_small,
                 cooldown_hours,
+                review_cooldown_days,
+                review_limit,
                 new_share,
             )
 
@@ -716,6 +713,8 @@ class DataFetcher:
                         "mid_pool": mid_count,
                         "small_pool": small_count,
                         "cooldown_hours": cooldown_hours,
+                        "review_cooldown_days": review_cooldown_days,
+                        "max_reviews_per_30_days": review_limit,
                         "review_count": review_count,
                         "new_count": new_count,
                     }
@@ -772,6 +771,73 @@ class DataFetcher:
             selected.extend(leftover[:remaining])
 
         return selected[:n]
+
+    @property
+    def _review_cooldown_days(self) -> int:
+        return max(0, int(getattr(self.settings, "review_cooldown_days", 6) or 6))
+
+    @property
+    def _max_reviews_per_30_days(self) -> int:
+        return max(1, int(getattr(self.settings, "max_reviews_per_30_days", 5) or 5))
+
+    @staticmethod
+    def _normalize_ts(ts: datetime | None) -> datetime | None:
+        if ts is None:
+            return None
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=timezone.utc)
+        return ts
+
+    @staticmethod
+    def _empty_review_history() -> dict[str, Any]:
+        return {
+            "last_review_at": None,
+            "recent_review_count": 0,
+            "eligible": True,
+            "is_new": True,
+        }
+
+    def _get_review_history(self, session: Any, tickers: list[str]) -> dict[str, dict[str, Any]]:
+        """Return per-ticker review history used for autonomous screening limits."""
+        if not tickers:
+            return {}
+
+        rolling_cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+        last_review_rows = (
+            session.query(StrategyDecision.ticker, func.max(StrategyDecision.timestamp).label("last_ts"))
+            .filter(StrategyDecision.ticker.in_(tickers))
+            .group_by(StrategyDecision.ticker)
+            .all()
+        )
+        recent_review_rows = (
+            session.query(StrategyDecision.ticker, func.count(StrategyDecision.id).label("review_count"))
+            .filter(
+                StrategyDecision.ticker.in_(tickers),
+                StrategyDecision.timestamp >= rolling_cutoff,
+            )
+            .group_by(StrategyDecision.ticker)
+            .all()
+        )
+
+        last_reviews = {row.ticker: self._normalize_ts(row.last_ts) for row in last_review_rows}
+        recent_counts = {row.ticker: int(row.review_count or 0) for row in recent_review_rows}
+        review_cutoff = datetime.now(timezone.utc) - timedelta(days=self._review_cooldown_days)
+        max_reviews = self._max_reviews_per_30_days
+
+        history: dict[str, dict[str, Any]] = {}
+        for ticker in tickers:
+            last_review_at = last_reviews.get(ticker)
+            recent_review_count = recent_counts.get(ticker, 0)
+            eligible = last_review_at is None or (
+                last_review_at <= review_cutoff and recent_review_count < max_reviews
+            )
+            history[ticker] = {
+                "last_review_at": last_review_at,
+                "recent_review_count": recent_review_count,
+                "eligible": eligible,
+                "is_new": last_review_at is None,
+            }
+        return history
 
     def _get_fallback_universe(
         self,
@@ -856,30 +922,12 @@ class DataFetcher:
                 .all()
             )
             if instruments:
-                # Apply exclude and sector-balanced sample; use review/new bucketing same as main path
-                tickers = [inst.ticker for inst in instruments]
-                last_inv_rows = (
-                    session.query(StrategyDecision.ticker, func.max(StrategyDecision.timestamp).label("last_ts"))
-                    .filter(StrategyDecision.ticker.in_(tickers))
-                    .group_by(StrategyDecision.ticker)
-                    .all()
+                # Apply exclude and sector-balanced sample; keep the same autonomous
+                # re-review limits as the main path.
+                review_history = self._get_review_history(
+                    session,
+                    [inst.ticker for inst in instruments],
                 )
-                last_inv = {r.ticker: r.last_ts for r in last_inv_rows}
-                rw = getattr(settings, "review_window_hours", None) or [24, 48]
-                try:
-                    min_h, max_h = int(rw[0]), int(rw[1])
-                except (TypeError, IndexError, ValueError):
-                    min_h, max_h = 24, 48
-                cutoff_newer = datetime.now(timezone.utc) - timedelta(hours=min_h)
-                cutoff_older = datetime.now(timezone.utc) - timedelta(hours=max_h)
-
-                def _is_review(t: str) -> bool:
-                    ts = last_inv.get(t)
-                    if ts is None:
-                        return False
-                    if ts.tzinfo is None:
-                        ts = ts.replace(tzinfo=timezone.utc)
-                    return cutoff_older <= ts <= cutoff_newer
 
                 large_new, large_review = [], []
                 mid_new, mid_review = [], []
@@ -887,8 +935,11 @@ class DataFetcher:
                 for inst in instruments:
                     if inst.ticker in exclude:
                         continue
+                    history = review_history.get(inst.ticker, self._empty_review_history())
+                    if not history["eligible"]:
+                        continue
                     cap = inst.market_cap or 0
-                    is_rev = _is_review(inst.ticker)
+                    is_rev = not history["is_new"]
                     if cap >= settings.large_cap_min:
                         (large_review if is_rev else large_new).append(inst)
                     elif cap >= settings.mid_cap_min:
@@ -922,6 +973,9 @@ class DataFetcher:
                 selected.extend(_sample_tier(large_new, large_review, n_large))
                 selected.extend(_sample_tier(mid_new, mid_review, n_mid))
                 selected.extend(_sample_tier(small_new, small_review, n_small))
+                if not selected:
+                    logger.warning("Fallback universe found no tickers eligible under autonomous review limits.")
+                    return []
                 return [
                     {"ticker": i.ticker, "name": i.name, "sector": i.sector or "Unknown", "market_cap": i.market_cap, "exchange": i.exchange, "currency": i.currency}
                     for i in selected
@@ -939,11 +993,15 @@ class DataFetcher:
             .order_by(Instrument.last_screened_at.asc().nulls_first(), Instrument.market_cap.desc())
             .all()
         )
+        review_history = self._get_review_history(session, [inst.ticker for inst in instruments])
         result = [
             {"ticker": i.ticker, "name": i.name, "sector": i.sector or "Unknown", "market_cap": i.market_cap, "exchange": i.exchange, "currency": i.currency}
             for i in instruments
-            if i.ticker not in exclude
+            if i.ticker not in exclude and review_history.get(i.ticker, self._empty_review_history())["eligible"]
         ]
+        if not result:
+            logger.warning("All fallback candidates are still inside the autonomous review guardrails.")
+            return []
         logger.info(
             "Pool exhausted: using least-recently-screened rotation. Returning %d candidates (pool had %d eligible, excluded %d)",
             len(result[:total]),
