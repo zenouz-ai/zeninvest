@@ -1739,14 +1739,14 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 ## 13. Dashboard VPS Deployment
 
-The web dashboard (activity feed, portfolio, run history, universe, commands, world news, costs, roadmap, and operator controls across 10 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-1.8 delivered; dashboard running on VPS. **Recommended next step:** move to the canonical domain path in `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. **CORS:** configure `dashboard.cors_origins` in `config/settings.yaml` with your production domain (defaults to localhost for local dev).
+The web dashboard (activity feed, portfolio, run history, universe, commands, world news, costs, roadmap, and the authenticated Evolution Planner across 11 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-7.7 delivered in repo: the dashboard app is internal-only on the Docker network and the canonical production entrypoint is `https://zeninvest.zenouz.ai` via Cloudflare + Nginx. **CORS:** configure `dashboard.cors_origins` in `config/settings.yaml` with your production domain if you override defaults; the default posture already includes the canonical HTTPS domain plus localhost dev origins.
 
 ### Access Options
 
 | Option | Access | Notes |
 |--------|--------|-------|
 | **Cloudflare + domain** (recommended) | `https://zeninvest.zenouz.ai` | Canonical HTTPS URL, safe operator login, internal-only origin via Nginx reverse proxy. |
-| **VPS IP** | `http://YOUR_VPS_IP:8000` | Current raw fallback path; operator login over public HTTP is blocked by design. |
+| **VPS IP** | `http://YOUR_VPS_IP:8000` | Rollback/emergency posture only; not part of the target production ingress. |
 | **GitHub Pages** | Not suitable | Frontend must call VPS API; mixed content (HTTPS→HTTP) blocked. |
 
 ### Prerequisites
@@ -1760,13 +1760,14 @@ The web dashboard (activity feed, portfolio, run history, universe, commands, wo
 From the project directory (e.g. `/home/deploy/investment-agent`):
 
 1. Pull latest: `git pull origin main` (or your deployment branch)
-2. Allow firewall (one-time for current raw path): `sudo ufw allow 8000/tcp comment "Dashboard"` then `sudo ufw reload`
-3. Build and run: `docker compose up -d --build` (builds agent from `Dockerfile.agent`, dashboard from `Dockerfile`)
-4. Verify: `curl http://localhost:8000/health` and open the current dashboard path in a browser
+2. Install the Cloudflare Origin CA cert/key at `/home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.crt` and `/home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.key` with restrictive permissions
+3. Update firewall: `sudo ufw allow 80/tcp`, `sudo ufw allow 443/tcp`, `sudo ufw delete allow 8000/tcp`, then `sudo ufw reload`
+4. Build and run: `docker compose up -d --build` (builds agent from `Dockerfile.agent`, dashboard from `Dockerfile`, nginx from `nginx:alpine`)
+5. Verify: `docker compose exec nginx nginx -t`, `docker compose ps`, then open `https://zeninvest.zenouz.ai` in a browser
 
 **To rebuild after updates:** `git pull origin main` then `docker compose up -d --build` (or `docker compose up -d --build dashboard` for dashboard-only, `docker compose up -d --build investment-agent` for agent-only). See [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md#updating--rebuilding-the-dashboard).
 
-**Outcome:** Dashboard is running on VPS. All 10 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Commands, World News, Costs, Roadmap), activity feed (SSE), and API are available on the current raw path, with the planned canonical production target at `https://zeninvest.zenouz.ai`.
+**Outcome:** Dashboard is running on VPS behind Nginx. All 11 pages (Home, Universe, Run History, Portfolio, Opportunity, Order Management, Commands, World News, Costs, Roadmap, Evolution Planner), activity feed (SSE), and API are available on the canonical HTTPS domain `https://zeninvest.zenouz.ai`, while the FastAPI dashboard service remains internal-only on the Docker network.
 
 **Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use the **Dry Run** or **Live Run** buttons on Dashboard Home (Live Run requires confirmation), or `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live) / `... --dry-run` (dry).
 

@@ -1,7 +1,7 @@
 ---
 tags: [architecture, pipeline, database, diagrams]
 status: current
-last_updated: 2026-03-24
+last_updated: 2026-03-25
 ---
 
 # Solution Architecture
@@ -202,7 +202,7 @@ Agent pipeline (scheduler, screener, strategy, moderation, risk, execution, noti
 log_event() --> events_log (non-blocking, fail-open)
     |
     v
-FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
+FastAPI dashboard backend (reads agent SQLite monitoring tables and hosts separate evolution planner workflow tables in the same DB)
     |
     +-- GET /api/runs, /api/runs/diff, /api/status (state, paused)
     +-- GET /api/universe, /api/universe/{ticker}
@@ -219,23 +219,25 @@ FastAPI dashboard backend (reads agent SQLite only; no duplicate tables)
     +-- GET /api/costs/daily, /api/costs/monthly, /api/costs/degradation
     +-- GET /api/api-usage/daily
     +-- GET /api/system/state, POST /api/system/trigger-cycle, pause, resume
+    +-- GET/POST /api/evolution/requests, plan/messages/runs/artifacts, blocked build/deploy approvals
     |
     v
 React frontend (SPA, served by FastAPI when dist/ exists)
     |
-    +-- 10 pages: Dashboard Home (skeleton loading, alert banner, metric cards, positions with sparklines, activity feed), Universe (deep-linkable /universe/:ticker), Run History, Portfolio (sparklines, Force Sell), Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture
-    +-- Nav: primary 4 + "More" dropdown for secondary 6 pages
+    +-- 11 pages: Dashboard Home (skeleton loading, alert banner, metric cards, positions with sparklines, activity feed), Universe (deep-linkable /universe/:ticker), Run History, Portfolio (sparklines, Force Sell), Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture, Evolution Planner
+    +-- Nav: primary 5 + "More" dropdown for secondary 6 pages
     +-- Universe: sortable columns, expandable rows with pipeline waterfall + committee reasoning, responsive column hiding
     +-- Run History: timeline, run diff (new/closed/position changes)
     +-- Portfolio: positions with inline sparklines, P&L chart, sector allocation, mobile card layout
+    +-- Evolution Planner: authenticated operator-only change intake, clarification loop, repo context, validation matrix, and audit trail with planner-only gates
     +-- Components: AlertBanner, Skeleton, Sparkline, PipelineWaterfall, PnlDisplay, FreshnessIndicator, useFocusTrap
 ```
 
-**CORS:** Dashboard API uses configurable CORS origins via `dashboard.cors_origins` in `config/settings.yaml`. Defaults to localhost (`:3000`, `:8000`) when absent. For production, prefer the canonical HTTPS domain (planned: `https://zeninvest.zenouz.ai`) rather than a raw VPS IP. Individual moderators self-check budgets, so the degradation level is primarily for reporting.
+**CORS:** Dashboard API uses configurable CORS origins via `dashboard.cors_origins` in `config/settings.yaml`. Defaults to the canonical HTTPS domain `https://zeninvest.zenouz.ai` plus localhost dev origins when absent. Production should allow the canonical HTTPS domain rather than a raw VPS IP. Individual moderators self-check budgets, so the degradation level is primarily for reporting.
 
-**Authentication (US-7.1):** The dashboard now uses a public/private split. Anonymous read-only routes live under `/api/public/*`. All other `/api/*` routes require operator login and a signed `HttpOnly` session cookie. Operator auth is configured with `DASHBOARD_OPERATOR_USERNAME`, `DASHBOARD_OPERATOR_PASSWORD_HASH`, `DASHBOARD_SESSION_SECRET`, and optional localhost-only `DASHBOARD_INSECURE_DEV_MODE=true`. Operator login is blocked over plain HTTP outside localhost dev mode. The target production posture is HTTPS behind Cloudflare + Nginx on `zeninvest.zenouz.ai`, with the dashboard app kept internal-only behind the reverse proxy. The frontend no longer injects shared secrets at build time or stores dashboard credentials in `localStorage`. Axios and SSE treat `401/403` from protected APIs as a signed-out state. SSE uses `fetch()` + stream parsing with credentials included.
+**Authentication (US-7.1 + US-7.7):** The dashboard uses a public/private split. Anonymous read-only routes live under `/api/public/*`. All other `/api/*` routes require operator login and a signed `HttpOnly` session cookie. Operator auth is configured with `DASHBOARD_OPERATOR_USERNAME`, `DASHBOARD_OPERATOR_PASSWORD_HASH`, `DASHBOARD_SESSION_SECRET`, and optional localhost-only `DASHBOARD_INSECURE_DEV_MODE=true`. Operator login is blocked over plain HTTP outside localhost dev mode. Production ingress is HTTPS behind Cloudflare + Nginx on `zeninvest.zenouz.ai`, with Nginx enforcing canonical host/scheme access and forwarding `X-Forwarded-Proto: https` to the internal-only dashboard app. The frontend no longer injects shared secrets at build time or stores dashboard credentials in `localStorage`. Axios and SSE treat `401/403` from protected APIs as a signed-out state. SSE uses `fetch()` + stream parsing with credentials included.
 
-**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Shared SQLite DB via `./data` volume in Docker. The orchestrator **normalises T212 positions** before saving to `portfolio_snapshots.positions_json` — converting `instrument.ticker` and `walletImpact` (currentValue, unrealizedProfitLoss, totalCost) into flat fields (ticker, value_gbp, pnl_gbp, pnl_pct) for dashboard display. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL when the SPA is same-origin and now polls every 5 seconds to keep idle VPS overhead low. Operator SSE connections use `fetch()` with session cookies; public pages do not receive private event data.
+**Data flow:** Agent writes to `events_log` and `runs`; dashboard reads from existing agent tables (orders, portfolio_snapshots, instruments, strategy_decisions, moderation_logs, risk_decisions, opportunity_score_snapshots, opportunity_queue, trade_outcomes, stop_loss_adjustments, performance_metrics, cost_logs, api_logs, system_state). Zen Evolution Engine uses a **separate dashboard workflow domain** (`evolution_requests`, `evolution_messages`, `evolution_plans`, `evolution_runs`, `evolution_artifacts`, `evolution_approvals`, `evolution_deployments`) so software-change planning does not overload the trading chat/session model. Shared SQLite DB via `./data` volume in Docker. The orchestrator **normalises T212 positions** before saving to `portfolio_snapshots.positions_json` — converting `instrument.ticker` and `walletImpact` (currentValue, unrealizedProfitLoss, totalCost) into flat fields (ticker, value_gbp, pnl_gbp, pnl_pct) for dashboard display. **Run History** displays `runs` table (one row per cycle; scheduler creates Run for scheduled cycles, passes `scheduled_cycle_id` to orchestrator which updates it—no duplicates). **Activity feed (SSE)** uses relative URL when the SPA is same-origin and now polls every 5 seconds to keep idle VPS overhead low. Operator SSE connections use `fetch()` with session cookies; public pages do not receive private event data.
 
 ## Runtime Topology (US-7.6)
 
@@ -244,13 +246,19 @@ The runtime hardening work is deployment-model agnostic. On the current VPS, the
 ```
 docker compose
   |
+  +-- investment-dashboard-nginx
+  |     -> nginx:alpine
+  |     -> public ingress on 80/443
+  |     -> proxies to dashboard:8000
+  |
   +-- investment-agent
   |     -> python -m src.scheduler.scheduler
   |     -> scheduler.lock
   |
   +-- investment-dashboard
-  |     -> python -m dashboard.backend
+  |     -> python -m dashboard.backend.server
   |     -> api.lock
+  |     -> internal-only on compose network port 8000
   |
   +-- investment-slack-listener
         -> python -m src.agents.notifications.slack_trade_listener
@@ -790,7 +798,8 @@ For the full prioritised backlog and detailed user story specifications, see [So
 
 - **Chat & Notifications (US-1.5/1.6)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. Events: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`. **Inbound Slack trade commands (US-1.6):** Socket Mode listener → `CommandGateway` → `SingleTickerRunner` (full data → strategy → moderation → risk pipeline for one ticker). Bot self-message filtering via `auth.test` user_id. REVIEW replies include full per-moderator verdicts (GPT-4o Skeptic + Gemini Risk with scores and reasoning). See [Chat & Commands](CHAT_AND_COMMANDS.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
-- **Dashboard (US-1.7/1.8)** — FastAPI REST API + SSE stream, React frontend (10 pages). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md) and [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md).
+- **Dashboard (US-1.7/1.8 + US-1.10 extension)** — FastAPI REST API + SSE stream, React frontend (11 current pages including the authenticated Evolution Planner workspace). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md), [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md), and [Zen Evolution Engine](ZEN_EVOLUTION_ENGINE.md).
+- **Zen Evolution Engine (US-1.10)** — Separate change-management workflow domain for operator-requested natural-language system changes. Phase 1 is planner-only: scoped plan, risk class, validation matrix, repo context, clarification loop, and auditable blocked build/deploy approvals. See [Zen Evolution Engine](ZEN_EVOLUTION_ENGINE.md).
 - **Agentic Research (US-4.4)** — *Delivered.* All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have tool-use loops with 5 tools (web_search, news_search, sector_search, sec_search, macro_search). Pipeline shares a single ResearchExecutor/ResearchBudget for pipeline-wide cap enforcement. Dashboard displays per-ticker research trail: which member used which tool, queries, results, cache hits, latency, and cost. `GET /api/research/ticker/{ticker}` provides historical research per ticker. Universe table includes a `Research` column. See [Agentic Research](AGENTIC_RESEARCH.md).
 - **Nemotron Integration Investigation (US-2.4)** — *Investigation only.* Candidate risk/moderation model evaluated via smoke testing and shadow-mode comparison before any promotion to live committee roles. See [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md).
 - **Formal Verification (US-7.0 Phase 2)** — Crash safety fixes: OpportunityQueue `queue_status` lifecycle (QUEUED→EXECUTING→EXECUTED) with orphan reconciliation; `trade_without_stop` alert; portfolio re-query before BUY after SELL/REDUCE; decision chain integrity check. See [Formal Verification Audit](FORMAL_VERIFICATION_AUDIT.md).
