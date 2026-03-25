@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **25** · Pipeline **22**
+**At a glance:** Delivered **26** · Pipeline **21**
 
 ### Priority rules
 
@@ -29,10 +29,10 @@ This document tracks every planned and delivered enhancement to the investment a
 
 | Order | Story | Why it matters now | Success criteria |
 |------|-------|--------------------|------------------|
-| 1 | **US-7.7** Dashboard HTTPS Domain & Canonical Access | Highest-leverage production posture fix; app-side HTTPS/session pieces already exist | No public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy |
-| 2 | **US-7.5** Quick Hardening Slice | Fast, material safety wins without opening the full backlog | Hardening slice shipped with tests and no broader backlog creep |
-| 3 | **US-1.9** Conversational Trading Workflow MVP | Turns the delivered skeleton into a real operator workflow | Real operator workflow MVP, not just CRUD skeleton |
-| 4 | **US-8.1** Open-Source Launch Preparation | Repo must be public-ready once posture and workflow work land | Repo can be made public without legal, CI, or contributor-experience gaps |
+| 1 | **US-7.5** Quick Hardening Slice | Fast, material safety wins without opening the full backlog | Hardening slice shipped with tests and no broader backlog creep |
+| 2 | **US-1.9** Conversational Trading Workflow MVP | Turns the delivered skeleton into a real operator workflow | Real operator workflow MVP, not just CRUD skeleton |
+| 3 | **US-8.1** Open-Source Launch Preparation | Repo must be public-ready once posture and workflow work land | Repo can be made public without legal, CI, or contributor-experience gaps |
+| 4 | **US-7.3** Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow work | Slippage becomes measurable before any live-account posture change |
 
 ### Near-term umbrella tracks
 
@@ -88,7 +88,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-7.0b** | Formal Verification Fixes | 18 findings (3C+7W+8I). Phase 1: scheduler `max_instances=1` (concurrent cycle prevention), resume warns HALTED/CAUTIOUS. Phase 2: `trade_without_stop` alert (P2-5), OpportunityQueue `queue_status` lifecycle QUEUED→EXECUTING→EXECUTED + orphan reconciliation (P2-6), portfolio re-query before BUY after SELL/REDUCE (P2-4), decision chain integrity check (P2-3). 18 new tests. 12 invariants verified. See `docs/FORMAL_VERIFICATION_AUDIT.md`. | Crash safety, state machine correctness, DB atomicity | **Delivered** |
 | **US-7.5** | Remaining Audit Backlog | This week only ships the quick hardening slice: market hours check, HALTED auto-recovery, peak inflation detection, and DB CHECK constraints; the wider backlog remains parked under the same story | Material hardening before execution-quality and live-account posture work | **Active now** |
 | **US-7.6** | VPS Runtime Stability & Service Isolation | Single-instance runtime locks for API/scheduler/Slack/cycle execution; bounded manual trigger and Slack worker execution; separate migration service; current Docker Compose production posture plus optional lean systemd split for small VPS operation | Prevents duplicate/runaway processes and keeps idle CPU low on a resource-constrained host | **Delivered** |
-| **US-7.7** | Dashboard HTTPS Domain & Canonical Access | Expose the dashboard at `https://zeninvest.zenouz.ai` via Cloudflare-proxied DNS and Nginx TLS termination; keep public overview anonymous, keep operator routes session-protected, remove public port 8000 exposure, enforce canonical host access, and update deployment/runbook documentation. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. | One safe, canonical public dashboard URL with working operator login over HTTPS | **Active now** |
+| **US-7.7** | Dashboard HTTPS Domain & Canonical Access | Expose the dashboard at `https://zeninvest.zenouz.ai` via Cloudflare-proxied DNS and Nginx TLS termination; keep the anonymous read-only surface limited to Overview, Portfolio, World News, and Roadmap; keep operator routes and trading controls session-protected; remove public port 8000 exposure; enforce canonical host access; and update deployment/runbook documentation. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. | One safe, canonical public dashboard URL with working operator login over HTTPS | **Delivered** |
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Delivered** |
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Useful later, but not more material than current production and operator milestones | **Later / optional** |
@@ -548,7 +548,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 **Detailed plan:** `docs/DASHBOARD.md`.
 
-**Status (2026-03-25):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built and stable. Agent instrumentation complete. US-1.8 implemented the Docker service, multi-stage frontend build, and SPA fallback; US-7.7 moved the canonical operator entrypoint to `https://zeninvest.zenouz.ai` behind Cloudflare + Nginx. The original 8-page dashboard MVP was later extended with Commands, World News, and the authenticated Evolution Planner, producing the current **11-page** operator surface. **Current API surface:** decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system, commands, chat-session scaffolding, and `/api/evolution/*`; status includes system state (ACTIVE/CAUTIOUS/HALTED) and paused. Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only; deep-linkable via `/universe/:ticker`. **UX Phases 1–3 (delivered 2026-03-18/19):** AlertBanner (multi-source alert aggregation), independent section loading (`useAsyncData`), Pause/Resume/Force Sell controls, FreshnessIndicator, PnlDisplay with directional arrows (▲/▼), focus-trapped modals, skeleton loading screens, position sparklines, decision pipeline waterfall, nav consolidation (`Roadmap` stays primary; desktop `More` holds 6 secondary pages), mobile card layouts, responsive column hiding, URL state sync. 28/28 UX audit findings resolved (score 6.5→9.0/10). Design: ZENOUZ.ai brand — bg #06060a, positive #00ffa3, negative #ff4466, accent #00d4ff, violet #6332ff.
+**Status (2026-03-25):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built and stable. Agent instrumentation complete. US-1.8 implemented the Docker service, multi-stage frontend build, and SPA fallback; US-7.7 moved the canonical operator entrypoint to `https://zeninvest.zenouz.ai` behind Cloudflare + Nginx. The original 8-page dashboard MVP was later extended with Commands, World News, and the authenticated Evolution Planner, producing the current **11-page** dashboard surface with a narrow anonymous read-only layer (Overview, Portfolio, World News, Roadmap) and authenticated operator workflows everywhere else. **Current API surface:** decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system, commands, chat-session scaffolding, and `/api/evolution/*`; status includes system state (ACTIVE/CAUTIOUS/HALTED) and paused. Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only; deep-linkable via `/universe/:ticker`. **UX Phases 1–3 (delivered 2026-03-18/19):** AlertBanner (multi-source alert aggregation), independent section loading (`useAsyncData`), Pause/Resume/Force Sell controls, FreshnessIndicator, PnlDisplay with directional arrows (▲/▼), focus-trapped modals, skeleton loading screens, position sparklines, decision pipeline waterfall, nav consolidation (`Roadmap` stays primary; desktop `More` holds 6 secondary pages), mobile card layouts, responsive column hiding, URL state sync. 28/28 UX audit findings resolved (score 6.5→9.0/10). Design: ZENOUZ.ai brand — bg #06060a, positive #00ffa3, negative #ff4466, accent #00d4ff, violet #6332ff.
 
 **Phase 1 Acceptance Criteria:**
 - [x] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
@@ -564,7 +564,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_DEPLOYMENT.md`
 - [x] Phase 1.5 Analytics Lite: Decision Explorer, run diff, next-run countdown, P&L
 - [x] Full API: decisions (incl. pipeline waterfall), moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); status returns state and paused
-- [x] Base 8-page MVP delivered, later extended with Commands, World News, and Evolution Planner into the current 11-page authenticated dashboard surface
+- [x] Base 8-page MVP delivered, later extended with Commands, World News, and Evolution Planner into the current 11-page dashboard surface with a narrow anonymous read-only layer
 - [x] Design: ZENOUZ.ai brand — bg #06060a, gain #00ffa3, loss #ff4466, accent #00d4ff, violet #6332ff
 - [x] UX Phase 1: AlertBanner, independent section loading, always-visible positions + activity, merged top cards, PAUSED badge
 - [x] UX Phase 2: Force Sell, FreshnessIndicator, PnlDisplay (▲/▼), focus-trapped modals, chart colour alignment, keyboard-accessible tables
@@ -600,23 +600,23 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Value:** One safe, canonical public dashboard URL with working operator login over HTTPS  
 **Effort:** Medium (1-2 days)  
 **Data Sources:** Same DB as agent (shared volume)  
-**Stage:** Active now  
+**Stage:** Delivered (2026-03-25)  
 
 **Detailed plan:** `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`
 
-**Target state:** The dashboard is available at `https://zeninvest.zenouz.ai`, fronted by Cloudflare-proxied DNS and Dockerized Nginx TLS termination. The public overview remains anonymous, operator routes remain session-protected, and raw public port `8000` access is removed.
+**Target state:** The dashboard is available at `https://zeninvest.zenouz.ai`, fronted by Cloudflare-proxied DNS and Dockerized Nginx TLS termination. The anonymous read-only surface is intentionally limited to Overview, Portfolio, World News, and Roadmap; operator routes and trading controls remain session-protected; and raw public port `8000` access is removed.
 
-**Status (2026-03-25):** Repo implementation is landed: Docker Compose now includes the `nginx` reverse proxy service, the dashboard app is internal-only on the Compose network, the production dashboard entrypoint uses `python -m dashboard.backend.server`, the app-level port guard was removed, proxy-aware auth remains in place, and deployment/runbook docs were updated for the canonical HTTPS posture. Remaining operator validation is the live Cloudflare/VPS rollout and end-to-end HTTPS verification on the host.
+**Status (2026-03-25):** Delivered. Cloudflare + nginx now serve the canonical dashboard domain at `https://zeninvest.zenouz.ai`, the FastAPI dashboard service is internal-only on the Compose network, raw public `:8000` exposure is removed, proxy-aware operator auth is preserved, and the anonymous read-only surface is intentionally limited to Overview, Portfolio, World News, and Roadmap.
 
-**Why now:** This is the highest-leverage remaining production posture task. The dashboard already has session-based auth and proxy-aware HTTPS handling, so the remaining work is operationally narrow and immediately valuable.
+**Why now:** This was the highest-leverage production posture task because the dashboard already had session-based auth and proxy-aware HTTPS handling, making the final ingress rollout operationally narrow and immediately valuable.
 
 **Acceptance Criteria:**
-- [ ] Cloudflare proxied `A` record for `zeninvest.zenouz.ai` points at the VPS; SSL/TLS mode set to `Full (strict)`
+- [x] Cloudflare proxied `A` record for `zeninvest.zenouz.ai` points at the VPS; SSL/TLS mode set to `Full (strict)`
 - [x] Docker Compose adds an `nginx` reverse proxy service publishing `80/443`
 - [x] Dashboard service is no longer publicly exposed on `0.0.0.0:8000`
-- [ ] HTTP requests redirect to `https://zeninvest.zenouz.ai`
-- [ ] Operator login succeeds over HTTPS on the domain; raw public HTTP login remains blocked
-- [ ] Public overview and SSE-backed dashboard pages work through the canonical domain
+- [x] HTTP requests redirect to `https://zeninvest.zenouz.ai`
+- [x] Operator login succeeds over HTTPS on the domain; raw public HTTP login remains blocked
+- [x] Public read-only pages and protected dashboard pages work through the canonical domain
 - [x] Deployment/runbook docs updated to make the domain path the recommended production posture
 
 ---

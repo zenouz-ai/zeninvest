@@ -43,7 +43,7 @@ The three app services share the same SQLite DB via `./data` volume. The `dashbo
 
 **Frontend API URL:** The frontend is served from the same origin as the API. Requests use relative paths (`/api/*`). The SSE activity feed uses `/api/events/stream` (same-origin), so it works through either the current VPS/IP path or the planned canonical domain path.
 
-**Authentication:** Public, read-only routes live under `/api/public/*`. Operator routes require backend login and a signed session cookie. Operator login is blocked on plain HTTP except localhost-only development mode.
+**Authentication:** Public, read-only routes live under `/api/public/*`, including the anonymous Portfolio and World News data feeds. Operator routes require backend login and a signed session cookie. Operator login is blocked on plain HTTP except localhost-only development mode.
 
 ### Cloudflare and TLS prerequisites
 
@@ -148,7 +148,7 @@ When the operator has run the steps above on a VPS:
 - [x] Build & run: `docker compose up -d --build`
 - [x] Verify: `docker compose exec nginx nginx -t`, open the dashboard in a browser, and confirm HTTPS login + anonymous public routes
 
-**Outcome:** Dashboard is running on VPS at `https://zeninvest.zenouz.ai` with Cloudflare + nginx and no public raw `:8000` exposure. Portfolio page includes Cash, Investments, Positions (T212 positions normalised for display), sector allocation, and chronological value history chart.
+**Outcome:** Dashboard is running on VPS at `https://zeninvest.zenouz.ai` with Cloudflare + nginx and no public raw `:8000` exposure. The anonymous read-only surface includes Overview, Portfolio, World News, and Roadmap; operator pages and controls remain authenticated. Portfolio includes Cash, Investments, Positions (T212 positions normalised for display), sector allocation, and chronological value history chart.
 
 ---
 
@@ -173,7 +173,7 @@ Rollback:
 ## Security Note
 
 With the canonical HTTPS domain:
-- **Public vs operator split:** Only `/api/public/*` routes are anonymous. All trading controls, holdings, strategy data, runs, events, commands, and research remain operator-only.
+- **Public vs operator split:** Anonymous access is limited to the read-only surface backed by `/api/public/*` (including roadmap docs, performance snapshot, portfolio read models, and World News / macro read models). Trading controls, Universe, runs, events, commands, research, and all mutation endpoints remain operator-only.
 - **Operator login:** Set these in `.env`:
   ```
   DASHBOARD_OPERATOR_USERNAME=<operator-username>

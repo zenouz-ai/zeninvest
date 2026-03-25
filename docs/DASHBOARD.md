@@ -34,7 +34,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **11 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture, and Evolution Planner. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. Active swing follow-through (2026-03-25): Dashboard home can now surface richer cycle summary counts such as broker orders submitted, queued buys, and skipped buys when present in the run summary payload, the roadmap data includes the delivered Active Swing Rotation story, and authenticated operators can open a dedicated Evolution Planner workspace for policy-constrained change planning. See `docs/DASHBOARD_DESIGN_REVIEW.md` and `docs/ZEN_EVOLUTION_ENGINE.md`. |
+| **React Frontend** | Complete | **11 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture, and Evolution Planner. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. Public-surface update (2026-03-25): signed-out visitors can open Overview, Portfolio, World News, and Roadmap in read-only mode, while operator controls and the remaining pages stay authenticated. Active swing follow-through (2026-03-25): Dashboard home can now surface richer cycle summary counts such as broker orders submitted, queued buys, and skipped buys when present in the run summary payload, the roadmap data includes the delivered Active Swing Rotation story, and authenticated operators can open a dedicated Evolution Planner workspace for policy-constrained change planning. See `docs/DASHBOARD_DESIGN_REVIEW.md` and `docs/ZEN_EVOLUTION_ENGINE.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -62,7 +62,7 @@ Based on `docs/UX_AUDIT.md`, resolved 10 of 28 findings (2 Critical, 5 Major, 3 
 
 Resolved 9 more findings (6 Major, 3 Minor) from `docs/UX_AUDIT.md`:
 
-- **Force Sell** (`Portfolio.tsx`): "Force Sell" button on each position row, wired to `POST /api/system/force-sell/{ticker}` (new backend endpoint). Confirmation modal with focus trap, success/error toast.
+- **Force Sell** (`Portfolio.tsx`): "Force Sell" button on each position row, wired to `POST /api/system/force-sell/{ticker}` (new backend endpoint). Confirmation modal with focus trap, success/error toast. The Portfolio page itself is now public read-only when signed out; Force Sell only appears for authenticated operators.
 - **Data freshness** (`useAsyncData` extended, `FreshnessIndicator.tsx`): `lastUpdatedAt` and `isStale` fields. "Updated Xs ago" shown below Dashboard cards. When a fetch fails, old data is preserved with "(stale)" label instead of being wiped.
 - **Keyboard-accessible tables** (`Universe.tsx`, `Dashboard.tsx`): expandable rows get `tabIndex={0}`, `role="button"`, `onKeyDown` (Enter/Space). Universe column headers get `aria-sort`.
 - **Focus trap** (`useFocusTrap.ts`): all modals (Live Run, Reset Peak, Pause, Force Sell) trap Tab/Shift+Tab, Escape closes.
@@ -75,9 +75,9 @@ Resolved 9 more findings (6 Major, 3 Minor) from `docs/UX_AUDIT.md`:
 Resolved final 9 findings + 2 bonus features, completing all 28/28 UX audit items:
 
 - **Mobile-responsive tables** (`Portfolio.tsx`, `Universe.tsx`): Card layout on mobile (`sm:hidden`), hidden secondary columns on tablet via `meta.responsive` on TanStack column defs (RE-1, RE-2).
-- **Nav consolidation** (`App.tsx`): Primary 5 destinations on desktop (`Dashboard`, `Universe`, `Portfolio`, `Runs`, `Roadmap`) + `More` dropdown for 6 authenticated secondary pages (`Opportunity`, `Order Mgmt`, `Commands`, `Evolution`, `World News`, `Costs`). Click-outside + `aria-expanded` (IA-6).
+- **Nav consolidation** (`App.tsx`): Primary 5 destinations on desktop for authenticated operators (`Dashboard`, `Universe`, `Portfolio`, `Runs`, `Roadmap`) + `More` dropdown for 6 authenticated secondary pages (`Opportunity`, `Order Mgmt`, `Commands`, `Evolution`, `World News`, `Costs`). Signed-out visitors see a reduced public nav (`Overview`, `Portfolio`, `World News`, `Roadmap`). Click-outside + `aria-expanded` (IA-6).
 - **Typography hierarchy**: `tracking-wide` on all section h2 headings, explicit `text-base` on modal h3s, consistent type scale across the authenticated page surface (VD-4).
-- **World News page** (`WorldNews.tsx`): `/world-news` — macro regime card (hero), regime timeline, expandable headline feed grouped by date with category filters (fed/rates/trade/earnings/inflation/jobs/gdp/market), action plan section (sector implications, risks, opportunities), sector snapshot. Dashboard Home compact macro bar with regime badge + headline count + link. 5 REST endpoints (`/api/macro/*`) query `MacroState`, `MacroSignalLog`, and `MacroHeadline` tables.
+- **World News page** (`WorldNews.tsx`): `/world-news` — macro regime card (hero), regime timeline, expandable headline feed grouped by date with category filters (fed/rates/trade/earnings/inflation/jobs/gdp/market), action plan section (sector implications, risks, opportunities), sector snapshot. Dashboard Home compact macro bar with regime badge + headline count + link. The page now has a public read-only mode backed by `/api/public/macro/*`, while operator-only macro audit endpoints stay private under `/api/macro/*`.
 - **Skeleton loading screens** (`Skeleton.tsx`): `DashboardSkeleton`, `TableSkeleton`, `SkeletonCard` with pulsing placeholders. Replaces `LoadingSpinner` on all pages (ES-2).
 - **Deep-linking & URL state** (`Universe.tsx`): `/universe/:ticker` route auto-expands matched row. `?q=` and `?sector=` search params synced to URL via `useSearchParams` (WF-5).
 - **Position sparklines** (`Sparkline.tsx`, `Portfolio.tsx`): Inline SVG sparkline per position showing P&L % trend across portfolio history snapshots. Directional colouring (green up, red down). Desktop + mobile (3A bonus).
@@ -260,7 +260,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Table: ticker, sector, quantity, value (GBP), P&L (GBP), P&L % — **sortable** on desktop (click header; toggles asc/desc; numeric columns default to descending on first click). Mobile: “Sort by” dropdown (same ordering). Trend and Actions columns are not sort keys.
 - Sector allocation pie chart (from position values; zero-value sectors filtered)
 - Sector allocation tooltip uses explicit high-contrast text/background and GBP value formatting for dark-theme readability
-- Portfolio value history line chart (chronological: oldest left, newest right; rightmost point = latest snapshot). **Y-axis:** default *tight* scale (slightly below/above visible min–max); optional *wide context* (~£2k minimum span, legacy); optional *custom* min/max £ with Apply. **X-range:** Recharts brush under a full-series navigator — drag handles or band to focus dates; main chart and tight Y-axis follow the selected window; *Reset date range* restores full history.
+- Portfolio value history line chart (chronological: oldest left, newest right; rightmost point = latest snapshot). The chart is anchored to the timestamp of the first recorded order, not the earliest portfolio snapshot. If no snapshot exists exactly at that first-order timestamp, the UI prepends a synthetic `£10,000` inception point there so the chart starts from the intended baseline. **Y-axis:** default *tight* scale (slightly below/above visible min–max); optional *wide context* (~£2k minimum span, legacy); optional *custom* min/max £ with Apply. **X-range:** Recharts brush under a full-series navigator — drag handles or band to focus dates; main chart and tight Y-axis follow the selected window; *Reset date range* restores the full range from the first-order anchor onward.
 
 **Historical performance (from `performance_metrics`):**
 - Portfolio value over time (line chart, daily)
@@ -451,6 +451,19 @@ GET /api/universe/{ticker}          # Single ticker details with latest decision
 ```
 GET /api/portfolio/                 # Current portfolio snapshot
 GET /api/portfolio/history          # Historical snapshots for charting
+GET /api/portfolio/history-start    # Anchor timestamp for portfolio history chart
+GET /api/public/portfolio           # Public read-only portfolio snapshot
+GET /api/public/portfolio/history   # Public read-only portfolio history
+GET /api/public/portfolio/history-start # Public read-only chart anchor timestamp
+```
+
+### Public Macro / World News
+
+```
+GET /api/public/macro/state         # Public read-only latest macro regime
+GET /api/public/macro/state/history # Public read-only regime timeline
+GET /api/public/macro/headlines     # Public read-only headline archive
+GET /api/public/macro/summary       # Public read-only macro summary
 ```
 
 ### Orders

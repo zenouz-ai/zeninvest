@@ -117,6 +117,12 @@ class PortfolioSnapshotSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PortfolioHistoryStartSchema(BaseModel):
+    """Anchor timestamp for the portfolio history chart."""
+
+    timestamp: datetime | None
+
+
 class OrderSchema(BaseModel):
     """Order schema."""
 

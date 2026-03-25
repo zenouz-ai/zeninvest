@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { macroApi } from '../api/client'
+import { macroApi, publicApi } from '../api/client'
 import type { MacroState, MacroHeadline } from '../types'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { Panel } from '../components/Panel'
@@ -59,7 +59,7 @@ function groupHeadlinesByDate(headlines: MacroHeadline[]): Record<string, MacroH
   return groups
 }
 
-export default function WorldNews() {
+export default function WorldNews({ publicView = false }: { publicView?: boolean }) {
   const [state, setState] = useState<MacroState | null>(null)
   const [stateHistory, setStateHistory] = useState<MacroState[]>([])
   const [headlines, setHeadlines] = useState<MacroHeadline[]>([])
@@ -73,9 +73,9 @@ export default function WorldNews() {
     setError(null)
     try {
       const [stateData, historyData, headlineData] = await Promise.all([
-        macroApi.state().catch(() => null),
-        macroApi.stateHistory(days).catch(() => []),
-        macroApi.headlines(days, selectedCategory).catch(() => []),
+        (publicView ? publicApi.getMacroState() : macroApi.state()).catch(() => null),
+        (publicView ? publicApi.getMacroStateHistory(days) : macroApi.stateHistory(days)).catch(() => []),
+        (publicView ? publicApi.getMacroHeadlines(days, selectedCategory) : macroApi.headlines(days, selectedCategory)).catch(() => []),
       ])
       setState(stateData)
       setStateHistory(historyData)
@@ -91,7 +91,7 @@ export default function WorldNews() {
     } finally {
       setLoading(false)
     }
-  }, [days, selectedCategory])
+  }, [days, publicView, selectedCategory])
 
   useEffect(() => {
     fetchData()
@@ -129,9 +129,19 @@ export default function WorldNews() {
     <div className="space-y-6">
       <PageBrandHeader
         title="World News"
-        description="Macro-economic headlines, regime classification, and portfolio implications"
+        description={publicView
+          ? 'Public read-only macro headlines, regime classification, and portfolio implications.'
+          : 'Macro-economic headlines, regime classification, and portfolio implications'}
         eyebrow="MACRO INTELLIGENCE"
       />
+
+      {publicView && (
+        <Panel>
+          <p className="text-sm text-terminal-text-dim">
+            This page is public in read-only mode. It exposes the macro archive and regime context without any operator controls.
+          </p>
+        </Panel>
+      )}
 
       {/* --- Current Macro Regime --- */}
       <Panel hero>

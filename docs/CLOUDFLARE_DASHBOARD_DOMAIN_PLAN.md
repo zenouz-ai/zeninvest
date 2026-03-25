@@ -11,7 +11,7 @@ last_updated: 2026-03-24
 Migrate the dashboard from raw VPS/IP access to one canonical public URL: `https://zeninvest.zenouz.ai`.
 
 Tomorrow’s implementation should keep the current hybrid access model:
-- public overview remains anonymous
+- public read-only pages remain anonymous (Overview, Portfolio, World News, Roadmap)
 - operator dashboard pages and trading controls remain login-protected
 - operator login works only over HTTPS on the domain
 - direct public access to port `8000` is removed
@@ -45,7 +45,7 @@ Add a new roadmap story with this exact shape:
 - Priority: `P0`
 - Horizon: `Next`
 - Timebox: `2`
-- Description: `Expose the dashboard at https://zeninvest.zenouz.ai via Cloudflare-proxied DNS and Nginx TLS termination; keep public overview anonymous, keep operator routes session-protected, remove public port 8000 exposure, enforce canonical host access, and update deployment/runbook documentation.`
+- Description: `Expose the dashboard at https://zeninvest.zenouz.ai via Cloudflare-proxied DNS and Nginx TLS termination; keep the anonymous read-only surface limited to Overview, Portfolio, World News, and Roadmap; keep operator routes session-protected; remove public port 8000 exposure; enforce canonical host access; and update deployment/runbook documentation.`
 - Architecture components: `['Dashboard', 'Docker', 'FastAPI', 'Nginx', 'Cloudflare']`
 
 Update both:
@@ -115,7 +115,7 @@ Adjust the dashboard app/config so it works cleanly behind an HTTPS reverse prox
 
 Required app/config changes:
 - Keep session-based operator auth
-- Preserve the current hybrid anonymous/public split under `/api/public/*`
+- Preserve the current hybrid anonymous/public split under `/api/public/*`, including read-only portfolio and world-news data
 - Ensure operator auth treats proxied HTTPS correctly via `X-Forwarded-Proto`
 - Do not rely on port-based “canonical” enforcement once Nginx is in front
 - Move canonical access enforcement to host/scheme handling at Nginx
@@ -158,7 +158,7 @@ Update the docs to make the domain path the recommended production posture:
 ### HTTP/HTTPS behavior
 - `http://zeninvest.zenouz.ai` -> `301` to `https://zeninvest.zenouz.ai`
 - `https://zeninvest.zenouz.ai/login` -> `200`
-- public overview loads anonymously on the domain
+- public read-only pages load anonymously on the domain
 - operator login succeeds over `https://zeninvest.zenouz.ai`
 - operator login over raw public HTTP still fails
 - direct public `http://VPS_IP:8000` no longer works

@@ -195,8 +195,9 @@ function DashboardShell() {
                 {!authenticated && <NavLink to="/" end className={navLinkClass}>Overview</NavLink>}
                 {authenticated && <NavLink to="/dashboard" className={navLinkClass}>Dashboard</NavLink>}
                 {authenticated && <NavLink to="/universe" className={navLinkClass}>Universe</NavLink>}
-                {authenticated && <NavLink to="/portfolio" className={navLinkClass}>Portfolio</NavLink>}
+                <NavLink to="/portfolio" className={navLinkClass}>Portfolio</NavLink>
                 {authenticated && <NavLink to="/runs" className={navLinkClass}>Runs</NavLink>}
+                {!authenticated && <NavLink to="/world-news" className={navLinkClass}>World News</NavLink>}
                 <NavLink to="/roadmap" className={navLinkClass}>Roadmap</NavLink>
                 <MoreDropdown authenticated={authenticated} />
               </div>
@@ -254,13 +255,13 @@ function DashboardShell() {
               {!authenticated && <NavLink to="/" end className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Overview</NavLink>}
               {authenticated && <NavLink to="/dashboard" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Dashboard</NavLink>}
               {authenticated && <NavLink to="/universe" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Universe</NavLink>}
-              {authenticated && <NavLink to="/portfolio" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Portfolio</NavLink>}
+              <NavLink to="/portfolio" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Portfolio</NavLink>
               {authenticated && <NavLink to="/runs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Run History</NavLink>}
               {authenticated && <NavLink to="/opportunity" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Opportunity</NavLink>}
               {authenticated && <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>}
               {authenticated && <NavLink to="/commands" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Commands</NavLink>}
               {authenticated && <NavLink to="/evolution" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Evolution</NavLink>}
-              {authenticated && <NavLink to="/world-news" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>World News</NavLink>}
+              <NavLink to="/world-news" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>World News</NavLink>
               {authenticated && <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>}
               <NavLink to="/roadmap" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Roadmap</NavLink>
               <div className="pt-2 pb-1">
@@ -311,13 +312,13 @@ function DashboardShell() {
           <Route path="/universe" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Universe /></ProtectedRoute>} />
           <Route path="/universe/:ticker" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Universe /></ProtectedRoute>} />
           <Route path="/runs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><RunHistory /></ProtectedRoute>} />
-          <Route path="/portfolio" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Portfolio /></ProtectedRoute>} />
+          <Route path="/portfolio" element={<Portfolio publicView={!authenticated} />} />
           <Route path="/opportunity" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Opportunity /></ProtectedRoute>} />
           <Route path="/orders" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><OrderManagement /></ProtectedRoute>} />
           <Route path="/costs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Costs /></ProtectedRoute>} />
           <Route path="/commands" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Commands /></ProtectedRoute>} />
           <Route path="/evolution" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Evolution /></ProtectedRoute>} />
-          <Route path="/world-news" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><WorldNews /></ProtectedRoute>} />
+          <Route path="/world-news" element={<WorldNews publicView={!authenticated} />} />
           <Route path="*" element={<Navigate to={homePath} replace />} />
         </Routes>
       </main>

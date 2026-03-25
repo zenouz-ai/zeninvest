@@ -4,14 +4,14 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import desc
+from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
 
 from src.data.database import get_session
-from src.data.models import PortfolioSnapshot, Instrument
+from src.data.models import PortfolioSnapshot, Instrument, Order
 from src.utils.config import get_settings
 
-from ..schemas import PortfolioSnapshotSchema, PositionSchema
+from ..schemas import PortfolioHistoryStartSchema, PortfolioSnapshotSchema, PositionSchema
 
 router = APIRouter()
 settings = get_settings()
@@ -117,5 +117,20 @@ async def get_portfolio_history(
             )
 
         return result
+    finally:
+        session.close()
+
+
+@router.get("/history-start", response_model=PortfolioHistoryStartSchema)
+async def get_portfolio_history_start():
+    """Get the earliest order timestamp used to anchor the portfolio history chart."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    session = get_session()
+    try:
+        first_order = session.query(Order.timestamp).order_by(asc(Order.timestamp)).first()
+        timestamp = first_order[0] if first_order else None
+        return PortfolioHistoryStartSchema(timestamp=timestamp)
     finally:
         session.close()

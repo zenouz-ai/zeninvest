@@ -166,6 +166,10 @@ export interface PortfolioSnapshot {
   positions: Position[]
 }
 
+export interface PortfolioHistoryStart {
+  timestamp: string | null
+}
+
 export interface Order {
   id: number
   timestamp: string

@@ -15,6 +15,7 @@ import type {
   MacroSummary,
   Order,
   PortfolioSnapshot,
+  PortfolioHistoryStart,
   Run,
   SlackCommand,
   UniverseBubbleItem,
@@ -95,6 +96,42 @@ export const publicApi = {
   },
   getPerformanceMetrics: async (): Promise<any | null> => {
     const response = await api.get('/api/public/performance/metrics')
+    return response.data
+  },
+  getPortfolioCurrent: async (): Promise<PortfolioSnapshot | null> => {
+    try {
+      const response = await api.get('/api/public/portfolio')
+      return response.data
+    } catch (err: any) {
+      if (err?.response?.status === 404) return null
+      throw err
+    }
+  },
+  getPortfolioHistory: async (params?: {
+    limit?: number
+    offset?: number
+  }): Promise<PortfolioSnapshot[]> => {
+    const response = await api.get('/api/public/portfolio/history', { params })
+    return response.data
+  },
+  getPortfolioHistoryStart: async (): Promise<PortfolioHistoryStart> => {
+    const response = await api.get('/api/public/portfolio/history-start')
+    return response.data
+  },
+  getMacroState: async (): Promise<MacroState | null> => {
+    const response = await api.get('/api/public/macro/state')
+    return response.data
+  },
+  getMacroStateHistory: async (days = 7): Promise<MacroState[]> => {
+    const response = await api.get('/api/public/macro/state/history', { params: { days } })
+    return response.data
+  },
+  getMacroHeadlines: async (days = 7, category = 'all'): Promise<MacroHeadline[]> => {
+    const response = await api.get('/api/public/macro/headlines', { params: { days, category } })
+    return response.data
+  },
+  getMacroSummary: async (): Promise<MacroSummary> => {
+    const response = await api.get('/api/public/macro/summary')
     return response.data
   },
   getDoc: async (docKey: string): Promise<string> => {
@@ -232,6 +269,10 @@ export const portfolioApi = {
     end_date?: string
   }): Promise<PortfolioSnapshot[]> => {
     const response = await api.get('/api/portfolio/history', { params })
+    return response.data
+  },
+  historyStart: async (): Promise<PortfolioHistoryStart> => {
+    const response = await api.get('/api/portfolio/history-start')
     return response.data
   },
 }

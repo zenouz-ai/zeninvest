@@ -35,6 +35,14 @@ def _make_app() -> FastAPI:
     async def public_performance_metrics():
         return {"public": True, "scope": "performance"}
 
+    @app.get("/api/public/portfolio")
+    async def public_portfolio():
+        return {"public": True, "scope": "portfolio"}
+
+    @app.get("/api/public/macro/state")
+    async def public_macro_state():
+        return {"public": True, "scope": "macro"}
+
     @app.get("/api/private")
     async def private_ping(request: Request):
         return {"operator": getattr(request.state, "dashboard_operator", None)}
@@ -78,6 +86,18 @@ class TestDashboardSessionMiddleware:
         resp = client.get("/api/public/performance/metrics")
         assert resp.status_code == 200
         assert resp.json() == {"public": True, "scope": "performance"}
+
+    def test_public_portfolio_namespace_is_public(self, operator_env):
+        client = TestClient(_make_app(), base_url="http://localhost")
+        resp = client.get("/api/public/portfolio")
+        assert resp.status_code == 200
+        assert resp.json() == {"public": True, "scope": "portfolio"}
+
+    def test_public_macro_namespace_is_public(self, operator_env):
+        client = TestClient(_make_app(), base_url="http://localhost")
+        resp = client.get("/api/public/macro/state")
+        assert resp.status_code == 200
+        assert resp.json() == {"public": True, "scope": "macro"}
 
     def test_protected_route_requires_login(self, operator_env):
         client = TestClient(_make_app(), base_url="http://localhost")

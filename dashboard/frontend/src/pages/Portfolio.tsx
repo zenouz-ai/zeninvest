@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { portfolioApi, systemApi } from '../api/client'
+import { portfolioApi, publicApi, systemApi } from '../api/client'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
 import { Sparkline } from '../components/Sparkline'
@@ -23,6 +23,10 @@ import {
 } from 'recharts'
 
 type PositionSortKey = 'ticker' | 'sector' | 'quantity' | 'value_gbp' | 'pnl_gbp' | 'pnl_pct'
+type PortfolioHistoryPoint = { timestamp: string; date: string; value: number }
+
+const PORTFOLIO_HISTORY_FETCH_LIMIT = 1000
+const PORTFOLIO_HISTORY_BASELINE_VALUE_GBP = 10000
 
 function comparePositions(a: Position, b: Position, key: PositionSortKey, dir: 'asc' | 'desc'): number {
   const mul = dir === 'asc' ? 1 : -1
@@ -103,9 +107,10 @@ function computeContextYDomain(values: number[]): [number, number] {
   return [Math.floor(rawLow / 100) * 100, Math.ceil(rawHigh / 100) * 100]
 }
 
-export default function Portfolio() {
+export default function Portfolio({ publicView = false }: { publicView?: boolean }) {
   const [currentPortfolio, setCurrentPortfolio] = useState<PortfolioSnapshot | null>(null)
   const [history, setHistory] = useState<PortfolioSnapshot[]>([])
+  const [historyStartTimestamp, setHistoryStartTimestamp] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [forceSellTicker, setForceSellTicker] = useState<string | null>(null)
@@ -123,12 +128,16 @@ export default function Portfolio() {
   const fetchPortfolio = async () => {
     setError(null)
     try {
-      const [current, historyData] = await Promise.all([
-        portfolioApi.current(),
-        portfolioApi.history({ limit: 30 }),
+      const [current, historyData, historyStart] = await Promise.all([
+        publicView ? publicApi.getPortfolioCurrent() : portfolioApi.current(),
+        publicView
+          ? publicApi.getPortfolioHistory({ limit: PORTFOLIO_HISTORY_FETCH_LIMIT })
+          : portfolioApi.history({ limit: PORTFOLIO_HISTORY_FETCH_LIMIT }),
+        publicView ? publicApi.getPortfolioHistoryStart() : portfolioApi.historyStart(),
       ])
       setCurrentPortfolio(current)
       setHistory(historyData)
+      setHistoryStartTimestamp(historyStart.timestamp)
     } catch (err) {
       console.error('Failed to fetch portfolio:', err)
       setError(err instanceof Error ? err.message : 'Failed to load portfolio')
@@ -141,7 +150,7 @@ export default function Portfolio() {
     fetchPortfolio()
     const interval = setInterval(fetchPortfolio, 30000) // Refresh every 30s
     return () => clearInterval(interval)
-  }, [])
+  }, [publicView])
 
   const positions = currentPortfolio?.positions ?? []
 
@@ -192,17 +201,56 @@ export default function Portfolio() {
       value: Number(value.toFixed(2)),
     }))
 
-  const chartData = useMemo(
-    () =>
-      [...history]
-        .reverse()
-        .map((snapshot) => ({
-          date: safeFormat(snapshot.timestamp, 'MMM dd', ''),
-          value: snapshot.total_value_gbp,
-        }))
-        .filter((d) => d.date),
-    [history],
-  )
+  const chartData = useMemo<PortfolioHistoryPoint[]>(() => {
+    if (history.length === 0) return []
+
+    const points = [...history]
+      .reverse()
+      .map((snapshot) => ({
+        timestamp: snapshot.timestamp,
+        date: safeFormat(snapshot.timestamp, 'MMM dd', ''),
+        value: snapshot.total_value_gbp,
+      }))
+      .filter((point) => point.date)
+
+    const historyStartMs = historyStartTimestamp ? Date.parse(historyStartTimestamp) : Number.NaN
+    const filteredPoints = Number.isFinite(historyStartMs)
+      ? points.filter((point) => {
+          const timestampMs = Date.parse(point.timestamp)
+          return Number.isFinite(timestampMs) && timestampMs >= historyStartMs
+        })
+      : points
+
+    if (filteredPoints.length === 0) return []
+
+    if (!Number.isFinite(historyStartMs) || !historyStartTimestamp) {
+      return filteredPoints
+    }
+
+    const firstPointMs = Date.parse(filteredPoints[0].timestamp)
+    // Anchor the chart to the first recorded order. When snapshots begin later, prepend
+    // the intended inception value so the plotted series starts from the strategy baseline.
+    const needsSyntheticBaseline =
+      !Number.isFinite(firstPointMs) ||
+      firstPointMs > historyStartMs ||
+      Math.abs(filteredPoints[0].value - PORTFOLIO_HISTORY_BASELINE_VALUE_GBP) > 0.01
+
+    if (!needsSyntheticBaseline) {
+      return filteredPoints
+    }
+
+    const baselineDate = safeFormat(historyStartTimestamp, 'MMM dd', '')
+    if (!baselineDate) return filteredPoints
+
+    return [
+      {
+        timestamp: historyStartTimestamp,
+        date: baselineDate,
+        value: PORTFOLIO_HISTORY_BASELINE_VALUE_GBP,
+      },
+      ...filteredPoints,
+    ]
+  }, [history, historyStartTimestamp])
 
   useEffect(() => {
     const n = chartData.length
@@ -255,7 +303,7 @@ export default function Portfolio() {
   const COLORS = ['#00d4ff', '#00ffa3', '#6332ff', '#ff4466', '#f7c948']
 
   const handleForceSell = async () => {
-    if (!forceSellTicker) return
+    if (publicView || !forceSellTicker) return
     setForceSellLoading(true)
     setForceSellResult(null)
     try {
@@ -314,11 +362,13 @@ export default function Portfolio() {
             </div>
           ) : null
         }
-        description="Current positions, cash, and value history from the latest snapshot (updated each run). Charts show portfolio value over time and sector allocation. Positions table lists ticker, quantity, value, and P&L per position."
+        description={publicView
+          ? 'Read-only portfolio view: current positions, cash, and value history from the latest snapshot. Charts show portfolio value over time and sector allocation; operator actions remain private.'
+          : 'Current positions, cash, and value history from the latest snapshot (updated each run). Charts show portfolio value over time and sector allocation. Positions table lists ticker, quantity, value, and P&L per position.'}
       />
 
       {/* Force Sell confirmation modal */}
-      {forceSellTicker && (
+      {!publicView && forceSellTicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setForceSellTicker(null)}>
           <div ref={forceSellModalRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-loss mb-2">Force sell {cleanTicker(forceSellTicker)}?</h3>
@@ -336,9 +386,17 @@ export default function Portfolio() {
       )}
 
       {/* Result toast */}
-      {forceSellResult && (
+      {!publicView && forceSellResult && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded shadow-lg text-sm font-mono ${forceSellResult.type === 'success' ? 'bg-gain/20 border border-gain/40 text-gain' : 'bg-loss/20 border border-loss/40 text-loss'}`}>
           {forceSellResult.message}
+        </div>
+      )}
+
+      {publicView && (
+        <div className="card border-cyan/20">
+          <p className="text-sm text-terminal-text-dim">
+            This page is public in read-only mode. Trading controls such as Force Sell remain operator-only behind sign-in.
+          </p>
         </div>
       )}
 
@@ -634,15 +692,17 @@ export default function Portfolio() {
                       <span className="text-terminal-text-dim text-xs">Qty</span>
                       <div className="font-mono">{pos.quantity}</div>
                     </div>
-                    <div className="flex items-end justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setForceSellTicker(pos.ticker)}
-                        className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
-                      >
-                        Force Sell
-                      </button>
-                    </div>
+                    {!publicView && (
+                      <div className="flex items-end justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setForceSellTicker(pos.ticker)}
+                          className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
+                        >
+                          Force Sell
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -702,7 +762,7 @@ export default function Portfolio() {
                       className="px-4 py-3 text-left text-sm"
                     />
                     <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Trend</th>
-                    <th scope="col" className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>
+                    {!publicView && <th scope="col" className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -723,15 +783,17 @@ export default function Portfolio() {
                           <span className="text-terminal-text-dim text-xs">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setForceSellTicker(pos.ticker)}
-                          className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
-                        >
-                          Force Sell
-                        </button>
-                      </td>
+                      {!publicView && (
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setForceSellTicker(pos.ticker)}
+                            className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
+                          >
+                            Force Sell
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
