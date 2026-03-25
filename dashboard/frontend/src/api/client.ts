@@ -1,5 +1,24 @@
 import axios from 'axios'
-import type { Event, Run, Instrument, InstrumentDetail, PortfolioSnapshot, Order, UniverseBubbleItem, MacroState, MacroHeadline, MacroSummary, SlackCommand, CommandStats } from '../types'
+import type {
+  CommandStats,
+  Event,
+  EvolutionArtifact,
+  EvolutionDeployment,
+  EvolutionPlan,
+  EvolutionRequestDetail,
+  EvolutionRequestSummary,
+  EvolutionRun,
+  Instrument,
+  InstrumentDetail,
+  MacroHeadline,
+  MacroState,
+  MacroSummary,
+  Order,
+  PortfolioSnapshot,
+  Run,
+  SlackCommand,
+  UniverseBubbleItem,
+} from '../types'
 import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
 
 // Use relative paths when VITE_API_URL unset: same-origin in prod (FastAPI serves frontend)
@@ -473,6 +492,55 @@ export const commandsApi = {
   },
   stats: async (): Promise<CommandStats> => {
     const response = await api.get('/api/commands/stats')
+    return response.data
+  },
+}
+
+// Evolution API (Zen Evolution Engine)
+export const evolutionApi = {
+  listRequests: async (params?: {
+    limit?: number
+    offset?: number
+    status?: string
+    risk_class?: string
+  }): Promise<EvolutionRequestSummary[]> => {
+    const response = await api.get('/api/evolution/requests', { params })
+    return response.data
+  },
+  createRequest: async (message_text: string): Promise<EvolutionRequestDetail> => {
+    const response = await api.post('/api/evolution/requests', { message_text })
+    return response.data
+  },
+  getRequest: async (requestId: number): Promise<EvolutionRequestDetail> => {
+    const response = await api.get(`/api/evolution/requests/${requestId}`)
+    return response.data
+  },
+  getPlan: async (requestId: number): Promise<EvolutionPlan> => {
+    const response = await api.get(`/api/evolution/requests/${requestId}/plan`)
+    return response.data
+  },
+  addMessage: async (requestId: number, message_text: string): Promise<EvolutionRequestDetail> => {
+    const response = await api.post(`/api/evolution/requests/${requestId}/messages`, { message_text })
+    return response.data
+  },
+  getRuns: async (requestId: number): Promise<EvolutionRun[]> => {
+    const response = await api.get(`/api/evolution/requests/${requestId}/runs`)
+    return response.data
+  },
+  getArtifacts: async (requestId: number, artifact_type?: string): Promise<EvolutionArtifact[]> => {
+    const response = await api.get(`/api/evolution/requests/${requestId}/artifacts`, { params: { artifact_type } })
+    return response.data
+  },
+  approveBuild: async (requestId: number, notes?: string): Promise<any> => {
+    const response = await api.post(`/api/evolution/requests/${requestId}/approve-build`, { notes })
+    return response.data
+  },
+  approveDeploy: async (requestId: number, notes?: string): Promise<any> => {
+    const response = await api.post(`/api/evolution/requests/${requestId}/approve-deploy`, { notes })
+    return response.data
+  },
+  getDeployments: async (requestId: number): Promise<EvolutionDeployment[]> => {
+    const response = await api.get(`/api/evolution/requests/${requestId}/deployments`)
     return response.data
   },
 }

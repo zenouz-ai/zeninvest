@@ -15,12 +15,13 @@ _DOCS_DIR = _PROJECT_ROOT / "docs"
 _ALLOWED_DOCS = {
     "ARCHITECTURE": "ARCHITECTURE.md",
     "SOPHISTICATION_ROADMAP": "SOPHISTICATION_ROADMAP.md",
+    "ZEN_EVOLUTION_ENGINE": "ZEN_EVOLUTION_ENGINE.md",
 }
 
 
 @router.get("/{doc_key}", response_class=PlainTextResponse)
 async def get_doc(doc_key: str):
-    """Serve a documentation file. Keys: ARCHITECTURE, SOPHISTICATION_ROADMAP."""
+    """Serve a documentation file. Keys include ARCHITECTURE, SOPHISTICATION_ROADMAP, ZEN_EVOLUTION_ENGINE."""
     key = doc_key.upper().replace("-", "_").replace(".MD", "")
     if key not in _ALLOWED_DOCS:
         raise HTTPException(status_code=404, detail="Documentation not found")

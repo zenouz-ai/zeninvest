@@ -10,6 +10,7 @@ import Costs from './pages/Costs'
 import Roadmap from './pages/Roadmap'
 import WorldNews from './pages/WorldNews'
 import Commands from './pages/Commands'
+import Evolution from './pages/Evolution'
 import PublicOverview from './pages/PublicOverview'
 import LoginPage from './pages/LoginPage'
 import { AlertBanner } from './components/AlertBanner'
@@ -102,9 +103,9 @@ function MoreDropdown({ authenticated }: { authenticated: boolean }) {
           <NavLink to="/opportunity" className={dropdownLinkClass} onClick={() => setOpen(false)}>Opportunity</NavLink>
           <NavLink to="/orders" className={dropdownLinkClass} onClick={() => setOpen(false)}>Order Mgmt</NavLink>
           <NavLink to="/commands" className={dropdownLinkClass} onClick={() => setOpen(false)}>Commands</NavLink>
+          <NavLink to="/evolution" className={dropdownLinkClass} onClick={() => setOpen(false)}>Evolution</NavLink>
           <NavLink to="/world-news" className={dropdownLinkClass} onClick={() => setOpen(false)}>World News</NavLink>
           <NavLink to="/costs" className={dropdownLinkClass} onClick={() => setOpen(false)}>Costs</NavLink>
-          <NavLink to="/roadmap" className={dropdownLinkClass} onClick={() => setOpen(false)}>Roadmap</NavLink>
         </div>
       )}
     </div>
@@ -258,6 +259,7 @@ function DashboardShell() {
               {authenticated && <NavLink to="/opportunity" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Opportunity</NavLink>}
               {authenticated && <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>}
               {authenticated && <NavLink to="/commands" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Commands</NavLink>}
+              {authenticated && <NavLink to="/evolution" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Evolution</NavLink>}
               {authenticated && <NavLink to="/world-news" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>World News</NavLink>}
               {authenticated && <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>}
               <NavLink to="/roadmap" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Roadmap</NavLink>
@@ -314,6 +316,7 @@ function DashboardShell() {
           <Route path="/orders" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><OrderManagement /></ProtectedRoute>} />
           <Route path="/costs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Costs /></ProtectedRoute>} />
           <Route path="/commands" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Commands /></ProtectedRoute>} />
+          <Route path="/evolution" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Evolution /></ProtectedRoute>} />
           <Route path="/world-news" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><WorldNews /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to={homePath} replace />} />
         </Routes>

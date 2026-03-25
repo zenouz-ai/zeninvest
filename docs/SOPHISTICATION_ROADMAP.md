@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **24** · Pipeline **17**
+**At a glance:** Delivered **25** · Pipeline **22**
 
 ### Priority rules
 
@@ -40,6 +40,7 @@ This document tracks every planned and delivered enhancement to the investment a
 |-------|------------------|--------|---------|
 | **Production Access & Safety** | `US-7.7`, `US-7.5`, `US-7.3`, `US-7.2` | **Active now** | Production posture and execution reliability are the highest-leverage remaining gaps |
 | **Conversational Operator Workflow** | delivered foundation `US-1.6`, active MVP `US-1.9` | **Active now** | Existing Slack + chat plumbing is already in place; the next step adds real operator value |
+| **Zen Evolution Engine** | delivered planner foundation `US-1.10`, later gated phases `US-1.11`–`US-1.14` | **Later / gated rollout** | Valuable north-star capability, but authority should expand only after posture, workflow, and CI foundations are stable |
 | **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
 | **Execution Quality & Fill Recovery** | `US-7.3` then `US-7.2` | **Next after current week** | Required before any move from practice posture toward live-account readiness |
 | **Entry Quality Guards** | `US-4.2` + `US-3.3` | **Next after current week** | Small, material improvements that reduce bad entries faster than model experimentation |
@@ -58,12 +59,17 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Delivered** |
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
 | **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker/company name; single-ticker pipeline, user intent overwrites decision; Risk can veto; dashboard Commands page | Manual override with full audit trail + dashboard visibility | **Delivered** |
-| **US-1.7** | Dashboard & Visualisation | Web dashboard: 10 pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Commands, World News, Costs, Roadmap); full API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system). | Full operational visibility; personal quant experience | **Delivered** |
+| **US-1.7** | Dashboard & Visualisation | Web dashboard base: 10 core pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Commands, World News, Costs, Roadmap) plus the full operator API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system); later extended by `US-1.10` with the dedicated Evolution Planner workspace. | Full operational visibility; personal quant experience | **Delivered** |
 | **US-1.7.1** | Dashboard UX Phase 1 | AlertBanner (alert aggregation on all pages), Dashboard Home restructure (positions on home, always-visible activity + cycle summary, independent section loading, performance card, pause/resume toggle, PAUSED badge), accessibility (`aria-expanded`, `aria-live`), mobile nav fix. See `docs/UX_AUDIT.md`. | Reduces time-to-insight from 4 clicks to 0; surfaces anomalies proactively | **Delivered** |
 | **US-1.7.2** | Dashboard UX Phase 2 | Force Sell from Portfolio, data freshness indicators, keyboard-accessible tables, focus trap on modals, colour accessibility (▲/▼ arrows + aria-labels), chart colour alignment. See `docs/UX_AUDIT.md`. | 19/28 audit findings resolved; full keyboard + screen reader accessibility | **Delivered** |
 | **US-1.7.3** | Dashboard Visual Design System | Formalised ZENOUZ.ai visual language from `dashboard-style-guide.md`: Syne heading font, full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`), violet soft-fill accents, glass-dark card treatment (radial-gradient + panel shadow + 1.5rem radius), brand gradient updated to violet→cyan→emerald, 72px violet atmospheric grid, blurred sticky nav bar, pill active state. Tailwind: `font-heading`, `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`. Four new shared primitives: `Panel` (glass-dark surface), `MetricCard` (Syne KPI), `StatusPill` (brand pill/badge), `SectionHeader` (Syne heading + mono eyebrow). | Unified, polished visual identity across the entire dashboard; primitives unblock consistent page migration | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_DEPLOYMENT.md` | Operational visibility on live VPS | **Delivered** |
 | **US-1.9** | Conversational Trading Workflow | Skeleton delivered; active MVP this week focuses on multi-turn continuity, explicit confirmation, deterministic risk veto preservation, and auditable operator workflow across Slack + dashboard | Highest-leverage next operator workflow improvement after US-1.6 | **Active now (skeleton delivered)** |
+| **US-1.10** | Evolution Planner | Authenticated dashboard-first evolution planner with natural-language intake, intent normalization, repo context retrieval, risk classification, validation matrix, clarifying-question loop, and full audit trail | Starts the policy-constrained software evolution track without granting code or deploy authority | **Delivered (planner-only)** |
+| **US-1.11** | Branch-Based Evolution Runner | Isolated branch workspace, scoped code edits, semantic change summary, validation artifact pack, and review-ready PR generation | True v1 autonomy target after CI and branch governance foundations exist | **Later / gated** |
+| **US-1.12** | Policy-Gated Promotion | Manual build/deploy approvals, environment protections, deployment records, and rollback metadata for approved evolution artifacts | Introduces controlled promotion without relaxing financial guardrails | **Later / gated** |
+| **US-1.13** | Low-Risk Auto-Promotion | Policy-approved auto-promotion for low-risk docs and dashboard polish only after manual promotion proves reliable | Adds selective autonomy without opening sensitive runtime surfaces | **Later / optional** |
+| **US-1.14** | System-Initiated Improvements | Suggest-first cleanup, tests, docs, and low-risk UX improvements using the same branch, validation, and approval gates | Moves the system closer to genuine software evolution without silent financial self-modification | **Later / optional** |
 | **US-2.1** | Conviction Calibration | Calibration curve: conviction vs win rate; position sizing by calibrated confidence | Position sizing by calibrated conviction adds 2–5% annually once evidence is sufficient | **Data-gated** |
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that are not working once the trade sample is large enough | **Data-gated** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Useful spend governance once trade-outcome volume supports the analysis | **Data-gated** |
@@ -448,6 +454,51 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 ---
 
+**US-1.10: Evolution Planner**
+**Value:** Policy-constrained, operator-requested software evolution planning with a full audit trail
+**Effort:** Medium (planner-only slice)
+**Data Sources:** Roadmap, architecture, governance, deployment docs + dashboard/auth context + new evolution workflow tables
+**Stage:** Delivered (planner-only)
+
+**Detailed plan:** `docs/ZEN_EVOLUTION_ENGINE.md`.
+
+**Delivered scope:**
+- [x] Authenticated dashboard-first evolution interface
+- [x] Natural-language request intake with separate evolution domain tables
+- [x] Deterministic intent normalization into objective, scope, exclusions, assumptions, and risk class
+- [x] Repo-context retrieval grounded in roadmap, architecture, governance, deployment, and likely code areas
+- [x] Structured plan output with implementation steps and validation matrix
+- [x] Clarifying-question loop with plan versioning and audit trail
+- [x] Build and deploy gates remain hard-locked in Phase 1 with blocked attempts recorded
+
+**Why now:** This establishes the lowest-risk slice of the software evolution track while keeping authority tightly constrained. It is useful immediately for operator planning, but it does not bypass the current production-safety and CI prerequisites required for later branch execution and promotion phases.
+
+**Dependencies:**
+- Uses the existing dashboard authentication and operator workflow surface
+- Keeps Slack out of scope for the initial phase
+- Future phases (`US-1.11` onward) still depend on the current posture/workflow/CI sequence
+
+---
+
+**US-1.11–US-1.14: Zen Evolution Engine follow-on phases**
+**Value:** Graduated autonomy for branch execution, gated promotion, low-risk auto-promotion, and later system-initiated improvements
+**Effort:** Medium to Large, phased
+**Data Sources:** Evolution planner artifacts + future Git/CI/deployment integrations
+**Stage:** Later / gated
+
+**Phase sequence:**
+- `US-1.11` — Branch-Based Evolution Runner
+- `US-1.12` — Policy-Gated Promotion
+- `US-1.13` — Low-Risk Auto-Promotion
+- `US-1.14` — System-Initiated Improvements
+
+**Guardrails that remain explicit:**
+- [x] No unrestricted strategy, risk, execution, or allocation promotion
+- [x] No direct ownership of secrets, broker credentials, or unrestricted infrastructure rewiring
+- [x] Manual approval and quantitative evidence remain mandatory for financially sensitive changes
+
+---
+
 **US-4.5: Proactive Macro News Intelligence**
 **Value:** Portfolio-level anticipation of macro shocks/tailwinds via proactive scanning and second-order reasoning  
 **Effort:** Large (8–12 days, phased delivery)  
@@ -493,11 +544,11 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Value:** Full operational visibility — activity feed, universe, run history, portfolio, opportunity, order management, costs
 **Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)
 **Data Sources:** Existing DB; new `events_log` (optionally `runs`); backend reads agent tables read-only (no duplicate tables)
-**Stage:** Complete (full API + 8 pages + UX audit 28/28 fixed)
+**Stage:** Complete (full API; base 8-page MVP later extended to the current 11-page authenticated operator surface)
 
 **Detailed plan:** `docs/DASHBOARD.md`.
 
-**Status (2026-03-19):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built. Agent instrumentation complete. Stabilisation complete. US-1.8 implemented: Docker service, multi-stage frontend build, SPA fallback. Phase 1.5 Analytics Lite: Decision Explorer (expandable universe rows), run diff, next-run countdown, P&L in top bar. **Full API and 8-page spec**: backend exposes decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system; status includes system state (ACTIVE/CAUTIOUS/HALTED) and paused; frontend has 8 pages (Dashboard Home, Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture); Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only; deep-linkable via `/universe/:ticker`. **UX Phases 1–3 (delivered 2026-03-18/19):** AlertBanner (multi-source alert aggregation), independent section loading (`useAsyncData`), Pause/Resume/Force Sell controls, FreshnessIndicator, PnlDisplay with directional arrows (▲/▼), focus-trapped modals, skeleton loading screens, position sparklines, decision pipeline waterfall, nav consolidation (“More” dropdown), mobile card layouts, responsive column hiding, URL state sync. 28/28 UX audit findings resolved (score 6.5→9.0/10). Design: ZENOUZ.ai brand — bg #06060a, positive #00ffa3, negative #ff4466, accent #00d4ff, violet #6332ff.
+**Status (2026-03-25):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built and stable. Agent instrumentation complete. US-1.8 implemented the Docker service, multi-stage frontend build, and SPA fallback; US-7.7 moved the canonical operator entrypoint to `https://zeninvest.zenouz.ai` behind Cloudflare + Nginx. The original 8-page dashboard MVP was later extended with Commands, World News, and the authenticated Evolution Planner, producing the current **11-page** operator surface. **Current API surface:** decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system, commands, chat-session scaffolding, and `/api/evolution/*`; status includes system state (ACTIVE/CAUTIOUS/HALTED) and paused. Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only; deep-linkable via `/universe/:ticker`. **UX Phases 1–3 (delivered 2026-03-18/19):** AlertBanner (multi-source alert aggregation), independent section loading (`useAsyncData`), Pause/Resume/Force Sell controls, FreshnessIndicator, PnlDisplay with directional arrows (▲/▼), focus-trapped modals, skeleton loading screens, position sparklines, decision pipeline waterfall, nav consolidation (`Roadmap` stays primary; desktop `More` holds 6 secondary pages), mobile card layouts, responsive column hiding, URL state sync. 28/28 UX audit findings resolved (score 6.5→9.0/10). Design: ZENOUZ.ai brand — bg #06060a, positive #00ffa3, negative #ff4466, accent #00d4ff, violet #6332ff.
 
 **Phase 1 Acceptance Criteria:**
 - [x] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
@@ -513,7 +564,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_DEPLOYMENT.md`
 - [x] Phase 1.5 Analytics Lite: Decision Explorer, run diff, next-run countdown, P&L
 - [x] Full API: decisions (incl. pipeline waterfall), moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); status returns state and paused
-- [x] 8 pages: Dashboard Home, Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap & Architecture
+- [x] Base 8-page MVP delivered, later extended with Commands, World News, and Evolution Planner into the current 11-page authenticated dashboard surface
 - [x] Design: ZENOUZ.ai brand — bg #06060a, gain #00ffa3, loss #ff4466, accent #00d4ff, violet #6332ff
 - [x] UX Phase 1: AlertBanner, independent section loading, always-visible positions + activity, merged top cards, PAUSED badge
 - [x] UX Phase 2: Force Sell, FreshnessIndicator, PnlDisplay (▲/▼), focus-trapped modals, chart colour alignment, keyboard-accessible tables
@@ -531,17 +582,17 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 **Detailed plan:** `docs/DASHBOARD_DEPLOYMENT.md`
 
-**Status (2026-03-10):** Delivered. Dashboard running on VPS: operator runs the deployment checklist in the plan (pull, `ufw allow 8000/tcp`, `docker compose up -d --build`); then dashboard is available at `http://YOUR_VPS_IP:8000`.
+**Status (2026-03-10):** Delivered. US-1.8 established the raw VPS/IP Docker deployment path (`http://YOUR_VPS_IP:8000`) with the dashboard sharing the agent database and serving the built SPA. That original access posture is now superseded by US-7.7 for production, which moves the canonical public entrypoint to `https://zeninvest.zenouz.ai` behind Cloudflare + Nginx.
 
 **Acceptance Criteria:**
 - [x] Dashboard service added to docker-compose; shares `./data` volume with agent
 - [x] Frontend built in Dockerfile (multi-stage); FastAPI serves static files
-- [x] Access via `http://YOUR_VPS_IP:8000` (VPS IP — recommended; no domain)
-- [x] Firewall: port 8000 documented and included in deployment commands (`ufw allow 8000/tcp`)
+- [x] Access via `http://YOUR_VPS_IP:8000` documented as the original raw VPS/IP deployment path
+- [x] Firewall: port 8000 documented for the original US-1.8 raw-path deployment
 - [x] Activity feed (SSE), portfolio, runs, universe pages load correctly (relative API URLs work from VPS IP)
 - [x] Deployment complete checklist in `DASHBOARD_DEPLOYMENT.md`; dashboard running on VPS once operator executes it
 
-**Domain options:** VPS IP (recommended), purchase domain for HTTPS, or nginx reverse proxy. See deployment plan.
+**Domain options at the time of US-1.8 delivery:** VPS IP, purchase domain for HTTPS, or nginx reverse proxy. Production guidance now follows US-7.7 and the canonical HTTPS domain path.
 
 ---
 
@@ -555,16 +606,18 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 **Target state:** The dashboard is available at `https://zeninvest.zenouz.ai`, fronted by Cloudflare-proxied DNS and Dockerized Nginx TLS termination. The public overview remains anonymous, operator routes remain session-protected, and raw public port `8000` access is removed.
 
+**Status (2026-03-25):** Repo implementation is landed: Docker Compose now includes the `nginx` reverse proxy service, the dashboard app is internal-only on the Compose network, the production dashboard entrypoint uses `python -m dashboard.backend.server`, the app-level port guard was removed, proxy-aware auth remains in place, and deployment/runbook docs were updated for the canonical HTTPS posture. Remaining operator validation is the live Cloudflare/VPS rollout and end-to-end HTTPS verification on the host.
+
 **Why now:** This is the highest-leverage remaining production posture task. The dashboard already has session-based auth and proxy-aware HTTPS handling, so the remaining work is operationally narrow and immediately valuable.
 
 **Acceptance Criteria:**
 - [ ] Cloudflare proxied `A` record for `zeninvest.zenouz.ai` points at the VPS; SSL/TLS mode set to `Full (strict)`
-- [ ] Docker Compose adds an `nginx` reverse proxy service publishing `80/443`
-- [ ] Dashboard service is no longer publicly exposed on `0.0.0.0:8000`
+- [x] Docker Compose adds an `nginx` reverse proxy service publishing `80/443`
+- [x] Dashboard service is no longer publicly exposed on `0.0.0.0:8000`
 - [ ] HTTP requests redirect to `https://zeninvest.zenouz.ai`
 - [ ] Operator login succeeds over HTTPS on the domain; raw public HTTP login remains blocked
 - [ ] Public overview and SSE-backed dashboard pages work through the canonical domain
-- [ ] Deployment/runbook docs updated to make the domain path the recommended production posture
+- [x] Deployment/runbook docs updated to make the domain path the recommended production posture
 
 ---
 
@@ -956,6 +1009,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Next after 8.1:**
 - **US-7.3** then **US-7.2** as the first execution-quality and fill-recovery track
 - **US-4.2** + **US-3.3** as the next small, useful entry-quality bundle
+- **US-1.11** once CI, branch governance, and the first post-8.1 execution-quality track are stable
 - **US-2.1** + **US-2.2** + **US-2.3** only once trade-outcome volume is sufficient
 
 **Explicitly not near-term right now:**
@@ -969,6 +1023,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - `docs/ORDER_MANAGEMENT_PROJECT.md`
 - `docs/BACKTESTING.md` (includes walk-forward validation)
 - `docs/DASHBOARD_DEPLOYMENT.md`
+- `docs/ZEN_EVOLUTION_ENGINE.md`
 - `docs/archived/CHAT_INTERFACE_PROJECT.md`
 - `docs/archived/SLACK_TRADE_COMMANDS_PROJECT.md`
 - `docs/archived/BACKTESTING_PROJECT_PLAN.md`

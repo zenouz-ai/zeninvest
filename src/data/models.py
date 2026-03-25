@@ -518,3 +518,178 @@ class ChatTurn(Base):
     resolution_json = Column(Text, nullable=True)
     response_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class EvolutionRequest(Base):
+    """Operator-requested software evolution workflow (US-1.10)."""
+
+    __tablename__ = "evolution_requests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    status = Column(String(40), nullable=False, default="DRAFT", index=True)
+    source_channel = Column(String(20), nullable=False, default="dashboard")
+    requested_by = Column(String(100), nullable=True, index=True)
+    title = Column(String(200), nullable=True)
+    request_text = Column(Text, nullable=False)
+    objective = Column(Text, nullable=True)
+    risk_class = Column(String(10), nullable=True, index=True)
+    latest_plan_version = Column(Integer, nullable=False, default=0)
+    touched_areas_json = Column(Text, nullable=True)
+    excluded_areas_json = Column(Text, nullable=True)
+    assumptions_json = Column(Text, nullable=True)
+    clarification_questions_json = Column(Text, nullable=True)
+    required_validations_json = Column(Text, nullable=True)
+    current_run_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class EvolutionMessage(Base):
+    """Conversation and audit messages attached to an evolution request."""
+
+    __tablename__ = "evolution_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(
+        Integer,
+        ForeignKey("evolution_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role = Column(String(20), nullable=False)  # operator, planner, system
+    message_type = Column(String(30), nullable=False, default="comment")
+    message_text = Column(Text, nullable=False)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class EvolutionPlan(Base):
+    """Structured plan snapshot for an evolution request."""
+
+    __tablename__ = "evolution_plans"
+    __table_args__ = (
+        UniqueConstraint("request_id", "version", name="uq_evolution_plans_request_version"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(
+        Integer,
+        ForeignKey("evolution_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    version = Column(Integer, nullable=False, default=1)
+    status = Column(String(40), nullable=False)
+    summary = Column(Text, nullable=False)
+    change_spec_json = Column(Text, nullable=False)
+    repo_context_json = Column(Text, nullable=False)
+    implementation_steps_json = Column(Text, nullable=False)
+    validation_matrix_json = Column(Text, nullable=False)
+    risk_policy_json = Column(Text, nullable=False)
+    phase_capabilities_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class EvolutionRun(Base):
+    """Workflow run records for planning, build, validation, and deployment phases."""
+
+    __tablename__ = "evolution_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(
+        Integer,
+        ForeignKey("evolution_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    run_kind = Column(String(30), nullable=False)  # planning, build, validation, deploy
+    status = Column(String(20), nullable=False, default="running")  # running, completed, failed, blocked
+    summary_json = Column(Text, nullable=True)
+    worker_label = Column(String(100), nullable=True)
+    branch_name = Column(String(100), nullable=True)
+    commit_sha = Column(String(100), nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    completed_at = Column(DateTime, nullable=True)
+
+
+class EvolutionArtifact(Base):
+    """Persisted artifacts produced by the evolution workflow."""
+
+    __tablename__ = "evolution_artifacts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(
+        Integer,
+        ForeignKey("evolution_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    run_id = Column(
+        Integer,
+        ForeignKey("evolution_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    artifact_type = Column(String(50), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    content_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class EvolutionApproval(Base):
+    """Approval decisions and blocked attempts for gated evolution phases."""
+
+    __tablename__ = "evolution_approvals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(
+        Integer,
+        ForeignKey("evolution_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    approval_type = Column(String(20), nullable=False)  # build, deploy
+    status = Column(String(20), nullable=False, default="requested")
+    requested_by = Column(String(100), nullable=True)
+    decided_by = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    decided_at = Column(DateTime, nullable=True)
+
+
+class EvolutionDeployment(Base):
+    """Deployment and rollback records for later evolution phases."""
+
+    __tablename__ = "evolution_deployments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(
+        Integer,
+        ForeignKey("evolution_requests.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    approval_id = Column(
+        Integer,
+        ForeignKey("evolution_approvals.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    environment = Column(String(50), nullable=False, default="production")
+    status = Column(String(20), nullable=False, default="pending")
+    deploy_ref = Column(String(200), nullable=True)
+    rollback_ref = Column(String(200), nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )

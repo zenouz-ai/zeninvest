@@ -246,6 +246,159 @@ export interface CommandStats {
   by_action: Record<string, number>
 }
 
+// --- Evolution Planner ---
+
+export interface EvolutionValidationCheck {
+  id: string
+  label: string
+  scope: string
+  required: boolean
+}
+
+export interface EvolutionRepoDoc {
+  title: string
+  path: string
+  reason: string
+}
+
+export interface EvolutionCodeArea {
+  label: string
+  paths: string[]
+  reason: string
+}
+
+export interface EvolutionRepoContext {
+  touched_areas: string[]
+  docs: EvolutionRepoDoc[]
+  code_areas: EvolutionCodeArea[]
+  repo_constraints: string[]
+  related_roadmap_items: string[]
+}
+
+export interface EvolutionRiskPolicy {
+  risk_class: 'LOW' | 'MEDIUM' | 'HIGH'
+  touched_areas: string[]
+  phase_1_gate: string
+  future_build_mode: string
+  future_deploy_gate: string
+  backtest_required: boolean
+  protected_surfaces: string[]
+}
+
+export interface EvolutionPhaseCapabilities {
+  mode: string
+  planning_enabled: boolean
+  build_enabled: boolean
+  deploy_enabled: boolean
+  auto_promote_enabled: boolean
+  reason: string
+}
+
+export interface EvolutionPlan {
+  id: number
+  version: number
+  status: string
+  summary: string
+  objective: string | null
+  touched_areas: string[]
+  excluded_areas: string[]
+  assumptions: string[]
+  clarification_questions: string[]
+  confidence_score: number | null
+  risk_class: 'LOW' | 'MEDIUM' | 'HIGH'
+  risk_reasons: string[]
+  repo_context: EvolutionRepoContext
+  implementation_steps: string[]
+  validation_matrix: EvolutionValidationCheck[]
+  risk_policy: EvolutionRiskPolicy
+  phase_capabilities: EvolutionPhaseCapabilities
+  created_at: string | null
+}
+
+export interface EvolutionMessage {
+  id: number
+  role: 'operator' | 'planner' | 'system'
+  message_type: string
+  message_text: string
+  metadata: Record<string, unknown>
+  created_at: string | null
+}
+
+export interface EvolutionRun {
+  id: number
+  run_kind: string
+  status: string
+  summary: Record<string, unknown>
+  worker_label: string | null
+  branch_name: string | null
+  commit_sha: string | null
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface EvolutionArtifact {
+  id: number
+  run_id: number | null
+  artifact_type: string
+  title: string
+  content: unknown
+  created_at: string | null
+}
+
+export interface EvolutionApproval {
+  id: number
+  approval_type: string
+  status: string
+  requested_by: string | null
+  decided_by: string | null
+  notes: string | null
+  created_at: string | null
+  decided_at: string | null
+}
+
+export interface EvolutionDeployment {
+  id: number
+  approval_id: number | null
+  environment: string
+  status: string
+  deploy_ref: string | null
+  rollback_ref: string | null
+  metadata: Record<string, unknown>
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface EvolutionRequestSummary {
+  id: number
+  status: string
+  title: string
+  objective: string | null
+  risk_class: 'LOW' | 'MEDIUM' | 'HIGH' | null
+  requested_by: string | null
+  source_channel: string
+  touched_areas: string[]
+  open_questions_count: number
+  latest_plan_version: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface EvolutionRequestDetail extends EvolutionRequestSummary {
+  request_text: string
+  excluded_areas: string[]
+  assumptions: string[]
+  clarification_questions: string[]
+  required_validations: EvolutionValidationCheck[]
+  phase_capabilities: EvolutionPhaseCapabilities
+  latest_plan: EvolutionPlan
+  messages: EvolutionMessage[]
+  runs: EvolutionRun[]
+  artifacts: EvolutionArtifact[]
+  approvals: EvolutionApproval[]
+  deployments: EvolutionDeployment[]
+}
+
 // Utility function to clean ticker format for display
 export function cleanTicker(ticker: string): string {
   return ticker.replace(/_US_EQ$/, '').replace(/_UK_EQ$/, '').replace(/\._/g, '.')

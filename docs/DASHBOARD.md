@@ -20,20 +20,21 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 - **Cost monitoring** — LLM spend tracking, degradation state, API usage
 - **Performance analysis** — win rates, Sharpe/Sortino, trade outcomes, attribution by committee member
 - **Research transparency** (Phase D) — per-member research activity via `GET /api/research/logs`, `GET /api/research/ticker/{ticker}`, `GET /api/research/summary`; cache hit rates; `research_call` events in SSE stream; Universe table `Research` column and expandable research trail per ticker
+- **Software evolution planning** — authenticated operator-only change intake, clarification loop, validation matrix, repo context, and audit trail via `GET/POST /api/evolution/*`
 
 ---
 
 ## Current Status
 
-### Implementation Timeline (2026-03-10)
+### Implementation Timeline (updated 2026-03-25)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **FastAPI Backend** | Complete | REST for runs, status (incl. system state), universe, portfolio, orders, events; decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, research (logs, summary); system (state, trigger, pause, resume); SSE stream. All read from agent SQLite; no duplicate tables. |
+| **FastAPI Backend** | Complete | REST for runs, status (incl. system state), universe, portfolio, orders, events; decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, research (logs, summary); system (state, trigger, pause, resume); chat-session scaffolding; Evolution Planner routes under `/api/evolution/*`; SSE stream. Core monitoring endpoints read from agent SQLite, while the evolution workflow uses a separate planner domain/audit trail. |
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **10 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. Active swing follow-through (2026-03-25): Dashboard home can now surface richer cycle summary counts such as broker orders submitted, queued buys, and skipped buys when present in the run summary payload, and the roadmap data includes the delivered Active Swing Rotation story. See `docs/DASHBOARD_DESIGN_REVIEW.md`. |
+| **React Frontend** | Complete | **11 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture, and Evolution Planner. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. Active swing follow-through (2026-03-25): Dashboard home can now surface richer cycle summary counts such as broker orders submitted, queued buys, and skipped buys when present in the run summary payload, the roadmap data includes the delivered Active Swing Rotation story, and authenticated operators can open a dedicated Evolution Planner workspace for policy-constrained change planning. See `docs/DASHBOARD_DESIGN_REVIEW.md` and `docs/ZEN_EVOLUTION_ENGINE.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -74,8 +75,8 @@ Resolved 9 more findings (6 Major, 3 Minor) from `docs/UX_AUDIT.md`:
 Resolved final 9 findings + 2 bonus features, completing all 28/28 UX audit items:
 
 - **Mobile-responsive tables** (`Portfolio.tsx`, `Universe.tsx`): Card layout on mobile (`sm:hidden`), hidden secondary columns on tablet via `meta.responsive` on TanStack column defs (RE-1, RE-2).
-- **Nav consolidation** (`App.tsx`): Primary 4 pages (Dashboard, Universe, Portfolio, Runs) + "More" dropdown for secondary 5 (Opportunity, Order Mgmt, World News, Costs, Roadmap). Click-outside + `aria-expanded` (IA-6).
-- **Typography hierarchy**: `tracking-wide` on all section h2 headings, explicit `text-base` on modal h3s, consistent type scale across all 9 pages (VD-4).
+- **Nav consolidation** (`App.tsx`): Primary 5 destinations on desktop (`Dashboard`, `Universe`, `Portfolio`, `Runs`, `Roadmap`) + `More` dropdown for 6 authenticated secondary pages (`Opportunity`, `Order Mgmt`, `Commands`, `Evolution`, `World News`, `Costs`). Click-outside + `aria-expanded` (IA-6).
+- **Typography hierarchy**: `tracking-wide` on all section h2 headings, explicit `text-base` on modal h3s, consistent type scale across the authenticated page surface (VD-4).
 - **World News page** (`WorldNews.tsx`): `/world-news` — macro regime card (hero), regime timeline, expandable headline feed grouped by date with category filters (fed/rates/trade/earnings/inflation/jobs/gdp/market), action plan section (sector implications, risks, opportunities), sector snapshot. Dashboard Home compact macro bar with regime badge + headline count + link. 5 REST endpoints (`/api/macro/*`) query `MacroState`, `MacroSignalLog`, and `MacroHeadline` tables.
 - **Skeleton loading screens** (`Skeleton.tsx`): `DashboardSkeleton`, `TableSkeleton`, `SkeletonCard` with pulsing placeholders. Replaces `LoadingSpinner` on all pages (ES-2).
 - **Deep-linking & URL state** (`Universe.tsx`): `/universe/:ticker` route auto-expands matched row. `?q=` and `?sector=` search params synced to URL via `useSearchParams` (WF-5).
@@ -107,7 +108,7 @@ Formalised the ZENOUZ.ai visual language from `dashboard/frontend/dashboard-styl
 | `StatusPill` | `label`, `variant?`, `dot?` | `live/active/draft/alert/warning/dim` variants |
 | `SectionHeader` | `eyebrow?`, `title`, `subtitle?` | Syne title + mono uppercase eyebrow |
 
-Next: migrate 10 existing pages to use these primitives in place of ad-hoc markup.
+Next: continue migrating the 11-page surface to use these primitives in place of ad-hoc markup.
 
 ### Deployment (delivered)
 
@@ -125,11 +126,11 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│              React Frontend (Vite) — 10 pages                                 │
-│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┬────────┬────────┬─────────┐ │
-│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Commands│ World  │ Costs  │ Roadmap │ │
-│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │         │ News   │        │ & Arch  │ │
-│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┴────────┴────────┴─────────┘ │
+│              React Frontend (Vite) — 11 pages                                        │
+│  ┌─────────┬─────────┬─────────┬───────────┬───────────┬─────────┬────────┬────────┬────────┬─────────┬──────────┐ │
+│  │ Home    │ Universe│ Run Hist│ Portfolio │ Opportunity│ Order   │ Commands│ World  │ Costs  │ Roadmap │ Evolution │ │
+│  │ (state) │         │         │           │ Pipeline  │ Mgmt    │         │ News   │        │ & Arch  │ Planner   │ │
+│  └─────────┴─────────┴─────────┴───────────┴───────────┴─────────┴────────┴────────┴────────┴─────────┴──────────┘ │
 │       Recharts / TanStack Table / ZENOUZ.ai brand (dark #06060a, violet→cyan→emerald)    │
 └──────────────────┬──────────────────────────────────────────────────────────┘
                     │ REST + Server-Sent Events (SSE)
@@ -139,7 +140,7 @@ All test failures fixed, frontend-backend type alignment complete, API URLs corr
 │  │  REST API  │  SSE Stream  │  Background     │ │
 │  │  Endpoints │  Real-time   │  Event Logger   │ │
 │  └────────────┴──────────────┴─────────────────┘ │
-│                    SQLite (Agent DB)               │
+│        SQLite (Agent DB + evolution planner tables) │
 └──────────────────┬──────────────────────────────┘
                     │ reads from
 ┌──────────────────┴──────────────────────────────┐
@@ -309,7 +310,30 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Table: timestamp, ticker, adjustment_type (reassess/trail/limit), old_value, new_value, reason
 - Chart: stop-loss level evolution vs price for a selected position
 
-### Page 7: Cost & API Monitoring
+### Page 7: Commands & Operator Audit
+
+**Slack command audit trail:**
+- Table backed by `GET /api/commands/` with ticker/action/status filters, stats cards, and expandable rows
+- Each row preserves the operator intent, confirmation state, force-override usage, cycle linkage, order linkage, and human-readable response message
+- Designed to make Slack-originated trade actions inspectable from the same dashboard surface as scheduled cycles
+
+**Operational value:**
+- Confirms whether a manual request was blocked by moderation, vetoed by risk, waiting on confirmation, accepted by Trading 212, or failed downstream
+- Keeps conversational/operator workflow evidence separate from autonomous scheduled-cycle evidence
+
+### Page 8: World News & Macro Regime
+
+**Macro intelligence surface:**
+- Dedicated `/world-news` page for `MacroState`, `MacroSignalLog`, and `MacroHeadline` data
+- Hero regime card with confidence, top signals, and structured action-plan summary
+- Expandable headline archive grouped by day with category filters (fed, rates, trade, earnings, inflation, jobs, gdp, market)
+- Sector implications, opportunity/risk framing, and timeline view for macro-state changes
+
+**Home-page tie-in:**
+- Dashboard Home compact macro bar links back to the full World News view
+- Makes the portfolio-level macro posture visible without opening the detailed page
+
+### Page 9: Cost & API Monitoring
 
 **Cost split: API vs LLM (daily and monthly):**
 - Dashboard Home "This month" card: Runs, Cost (API/LLM split), Portfolio (start→end), P&L, New tickers investigated; collapsible daily cost table for last 7 days.
@@ -335,7 +359,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Breakdown by member (Strategy/Skeptic/Risk), by tool (web_search, news_search, etc.), by provider (Brave/Tavily/SEC)
 - Data sourced from `/api/research/summary` (cost aggregation by member/tool/provider) and `/api/costs/daily` + `/api/costs/monthly` (research_cost_gbp field)
 
-### Page 8: Roadmap & Architecture
+### Page 10: Roadmap & Architecture
 
 **Tabbed layout:** `[Timeline | Roadmap | Architecture]` (default: Timeline; legacy `tab=gantt` URLs still open Timeline)
 
@@ -347,7 +371,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 **Roadmap tab:**
 - Project evolution from day 0 (2026-02-22) to now; days-in-development counter
-- Summary cards: 24 delivered · 16 pipeline · 60% complete
+- Summary cards: 25 delivered · 22 pipeline · ~53% complete
 - Topic filter: All, Foundation, Calibration, Portfolio & Risk, Signals, Validation, Hardening, ML / Advanced, Open-Source / Community
 - Larger milestone cards grouped by topic with clearer badges for status, priority, effort, and delivery/planning window
 - Architecture components surfaced as chips for each story
@@ -362,7 +386,25 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 **URL:** `/roadmap`; optional `?tab=gantt`, `?tab=roadmap`, `?tab=architecture` for direct linking.
 
-### Page 9: Research Explorer (Phase D — Agentic Research)
+### Page 11: Evolution Planner
+
+**Purpose:**
+- Separate, authenticated operator workflow for policy-constrained software evolution (`US-1.10`)
+- Accepts natural-language change requests and turns them into a structured plan, risk class, validation matrix, repo context, and auditable run history
+
+**Current Phase 1 behavior:**
+- Planner-only mode; no branch writes, no code edits, no deployment authority
+- Clarification loop allows the operator to refine scope without losing audit history
+- Build and deploy approvals are intentionally blocked and recorded as policy-gated attempts
+
+**Displayed operator artifacts:**
+- Conversation turns and latest scoped objective
+- Touched areas, excluded areas, assumptions, and clarification questions
+- Validation matrix selected from inferred scope
+- Repo-context snapshots: key docs, likely code areas, roadmap references, and repo constraints
+- Planning runs, artifacts, approvals, and later deployment records when later phases arrive
+
+### Research Transparency (Integrated into Universe and Costs)
 
 **Per-cycle research summary:**
 - Total searches by member, cache hit rate, total cost
@@ -380,7 +422,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 ## API Endpoints
 
-The backend exposes the following endpoints. All query the agent's existing SQLite tables directly (no duplication).
+The backend exposes the following endpoints. Most monitoring routes query the agent's existing SQLite tables directly; the Evolution Planner adds a separate workflow/audit domain for policy-constrained change planning.
 
 ### Activity & Runs
 
@@ -477,6 +519,13 @@ GET /api/costs/monthly              # Monthly cumulative
 GET /api/costs/degradation          # Degradation state history
 ```
 
+### Commands
+
+```
+GET /api/commands/                  # Slack trade command audit log
+GET /api/commands/stats             # Aggregate command stats by status/action
+```
+
 ### API Usage
 
 ```
@@ -507,6 +556,32 @@ POST /api/system/reset-peak         # Reset peak to current, clear CAUTIOUS if i
 ```
 GET /api/docs/ARCHITECTURE          # docs/ARCHITECTURE.md
 GET /api/docs/SOPHISTICATION_ROADMAP # docs/SOPHISTICATION_ROADMAP.md
+GET /api/docs/ZEN_EVOLUTION_ENGINE  # docs/ZEN_EVOLUTION_ENGINE.md
+```
+
+### Chat Session Foundation
+
+```
+GET /api/chat/sessions              # List chat sessions
+POST /api/chat/sessions             # Create chat session
+GET /api/chat/sessions/{id}         # Session detail
+POST /api/chat/sessions/{id}/turns  # Add turn
+POST /api/chat/sessions/{id}/end    # End session
+```
+
+### Evolution Planner
+
+```
+GET /api/evolution/requests                     # List evolution requests
+POST /api/evolution/requests                    # Create request from natural language
+GET /api/evolution/requests/{id}                # Full request detail
+GET /api/evolution/requests/{id}/plan           # Latest structured plan
+POST /api/evolution/requests/{id}/messages      # Add clarification and replan
+GET /api/evolution/requests/{id}/runs           # Planning run audit trail
+GET /api/evolution/requests/{id}/artifacts      # Validation/repo-context artifacts
+POST /api/evolution/requests/{id}/approve-build # Intentionally blocked in Phase 1, recorded as audit event
+POST /api/evolution/requests/{id}/approve-deploy # Intentionally blocked in Phase 1, recorded as audit event
+GET /api/evolution/requests/{id}/deployments    # Future deployment records (empty in Phase 1)
 ```
 
 ### Real-time Events
@@ -519,7 +594,7 @@ GET /api/events/stream              # Server-Sent Events (SSE) stream of activit
 
 ## Data Model
 
-**Design approach:** Query the agent's existing SQLite database directly. No duplicate tables. Dashboard backend connects to the same `src/data/database.py` SQLite file used by the orchestrator.
+**Design approach:** Query the agent's existing SQLite database directly for monitoring/operations data, while storing the Evolution Planner's workflow state in dedicated tables in the same database file. Dashboard backend connects to the same `src/data/database.py` SQLite file used by the orchestrator.
 
 ### Core Table Mapping
 
@@ -546,6 +621,13 @@ GET /api/events/stream              # Server-Sent Events (SSE) stream of activit
 |-------|---------|--------|
 | `events_log` | Real-time activity stream | `id`, `timestamp`, `event_type`, `source`, `message`, `metadata_json` |
 | `runs` | Run metadata | `id`, `type` (scheduled\|manual), `started_at`, `completed_at`, `status`, `summary_json` |
+| `evolution_requests` | Evolution Planner request header | Operator request text, status, objective, risk class, latest plan version, audit timestamps |
+| `evolution_messages` | Clarification and conversation trail | Per-request operator/system turns |
+| `evolution_plans` | Structured plan versions | Change spec, repo context, implementation steps, validation matrix, risk policy, phase capabilities |
+| `evolution_runs` | Planning/build/deploy run records | Run kind, status, worker label, timestamps |
+| `evolution_artifacts` | Persisted planner outputs | Validation matrices, repo-context snapshots, summaries, future build artifacts |
+| `evolution_approvals` | Build/deploy approval audit trail | Approval type, status, requester, decider, notes, timestamps |
+| `evolution_deployments` | Future deployment history | Environment, status, artifact, rollback metadata |
 
 ---
 
