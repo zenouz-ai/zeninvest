@@ -1,23 +1,25 @@
-import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState, type ReactElement } from 'react'
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
-import Universe from './pages/Universe'
-import RunHistory from './pages/RunHistory'
-import Portfolio from './pages/Portfolio'
-import Opportunity from './pages/Opportunity'
-import OrderManagement from './pages/OrderManagement'
-import Costs from './pages/Costs'
-import Roadmap from './pages/Roadmap'
-import WorldNews from './pages/WorldNews'
-import Commands from './pages/Commands'
-import Evolution from './pages/Evolution'
-import PublicOverview from './pages/PublicOverview'
-import LoginPage from './pages/LoginPage'
 import { AlertBanner } from './components/AlertBanner'
+import { LoadingSpinner } from './components/LoadingSpinner'
 import { useDashboardAuthRequired } from './hooks/useDashboardAuthRequired'
 import { useSSE } from './hooks/useSSE'
 import { authApi, type AuthSession } from './api/client'
 import { clearDashboardAuthRequired } from './utils/authErrorBridge'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Universe = lazy(() => import('./pages/Universe'))
+const RunHistory = lazy(() => import('./pages/RunHistory'))
+const Portfolio = lazy(() => import('./pages/Portfolio'))
+const Opportunity = lazy(() => import('./pages/Opportunity'))
+const OrderManagement = lazy(() => import('./pages/OrderManagement'))
+const Costs = lazy(() => import('./pages/Costs'))
+const Roadmap = lazy(() => import('./pages/Roadmap'))
+const WorldNews = lazy(() => import('./pages/WorldNews'))
+const Commands = lazy(() => import('./pages/Commands'))
+const Evolution = lazy(() => import('./pages/Evolution'))
+const PublicOverview = lazy(() => import('./pages/PublicOverview'))
+const LoginPage = lazy(() => import('./pages/LoginPage'))
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-offset-2 focus:ring-offset-transparent ${
@@ -38,6 +40,10 @@ const dropdownLinkClass = ({ isActive }: { isActive: boolean }) =>
   }`
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
+
+function RouteFallback() {
+  return <LoadingSpinner className="h-48" />
+}
 
 function ProtectedRoute({
   authenticated,
@@ -290,37 +296,39 @@ function DashboardShell() {
       {authenticated && <AlertBanner sseDisconnectedAlert={sseDisconnectedAlert} />}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Routes>
-          <Route path="/" element={<PublicOverview />} />
-          <Route
-            path="/login"
-            element={
-              authenticated
-                ? <Navigate to="/dashboard" replace />
-                : <LoginPage onLoginSuccess={refreshAuth} />
-            }
-          />
-          <Route path="/roadmap" element={<Roadmap />} />
-          <Route
-            path="/dashboard"
-            element={(
-              <ProtectedRoute authenticated={authenticated} resolved={authResolved}>
-                <Dashboard sseEvents={sseEvents} sseConnectionState={sseConnectionState} />
-              </ProtectedRoute>
-            )}
-          />
-          <Route path="/universe" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Universe /></ProtectedRoute>} />
-          <Route path="/universe/:ticker" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Universe /></ProtectedRoute>} />
-          <Route path="/runs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><RunHistory /></ProtectedRoute>} />
-          <Route path="/portfolio" element={<Portfolio publicView={!authenticated} />} />
-          <Route path="/opportunity" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Opportunity /></ProtectedRoute>} />
-          <Route path="/orders" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><OrderManagement /></ProtectedRoute>} />
-          <Route path="/costs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Costs /></ProtectedRoute>} />
-          <Route path="/commands" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Commands /></ProtectedRoute>} />
-          <Route path="/evolution" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Evolution /></ProtectedRoute>} />
-          <Route path="/world-news" element={<WorldNews publicView={!authenticated} />} />
-          <Route path="*" element={<Navigate to={homePath} replace />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<PublicOverview />} />
+            <Route
+              path="/login"
+              element={
+                authenticated
+                  ? <Navigate to="/dashboard" replace />
+                  : <LoginPage onLoginSuccess={refreshAuth} />
+              }
+            />
+            <Route path="/roadmap" element={<Roadmap />} />
+            <Route
+              path="/dashboard"
+              element={(
+                <ProtectedRoute authenticated={authenticated} resolved={authResolved}>
+                  <Dashboard sseEvents={sseEvents} sseConnectionState={sseConnectionState} />
+                </ProtectedRoute>
+              )}
+            />
+            <Route path="/universe" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Universe /></ProtectedRoute>} />
+            <Route path="/universe/:ticker" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Universe /></ProtectedRoute>} />
+            <Route path="/runs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><RunHistory /></ProtectedRoute>} />
+            <Route path="/portfolio" element={<Portfolio publicView={!authenticated} />} />
+            <Route path="/opportunity" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Opportunity /></ProtectedRoute>} />
+            <Route path="/orders" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><OrderManagement /></ProtectedRoute>} />
+            <Route path="/costs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Costs /></ProtectedRoute>} />
+            <Route path="/commands" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Commands /></ProtectedRoute>} />
+            <Route path="/evolution" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Evolution /></ProtectedRoute>} />
+            <Route path="/world-news" element={<WorldNews publicView={!authenticated} />} />
+            <Route path="*" element={<Navigate to={homePath} replace />} />
+          </Routes>
+        </Suspense>
       </main>
       </div>
     </div>

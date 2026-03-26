@@ -240,6 +240,54 @@ def test_market_session_schedule_resolves_dst_aware_utc_times() -> None:
     assert next_scheduled_run_utc(settings, now_utc=now_utc) == datetime(2026, 3, 26, 14, 0, tzinfo=timezone.utc)
 
 
+def test_market_session_schedule_skips_us_market_holidays() -> None:
+    settings = Settings(
+        {
+            "trading": {
+                "cycle_frequency": "intraday",
+                "schedule_mode": "market_session",
+                "schedule_timezone": "America/New_York",
+                "cycle_times_local": ["10:00", "12:30", "15:15"],
+                "market_days": [0, 1, 2, 3, 4],
+                "skip_market_holidays": True,
+            },
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    now_utc = datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc)  # Good Friday
+
+    assert resolved_cycle_times_utc(settings, now_utc=now_utc) == ["14:00", "16:30", "19:15"]
+    assert next_scheduled_run_utc(settings, now_utc=now_utc) == datetime(2026, 4, 6, 14, 0, tzinfo=timezone.utc)
+
+
+def test_fixed_utc_schedule_skips_us_market_holidays() -> None:
+    settings = Settings(
+        {
+            "trading": {
+                "cycle_frequency": "standard",
+                "schedule_mode": "fixed_utc",
+                "cycle_times_utc": ["07:00", "19:00"],
+                "market_days": [0, 1, 2, 3, 4],
+                "skip_market_holidays": True,
+            },
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    now_utc = datetime(2026, 12, 25, 6, 0, tzinfo=timezone.utc)  # Christmas Day
+
+    assert next_scheduled_run_utc(settings, now_utc=now_utc) == datetime(2026, 12, 28, 7, 0, tzinfo=timezone.utc)
+
+
 def test_current_cycle_clock_time_uses_local_market_session_time() -> None:
     settings = Settings(
         {

@@ -7,6 +7,8 @@ from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from src.utils.market_holidays import is_us_market_holiday
+
 if TYPE_CHECKING:
     from src.utils.config import Settings
 
@@ -79,16 +81,24 @@ def analysis_cycle_job_ids(settings: Settings) -> set[str]:
     return {spec.job_id for spec in analysis_cycle_specs(settings)}
 
 
-def _first_schedule_date_local(settings: Settings, now_utc: datetime) -> date | None:
-    market_days = set(settings.market_days)
+def _is_eligible_schedule_date(settings: Settings, candidate_day: date) -> bool:
+    """True when a date is a configured market day and not a skipped market holiday."""
+    market_days = {int(day) for day in settings.market_days if 0 <= int(day) <= 6}
+    if market_days and candidate_day.weekday() not in market_days:
+        return False
+    if settings.skip_market_holidays and is_us_market_holiday(candidate_day):
+        return False
+    return True
 
+
+def _first_schedule_date_local(settings: Settings, now_utc: datetime) -> date | None:
     if uses_market_session_schedule(settings):
         zone = ZoneInfo(settings.schedule_timezone)
         now_local = now_utc.astimezone(zone)
         specs = analysis_cycle_specs(settings)
         for day_offset in range(0, 8):
             candidate_day = now_local.date() + timedelta(days=day_offset)
-            if candidate_day.weekday() not in market_days:
+            if not _is_eligible_schedule_date(settings, candidate_day):
                 continue
             if day_offset > 0:
                 return candidate_day
@@ -107,7 +117,7 @@ def _first_schedule_date_local(settings: Settings, now_utc: datetime) -> date | 
 
     for day_offset in range(0, 8):
         candidate_day = now_utc.date() + timedelta(days=day_offset)
-        if candidate_day.weekday() not in market_days:
+        if not _is_eligible_schedule_date(settings, candidate_day):
             continue
         return candidate_day
 
@@ -142,7 +152,6 @@ def resolved_cycle_times_utc(settings: Settings, now_utc: datetime | None = None
 def next_scheduled_run_utc(settings: Settings, now_utc: datetime | None = None) -> datetime | None:
     """Return the next scheduled analysis cycle in UTC."""
     now_utc = now_utc or datetime.now(timezone.utc)
-    market_days = set(settings.market_days)
     specs = analysis_cycle_specs(settings)
 
     if uses_market_session_schedule(settings):
@@ -150,7 +159,7 @@ def next_scheduled_run_utc(settings: Settings, now_utc: datetime | None = None) 
         now_local = now_utc.astimezone(zone)
         for day_offset in range(0, 8):
             candidate_day = now_local.date() + timedelta(days=day_offset)
-            if candidate_day.weekday() not in market_days:
+            if not _is_eligible_schedule_date(settings, candidate_day):
                 continue
             for spec in specs:
                 candidate_local = datetime(
@@ -173,12 +182,12 @@ def next_scheduled_run_utc(settings: Settings, now_utc: datetime | None = None) 
             second=0,
             microsecond=0,
         )
-        if candidate_utc > now_utc and now_utc.weekday() in market_days:
+        if candidate_utc > now_utc and _is_eligible_schedule_date(settings, candidate_utc.date()):
             return candidate_utc
 
     for day_offset in range(1, 8):
         candidate_day = now_utc.date() + timedelta(days=day_offset)
-        if candidate_day.weekday() not in market_days:
+        if not _is_eligible_schedule_date(settings, candidate_day):
             continue
         first_spec = specs[0]
         return datetime(
