@@ -167,7 +167,10 @@ export const statusApi = {
   get: async (): Promise<{
     next_run_utc: string | null
     cycle_times_utc: string[]
+    cycle_times_local: string[]
     cycle_frequency: string
+    schedule_mode: string
+    schedule_timezone: string | null
     state?: string
     paused?: boolean
   }> => {

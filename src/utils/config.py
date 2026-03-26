@@ -62,10 +62,29 @@ class Settings:
         return self.trading.get("cycle_frequency", "standard")
 
     @property
+    def schedule_mode(self) -> str:
+        """market_session = local market-phase schedule, fixed_utc = legacy UTC cron times."""
+        raw = str(self.trading.get("schedule_mode", "") or "").strip().lower()
+        if raw in {"market_session", "fixed_utc"}:
+            return raw
+        return "market_session" if self.cycle_frequency == "intraday" else "fixed_utc"
+
+    @property
+    def schedule_timezone(self) -> str:
+        """IANA timezone used for market-session intraday scheduling."""
+        return str(self.trading.get("schedule_timezone", "America/New_York"))
+
+    @property
     def cycle_hours(self) -> int:
         if self.cycle_frequency == "standard":
             return 12
         return self.trading.get("cycle_hours", 4)
+
+    @property
+    def cycle_times_local(self) -> list[str]:
+        """Configured local-times for timezone-aware market-session scheduling."""
+        raw = self.trading.get("cycle_times_local", ["10:00", "12:30", "15:15"])
+        return [str(value) for value in raw] if isinstance(raw, list) else ["10:00", "12:30", "15:15"]
 
     @property
     def cycle_times_utc(self) -> list[str]:
@@ -158,6 +177,16 @@ class Settings:
     def small_position_cleanup_cycle_utc(self) -> str:
         """Configured UTC cycle time used for small-position cleanup."""
         return str(self.trading.get("small_position_cleanup_cycle_utc", "16:00"))
+
+    @property
+    def small_position_cleanup_cycle_local(self) -> str:
+        """Configured local cycle time used for small-position cleanup in market-session mode."""
+        return str(
+            self.trading.get(
+                "small_position_cleanup_cycle_local",
+                self.trading.get("small_position_cleanup_cycle_utc", "15:15"),
+            )
+        )
 
     @property
     def small_position_cleanup_min_holding_hours(self) -> int:
@@ -412,7 +441,7 @@ class Settings:
     def effective_screening_cooldown_hours(self) -> int:
         """Screening cooldown in hours. If effective_screening_cooldown_override is set, use it.
         Otherwise: for intraday, cap at cycle_hours so each cycle gets fresh pool.
-        With 3 cycles at 08/12/16, 4h cooldown ensures cycle 2 and 3 see instruments from cycle 1 as eligible."""
+        With 3 regular-session cycles, 4h cooldown ensures cycle 2 and 3 see instruments from cycle 1 as eligible."""
         override = self.universe.get("effective_screening_cooldown_override")
         if override is not None:
             return int(override)

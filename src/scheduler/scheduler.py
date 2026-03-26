@@ -17,6 +17,11 @@ from src.runtime import (
 )
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
+from src.utils.scheduling import (
+    analysis_cycle_day_of_week,
+    analysis_cycle_job_ids,
+    analysis_cycle_specs,
+)
 
 logger = get_logger("scheduler")
 
@@ -33,15 +38,10 @@ except ImportError:
     log_event = None
 
 
-def _sync_analysis_cycle_jobs(database_url: str, cycle_times_utc: list[str]) -> set[str]:
+def _sync_analysis_cycle_jobs(database_url: str, desired_ids: set[str]) -> set[str]:
     """Remove stale persisted analysis-cycle jobs and return desired job IDs."""
-    desired_ids = set()
-    for cycle_time in cycle_times_utc:
-        hour, minute = map(int, cycle_time.split(":"))
-        desired_ids.add(f"analysis_cycle_{hour:02d}{minute:02d}")
-
     # APScheduler persists cron jobs in apscheduler_jobs. When cadence changes
-    # (for example standard 07:00/19:00 -> intraday 08:00/12:00/16:00),
+    # (for example fixed UTC 08:00/12:00/16:00 -> market-session 10:00/12:30/15:15 ET),
     # replace_existing only updates matching IDs and leaves obsolete rows behind.
     # Prune those rows directly before recreating the live scheduler.
     engine = create_engine(database_url, connect_args={"check_same_thread": False})
@@ -335,20 +335,20 @@ def create_scheduler() -> BlockingScheduler:
         "default": SQLAlchemyJobStore(url=DATABASE_URL),
     }
 
-    desired_cycle_job_ids = _sync_analysis_cycle_jobs(DATABASE_URL, settings.cycle_times_utc)
+    desired_cycle_job_ids = _sync_analysis_cycle_jobs(DATABASE_URL, analysis_cycle_job_ids(settings))
 
     scheduler = BlockingScheduler(jobstores=jobstores)
 
-    # Analysis cycle: configured UTC schedule, Mon-Fri
-    for cycle_time in settings.cycle_times_utc:
-        hour, minute = map(int, cycle_time.split(":"))
+    # Analysis cycle: configured schedule, weekday-filtered and timezone-aware when enabled
+    for spec in analysis_cycle_specs(settings):
         scheduler.add_job(
             _run_analysis_cycle,
             "cron",
-            hour=hour,
-            minute=minute,
-            day_of_week="mon-fri",
-            id=f"analysis_cycle_{hour:02d}{minute:02d}",
+            hour=spec.hour,
+            minute=spec.minute,
+            day_of_week=analysis_cycle_day_of_week(settings),
+            timezone=spec.timezone,
+            id=spec.job_id,
             replace_existing=True,
             misfire_grace_time=3600,
             max_instances=1,

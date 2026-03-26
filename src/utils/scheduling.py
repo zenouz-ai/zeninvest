@@ -1,0 +1,236 @@
+"""Shared scheduling helpers for market-session and legacy UTC cycle plans."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
+from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
+
+if TYPE_CHECKING:
+    from src.utils.config import Settings
+
+
+_WEEKDAY_NAMES = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+@dataclass(frozen=True)
+class AnalysisCycleSpec:
+    """Concrete scheduler spec for one analysis-cycle trigger."""
+
+    job_id: str
+    clock_time: str
+    hour: int
+    minute: int
+    timezone: tzinfo
+
+
+def parse_clock_time(value: str) -> tuple[int, int]:
+    """Parse a HH:MM string into integer hour/minute components."""
+    parts = str(value).strip().split(":")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid clock time: {value!r}")
+    return int(parts[0]), int(parts[1])
+
+
+def format_clock_time(hour: int, minute: int) -> str:
+    return f"{hour:02d}:{minute:02d}"
+
+
+def uses_market_session_schedule(settings: Settings) -> bool:
+    """True when analysis cycles should follow a timezone-aware market session."""
+    return settings.cycle_frequency == "intraday" and settings.schedule_mode == "market_session"
+
+
+def analysis_cycle_day_of_week(settings: Settings) -> str:
+    """Return APScheduler cron day-of-week string from market_days config."""
+    days = sorted({int(day) for day in settings.market_days if 0 <= int(day) <= 6})
+    if not days:
+        return "mon-fri"
+    return ",".join(_WEEKDAY_NAMES[day] for day in days)
+
+
+def analysis_cycle_specs(settings: Settings) -> list[AnalysisCycleSpec]:
+    """Return analysis-cycle scheduler specs for the configured cadence."""
+    if uses_market_session_schedule(settings):
+        zone = ZoneInfo(settings.schedule_timezone)
+        times = settings.cycle_times_local
+    else:
+        zone = timezone.utc
+        times = settings.cycle_times_utc
+
+    specs: list[AnalysisCycleSpec] = []
+    for raw_time in times:
+        hour, minute = parse_clock_time(raw_time)
+        specs.append(
+            AnalysisCycleSpec(
+                job_id=f"analysis_cycle_{hour:02d}{minute:02d}",
+                clock_time=format_clock_time(hour, minute),
+                hour=hour,
+                minute=minute,
+                timezone=zone,
+            )
+        )
+    return specs
+
+
+def analysis_cycle_job_ids(settings: Settings) -> set[str]:
+    """Return desired persisted analysis-cycle job IDs."""
+    return {spec.job_id for spec in analysis_cycle_specs(settings)}
+
+
+def _first_schedule_date_local(settings: Settings, now_utc: datetime) -> date | None:
+    market_days = set(settings.market_days)
+
+    if uses_market_session_schedule(settings):
+        zone = ZoneInfo(settings.schedule_timezone)
+        now_local = now_utc.astimezone(zone)
+        specs = analysis_cycle_specs(settings)
+        for day_offset in range(0, 8):
+            candidate_day = now_local.date() + timedelta(days=day_offset)
+            if candidate_day.weekday() not in market_days:
+                continue
+            if day_offset > 0:
+                return candidate_day
+            for spec in specs:
+                candidate_local = datetime(
+                    candidate_day.year,
+                    candidate_day.month,
+                    candidate_day.day,
+                    spec.hour,
+                    spec.minute,
+                    tzinfo=zone,
+                )
+                if candidate_local.astimezone(timezone.utc) > now_utc:
+                    return candidate_day
+        return None
+
+    for day_offset in range(0, 8):
+        candidate_day = now_utc.date() + timedelta(days=day_offset)
+        if candidate_day.weekday() not in market_days:
+            continue
+        return candidate_day
+
+    return None
+
+
+def resolved_cycle_times_utc(settings: Settings, now_utc: datetime | None = None) -> list[str]:
+    """Return UTC clock labels for the next eligible market day."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    if not uses_market_session_schedule(settings):
+        return settings.cycle_times_utc
+
+    zone = ZoneInfo(settings.schedule_timezone)
+    target_day = _first_schedule_date_local(settings, now_utc)
+    if target_day is None:
+        return []
+
+    resolved: list[str] = []
+    for spec in analysis_cycle_specs(settings):
+        candidate_local = datetime(
+            target_day.year,
+            target_day.month,
+            target_day.day,
+            spec.hour,
+            spec.minute,
+            tzinfo=zone,
+        )
+        resolved.append(candidate_local.astimezone(timezone.utc).strftime("%H:%M"))
+    return resolved
+
+
+def next_scheduled_run_utc(settings: Settings, now_utc: datetime | None = None) -> datetime | None:
+    """Return the next scheduled analysis cycle in UTC."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    market_days = set(settings.market_days)
+    specs = analysis_cycle_specs(settings)
+
+    if uses_market_session_schedule(settings):
+        zone = ZoneInfo(settings.schedule_timezone)
+        now_local = now_utc.astimezone(zone)
+        for day_offset in range(0, 8):
+            candidate_day = now_local.date() + timedelta(days=day_offset)
+            if candidate_day.weekday() not in market_days:
+                continue
+            for spec in specs:
+                candidate_local = datetime(
+                    candidate_day.year,
+                    candidate_day.month,
+                    candidate_day.day,
+                    spec.hour,
+                    spec.minute,
+                    tzinfo=zone,
+                )
+                candidate_utc = candidate_local.astimezone(timezone.utc)
+                if candidate_utc > now_utc:
+                    return candidate_utc
+        return None
+
+    for spec in specs:
+        candidate_utc = now_utc.replace(
+            hour=spec.hour,
+            minute=spec.minute,
+            second=0,
+            microsecond=0,
+        )
+        if candidate_utc > now_utc and now_utc.weekday() in market_days:
+            return candidate_utc
+
+    for day_offset in range(1, 8):
+        candidate_day = now_utc.date() + timedelta(days=day_offset)
+        if candidate_day.weekday() not in market_days:
+            continue
+        first_spec = specs[0]
+        return datetime(
+            candidate_day.year,
+            candidate_day.month,
+            candidate_day.day,
+            first_spec.hour,
+            first_spec.minute,
+            tzinfo=timezone.utc,
+        )
+
+    return None
+
+
+def parse_cycle_started_at_utc(cycle_id: str | None) -> datetime | None:
+    """Best-effort parse of cycle IDs into UTC start timestamps."""
+    if not cycle_id:
+        return None
+    parts = str(cycle_id).split("_")
+    if len(parts) < 3:
+        return None
+
+    date_part = parts[1]
+    time_part = parts[2]
+    if len(date_part) != 8 or not date_part.isdigit():
+        return None
+
+    digits = "".join(ch for ch in time_part if ch.isdigit())
+    try:
+        if len(digits) >= 6:
+            parsed = datetime.strptime(f"{date_part}{digits[:6]}", "%Y%m%d%H%M%S")
+        elif len(digits) >= 4:
+            parsed = datetime.strptime(f"{date_part}{digits[:4]}", "%Y%m%d%H%M")
+        else:
+            return None
+    except ValueError:
+        return None
+
+    return parsed.replace(tzinfo=timezone.utc)
+
+
+def current_cycle_clock_time(settings: Settings, cycle_id: str | None, now_utc: datetime | None = None) -> str:
+    """Return the active cycle clock label in configured schedule time."""
+    reference_utc = parse_cycle_started_at_utc(cycle_id) or now_utc or datetime.now(timezone.utc)
+    if uses_market_session_schedule(settings):
+        return reference_utc.astimezone(ZoneInfo(settings.schedule_timezone)).strftime("%H:%M")
+    return reference_utc.astimezone(timezone.utc).strftime("%H:%M")
+
+
+def is_within_regular_market_session(settings: Settings, now_utc: datetime | None = None) -> bool:
+    """True when the timestamp is inside the 09:30-16:00 NYSE core session."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    local_dt = now_utc.astimezone(ZoneInfo(settings.schedule_timezone))
+    local_time = local_dt.timetz().replace(tzinfo=None)
+    return time(9, 30) <= local_time < time(16, 0)

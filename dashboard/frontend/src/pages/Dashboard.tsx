@@ -303,9 +303,12 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
     : sseConnectionState === 'connecting'
       ? 'Stream Reconnecting'
       : 'Stream Offline'
+  const scheduleLabel = status?.schedule_mode === 'market_session'
+    ? `${(status.cycle_times_local ?? []).join(' / ')} NY`
+    : `${(status?.cycle_times_utc ?? []).join(' / ')} UTC`
   const nextCycleMetricSubtitle = nextRunUtc
-    ? `${safeFormat(nextRunUtc, 'MMM dd, HH:mm', '—')} UTC`
-    : 'Scheduler has not published the next run yet.'
+    ? `${safeFormat(nextRunUtc, 'MMM dd, HH:mm', '—')} UTC${scheduleLabel ? ` · ${scheduleLabel}` : ''}`
+    : scheduleLabel || 'Scheduler has not published the next run yet.'
   const latestRunMetricSubtitle = latestRun
     ? `Last ${safeFormat(latestRun.started_at, 'MMM dd, HH:mm', '—')} UTC${lastRunCost != null ? ` · £${lastRunCost.total_gbp.toFixed(4)}` : ''}`
     : 'Awaiting first completed cycle.'
@@ -355,6 +358,9 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill label={stateBadgeText} variant={stateBadgeVariant} dot />
               <StatusPill label={streamLabel} variant={streamVariant} dot />
+              {scheduleLabel && (
+                <StatusPill label={`Schedule ${scheduleLabel}`} variant="dim" />
+              )}
               {status?.next_run_utc && (
                 <StatusPill label={`Next ${safeFormat(status.next_run_utc, 'MMM dd, HH:mm', '—')} UTC`} variant="dim" />
               )}

@@ -1,16 +1,23 @@
 """Tests for scheduler configuration and 3-cycle setup."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from src.scheduler.scheduler import create_scheduler
 from src.utils.config import Settings
+from src.utils.scheduling import current_cycle_clock_time, next_scheduled_run_utc, resolved_cycle_times_utc
 
 
-def test_scheduler_creates_jobs_from_cycle_times_utc() -> None:
-    """Scheduler creates one analysis_cycle job per cycle_times_utc entry."""
+def test_scheduler_creates_jobs_from_market_session_cycle_times() -> None:
+    """Scheduler creates one analysis_cycle job per local market-session entry."""
     mock_settings = MagicMock()
+    mock_settings.cycle_frequency = "intraday"
+    mock_settings.schedule_mode = "market_session"
+    mock_settings.schedule_timezone = "America/New_York"
+    mock_settings.cycle_times_local = ["10:00", "12:30", "15:15"]
     mock_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
+    mock_settings.market_days = [0, 1, 2, 3, 4]
     mock_settings.trading = {}
     mock_settings.batch_enrichment_enabled = False
     mock_settings.macro_proactive_scan_enabled = False
@@ -23,15 +30,21 @@ def test_scheduler_creates_jobs_from_cycle_times_utc() -> None:
     cycle_jobs = [j for j in scheduler.get_jobs() if j.id.startswith("analysis_cycle_")]
     assert len(cycle_jobs) == 3
     ids = {j.id for j in cycle_jobs}
-    assert "analysis_cycle_0800" in ids
-    assert "analysis_cycle_1200" in ids
-    assert "analysis_cycle_1600" in ids
+    assert "analysis_cycle_1000" in ids
+    assert "analysis_cycle_1230" in ids
+    assert "analysis_cycle_1515" in ids
+    assert all(str(getattr(job.trigger, "timezone", "")) == "America/New_York" for job in cycle_jobs)
 
 
 def test_scheduler_jobs_have_max_instances_one() -> None:
     """All scheduler jobs must have max_instances=1 to prevent concurrent cycles."""
     mock_settings = MagicMock()
+    mock_settings.cycle_frequency = "intraday"
+    mock_settings.schedule_mode = "market_session"
+    mock_settings.schedule_timezone = "America/New_York"
+    mock_settings.cycle_times_local = ["10:00", "12:30", "15:15"]
     mock_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
+    mock_settings.market_days = [0, 1, 2, 3, 4]
     mock_settings.trading = {}
     mock_settings.batch_enrichment_enabled = True
     mock_settings.macro_proactive_scan_enabled = False
@@ -53,18 +66,20 @@ def test_config_cycle_frequency_standard() -> None:
     settings = Settings(config)
     assert settings.cycle_times_utc == ["07:00", "19:00"]
     assert settings.cycle_hours == 12
+    assert settings.schedule_mode == "fixed_utc"
 
 
 def test_config_cycle_frequency_intraday() -> None:
-    """When cycle_frequency is intraday, cycle_times_utc returns 3 times."""
+    """Intraday defaults to market-session scheduling with explicit local times."""
     config = {
         "trading": {
             "cycle_frequency": "intraday",
-            "cycle_times_utc": ["08:00", "12:00", "16:00"],
+            "cycle_times_local": ["10:00", "12:30", "15:15"],
         },
     }
     settings = Settings(config)
-    assert settings.cycle_times_utc == ["08:00", "12:00", "16:00"]
+    assert settings.schedule_mode == "market_session"
+    assert settings.cycle_times_local == ["10:00", "12:30", "15:15"]
     assert settings.cycle_hours == 4
 
 
@@ -121,7 +136,12 @@ def test_macro_config_accessors_default_safely() -> None:
 def test_scheduler_adds_macro_scan_job_when_enabled() -> None:
     """Scheduler should register a dedicated daily macro scan job when enabled."""
     mock_settings = MagicMock()
+    mock_settings.cycle_frequency = "intraday"
+    mock_settings.schedule_mode = "market_session"
+    mock_settings.schedule_timezone = "America/New_York"
+    mock_settings.cycle_times_local = ["10:00", "12:30", "15:15"]
     mock_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
+    mock_settings.market_days = [0, 1, 2, 3, 4]
     mock_settings.trading = {}
     mock_settings.batch_enrichment_enabled = False
     mock_settings.macro_proactive_scan_enabled = True
@@ -138,7 +158,12 @@ def test_scheduler_adds_macro_scan_job_when_enabled() -> None:
 def test_scheduler_omits_macro_scan_job_when_disabled() -> None:
     """Scheduler should not create macro scan job when feature is disabled."""
     mock_settings = MagicMock()
+    mock_settings.cycle_frequency = "intraday"
+    mock_settings.schedule_mode = "market_session"
+    mock_settings.schedule_timezone = "America/New_York"
+    mock_settings.cycle_times_local = ["10:00", "12:30", "15:15"]
     mock_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
+    mock_settings.market_days = [0, 1, 2, 3, 4]
     mock_settings.trading = {}
     mock_settings.batch_enrichment_enabled = False
     mock_settings.macro_proactive_scan_enabled = False
@@ -152,16 +177,26 @@ def test_scheduler_omits_macro_scan_job_when_disabled() -> None:
 
 
 def test_scheduler_removes_stale_analysis_cycle_jobs_when_cadence_changes(tmp_path: Path) -> None:
-    """Persisted 07:00/19:00 jobs should be removed when config switches to intraday."""
+    """Persisted UTC jobs should be removed when config switches to market-session IDs."""
     standard_settings = MagicMock()
+    standard_settings.cycle_frequency = "intraday"
+    standard_settings.schedule_mode = "fixed_utc"
+    standard_settings.schedule_timezone = "America/New_York"
+    standard_settings.cycle_times_local = ["10:00", "12:30", "15:15"]
     standard_settings.cycle_times_utc = ["07:00", "19:00"]
+    standard_settings.market_days = [0, 1, 2, 3, 4]
     standard_settings.trading = {}
     standard_settings.batch_enrichment_enabled = False
     standard_settings.macro_proactive_scan_enabled = False
     standard_settings.macro_scan_time_utc = "06:00"
 
     intraday_settings = MagicMock()
+    intraday_settings.cycle_frequency = "intraday"
+    intraday_settings.schedule_mode = "market_session"
+    intraday_settings.schedule_timezone = "America/New_York"
+    intraday_settings.cycle_times_local = ["10:00", "12:30", "15:15"]
     intraday_settings.cycle_times_utc = ["08:00", "12:00", "16:00"]
+    intraday_settings.market_days = [0, 1, 2, 3, 4]
     intraday_settings.trading = {}
     intraday_settings.batch_enrichment_enabled = False
     intraday_settings.macro_proactive_scan_enabled = False
@@ -178,4 +213,49 @@ def test_scheduler_removes_stale_analysis_cycle_jobs_when_cadence_changes(tmp_pa
             scheduler = create_scheduler()
 
     cycle_job_ids = {j.id for j in scheduler.get_jobs() if j.id.startswith("analysis_cycle_")}
-    assert cycle_job_ids == {"analysis_cycle_0800", "analysis_cycle_1200", "analysis_cycle_1600"}
+    assert cycle_job_ids == {"analysis_cycle_1000", "analysis_cycle_1230", "analysis_cycle_1515"}
+
+
+def test_market_session_schedule_resolves_dst_aware_utc_times() -> None:
+    settings = Settings(
+        {
+            "trading": {
+                "cycle_frequency": "intraday",
+                "schedule_mode": "market_session",
+                "schedule_timezone": "America/New_York",
+                "cycle_times_local": ["10:00", "12:30", "15:15"],
+                "market_days": [0, 1, 2, 3, 4],
+            },
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    now_utc = datetime(2026, 3, 26, 13, 0, tzinfo=timezone.utc)
+
+    assert resolved_cycle_times_utc(settings, now_utc=now_utc) == ["14:00", "16:30", "19:15"]
+    assert next_scheduled_run_utc(settings, now_utc=now_utc) == datetime(2026, 3, 26, 14, 0, tzinfo=timezone.utc)
+
+
+def test_current_cycle_clock_time_uses_local_market_session_time() -> None:
+    settings = Settings(
+        {
+            "trading": {
+                "cycle_frequency": "intraday",
+                "schedule_mode": "market_session",
+                "schedule_timezone": "America/New_York",
+                "cycle_times_local": ["10:00", "12:30", "15:15"],
+                "market_days": [0, 1, 2, 3, 4],
+            },
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    assert current_cycle_clock_time(settings, "scheduled_20260325_191501") == "15:15"

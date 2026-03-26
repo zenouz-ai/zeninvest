@@ -10,11 +10,14 @@ trading:
   take_profit_allow_before_min_hold: true  # Allow take-profit SELL before the usual 24h minimum holding rule
   small_position_cleanup_enabled: true  # Liquidate residual holdings on the configured cleanup cycle
   small_position_cleanup_value_gbp: 200  # Full SELL holdings below this value during cleanup
-  small_position_cleanup_cycle_utc: "16:00"  # Final intraday cleanup cycle
+  small_position_cleanup_cycle_local: "15:15"  # Final regular-session cleanup cycle in America/New_York
   small_position_cleanup_min_holding_hours: 24  # Do not cleanup positions bought within the last 24h
   base_url: https://demo.trading212.com/api/v0
-  cycle_frequency: intraday  # standard = 2 cycles (07:00, 19:00), intraday = 3 cycles (08:00, 12:00, 16:00)
+  cycle_frequency: intraday  # standard = 2 fixed UTC cycles; intraday = 3 DST-aware market-session cycles
+  schedule_mode: market_session  # market_session = America/New_York-local cycle times; fixed_utc = legacy UTC cron
+  schedule_timezone: America/New_York
   cycle_hours: 4
+  cycle_times_local: ["10:00", "12:30", "15:15"]
   cycle_times_utc: ["08:00", "12:00", "16:00"]
   market_days: [0, 1, 2, 3, 4]  # Mon-Fri
   skip_market_holidays: true     # Skip analysis cycles on NYSE holidays
