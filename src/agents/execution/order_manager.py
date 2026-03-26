@@ -62,6 +62,18 @@ def _stop_cancel_is_idempotent_success(status_code: int | None, response_text: s
     return False
 
 
+def _format_http_error_message(exc: BaseException, *, prefix: str) -> str:
+    """Return an execution-friendly error message with broker body detail when available."""
+    inner_exc, status_code, body_snip = _unwrap_order_http_error(exc)
+    if status_code is None:
+        return f"{prefix}: {inner_exc}"
+
+    clean_body = " ".join((body_snip or "").split())
+    if clean_body:
+        return f"{prefix}: HTTP {status_code} {clean_body[:300]}"
+    return f"{prefix}: HTTP {status_code}"
+
+
 class OrderManager:
     """Manages order execution with deduplication and logging."""
 
@@ -247,6 +259,260 @@ class OrderManager:
                 return {"status": "failed", "error": error_msg}
 
         return {"status": "ok", "cancelled": cancelled}
+
+    def cancel_pending_market_sells(self, ticker: str, reason: str) -> dict[str, Any]:
+        """Cancel live pending market SELLs for a ticker when a newer cycle says hold off."""
+        if self.dry_run:
+            return {"status": "ok", "cancelled": [], "local_pending_count": 0, "live_pending_count": 0}
+
+        session = get_session()
+        try:
+            local_pending = (
+                session.query(Order)
+                .filter(
+                    Order.ticker == ticker,
+                    Order.action == "SELL",
+                    Order.order_type == "market",
+                    Order.status.in_(["pending", "submitting"]),
+                    Order.t212_order_id.isnot(None),
+                )
+                .all()
+            )
+            if not local_pending:
+                return {"status": "ok", "cancelled": [], "local_pending_count": 0, "live_pending_count": 0}
+
+            try:
+                live_pending = self.client.get_pending_orders()
+            except Exception as e:
+                error_msg = f"Failed to fetch pending orders: {e}"
+                logger.error(error_msg)
+                return {
+                    "status": "failed",
+                    "error": error_msg,
+                    "cancelled": [],
+                    "local_pending_count": len(local_pending),
+                    "live_pending_count": 0,
+                }
+
+            live_pending_ids = {
+                str(item.get("id") or item.get("orderId"))
+                for item in live_pending
+                if (item.get("id") or item.get("orderId")) is not None
+            }
+
+            cancelled: list[str] = []
+            live_rows = [row for row in local_pending if str(row.t212_order_id) in live_pending_ids]
+            for row in live_rows:
+                order_id = str(row.t212_order_id)
+                try:
+                    self.client.cancel_order(order_id)
+                    row.status = "cancelled"
+                    row.error_message = reason
+                    cancelled.append(order_id)
+                except Exception as e:
+                    inner_exc, status_code, body_snip = _unwrap_order_http_error(e)
+                    if _stop_cancel_is_idempotent_success(status_code, body_snip):
+                        row.status = "cancelled"
+                        row.error_message = reason
+                        cancelled.append(order_id)
+                        continue
+                    error_msg = f"Failed to cancel pending market sell {order_id} for {ticker}: {e}"
+                    logger.error(
+                        "%s | http_status=%s body_snippet=%r",
+                        error_msg,
+                        status_code,
+                        body_snip[:200],
+                    )
+                    session.rollback()
+                    return {
+                        "status": "failed",
+                        "error": error_msg,
+                        "cancelled": cancelled,
+                        "local_pending_count": len(local_pending),
+                        "live_pending_count": len(live_rows),
+                    }
+
+            if cancelled:
+                session.commit()
+                logger.info(
+                    "Cancelled %d pending market SELL order(s) for %s after newer decision: %s",
+                    len(cancelled),
+                    ticker,
+                    reason,
+                )
+            return {
+                "status": "ok",
+                "cancelled": cancelled,
+                "local_pending_count": len(local_pending),
+                "live_pending_count": len(live_rows),
+            }
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def _classify_pending_order(
+        self,
+        live_order: dict[str, Any],
+        local_row: Order | None,
+    ) -> str | None:
+        """Classify a pending broker order as buy, sell, or stop_sell."""
+        if local_row is not None:
+            if local_row.order_type == "stop":
+                return "stop_sell"
+            if local_row.action == "BUY":
+                return "buy"
+            if local_row.action == "SELL":
+                return "sell"
+
+        order_type = str(live_order.get("type") or "").upper()
+        if order_type == "STOP" or live_order.get("stopPrice") is not None:
+            return "stop_sell"
+
+        quantity_raw = live_order.get("quantity")
+        try:
+            quantity = float(quantity_raw)
+        except (TypeError, ValueError):
+            quantity = 0.0
+        if quantity > 0:
+            return "buy"
+        if quantity < 0:
+            return "sell"
+
+        action = str(live_order.get("action") or live_order.get("side") or "").upper()
+        if action == "BUY":
+            return "buy"
+        if action == "SELL":
+            return "sell"
+        return None
+
+    def cancel_pending_orders_by_class(
+        self,
+        *,
+        tickers: list[str],
+        order_class: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Cancel matching pending orders for the given tickers and order class."""
+        normalized_tickers = [ticker for ticker in tickers if ticker]
+        if not normalized_tickers:
+            return {
+                "status": "failed",
+                "error": "No tickers provided",
+                "cancelled": [],
+                "matches": [],
+                "failures": [],
+            }
+
+        session = get_session()
+        try:
+            local_rows = (
+                session.query(Order)
+                .filter(
+                    Order.ticker.in_(normalized_tickers),
+                    Order.status.in_(["pending", "submitting"]),
+                    Order.t212_order_id.isnot(None),
+                )
+                .all()
+            )
+            local_by_id = {str(row.t212_order_id): row for row in local_rows if row.t212_order_id}
+
+            try:
+                live_pending = self.client.get_pending_orders()
+            except Exception as e:
+                error_msg = f"Failed to fetch pending orders: {e}"
+                logger.error(error_msg)
+                return {
+                    "status": "failed",
+                    "error": error_msg,
+                    "cancelled": [],
+                    "matches": [],
+                    "failures": [],
+                }
+
+            matches: list[dict[str, Any]] = []
+            for live_order in live_pending:
+                ticker = str(live_order.get("ticker") or "")
+                if ticker not in normalized_tickers:
+                    continue
+                order_id = live_order.get("id") or live_order.get("orderId")
+                if order_id is None:
+                    continue
+                order_id_str = str(order_id)
+                local_row = local_by_id.get(order_id_str)
+                classified = self._classify_pending_order(live_order, local_row)
+                if classified != order_class:
+                    continue
+                matches.append(
+                    {
+                        "order_id": order_id_str,
+                        "ticker": ticker,
+                        "classified_as": classified,
+                        "live_order": live_order,
+                    }
+                )
+
+            cancelled: list[str] = []
+            failures: list[dict[str, str]] = []
+            per_ticker: dict[str, dict[str, int]] = {
+                ticker: {"matched": 0, "cancelled": 0, "failed": 0}
+                for ticker in normalized_tickers
+            }
+            for match in matches:
+                per_ticker[match["ticker"]]["matched"] += 1
+                try:
+                    self.client.cancel_order(match["order_id"])
+                    cancelled.append(match["order_id"])
+                    per_ticker[match["ticker"]]["cancelled"] += 1
+                    row = local_by_id.get(match["order_id"])
+                    if row:
+                        row.status = "cancelled"
+                        row.error_message = reason
+                except Exception as e:
+                    inner_exc, status_code, body_snip = _unwrap_order_http_error(e)
+                    if _stop_cancel_is_idempotent_success(status_code, body_snip):
+                        cancelled.append(match["order_id"])
+                        per_ticker[match["ticker"]]["cancelled"] += 1
+                        row = local_by_id.get(match["order_id"])
+                        if row:
+                            row.status = "cancelled"
+                            row.error_message = reason
+                        continue
+                    error_msg = f"{inner_exc}"
+                    failures.append(
+                        {
+                            "order_id": match["order_id"],
+                            "ticker": match["ticker"],
+                            "error": error_msg,
+                        }
+                    )
+                    per_ticker[match["ticker"]]["failed"] += 1
+
+            if cancelled:
+                session.commit()
+
+            if failures and cancelled:
+                status = "partial"
+            elif failures:
+                status = "failed"
+            else:
+                status = "ok"
+
+            return {
+                "status": status,
+                "cancelled": cancelled,
+                "matches": matches,
+                "failures": failures,
+                "per_ticker": per_ticker,
+                "local_pending_count": len(local_rows),
+                "live_pending_count": len(live_pending),
+            }
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     def _log_order(
         self,
@@ -697,8 +963,8 @@ class OrderManager:
             }
 
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Order failed for {ticker}: {error_msg}")
+            error_msg = _format_http_error_message(e, prefix=f"Order failed for {ticker}")
+            logger.error("%s", error_msg)
             # Update the pre-written record to failed
             self._update_order_status(order.id, "failed", error_message=error_msg)
             return {
@@ -990,8 +1256,8 @@ class OrderManager:
                 "quantity": quantity,
             }
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Stop-loss order failed for {ticker}: {error_msg}")
+            error_msg = _format_http_error_message(e, prefix=f"Stop-loss order failed for {ticker}")
+            logger.error("%s", error_msg)
             self._log_order(
                 ticker=ticker,
                 action="SELL",

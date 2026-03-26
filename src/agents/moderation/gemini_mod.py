@@ -48,6 +48,62 @@ IMPORTANT: Keep your assessment under 100 words. Respond with ONLY valid JSON:
 }"""
 
 
+def _normalize_modifications_payload(
+    modifications: Any,
+    *,
+    moderator: str,
+    ticker: str,
+    cycle_id: str | None,
+) -> dict[str, float] | None:
+    """Coerce moderator modifications into a safe dict shape."""
+    if modifications is None:
+        return None
+
+    parsed = modifications
+    if isinstance(parsed, str):
+        stripped = parsed.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            logger.warning(
+                "Ignoring malformed %s modifications for %s in %s: type=str",
+                moderator,
+                ticker,
+                cycle_id or "manual",
+            )
+            return None
+
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "Ignoring malformed %s modifications for %s in %s: type=%s",
+            moderator,
+            ticker,
+            cycle_id or "manual",
+            type(parsed).__name__,
+        )
+        return None
+
+    normalized: dict[str, float] = {}
+    for key in ("target_allocation_pct", "stop_loss_pct"):
+        value = parsed.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            normalized[key] = float(value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Ignoring invalid %s.%s for %s in %s: type=%s",
+                moderator,
+                key,
+                ticker,
+                cycle_id or "manual",
+                type(value).__name__,
+            )
+    return normalized or None
+
+
 def review_trade(
     trade_proposal: dict[str, Any],
     portfolio_context: str,
@@ -148,7 +204,12 @@ def _review_single_turn(
         _log_gemini_cost(response, cycle_id, settings)
 
         content = _extract_json_from_text(response.text or "")
-        result = _parse_json_with_repair(content)
+        result = _parse_json_with_repair(
+            content,
+            ticker=str(trade_proposal.get("ticker", "UNKNOWN")),
+            cycle_id=cycle_id,
+            moderator=settings.moderator_2_model,
+        )
         result["moderator"] = settings.moderator_2_model
         result["available"] = True
         return result
@@ -310,7 +371,12 @@ def _review_with_tools(
             if not func_calls:
                 text = "".join(p.text for p in text_parts if p.text)
                 content_str = _extract_json_from_text(text)
-                result = _parse_json_with_repair(content_str)
+                result = _parse_json_with_repair(
+                    content_str,
+                    ticker=str(trade_proposal.get("ticker", "UNKNOWN")),
+                    cycle_id=cycle_id,
+                    moderator=settings.moderator_2_model,
+                )
                 result["moderator"] = settings.moderator_2_model
                 result["available"] = True
                 return result
@@ -353,9 +419,40 @@ def _clamp_gemini_scores(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _normalize_gemini_result(result: dict[str, Any]) -> dict[str, Any]:
+def _normalize_gemini_result(
+    result: Any,
+    *,
+    ticker: str = "UNKNOWN",
+    cycle_id: str | None = None,
+    moderator: str = "gemini",
+) -> dict[str, Any]:
     """Make Gemini output easier to understand when scores and wording diverge."""
+    if not isinstance(result, dict):
+        logger.warning(
+            "Gemini returned non-object JSON for %s in %s: type=%s",
+            ticker,
+            cycle_id or "manual",
+            type(result).__name__,
+        )
+        result = {
+            "verdict": "DISAGREE",
+            "growth_score": 3,
+            "risk_score": 7,
+            "confidence_score": 1,
+            "assessment": "Could not parse Gemini response (defaulting to DISAGREE for safety)",
+            "high_risk_flag": False,
+            "modifications": None,
+        }
+
+    result = dict(result)
     result = _clamp_gemini_scores(result)
+    result["verdict"] = str(result.get("verdict", "")).upper()
+    result["modifications"] = _normalize_modifications_payload(
+        result.get("modifications"),
+        moderator=moderator,
+        ticker=ticker,
+        cycle_id=cycle_id,
+    )
 
     assessment = str(result.get("assessment") or result.get("reasoning") or "").strip()
     verdict = str(result.get("verdict", "")).upper()
@@ -379,7 +476,13 @@ def _normalize_gemini_result(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def _parse_json_with_repair(text: str) -> dict[str, Any]:
+def _parse_json_with_repair(
+    text: str,
+    *,
+    ticker: str = "UNKNOWN",
+    cycle_id: str | None = None,
+    moderator: str = "gemini",
+) -> dict[str, Any]:
     """Parse JSON with repair for common LLM output issues.
 
     Handles truncated strings, missing closing braces, trailing commas, etc.
@@ -387,7 +490,12 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
     """
     # First try normal parse
     try:
-        return _normalize_gemini_result(json.loads(text))
+        return _normalize_gemini_result(
+            json.loads(text),
+            ticker=ticker,
+            cycle_id=cycle_id,
+            moderator=moderator,
+        )
     except json.JSONDecodeError:
         pass
 
@@ -414,7 +522,12 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
     try:
         result = json.loads(repaired)
         logger.info("Gemini JSON repaired successfully")
-        return _normalize_gemini_result(result)
+        return _normalize_gemini_result(
+            result,
+            ticker=ticker,
+            cycle_id=cycle_id,
+            moderator=moderator,
+        )
     except json.JSONDecodeError:
         pass
 
@@ -438,7 +551,7 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
             "assessment": "Extracted from malformed response",
             "high_risk_flag": risk > growth,
             "modifications": None,
-        })
+        }, ticker=ticker, cycle_id=cycle_id, moderator=moderator)
 
     # Nothing worked — return a safe default instead of raising.
     # Default to DISAGREE — unparseable output should not silently approve trades.
@@ -452,4 +565,4 @@ def _parse_json_with_repair(text: str) -> dict[str, Any]:
         "assessment": "Could not parse Gemini response (defaulting to DISAGREE for safety)",
         "high_risk_flag": False,
         "modifications": None,
-    })
+    }, ticker=ticker, cycle_id=cycle_id, moderator=moderator)

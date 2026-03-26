@@ -63,8 +63,13 @@ async def get_commands(
                 "cycle_id": cmd.cycle_id,
                 "order_id": cmd.order_id,
                 "status": cmd.status,
+                "command_kind": cmd.command_kind,
+                "execution_mode": cmd.execution_mode,
+                "target_order_class": cmd.target_order_class,
+                "target_tickers_json": cmd.target_tickers_json,
                 "rejection_reason": cmd.rejection_reason,
                 "response_message": cmd.response_message,
+                "result_json": cmd.result_json,
             }
             for cmd in commands
         ]

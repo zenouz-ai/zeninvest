@@ -240,8 +240,13 @@ export interface SlackCommand {
   cycle_id: string | null
   order_id: number | null
   status: string
+  command_kind?: string | null
+  execution_mode?: string | null
+  target_order_class?: string | null
+  target_tickers_json?: string | null
   rejection_reason: string | null
   response_message: string | null
+  result_json?: string | null
 }
 
 export interface CommandStats {

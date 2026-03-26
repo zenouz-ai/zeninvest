@@ -289,6 +289,30 @@ class TestOrderManager:
         assert len(orders) == 1
         assert orders[0].status == "failed"
 
+    def test_live_order_http_failure_includes_response_body(self, db_session):
+        mock_client = MagicMock()
+        response = MagicMock()
+        response.status_code = 400
+        response.text = '{"detail":"Minimum order value not met"}'
+        mock_client.place_market_order.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request",
+            request=MagicMock(),
+            response=response,
+        )
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+
+        result = manager.execute_market_order(
+            ticker="GOOG_US_EQ",
+            action="BUY",
+            target_amount_gbp=600.0,
+            current_price=150.0,
+        )
+
+        assert result["status"] == "failed"
+        assert "HTTP 400" in result["error"]
+        assert "Minimum order value not met" in result["error"]
+
     def test_portfolio_state(self):
         mock_client = MagicMock()
         mock_client.get_cash.return_value = {"free": 5000.0, "total": 10000.0}
@@ -978,6 +1002,182 @@ class TestPendingStopReconciliation:
         assert "rate limited" in (result["live_fetch_error"] or "")
 
 
+class TestPendingMarketSellCancellation:
+    """Cancel stale pending market SELL rows when a newer cycle decides HOLD/QUEUED."""
+
+    @pytest.fixture(autouse=True)
+    def mock_get_session(self, db_session):
+        with patch("src.agents.execution.order_manager.get_session", return_value=db_session):
+            yield
+
+    def test_cancel_pending_market_sells_cancels_live_matching_rows(self, db_session):
+        db_session.add_all([
+            Order(
+                ticker="ORCL_US_EQ",
+                action="SELL",
+                order_type="market",
+                quantity=-3.71,
+                t212_order_id="sell-live-1",
+                status="pending",
+            ),
+            Order(
+                ticker="ORCL_US_EQ",
+                action="SELL",
+                order_type="market",
+                quantity=-1.0,
+                t212_order_id="sell-stale-1",
+                status="pending",
+            ),
+        ])
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"id": "sell-live-1", "ticker": "ORCL_US_EQ", "type": "MARKET"},
+        ]
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.cancel_pending_market_sells(
+            "ORCL_US_EQ",
+            "Cancelled after newer HOLD decision in cycle scheduled_20260326_120000",
+        )
+
+        assert result["status"] == "ok"
+        assert result["cancelled"] == ["sell-live-1"]
+        mock_client.cancel_order.assert_called_once_with("sell-live-1")
+
+        db_session.expire_all()
+        cancelled = db_session.query(Order).filter(Order.t212_order_id == "sell-live-1").one()
+        untouched = db_session.query(Order).filter(Order.t212_order_id == "sell-stale-1").one()
+        assert cancelled.status == "cancelled"
+        assert "newer HOLD decision" in (cancelled.error_message or "")
+        assert untouched.status == "pending"
+
+    def test_cancel_pending_market_sells_fail_open_when_live_fetch_fails(self, db_session):
+        db_session.add(
+            Order(
+                ticker="ORCL_US_EQ",
+                action="SELL",
+                order_type="market",
+                quantity=-3.71,
+                t212_order_id="sell-live-1",
+                status="pending",
+            )
+        )
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.side_effect = RuntimeError("rate limited")
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.cancel_pending_market_sells(
+            "ORCL_US_EQ",
+            "Cancelled after newer HOLD decision in cycle scheduled_20260326_120000",
+        )
+
+        assert result["status"] == "failed"
+        assert "rate limited" in result["error"]
+
+
+class TestCancelPendingOrdersByClass:
+    """Generic cancel runner helper for Slack cancel commands."""
+
+    @pytest.fixture(autouse=True)
+    def mock_get_session(self, db_session):
+        with patch("src.agents.execution.order_manager.get_session", return_value=db_session):
+            yield
+
+    def test_cancel_pending_orders_by_class_matches_buy_and_stop_sell(self, db_session):
+        db_session.add_all([
+            Order(
+                ticker="NVDA_US_EQ",
+                action="BUY",
+                order_type="market",
+                quantity=2.0,
+                t212_order_id="buy-1",
+                status="pending",
+            ),
+            Order(
+                ticker="NVDA_US_EQ",
+                action="SELL",
+                order_type="stop",
+                quantity=-2.0,
+                t212_order_id="stop-1",
+                status="pending",
+            ),
+        ])
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"id": "buy-1", "ticker": "NVDA_US_EQ", "type": "MARKET", "quantity": 2.0},
+            {"id": "stop-1", "ticker": "NVDA_US_EQ", "type": "STOP", "quantity": -2.0, "stopPrice": 120.0},
+        ]
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        buy_result = manager.cancel_pending_orders_by_class(
+            tickers=["NVDA_US_EQ"],
+            order_class="buy",
+            reason="cancel buy via Slack",
+        )
+        stop_result = manager.cancel_pending_orders_by_class(
+            tickers=["NVDA_US_EQ"],
+            order_class="stop_sell",
+            reason="cancel stop sell via Slack",
+        )
+
+        assert buy_result["status"] == "ok"
+        assert buy_result["cancelled"] == ["buy-1"]
+        assert stop_result["status"] == "ok"
+        assert stop_result["cancelled"] == ["stop-1"]
+
+    def test_cancel_pending_orders_by_class_returns_partial_on_mixed_failures(self, db_session):
+        db_session.add_all([
+            Order(
+                ticker="NVDA_US_EQ",
+                action="SELL",
+                order_type="stop",
+                quantity=-2.0,
+                t212_order_id="stop-1",
+                status="pending",
+            ),
+            Order(
+                ticker="MSFT_US_EQ",
+                action="SELL",
+                order_type="stop",
+                quantity=-1.0,
+                t212_order_id="stop-2",
+                status="pending",
+            ),
+        ])
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_pending_orders.return_value = [
+            {"id": "stop-1", "ticker": "NVDA_US_EQ", "type": "STOP", "quantity": -2.0, "stopPrice": 120.0},
+            {"id": "stop-2", "ticker": "MSFT_US_EQ", "type": "STOP", "quantity": -1.0, "stopPrice": 200.0},
+        ]
+
+        def cancel_side_effect(order_id: str):
+            if order_id == "stop-2":
+                raise RuntimeError("broker error")
+            return {}
+
+        mock_client.cancel_order.side_effect = cancel_side_effect
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.cancel_pending_orders_by_class(
+            tickers=["NVDA_US_EQ", "MSFT_US_EQ"],
+            order_class="stop_sell",
+            reason="cancel stop sell via Slack",
+        )
+
+        assert result["status"] == "partial"
+        assert result["cancelled"] == ["stop-1"]
+        assert len(result["failures"]) == 1
+        assert result["failures"][0]["order_id"] == "stop-2"
+
+
 class TestFxAwareQuantity:
     """Tests for price_gbp / fx-aware quantity calculation in execute_market_order."""
 
@@ -1053,6 +1253,30 @@ class TestFxAwareQuantity:
         mock_client.place_stop_order.assert_called_once()
         call_kwargs = mock_client.place_stop_order.call_args
         assert abs(call_kwargs.kwargs.get("stop_price", 0) - round(232.0 * 0.92, 2)) < 0.01
+
+    def test_place_stop_loss_http_failure_includes_response_body(self, db_session):
+        mock_client = MagicMock()
+        response = MagicMock()
+        response.status_code = 400
+        response.text = '{"detail":"Reserved shares conflict"}'
+        mock_client.place_stop_order.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request",
+            request=MagicMock(),
+            response=response,
+        )
+        manager = OrderManager(client=mock_client, dry_run=False)
+
+        result = manager.place_stop_loss(
+            ticker="MPC_US_EQ",
+            quantity=2.79,
+            current_price=232.0,
+            stop_loss_pct=-8.0,
+            current_price_gbp=179.0,
+        )
+
+        assert result["status"] == "failed"
+        assert "HTTP 400" in result["error"]
+        assert "Reserved shares conflict" in result["error"]
 
     def test_place_stop_loss_stop_price_remains_native_currency(self, db_session):
         """Stop trigger price sent to T212 always uses native current_price, not price_gbp."""

@@ -702,15 +702,19 @@ def format_timestamp_utc(ts: datetime | str | None) -> str:
 
 
 def format_trade_command_reply(result: "SingleTickerResult") -> str:
-    """Format single-ticker pipeline result for Slack thread reply.
+    """Format a Slack command result for Slack thread reply.
 
     Args:
-        result: SingleTickerResult from single_ticker_run.
+        result: Shared Slack command result object.
     """
     ticker = result.ticker_yf or result.ticker_t212
 
+    if result.user_action == "CANCEL" or result.command_kind == "cancel":
+        return _format_cancel_reply(result)
     if result.status == "review_only":
         return _format_review_reply(result, ticker)
+    elif result.status == "partial":
+        return _format_partial_reply(result, ticker)
     elif result.status == "executed":
         return _format_executed_reply(result, ticker)
     elif result.status == "rejected":
@@ -719,9 +723,23 @@ def format_trade_command_reply(result: "SingleTickerResult") -> str:
         return _format_error_reply(result, ticker)
 
 
+def _mode_label(result: "SingleTickerResult") -> str:
+    mode = (result.execution_mode or "").lower()
+    if mode == "strategy":
+        if result.user_action == "REVIEW":
+            return "strategy review"
+        return "strategy-triggered trade"
+    if mode == "direct":
+        return "direct trade"
+    if mode == "cancel_only":
+        return "cancel command"
+    return mode or "unspecified"
+
+
 def _format_review_reply(result: "SingleTickerResult", ticker: str) -> str:
     """Format REVIEW response with full pipeline details."""
     lines = [f"*Review {ticker}*"]
+    lines.append(f"Mode: {_mode_label(result)}")
 
     # Price
     if result.price:
@@ -778,6 +796,7 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
     exec_status = result.execution_result.get("status", "unknown") if result.execution_result else "unknown"
 
     lines = [f"*{action} {ticker}* — {exec_status}"]
+    lines.append(f"Mode: {_mode_label(result)}")
     if qty and price:
         if result.price_gbp and abs(result.price_gbp - price) > 0.01:
             lines.append(
@@ -834,6 +853,8 @@ def _format_executed_reply(result: "SingleTickerResult", ticker: str) -> str:
         order_id = result.execution_result.get("order_id")
         if order_id:
             lines.append(f"Order ID: {order_id}")
+    if result.result_details and result.result_details.get("force_ignored"):
+        lines.append("Force prefix was recorded but not needed for direct trade mode.")
 
     tip = _execution_tip(result)
     if tip:
@@ -846,6 +867,7 @@ def _format_rejected_reply(result: "SingleTickerResult", ticker: str) -> str:
     """Format rejected response with full pipeline details."""
     reason = result.rejection_reason or "Unknown reason"
     lines = [f"*Rejected: {result.user_action} {ticker}*"]
+    lines.append(f"Mode: {_mode_label(result)}")
 
     # Price
     if result.price:
@@ -893,6 +915,60 @@ def _format_rejected_reply(result: "SingleTickerResult", ticker: str) -> str:
     if tip:
         lines.append(f"\n_Tip: {tip}_")
 
+    return "\n".join(lines)
+
+
+def _format_partial_reply(result: "SingleTickerResult", ticker: str) -> str:
+    reason = result.rejection_reason or "Partial success"
+    lines = [f"*Partial: {result.user_action} {ticker or 'command'}*"]
+    lines.append(f"Mode: {_mode_label(result)}")
+    lines.append(f"\n*Reason:* {reason}")
+    if result.result_details:
+        cancelled = len(result.result_details.get("cancelled", []))
+        failures = result.result_details.get("failures", [])
+        lines.append(f"Cancelled: {cancelled}")
+        if failures:
+            lines.append("Failures:")
+            for failure in failures:
+                lines.append(
+                    f"  • {failure.get('ticker', '?')} order {failure.get('order_id', '?')}: {failure.get('error', 'unknown error')}"
+                )
+    return "\n".join(lines)
+
+
+def _format_cancel_reply(result: "SingleTickerResult") -> str:
+    order_class = (result.cancel_order_class or "order").replace("_", " ")
+    targets = ", ".join(result.target_tickers) if result.target_tickers else "requested tickers"
+    details = result.result_details or {}
+    cancelled = details.get("cancelled", [])
+    failures = details.get("failures", [])
+    matches = details.get("matches", [])
+
+    headline = "*Cancel"
+    if result.status == "partial":
+        headline = "*Partial cancel"
+    elif result.status == "error":
+        headline = "*Cancel error"
+    lines = [f"{headline}: {order_class}*"]
+    lines.append(f"Mode: {_mode_label(result)}")
+    lines.append(f"Targets: {targets}")
+    lines.append(f"Matched pending orders: {len(matches)}")
+    lines.append(f"Cancelled: {len(cancelled)}")
+
+    if cancelled:
+        lines.append("Cancelled order IDs: " + ", ".join(cancelled))
+    if failures:
+        lines.append("Failures:")
+        for failure in failures:
+            lines.append(
+                f"  • {failure.get('ticker', '?')} order {failure.get('order_id', '?')}: {failure.get('error', 'unknown error')}"
+            )
+    if not matches and result.status == "executed":
+        lines.append("No matching pending orders were found.")
+    if result.error_message:
+        lines.append(f"Error: {result.error_message}")
+    if result.rejection_reason and result.status == "partial":
+        lines.append(result.rejection_reason)
     return "\n".join(lines)
 
 

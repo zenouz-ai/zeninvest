@@ -1,5 +1,6 @@
 """End-to-end orchestrator integration coverage for US-7.4."""
 
+from types import SimpleNamespace
 from types import MethodType
 
 from dashboard.backend.app.database import Run
@@ -110,6 +111,69 @@ def test_run_cycle_surfaces_orphaned_strategy_decisions(
     assert result["trades"] == []
     assert result["rejected_stocks"] == []
     assert result["orphaned_decisions"] == ["AAPL_US_EQ"]
+
+
+def test_live_hold_cancels_stale_pending_market_sell(
+    orchestrator_test_harness,
+):
+    orchestrator_test_harness.seed_state()
+    orchestrator = orchestrator_test_harness.build_orchestrator(
+        dry_run=False,
+        decisions=[
+            {
+                "ticker": "ORCL_US_EQ",
+                "action": "HOLD",
+                "target_allocation_pct": 0.0,
+                "conviction": 55,
+                "primary_strategy": "momentum",
+                "reasoning": "Too early to abandon thesis this cycle",
+            },
+        ],
+        stocks_data=[
+            {
+                "ticker": "ORCL_US_EQ",
+                "name": "Oracle Corp.",
+                "relative_strength_6m": 40.0,
+                "six_month_return": -0.08,
+                "ohlcv": {"close": [150 - idx * 0.1 for idx in range(90)]},
+                "indicators": {
+                    "current_price": 146.0,
+                    "close_prices": [150 - idx * 0.1 for idx in range(90)],
+                    "rsi": 44.0,
+                    "macd": -0.8,
+                    "atr": 3.2,
+                },
+                "fundamentals": {
+                    "sector": "Technology",
+                    "industry": "Software",
+                    "market_cap": 1_000_000_000_000,
+                    "business_summary": "Oracle summary",
+                    "trailing_pe": 24.0,
+                    "pb_ratio": 6.2,
+                    "roe": 0.28,
+                    "profit_margin": 0.23,
+                    "debt_equity": 0.5,
+                    "earnings_growth": 0.12,
+                },
+            }
+        ],
+    )
+
+    cancel_calls: list[tuple[str, str]] = []
+    orchestrator._order_manager = SimpleNamespace(
+        sync_order_status_from_t212=lambda: 0,
+        liquidate_all=lambda: {"status": "ok", "orders": []},
+        cancel_pending_market_sells=lambda ticker, reason: (
+            cancel_calls.append((ticker, reason)) or {"status": "ok", "cancelled": ["sell-live-1"]}
+        ),
+    )
+
+    result = orchestrator.run_cycle()
+
+    assert result["status"] == "completed"
+    assert len(cancel_calls) == 1
+    assert cancel_calls[0][0] == "ORCL_US_EQ"
+    assert "newer HOLD decision" in cancel_calls[0][1]
 
 
 def test_risk_parity_runs_before_moderation_and_persists_adjusted_target(

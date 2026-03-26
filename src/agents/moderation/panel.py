@@ -42,28 +42,28 @@ class ModerationResult:
     @property
     def gpt_score(self) -> int | float | None:
         """Extract score from GPT-4o verdict (confidence_score if present)."""
-        if self.gpt4o_verdict is None:
+        if not isinstance(self.gpt4o_verdict, dict):
             return None
         return self.gpt4o_verdict.get("score") or self.gpt4o_verdict.get("confidence_score")
 
     @property
     def gemini_score(self) -> int | float | None:
         """Extract score from Gemini verdict."""
-        if self.gemini_verdict is None:
+        if not isinstance(self.gemini_verdict, dict):
             return None
         return self.gemini_verdict.get("score") or self.gemini_verdict.get("confidence_score")
 
     @property
     def gpt_reasoning(self) -> str | None:
         """Extract reasoning from GPT-4o verdict."""
-        if self.gpt4o_verdict is None:
+        if not isinstance(self.gpt4o_verdict, dict):
             return None
         return self.gpt4o_verdict.get("reasoning")
 
     @property
     def gemini_reasoning(self) -> str | None:
         """Extract reasoning from Gemini verdict."""
-        if self.gemini_verdict is None:
+        if not isinstance(self.gemini_verdict, dict):
             return None
         return self.gemini_verdict.get("reasoning") or self.gemini_verdict.get("assessment")
 
@@ -71,9 +71,28 @@ class ModerationResult:
     def modifications(self) -> dict[str, Any] | None:
         """Extract the most conservative modification from moderator MODIFY verdicts (audit fix C-1)."""
         mods: list[dict[str, Any]] = []
-        for verdict in (self.gpt4o_verdict, self.gemini_verdict):
-            if verdict and verdict.get("verdict") == "MODIFY" and verdict.get("modifications"):
-                mods.append(verdict["modifications"])
+        for label, verdict in (("gpt-4o", self.gpt4o_verdict), ("gemini", self.gemini_verdict)):
+            if not isinstance(verdict, dict):
+                if verdict is not None:
+                    logger.warning(
+                        "Ignoring malformed %s verdict for %s while extracting modifications: type=%s",
+                        label,
+                        self.ticker,
+                        type(verdict).__name__,
+                    )
+                continue
+            modifications = verdict.get("modifications")
+            if verdict.get("verdict") != "MODIFY" or not modifications:
+                continue
+            if not isinstance(modifications, dict):
+                logger.warning(
+                    "Ignoring malformed %s modifications for %s while extracting modifications: type=%s",
+                    label,
+                    self.ticker,
+                    type(modifications).__name__,
+                )
+                continue
+            mods.append(modifications)
         if not mods:
             return None
         # Use the most conservative (lowest) allocation suggestion

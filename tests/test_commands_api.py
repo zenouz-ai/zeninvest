@@ -27,6 +27,8 @@ def db_session():
         ticker="AAPL",
         action="BUY",
         status="executed",
+        command_kind="trade",
+        execution_mode="direct",
         response_message="*BUY AAPL* — filled",
         user_id="U123",
         channel_id="C456",
@@ -37,6 +39,8 @@ def db_session():
         ticker="TSLA",
         action="SELL",
         status="rejected",
+        command_kind="trade",
+        execution_mode="strategy",
         rejection_reason="Risk VETO: max_single_stock",
         user_id="U123",
         channel_id="C456",
@@ -46,6 +50,21 @@ def db_session():
         ticker="MSFT",
         action="REVIEW",
         status="review_only",
+        command_kind="review",
+        execution_mode="strategy",
+        user_id="U789",
+        channel_id="C456",
+    ))
+    session.add(SlackCommandLog(
+        raw_message="cancel stop sell NVDA, Microsoft",
+        ticker="NVDA_US_EQ",
+        action="CANCEL",
+        status="partial",
+        command_kind="cancel",
+        execution_mode="cancel_only",
+        target_order_class="stop_sell",
+        target_tickers_json='["NVDA_US_EQ","MSFT_US_EQ"]',
+        result_json='{"cancelled":["1"],"failures":[{"order_id":"2"}]}',
         user_id="U789",
         channel_id="C456",
     ))
@@ -75,10 +94,13 @@ class TestCommandsRouter:
         result = asyncio.get_event_loop().run_until_complete(
             get_commands(limit=50, offset=0, ticker=None, action=None, status=None, start_date=None, end_date=None)
         )
-        assert len(result) == 3
+        assert len(result) == 4
         actions = {r["action"] for r in result}
-        assert actions == {"BUY", "SELL", "REVIEW"}
+        assert actions == {"BUY", "SELL", "REVIEW", "CANCEL"}
         assert any(r["response_message"] == "*BUY AAPL* — filled" for r in result)
+        cancel_row = next(r for r in result if r["action"] == "CANCEL")
+        assert cancel_row["execution_mode"] == "cancel_only"
+        assert cancel_row["target_order_class"] == "stop_sell"
 
     def test_filter_by_action(self, db_session):
         from dashboard.backend.app.routers.commands import get_commands
@@ -103,8 +125,10 @@ class TestCommandsRouter:
         from dashboard.backend.app.routers.commands import get_command_stats
         import asyncio
         result = asyncio.get_event_loop().run_until_complete(get_command_stats())
-        assert result["total"] == 3
+        assert result["total"] == 4
         assert result["by_status"]["executed"] == 1
         assert result["by_status"]["rejected"] == 1
+        assert result["by_status"]["partial"] == 1
         assert result["by_action"]["BUY"] == 1
         assert result["by_action"]["SELL"] == 1
+        assert result["by_action"]["CANCEL"] == 1

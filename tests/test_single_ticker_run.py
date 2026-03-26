@@ -401,6 +401,29 @@ class TestSingleTickerRunner:
         assert log is not None
         assert log.status == "review_only"
 
+    def test_review_tolerates_malformed_moderation_serialization(self, mock_runner, caplog):
+        runner, mocks = mock_runner
+        mod_result = MagicMock()
+        mod_result.consensus = "CAUTION"
+        mod_result.strategy_verdict = "AGREE"
+        mod_result.gpt4o_verdict = {"verdict": "MODIFY", "modifications": "reduce allocation to 5%"}
+        mod_result.gemini_verdict = {"verdict": "MODIFY", "modifications": {"target_allocation_pct": 4.0}}
+        mod_result.moderators_available = 2
+        mod_result.caution_flag = True
+        mod_result.to_dict.side_effect = AttributeError("'str' object has no attribute 'get'")
+        mocks["moderation_panel"].review_trade.return_value = mod_result
+
+        intent = TradeCommandIntent(
+            action="REVIEW", ticker="AAPL", raw_message="REVIEW AAPL"
+        )
+        result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
+
+        assert result.status == "review_only"
+        assert result.moderation_consensus == "CAUTION"
+        assert result.moderation_result is not None
+        assert result.moderation_result["modifications"] is None
+        assert "Moderation serialization fallback" in caplog.text
+
 
 class TestSingleTickerResult:
 

@@ -1,7 +1,8 @@
 """Slack Socket Mode listener for inbound trade commands (US-1.6).
 
-Listens for messages in a configured Slack channel, parses trade commands,
-runs the single-ticker pipeline, and posts threaded replies.
+Listens for messages in a configured Slack channel, parses Slack review/trade/
+cancel commands, dispatches them to the correct runner, and posts threaded
+replies.
 """
 
 import threading
@@ -207,7 +208,11 @@ class SlackTradeListener:
             resolved = self.gateway.resolve_request(request)
             status = resolved.get("status", "error")
             ticker_t212 = resolved.get("ticker_t212", "N/A")
+            ticker_t212s = resolved.get("ticker_t212s", [])
             requested_ticker = getattr(resolved.get("intent"), "ticker", None)
+            intent = resolved.get("intent")
+            command_kind = str(getattr(intent, "command_kind", "trade") or "trade").lower()
+            execution_mode = str(getattr(intent, "execution_mode", "strategy") or "strategy").lower()
 
             if status == "unparseable":
                 self._post_reply(
@@ -225,13 +230,46 @@ class SlackTradeListener:
 
             self._post_reply(channel, ts, "Processing your request...")
 
-            from src.orchestrator.single_ticker_run import SingleTickerRunner
+            if command_kind == "cancel":
+                from src.agents.notifications.cancel_command_runner import CancelCommandRunner
 
-            runner = SingleTickerRunner(dry_run=False)
+                runner = CancelCommandRunner(dry_run=False)
+            elif execution_mode == "strategy":
+                from src.orchestrator.single_ticker_run import SingleTickerRunner
+
+                runner = SingleTickerRunner(dry_run=False)
+            else:
+                from src.orchestrator.direct_trade_run import DirectTradeRunner
+
+                runner = DirectTradeRunner(dry_run=False)
             try:
+                if command_kind == "cancel":
+                    final_result = runner.run(
+                        ticker_t212s=ticker_t212s,
+                        intent=intent,
+                        user_id=user_id,
+                        channel_id=channel,
+                        thread_ts=ts,
+                    )
+                    reply = format_trade_command_reply(final_result)
+                    from src.orchestrator.single_ticker_run import update_slack_command_log
+
+                    update_slack_command_log(
+                        final_result.command_log_id,
+                        response_message=reply,
+                    )
+                    self._post_reply(channel, ts, reply)
+                    logger.info(
+                        "Command completed: %r → %s (%s)",
+                        text,
+                        final_result.status,
+                        ", ".join(ticker_t212s) or "cancel",
+                    )
+                    return
+
                 prepared_result = runner.prepare(
                     ticker_t212=ticker_t212,
-                    intent=resolved["intent"],
+                    intent=intent,
                     user_id=user_id,
                     channel_id=channel,
                     thread_ts=ts,
@@ -296,18 +334,14 @@ class SlackTradeListener:
         now = datetime.now(timezone.utc)
         if now > pending.expires_at:
             del self._pending[thread_ts]
-            from src.orchestrator.single_ticker_run import SingleTickerRunner
+            from src.orchestrator.single_ticker_run import update_slack_command_log
 
-            runner = SingleTickerRunner(dry_run=False)
-            try:
-                runner.update_command_log_entry(
-                    pending.prepared_result.command_log_id,
-                    status="expired",
-                    rejection_reason="Confirmation expired.",
-                    response_message="Confirmation expired.",
-                )
-            finally:
-                runner.close()
+            update_slack_command_log(
+                pending.prepared_result.command_log_id,
+                status="expired",
+                rejection_reason="Confirmation expired.",
+                response_message="Confirmation expired.",
+            )
             self._post_reply(channel, thread_ts, "Confirmation expired.")
             return
 
@@ -316,9 +350,14 @@ class SlackTradeListener:
             del self._pending[thread_ts]
             self._post_reply(channel, thread_ts, "Confirmed. Executing...")
 
-            from src.orchestrator.single_ticker_run import SingleTickerRunner
+            if pending.prepared_result.execution_mode == "strategy":
+                from src.orchestrator.single_ticker_run import SingleTickerRunner
 
-            runner = SingleTickerRunner(dry_run=False)
+                runner = SingleTickerRunner(dry_run=False)
+            else:
+                from src.orchestrator.direct_trade_run import DirectTradeRunner
+
+                runner = DirectTradeRunner(dry_run=False)
             try:
                 final_result = runner.execute_prepared(pending.prepared_result)
                 reply = format_trade_command_reply(final_result)
@@ -332,18 +371,14 @@ class SlackTradeListener:
 
         elif lower in ("no", "n", "cancel"):
             del self._pending[thread_ts]
-            from src.orchestrator.single_ticker_run import SingleTickerRunner
+            from src.orchestrator.single_ticker_run import update_slack_command_log
 
-            runner = SingleTickerRunner(dry_run=False)
-            try:
-                runner.update_command_log_entry(
-                    pending.prepared_result.command_log_id,
-                    status="cancelled",
-                    rejection_reason="Cancelled by user",
-                    response_message="Order cancelled.",
-                )
-            finally:
-                runner.close()
+            update_slack_command_log(
+                pending.prepared_result.command_log_id,
+                status="cancelled",
+                rejection_reason="Cancelled by user",
+                response_message="Order cancelled.",
+            )
             self._post_reply(channel, thread_ts, "Order cancelled.")
 
     def _post_reply(self, channel: str, thread_ts: str, text: str) -> None:
@@ -394,21 +429,17 @@ class SlackTradeListener:
         if not expired:
             return
 
-        from src.orchestrator.single_ticker_run import SingleTickerRunner
+        from src.orchestrator.single_ticker_run import update_slack_command_log
 
-        runner = SingleTickerRunner(dry_run=False)
-        try:
-            for k in expired:
-                pending = self._pending.pop(k)
-                runner.update_command_log_entry(
-                    pending.prepared_result.command_log_id,
-                    status="expired",
-                    rejection_reason="Confirmation expired.",
-                    response_message="Confirmation expired.",
-                )
-                self._post_reply(pending.channel_id, pending.thread_ts, "Confirmation expired.")
-        finally:
-            runner.close()
+        for k in expired:
+            pending = self._pending.pop(k)
+            update_slack_command_log(
+                pending.prepared_result.command_log_id,
+                status="expired",
+                rejection_reason="Confirmation expired.",
+                response_message="Confirmation expired.",
+            )
+            self._post_reply(pending.channel_id, pending.thread_ts, "Confirmation expired.")
 
     def _requires_confirmation(self, result: Any) -> bool:
         """Return True when a prepared trade exceeds the confirmation threshold."""

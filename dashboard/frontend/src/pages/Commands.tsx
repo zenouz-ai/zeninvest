@@ -17,6 +17,7 @@ const STATUS_VARIANT: Record<string, PillVariant> = {
   awaiting_confirmation: 'warning',
   expired: 'warning',
   cancelled: 'dim',
+  partial: 'warning',
   received: 'dim',
   review_only: 'live',
 }
@@ -25,6 +26,7 @@ const ACTION_COLOUR: Record<string, string> = {
   BUY: 'text-terminal-positive',
   SELL: 'text-terminal-negative',
   REVIEW: 'text-cyan',
+  CANCEL: 'text-warning',
 }
 
 function safeFormat(iso: string | null): string {
@@ -80,7 +82,7 @@ export default function Commands() {
       <PageBrandHeader
         eyebrow="Trade Commands"
         title="Commands"
-        description="Slack-triggered trade commands with full pipeline audit trail. Every BUY, SELL, and REVIEW command is logged here."
+        description="Slack-triggered trade and cancel commands with full audit trail. Direct trades, strategy-triggered trades, reviews, and cancels are logged here."
       />
 
       {/* Stats cards */}
@@ -118,6 +120,7 @@ export default function Commands() {
             <option value="BUY">BUY</option>
             <option value="SELL">SELL</option>
             <option value="REVIEW">REVIEW</option>
+            <option value="CANCEL">CANCEL</option>
           </select>
           <label className="text-xs text-terminal-text-dim uppercase tracking-wide ml-4">Status</label>
           <select
@@ -129,6 +132,7 @@ export default function Commands() {
             <option value="executed">Executed</option>
             <option value="rejected">Rejected</option>
             <option value="review_only">Review</option>
+            <option value="partial">Partial</option>
             <option value="error">Error</option>
             <option value="received">Received</option>
           </select>
@@ -211,6 +215,24 @@ export default function Commands() {
                               <p className="text-terminal-text-dim uppercase tracking-wide mb-1">Order ID</p>
                               <p className="font-mono">{cmd.order_id ?? '—'}</p>
                             </div>
+                            <div>
+                              <p className="text-terminal-text-dim uppercase tracking-wide mb-1">Execution Mode</p>
+                              <p className="font-mono">{cmd.execution_mode || '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-terminal-text-dim uppercase tracking-wide mb-1">Command Kind</p>
+                              <p className="font-mono">{cmd.command_kind || '—'}</p>
+                            </div>
+                            <div>
+                              <p className="text-terminal-text-dim uppercase tracking-wide mb-1">Target Order Class</p>
+                              <p className="font-mono">{cmd.target_order_class || '—'}</p>
+                            </div>
+                            {cmd.target_tickers_json && (
+                              <div className="sm:col-span-2">
+                                <p className="text-terminal-text-dim uppercase tracking-wide mb-1">Target Tickers</p>
+                                <p className="font-mono whitespace-pre-wrap break-words">{cmd.target_tickers_json}</p>
+                              </div>
+                            )}
                             {cmd.rejection_reason && (
                               <div className="sm:col-span-2">
                                 <p className="text-terminal-text-dim uppercase tracking-wide mb-1">Rejection Reason</p>
@@ -221,6 +243,12 @@ export default function Commands() {
                               <div className="sm:col-span-2">
                                 <p className="text-terminal-text-dim uppercase tracking-wide mb-1">Response</p>
                                 <p className="text-terminal-text-muted whitespace-pre-wrap">{cmd.response_message}</p>
+                              </div>
+                            )}
+                            {cmd.result_json && (
+                              <div className="sm:col-span-2">
+                                <p className="text-terminal-text-dim uppercase tracking-wide mb-1">Result JSON</p>
+                                <p className="text-terminal-text-muted whitespace-pre-wrap break-words">{cmd.result_json}</p>
                               </div>
                             )}
                           </div>

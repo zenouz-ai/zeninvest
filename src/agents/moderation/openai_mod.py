@@ -50,6 +50,83 @@ For each proposed trade, respond with ONLY valid JSON:
 }"""
 
 
+def _normalize_modifications_payload(
+    modifications: Any,
+    *,
+    moderator: str,
+    ticker: str,
+    cycle_id: str | None,
+) -> dict[str, float] | None:
+    """Coerce moderator modifications into a safe dict shape."""
+    if modifications is None:
+        return None
+
+    parsed = modifications
+    if isinstance(parsed, str):
+        stripped = parsed.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            logger.warning(
+                "Ignoring malformed %s modifications for %s in %s: type=str",
+                moderator,
+                ticker,
+                cycle_id or "manual",
+            )
+            return None
+
+    if not isinstance(parsed, dict):
+        logger.warning(
+            "Ignoring malformed %s modifications for %s in %s: type=%s",
+            moderator,
+            ticker,
+            cycle_id or "manual",
+            type(parsed).__name__,
+        )
+        return None
+
+    normalized: dict[str, float] = {}
+    for key in ("target_allocation_pct", "stop_loss_pct"):
+        value = parsed.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            normalized[key] = float(value)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Ignoring invalid %s.%s for %s in %s: type=%s",
+                moderator,
+                key,
+                ticker,
+                cycle_id or "manual",
+                type(value).__name__,
+            )
+    return normalized or None
+
+
+def _normalize_openai_result(
+    result: Any,
+    *,
+    ticker: str,
+    cycle_id: str | None,
+) -> dict[str, Any]:
+    """Normalize GPT moderator output into a stable dict schema."""
+    if not isinstance(result, dict):
+        raise ValueError(f"GPT-4o returned non-object JSON ({type(result).__name__})")
+
+    normalized = dict(result)
+    normalized["verdict"] = str(normalized.get("verdict", "")).upper()
+    normalized["modifications"] = _normalize_modifications_payload(
+        normalized.get("modifications"),
+        moderator="gpt-4o",
+        ticker=ticker,
+        cycle_id=cycle_id,
+    )
+    return normalized
+
+
 def review_trade(
     trade_proposal: dict[str, Any],
     portfolio_context: str,
@@ -136,12 +213,16 @@ Respond with JSON only."""
         elif "```" in content:
             content = content.split("```")[1].split("```")[0]
 
-        result = json.loads(content)
+        result = _normalize_openai_result(
+            json.loads(content),
+            ticker=str(trade_proposal.get("ticker", "UNKNOWN")),
+            cycle_id=cycle_id,
+        )
         result["moderator"] = "gpt-4o"
         result["available"] = True
         return result
 
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, ValueError) as e:
         logger.error(f"GPT-4o returned invalid JSON: {e}")
         # Default to DISAGREE on parse failure — a garbage response should not
         # silently approve trades. (Audit fix H-5.)
@@ -230,7 +311,11 @@ Challenge the thesis. Use tools if needed to find bear cases or downgrades. Resp
                     content = content.split("```json")[1].split("```")[0]
                 elif "```" in content:
                     content = content.split("```")[1].split("```")[0]
-                result = json.loads(content)
+                result = _normalize_openai_result(
+                    json.loads(content),
+                    ticker=str(trade_proposal.get("ticker", "UNKNOWN")),
+                    cycle_id=cycle_id,
+                )
                 result["moderator"] = "gpt-4o"
                 result["available"] = True
                 return result

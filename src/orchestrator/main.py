@@ -1,6 +1,6 @@
 """Orchestrator — main control loop for the investment agent.
 
-Runs every 12 hours during market hours (configurable).
+Runs on the configured scheduler cadence.
 Sequence: Data -> Strategy -> Moderation -> Risk -> Execution -> Journal
 """
 
@@ -12,6 +12,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from statistics import median
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 import click
 
@@ -42,6 +43,7 @@ from src.runtime import RuntimeLockHeldError, acquire_runtime_lock
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
 from src.utils.logger import get_logger
+from src.utils.scheduling import current_cycle_clock_time, is_within_regular_market_session
 from src.utils.ticker_utils import t212_to_yf
 
 logger = get_logger("orchestrator")
@@ -105,30 +107,18 @@ class Orchestrator:
     def _account_label(self) -> str:
         return "practice/demo" if self.settings.account_type == "practice" else "live"
 
-    @staticmethod
-    def _parse_cycle_clock_time_utc(cycle_id: str | None) -> str | None:
-        if not cycle_id:
-            return None
-        parts = str(cycle_id).split("_")
-        try:
-            if len(parts) >= 3 and parts[0] == "scheduled":
-                return datetime.strptime(parts[2][:4], "%H%M").strftime("%H:%M")
-            if len(parts) >= 3 and parts[0] == "cycle":
-                return datetime.strptime(parts[2][:4], "%H%M").strftime("%H:%M")
-        except ValueError:
-            return None
-        return None
-
-    def _current_cycle_clock_time_utc(self, cycle_id: str | None) -> str:
-        parsed = self._parse_cycle_clock_time_utc(cycle_id)
-        if parsed:
-            return parsed
-        return datetime.now(timezone.utc).strftime("%H:%M")
+    def _current_cycle_clock_time(self, cycle_id: str | None) -> str:
+        return current_cycle_clock_time(self.settings, cycle_id)
 
     def _is_small_position_cleanup_cycle(self, cycle_id: str | None) -> bool:
         if self.settings.cycle_frequency != "intraday":
             return False
-        return self._current_cycle_clock_time_utc(cycle_id) == self.settings.small_position_cleanup_cycle_utc
+        target_clock = (
+            self.settings.small_position_cleanup_cycle_local
+            if self.settings.schedule_mode == "market_session"
+            else self.settings.small_position_cleanup_cycle_utc
+        )
+        return self._current_cycle_clock_time(cycle_id) == target_clock
 
     def _apply_deterministic_exit_overrides(
         self,
@@ -331,6 +321,8 @@ class Orchestrator:
         opportunity_evaluations: list[dict[str, Any]] = []
         stocks_data: list[dict[str, Any]] = []
         per_ticker_news: dict[str, str] = {}
+        current_failure_stage = "run_cycle"
+        current_failure_ticker: str | None = None
 
         def _emit_cycle_summary() -> None:
             payload = self._build_cycle_summary_payload(
@@ -479,6 +471,20 @@ class Orchestrator:
             if degradation == DegradationLevel.NO_STRATEGY:
                 logger.warning("Anthropic budget exceeded. Skipping strategy cycle.")
                 return _finalize("budget_no_strategy")
+
+            if scheduled_cycle_id and not self.dry_run:
+                if not is_within_regular_market_session(self.settings):
+                    local_now = datetime.now(timezone.utc).astimezone(ZoneInfo(self.settings.schedule_timezone))
+                    skip_reason = (
+                        "Scheduled cycle started outside the regular US market session; "
+                        "skipping live execution for safety."
+                    )
+                    logger.warning("%s cycle_id=%s", skip_reason, cycle_id)
+                    result["skip_reason"] = "outside_regular_market_session"
+                    result["skip_message"] = skip_reason
+                    result["guard_checked_at_utc"] = datetime.now(timezone.utc).isoformat()
+                    result["guard_checked_at_local"] = local_now.isoformat()
+                    return _finalize("skipped_market_closed")
 
             current_state = self.state_machine.current_state
 
@@ -918,6 +924,7 @@ class Orchestrator:
 
             for decision in decisions:
                 ticker = str(decision.get("ticker", "")).strip().upper()
+                current_failure_ticker = ticker
                 action = decision.get("action", "HOLD")
                 conviction = int(decision.get("conviction", 0) or 0)
                 target_alloc = float(decision.get("target_allocation_pct", 0.0) or 0.0)
@@ -939,6 +946,31 @@ class Orchestrator:
                         action = "HOLD"
 
                 if action in ("HOLD", "QUEUED"):
+                    # A newer HOLD/QUEUED should retract any still-pending live market SELL
+                    # for this ticker so stale pre-open exits do not survive past the latest view.
+                    if not self.dry_run:
+                        try:
+                            cancel_reason = (
+                                f"Cancelled after newer {action} decision in cycle {cycle_id}"
+                            )
+                            cancel_result = self.order_manager.cancel_pending_market_sells(
+                                ticker=ticker,
+                                reason=cancel_reason,
+                            )
+                            if cancel_result.get("status") == "failed":
+                                result["errors"].append(
+                                    f"cancel_pending_market_sell:{ticker}:{cancel_result.get('error', 'unknown')}"
+                                )
+                        except Exception as cancel_err:
+                            logger.warning(
+                                "Failed to cancel stale pending market SELL for %s after %s: %s",
+                                ticker,
+                                action,
+                                cancel_err,
+                            )
+                            result["errors"].append(
+                                f"cancel_pending_market_sell:{ticker}:{cancel_err}"
+                            )
                     hold_reason = (
                         decision.get("guardrail_reason")
                         or decision.get("reasoning", f"{action} — no action this cycle")
@@ -972,6 +1004,7 @@ class Orchestrator:
 
                 # Moderation — build rich market context for moderators
                 logger.info(f"Moderating {action} {ticker}...")
+                current_failure_stage = "moderation_review"
                 yf_ticker_for_news = t212_to_yf(ticker)
                 ticker_news = per_ticker_news.get(yf_ticker_for_news, "")
                 market_context = self._build_market_context(
@@ -996,7 +1029,13 @@ class Orchestrator:
                     cycle_id=cycle_id,
                     research_executor=research_executor,
                 )
-                mod_dict = mod_result.to_dict()
+                current_failure_stage = "moderation_to_dict"
+                mod_dict = self._safe_moderation_to_dict(
+                    mod_result=mod_result,
+                    cycle_id=cycle_id,
+                    ticker=ticker,
+                    action=action,
+                )
                 
                 # Log moderation decision
                 if DASHBOARD_AVAILABLE and log_event is not None:
@@ -1046,6 +1085,7 @@ class Orchestrator:
 
                 # Risk check
                 logger.info(f"Risk check for {action} {ticker}...")
+                current_failure_stage = "risk_check"
                 risk_verdict = self.risk_manager.evaluate_trade(
                     ticker=ticker,
                     action=action,
@@ -1177,6 +1217,7 @@ class Orchestrator:
                     })
                     continue
 
+                current_failure_stage = "trade_execution"
                 trade_entry = self._execute_trade(
                     cycle_id=cycle_id,
                     decision=decision,
@@ -1316,6 +1357,7 @@ class Orchestrator:
                 pending = pending_by_ticker.get(ticker)
                 if pending is None:
                     continue
+                current_failure_ticker = ticker
 
                 decision = pending["decision"]
                 entry_type = str(decision.get("entry_type", "market")).lower()
@@ -1584,6 +1626,7 @@ class Orchestrator:
 
             logger.info(f"Cycle {cycle_id} completed: {len(result['trades'])} trades executed, "
                         f"{len(result['rejected_stocks'])} rejected")
+            current_failure_stage = "finalize_completed"
             return _finalize("completed")
         except Exception as e:
             logger.exception(f"Unhandled cycle failure in {cycle_id}: {e}")
@@ -1597,10 +1640,11 @@ class Orchestrator:
                     payload={
                         "cycle_id": cycle_id,
                         "dry_run": self.dry_run,
-                        "stage": "run_cycle",
+                        "stage": current_failure_stage,
                         "error_type": type(e).__name__,
                         "error_message": str(e),
                         "trace_id": cycle_id,
+                        "ticker": current_failure_ticker,
                     },
                     source="orchestrator",
                 )
@@ -2114,7 +2158,12 @@ class Orchestrator:
                 news_sentiment_overall=decision.get("news_sentiment_summary", ""),
                 finnhub_data=analyst_data_map.get(ticker, {}),
                 alpha_vantage_data=av_broad_sentiment,
-                moderation_results=mod_result.to_dict(),
+                moderation_results=self._safe_moderation_to_dict(
+                    mod_result=mod_result,
+                    cycle_id=cycle_id,
+                    ticker=ticker,
+                    action=action,
+                ),
                 risk_verdict={
                     "verdict": risk_verdict.verdict,
                     "rules_checked": risk_verdict.rules_checked,
@@ -2594,6 +2643,43 @@ class Orchestrator:
                     "description": summary,
                 }
         return {"industry": "Unknown", "market_cap": None, "description": ""}
+
+    def _safe_moderation_to_dict(
+        self,
+        *,
+        mod_result: Any,
+        cycle_id: str,
+        ticker: str,
+        action: str,
+    ) -> dict[str, Any]:
+        """Serialize moderation results without allowing malformed extras to crash a cycle."""
+        try:
+            return mod_result.to_dict()
+        except Exception as exc:
+            gpt_verdict = getattr(mod_result, "gpt4o_verdict", None)
+            gemini_verdict = getattr(mod_result, "gemini_verdict", None)
+            logger.warning(
+                "Moderation serialization fallback for %s %s in %s: %s | "
+                "gpt_type=%s gpt_mod_type=%s gemini_type=%s gemini_mod_type=%s",
+                action,
+                ticker,
+                cycle_id,
+                exc,
+                type(gpt_verdict).__name__,
+                type((gpt_verdict or {}).get("modifications")).__name__ if isinstance(gpt_verdict, dict) else "n/a",
+                type(gemini_verdict).__name__,
+                type((gemini_verdict or {}).get("modifications")).__name__ if isinstance(gemini_verdict, dict) else "n/a",
+            )
+            return {
+                "ticker": getattr(mod_result, "ticker", ticker),
+                "consensus": getattr(mod_result, "consensus", "UNKNOWN"),
+                "strategy_verdict": getattr(mod_result, "strategy_verdict", "AGREE"),
+                "gpt4o_verdict": gpt_verdict if isinstance(gpt_verdict, dict) else None,
+                "gemini_verdict": gemini_verdict if isinstance(gemini_verdict, dict) else None,
+                "moderators_available": getattr(mod_result, "moderators_available", 0),
+                "caution_flag": bool(getattr(mod_result, "caution_flag", False)),
+                "modifications": None,
+            }
 
     def _build_cycle_summary_payload(
         self,

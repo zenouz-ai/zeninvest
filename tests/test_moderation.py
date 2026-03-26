@@ -1,5 +1,6 @@
 """Tests for the moderation panel."""
 
+import json
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -9,6 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from src.data.models import Base
 from src.agents.moderation.panel import ModerationPanel, ModerationResult
 from src.agents.moderation.context import format_market_context
+from src.agents.moderation.openai_mod import _normalize_openai_result
+from src.agents.moderation.gemini_mod import _normalize_gemini_result
 from src.utils.cost_tracker import DegradationLevel
 
 
@@ -217,6 +220,145 @@ class TestConsensusLogic:
             moderators_available=0,
         )
         assert result == "APPROVED"
+
+
+class TestModeratorNormalization:
+    def test_openai_normalizes_dict_modifications(self):
+        result = _normalize_openai_result(
+            {
+                "verdict": "MODIFY",
+                "confidence_score": 7,
+                "reasoning": "Trim size",
+                "modifications": {"target_allocation_pct": "5.5", "stop_loss_pct": -6},
+            },
+            ticker="AAPL_US_EQ",
+            cycle_id="cycle-test",
+        )
+        assert result["modifications"] == {"target_allocation_pct": 5.5, "stop_loss_pct": -6.0}
+
+    def test_openai_parses_json_string_modifications(self):
+        result = _normalize_openai_result(
+            {
+                "verdict": "MODIFY",
+                "confidence_score": 7,
+                "reasoning": "Trim size",
+                "modifications": json.dumps({"target_allocation_pct": 4.0}),
+            },
+            ticker="AAPL_US_EQ",
+            cycle_id="cycle-test",
+        )
+        assert result["modifications"] == {"target_allocation_pct": 4.0}
+
+    def test_openai_drops_plain_string_modifications(self, caplog):
+        result = _normalize_openai_result(
+            {
+                "verdict": "MODIFY",
+                "confidence_score": 7,
+                "reasoning": "Trim size",
+                "modifications": "reduce allocation to 5%",
+            },
+            ticker="AAPL_US_EQ",
+            cycle_id="cycle-test",
+        )
+        assert result["modifications"] is None
+        assert "Ignoring malformed gpt-4o modifications" in caplog.text
+
+    @pytest.mark.parametrize("raw_value", [[1, 2, 3], 9])
+    def test_openai_drops_non_dict_modifications(self, raw_value, caplog):
+        result = _normalize_openai_result(
+            {
+                "verdict": "MODIFY",
+                "confidence_score": 7,
+                "reasoning": "Trim size",
+                "modifications": raw_value,
+            },
+            ticker="AAPL_US_EQ",
+            cycle_id="cycle-test",
+        )
+        assert result["modifications"] is None
+        assert "Ignoring malformed gpt-4o modifications" in caplog.text
+
+    def test_gemini_normalizes_dict_modifications(self):
+        result = _normalize_gemini_result(
+            {
+                "verdict": "MODIFY",
+                "growth_score": 7,
+                "risk_score": 5,
+                "confidence_score": 6,
+                "assessment": "Reduce size",
+                "modifications": {"stop_loss_pct": "-5.5"},
+            },
+            ticker="MSFT_US_EQ",
+            cycle_id="cycle-test",
+            moderator="gemini-2.5-flash",
+        )
+        assert result["modifications"] == {"stop_loss_pct": -5.5}
+
+    def test_gemini_parses_json_string_modifications(self):
+        result = _normalize_gemini_result(
+            {
+                "verdict": "MODIFY",
+                "growth_score": 7,
+                "risk_score": 5,
+                "confidence_score": 6,
+                "assessment": "Reduce size",
+                "modifications": json.dumps({"target_allocation_pct": 3}),
+            },
+            ticker="MSFT_US_EQ",
+            cycle_id="cycle-test",
+            moderator="gemini-2.5-flash",
+        )
+        assert result["modifications"] == {"target_allocation_pct": 3.0}
+
+    def test_gemini_drops_plain_string_modifications(self, caplog):
+        result = _normalize_gemini_result(
+            {
+                "verdict": "MODIFY",
+                "growth_score": 7,
+                "risk_score": 5,
+                "confidence_score": 6,
+                "assessment": "Reduce size",
+                "modifications": "tighten stop to -5%",
+            },
+            ticker="MSFT_US_EQ",
+            cycle_id="cycle-test",
+            moderator="gemini-2.5-flash",
+        )
+        assert result["modifications"] is None
+        assert "Ignoring malformed gemini-2.5-flash modifications" in caplog.text
+
+    @pytest.mark.parametrize("raw_value", [[1, 2, 3], 9])
+    def test_gemini_drops_non_dict_modifications(self, raw_value, caplog):
+        result = _normalize_gemini_result(
+            {
+                "verdict": "MODIFY",
+                "growth_score": 7,
+                "risk_score": 5,
+                "confidence_score": 6,
+                "assessment": "Reduce size",
+                "modifications": raw_value,
+            },
+            ticker="MSFT_US_EQ",
+            cycle_id="cycle-test",
+            moderator="gemini-2.5-flash",
+        )
+        assert result["modifications"] is None
+        assert "Ignoring malformed gemini-2.5-flash modifications" in caplog.text
+
+
+class TestModerationResultResilience:
+    def test_modifications_ignores_malformed_payloads(self, caplog):
+        result = ModerationResult(
+            ticker="AAPL_US_EQ",
+            consensus="CAUTION",
+            strategy_verdict="AGREE",
+            gpt4o_verdict={"verdict": "MODIFY", "modifications": "reduce allocation to 5%"},
+            gemini_verdict={"verdict": "MODIFY", "modifications": {"target_allocation_pct": 4.0}},
+            moderators_available=2,
+        )
+
+        assert result.modifications == {"target_allocation_pct": 4.0}
+        assert "Ignoring malformed gpt-4o modifications" in caplog.text
 
     def test_zero_moderators_low_conviction(self, panel):
         result = panel._determine_consensus(

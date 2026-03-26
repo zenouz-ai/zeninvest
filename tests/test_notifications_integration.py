@@ -652,23 +652,41 @@ def test_small_position_cleanup_only_runs_on_final_cycle_and_after_min_holding()
     orchestrator._apply_deterministic_exit_overrides(
         decisions=[active_cleanup],
         position_context={"VRTX_US_EQ": {"pnl_pct": 1.0, "value_gbp": 150.0, "held_hours": 30.0}},
-        cycle_id="scheduled_20260325_160001",
+        cycle_id="scheduled_20260325_191501",
     )
     orchestrator._apply_deterministic_exit_overrides(
         decisions=[too_early_cycle],
         position_context={"ROST_US_EQ": {"pnl_pct": 1.0, "value_gbp": 150.0, "held_hours": 30.0}},
-        cycle_id="scheduled_20260325_120001",
+        cycle_id="scheduled_20260325_163001",
     )
     orchestrator._apply_deterministic_exit_overrides(
         decisions=[too_young],
         position_context={"ORCL_US_EQ": {"pnl_pct": 1.0, "value_gbp": 150.0, "held_hours": 8.0}},
-        cycle_id="scheduled_20260325_160001",
+        cycle_id="scheduled_20260325_191501",
     )
 
     assert active_cleanup["action"] == "SELL"
     assert active_cleanup["deterministic_exit_reason_code"] == "small_position_cleanup"
     assert too_early_cycle["action"] == "HOLD"
     assert too_young["action"] == "HOLD"
+
+
+def test_scheduled_cycle_skips_live_execution_outside_regular_market_session(monkeypatch) -> None:
+    orchestrator = Orchestrator(dry_run=False)
+    notifications = CaptureNotifications()
+    orchestrator.notification_service = notifications
+    orchestrator.state_machine = SimpleNamespace(is_paused=False, current_state="ACTIVE")
+    orchestrator._get_portfolio_state = lambda: (_ for _ in ()).throw(AssertionError("portfolio should not be fetched"))
+
+    monkeypatch.setattr("src.orchestrator.main.get_degradation_level", lambda: DegradationLevel.FULL)
+    monkeypatch.setattr("src.orchestrator.main.get_cost_summary", lambda days=1: {})
+    monkeypatch.setattr("src.orchestrator.main.is_within_regular_market_session", lambda settings: False)
+
+    result = orchestrator.run_cycle(scheduled_cycle_id="scheduled_20260325_120001")
+
+    assert result["status"] == "skipped_market_closed"
+    assert result["skip_reason"] == "outside_regular_market_session"
+    assert notifications.summary_payloads
 
 
 def test_execute_trade_emits_take_profit_reason_code(monkeypatch) -> None:
@@ -892,3 +910,138 @@ def test_scheduler_exception_emits_critical(monkeypatch) -> None:
 
     assert len(notifications.critical_payloads) == 1
     assert notifications.critical_payloads[0]["error_type"] == "RuntimeError"
+
+
+def test_orchestrator_continues_when_moderation_modifications_is_string(monkeypatch, caplog) -> None:
+    orchestrator = Orchestrator(dry_run=True)
+    notifications = CaptureNotifications()
+    orchestrator.notification_service = notifications
+
+    class DummyStateMachine:
+        is_paused = False
+        current_state = "ACTIVE"
+
+        @staticmethod
+        def update_peak(current_value: float) -> None:
+            return
+
+        @staticmethod
+        def get_state() -> dict:
+            return {"peak_portfolio_value": 10000.0, "daily_loss_halt_until": None}
+
+        @staticmethod
+        def transition(new_state: str, notes: str | None = None) -> None:
+            return
+
+        @staticmethod
+        def update_drawdown(drawdown_pct: float) -> None:
+            return
+
+        @staticmethod
+        def record_cycle() -> None:
+            return
+
+    orchestrator.state_machine = DummyStateMachine()
+    orchestrator.settings._config.setdefault("opportunity", {})["enabled"] = False
+
+    decision = {
+        "ticker": "AAPL_US_EQ",
+        "action": "BUY",
+        "conviction": 82,
+        "target_allocation_pct": 8,
+        "reasoning": "Strong trend and supportive sentiment",
+        "stop_loss_pct": -8.0,
+        "primary_strategy": "momentum",
+        "news_sentiment_summary": "Bullish product cycle",
+    }
+
+    orchestrator._get_portfolio_state = lambda: {
+        "cash": 10000.0,
+        "total_value": 10000.0,
+        "invested": 0.0,
+        "positions": [],
+        "num_positions": 0,
+        "daily_pnl_pct": 0.0,
+        "total_return_pct": 0.0,
+        "alpha_pct": 0.0,
+    }
+    orchestrator._fetch_stocks_data = lambda current_positions, exclude_tickers=None, system_state="ACTIVE", cycle_id=None, **kwargs: [
+        {
+            "ticker": "AAPL_US_EQ",
+            "name": "Apple Inc.",
+            "indicators": {"current_price": 180},
+            "fundamentals": {
+                "industry": "Consumer Electronics",
+                "market_cap": 2_800_000_000_000,
+                "business_summary": "Apple builds hardware and software ecosystems.",
+                "trailing_pe": 28,
+                "pb_ratio": 40,
+                "roe": 0.6,
+                "profit_margin": 0.24,
+                "debt_equity": 1.4,
+                "earnings_growth": 0.12,
+            },
+        },
+    ]
+
+    orchestrator.data_fetcher = SimpleNamespace(
+        get_macro_data=lambda: {"vix": 18, "market_regime": "BULL"},
+        get_cached_news_sentiment=lambda ticker, source, data_type: None,
+        cache_news_sentiment=lambda *args, **kwargs: None,
+        get_analyst_data_cached=lambda ticker: {},
+        alpha_vantage=SimpleNamespace(get_broad_market_sentiment=lambda: {}),
+        get_market_news_sentiment=lambda **kwargs: {"articles": [], "total_articles": 0},
+        close=lambda: None,
+    )
+
+    orchestrator.strategy_engine = SimpleNamespace(
+        run_sub_strategies=lambda stocks_data, existing_tickers: {
+            "momentum": [],
+            "mean_reversion": [],
+            "top_factor": [],
+            "factor": [],
+        },
+        synthesize_with_claude=lambda **kwargs: {"decisions": [decision], "market_assessment": ""},
+    )
+
+    class DummyRisk:
+        verdict = "APPROVE"
+        adjusted_allocation_pct = 8
+        triggered_rules: list[str] = []
+        rules_checked: list[str] = []
+        reasoning = "All checks passed"
+
+    from src.agents.moderation.panel import ModerationResult
+
+    orchestrator.moderation_panel = SimpleNamespace(
+        review_trade=lambda **kwargs: ModerationResult(
+            ticker="AAPL_US_EQ",
+            consensus="CAUTION",
+            strategy_verdict="AGREE",
+            gpt4o_verdict={"verdict": "MODIFY", "modifications": "reduce allocation to 5%"},
+            gemini_verdict={"verdict": "MODIFY", "modifications": {"target_allocation_pct": 4.0}},
+            moderators_available=2,
+            caution_flag=True,
+        )
+    )
+    orchestrator.risk_manager = SimpleNamespace(
+        evaluate_trade=lambda **kwargs: DummyRisk(),
+        get_drawdown_state=lambda current_value, peak_value: "ACTIVE",
+    )
+    orchestrator._save_snapshot = lambda portfolio_data, state: None
+    orchestrator._execute_trade = lambda **kwargs: {
+        "ticker": kwargs["ticker"],
+        "action": kwargs["action"],
+        "execution": {"status": "dry_run", "quantity": 1, "value_gbp": 800},
+        "stop_loss": {"status": "placed"},
+    }
+
+    monkeypatch.setattr("src.orchestrator.main.get_degradation_level", lambda: DegradationLevel.FULL)
+    monkeypatch.setattr("src.orchestrator.main.get_cost_summary", lambda days=1: {})
+
+    result = orchestrator.run_cycle()
+
+    assert result["status"] == "completed"
+    assert len(notifications.summary_payloads) == 1
+    assert notifications.critical_payloads == []
+    assert "Ignoring malformed gpt-4o modifications" in caplog.text

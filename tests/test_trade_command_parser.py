@@ -18,6 +18,7 @@ class TestRegexParser:
         assert result is not None
         assert result.action == "BUY"
         assert result.ticker == "AAPL"
+        assert result.execution_mode == "direct"
         assert result.quantity_shares is None
         assert result.amount_gbp is None
 
@@ -32,6 +33,8 @@ class TestRegexParser:
         assert result is not None
         assert result.action == "REVIEW"
         assert result.ticker == "MSFT"
+        assert result.command_kind == "review"
+        assert result.execution_mode == "strategy"
 
     def test_buy_with_quantity(self):
         result = _try_regex("BUY 10 AAPL")
@@ -118,8 +121,11 @@ class TestRegexParser:
         assert result.amount_gbp == 500.0
 
     def test_multi_word_not_matched(self):
-        """Multi-word company names (e.g. 'Bank of America') fall through to Claude."""
-        assert _try_regex("buy bank of america") is None
+        result = _try_regex("buy bank of america")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.ticker == "BANK OF AMERICA"
+        assert result.subject_phrases == ["bank of america"]
 
     def test_force_buy_ticker(self):
         result = _try_regex("force buy AAPL")
@@ -177,6 +183,38 @@ class TestRegexParser:
         assert result.ticker == "MICROSOFT"
         assert result.force is True
 
+    def test_strategy_trigger_phrase(self):
+        result = _try_regex("buy Apple and trigger strategy")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.execution_mode == "strategy"
+        assert result.trigger_strategy is True
+        assert result.subject_phrases == ["Apple"]
+
+    def test_review_and_buy_phrase(self):
+        result = _try_regex("review Apple and buy")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.command_kind == "trade"
+        assert result.execution_mode == "strategy"
+        assert result.trigger_strategy is True
+
+    def test_cancel_buy_single_ticker(self):
+        result = _try_regex("cancel buy Apple")
+        assert result is not None
+        assert result.action == "CANCEL"
+        assert result.command_kind == "cancel"
+        assert result.execution_mode == "cancel_only"
+        assert result.cancel_order_class == "buy"
+        assert result.subject_phrases == ["Apple"]
+
+    def test_cancel_stop_sell_multi_ticker(self):
+        result = _try_regex("cancel stop sell Nvidia, Microsoft and Apple")
+        assert result is not None
+        assert result.action == "CANCEL"
+        assert result.cancel_order_class == "stop_sell"
+        assert result.subject_phrases == ["Nvidia", "Microsoft", "Apple"]
+
 
 class TestStripForcePrefix:
     """Test force/override/! prefix detection."""
@@ -220,6 +258,7 @@ class TestParseTradeCommand:
         assert result is not None
         assert result.action == "BUY"
         assert result.ticker == "AAPL"
+        assert result.execution_mode == "direct"
         assert result.raw_message == "BUY AAPL"
 
     def test_empty_returns_none(self):

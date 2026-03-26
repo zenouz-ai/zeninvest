@@ -480,8 +480,13 @@ class SlackCommandLog(Base):
     cycle_id = Column(String(100), nullable=True, index=True)
     order_id = Column(Integer, nullable=True)
     status = Column(String(30), nullable=False, default="received")
+    command_kind = Column(String(20), nullable=True)
+    execution_mode = Column(String(20), nullable=True)
+    target_order_class = Column(String(20), nullable=True)
+    target_tickers_json = Column(Text, nullable=True)
     rejection_reason = Column(Text, nullable=True)
     response_message = Column(Text, nullable=True)
+    result_json = Column(Text, nullable=True)
 
 
 class ChatSession(Base):

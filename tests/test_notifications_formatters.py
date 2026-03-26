@@ -436,6 +436,7 @@ class TestFormatExecutedReply:
         result = _make_result(
             status="executed",
             user_action="BUY",
+            execution_mode="direct",
             price=150.0,
             quantity=3.5,
             value_gbp=525.0,
@@ -457,6 +458,7 @@ class TestFormatExecutedReply:
         )
         reply = format_trade_command_reply(result)
         assert "BUY AAPL" in reply
+        assert "Mode: direct trade" in reply
         assert "filled" in reply
         assert "3.50" in reply
         assert "$150.00" in reply
@@ -763,6 +765,30 @@ class TestFormatRejectedReply:
         reply = format_trade_command_reply(result)
 
         assert "Wait a few minutes before retrying" in reply
+
+
+class TestFormatCancelReply:
+
+    def test_cancel_reply_shows_targets_and_counts(self):
+        result = _make_result(
+            user_action="CANCEL",
+            status="executed",
+            command_kind="cancel",
+            execution_mode="cancel_only",
+            cancel_order_class="stop_sell",
+            target_tickers=["NVDA_US_EQ", "MSFT_US_EQ"],
+            result_details={
+                "cancelled": ["1", "2"],
+                "matches": [{"order_id": "1"}, {"order_id": "2"}],
+                "failures": [],
+            },
+        )
+
+        reply = format_trade_command_reply(result)
+
+        assert "cancel command" in reply
+        assert "Targets: NVDA_US_EQ, MSFT_US_EQ" in reply
+        assert "Cancelled: 2" in reply
 
 
 class TestFormatForceOverrideReply:

@@ -65,13 +65,12 @@ class TestSlackTradeListener:
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
         )
 
-        mock_runner = MagicMock()
-        with patch("src.orchestrator.single_ticker_run.SingleTickerRunner", return_value=mock_runner):
+        with patch("src.orchestrator.single_ticker_run.update_slack_command_log") as mock_update:
             listener._cleanup_expired_confirmations()
 
         assert "ts1" not in listener._pending
         assert "ts2" in listener._pending
-        mock_runner.update_command_log_entry.assert_called_once()
+        mock_update.assert_called_once()
         listener._post_reply.assert_called_once()
 
     @patch("src.agents.notifications.slack_listener.get_settings")
@@ -103,7 +102,7 @@ class TestSlackTradeListener:
         listener._post_reply = MagicMock()
         listener.gateway.resolve_request = MagicMock(return_value={
             "status": "ok",
-            "intent": MagicMock(action="BUY"),
+            "intent": MagicMock(action="BUY", command_kind="trade", execution_mode="strategy"),
             "ticker_t212": "AAPL_US_EQ",
         })
 
@@ -170,6 +169,46 @@ class TestSlackTradeListener:
         assert listener._post_reply.call_count == 2
         final_reply = listener._post_reply.call_args_list[-1].args[2]
         assert "BUY AAPL" in final_reply
+
+    @patch("src.agents.notifications.slack_listener.get_settings")
+    def test_cancel_command_runs_without_confirmation(self, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        mock_settings.return_value.slack_trade_confirmation_threshold_gbp = 2000
+        mock_settings.return_value.slack_trade_confirmation_timeout_minutes = 10
+        listener = SlackTradeListener()
+        listener._post_reply = MagicMock()
+        cancel_intent = MagicMock(
+            action="CANCEL",
+            command_kind="cancel",
+            execution_mode="cancel_only",
+            ticker="NVDA",
+        )
+        listener.gateway.resolve_request = MagicMock(return_value={
+            "status": "ok",
+            "intent": cancel_intent,
+            "ticker_t212s": ["NVDA_US_EQ", "MSFT_US_EQ"],
+        })
+
+        cancel_result = _make_result(
+            user_action="CANCEL",
+            status="executed",
+            execution_mode="cancel_only",
+            command_kind="cancel",
+            cancel_order_class="stop_sell",
+            target_tickers=["NVDA_US_EQ", "MSFT_US_EQ"],
+            result_details={"cancelled": ["1"], "matches": [{"order_id": "1"}], "failures": []},
+        )
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = cancel_result
+
+        with patch("src.agents.notifications.cancel_command_runner.CancelCommandRunner", return_value=mock_runner), \
+             patch("src.orchestrator.single_ticker_run.update_slack_command_log") as mock_update:
+            listener._process_command("C123", "123.45", "U123", "cancel stop sell NVDA, MSFT")
+
+        mock_runner.run.assert_called_once()
+        mock_update.assert_called_once()
+        assert "123.45" not in listener._pending
+        assert listener._post_reply.call_count == 2
 
     @patch("src.agents.notifications.slack_listener.get_settings")
     def test_post_reply_chunks_long_messages(self, mock_settings):
@@ -309,7 +348,13 @@ class TestCommandGateway:
     @patch("src.agents.notifications.command_gateway.resolve_ticker_to_t212")
     def test_unknown_ticker(self, mock_resolve, mock_parse, mock_settings):
         mock_settings.return_value.slack_trade_commands_enabled = True
-        mock_parse.return_value = MagicMock(ticker="ZZZZZ")
+        mock_parse.return_value = MagicMock(
+            ticker="ZZZZZ",
+            action="BUY",
+            subject_phrases=["ZZZZZ"],
+            command_kind="trade",
+            execution_mode="direct",
+        )
         mock_resolve.return_value = None
         gw = CommandGateway()
         from src.agents.notifications.command_gateway import CommandRequest
@@ -327,7 +372,13 @@ class TestCommandGateway:
     @patch("src.agents.notifications.command_gateway.resolve_ticker_to_t212")
     def test_unknown_ticker_uses_original_company_phrase_when_available(self, mock_resolve, mock_parse, mock_settings):
         mock_settings.return_value.slack_trade_commands_enabled = True
-        mock_parse.return_value = MagicMock(ticker="RKLB", action="REVIEW")
+        mock_parse.return_value = MagicMock(
+            ticker="RKLB",
+            action="REVIEW",
+            subject_phrases=["Rocket Lab Corporation"],
+            command_kind="review",
+            execution_mode="strategy",
+        )
         mock_resolve.return_value = None
         gw = CommandGateway()
         from src.agents.notifications.command_gateway import CommandRequest
@@ -346,7 +397,13 @@ class TestCommandGateway:
     def test_error_propagation_includes_message(self, mock_resolve, mock_parse, mock_settings):
         """When pipeline returns status='error' with error_message, gateway response includes 'message'."""
         mock_settings.return_value.slack_trade_commands_enabled = True
-        mock_parse.return_value = MagicMock(ticker="AAPL", action="BUY")
+        mock_parse.return_value = MagicMock(
+            ticker="AAPL",
+            action="BUY",
+            subject_phrases=["AAPL"],
+            command_kind="trade",
+            execution_mode="strategy",
+        )
         mock_resolve.return_value = "AAPL_US_EQ"
 
         from src.orchestrator.single_ticker_run import SingleTickerResult
@@ -378,7 +435,13 @@ class TestCommandGateway:
     def test_rejection_propagation_includes_message(self, mock_resolve, mock_parse, mock_settings):
         """When pipeline returns status='rejected', gateway response includes rejection reason in 'message'."""
         mock_settings.return_value.slack_trade_commands_enabled = True
-        mock_parse.return_value = MagicMock(ticker="AAPL", action="BUY")
+        mock_parse.return_value = MagicMock(
+            ticker="AAPL",
+            action="BUY",
+            subject_phrases=["AAPL"],
+            command_kind="trade",
+            execution_mode="strategy",
+        )
         mock_resolve.return_value = "AAPL_US_EQ"
 
         from src.orchestrator.single_ticker_run import SingleTickerResult
@@ -403,3 +466,43 @@ class TestCommandGateway:
             result = gw.handle(req)
         assert result["status"] == "rejected"
         assert result["message"] == "Risk VETO: max_single_stock_pct exceeded"
+
+    @patch("src.agents.notifications.command_gateway.get_settings")
+    @patch("src.agents.notifications.command_gateway.parse_trade_command")
+    @patch("src.agents.notifications.command_gateway.resolve_ticker_to_t212")
+    def test_cancel_request_resolves_multiple_tickers(self, mock_resolve, mock_parse, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        mock_parse.return_value = MagicMock(
+            ticker="NVDA",
+            action="CANCEL",
+            subject_phrases=["Nvidia", "Microsoft"],
+            command_kind="cancel",
+            execution_mode="cancel_only",
+            cancel_order_class="stop_sell",
+        )
+        mock_resolve.side_effect = ["NVDA_US_EQ", "MSFT_US_EQ"]
+
+        from src.orchestrator.single_ticker_run import SingleTickerResult
+
+        cancel_result = SingleTickerResult(
+            ticker_t212="NVDA_US_EQ",
+            ticker_yf="NVDA",
+            cycle_id="slack-test",
+            user_action="CANCEL",
+            status="executed",
+            execution_mode="cancel_only",
+            command_kind="cancel",
+        )
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = cancel_result
+
+        gw = CommandGateway()
+        from src.agents.notifications.command_gateway import CommandRequest
+        with patch("src.agents.notifications.command_gateway.CancelCommandRunner", return_value=mock_runner):
+            req = CommandRequest(
+                source="slack", user_id="U1", channel_id="C1",
+                command="cancel stop sell Nvidia, Microsoft", args=[], raw_payload={"text": "cancel stop sell Nvidia, Microsoft"},
+            )
+            result = gw.handle(req)
+        assert result["status"] == "executed"
+        assert result["ticker_t212s"] == ["NVDA_US_EQ", "MSFT_US_EQ"]

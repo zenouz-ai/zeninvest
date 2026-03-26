@@ -1,7 +1,8 @@
-"""Single-ticker pipeline for Slack trade commands (US-1.6).
+"""Single-ticker strategy pipeline for Slack commands (US-1.6).
 
-Runs the full pipeline (data → strategy → moderation → risk → execution) for one
-ticker with user-intent override. Reuses all existing agent components.
+Used by REVIEW commands and strategy-triggered trade commands. Runs the full
+pipeline (data → strategy → moderation → risk → execution) for one ticker with
+user-intent override.
 """
 
 import json
@@ -25,6 +26,87 @@ from src.utils.ticker_utils import t212_to_yf
 logger = get_logger("single_ticker_run")
 
 
+def build_slack_cycle_id() -> str:
+    """Return a standard cycle ID for Slack-initiated commands."""
+    return f"slack-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+
+
+def log_slack_command(
+    *,
+    intent: TradeCommandIntent,
+    ticker: str | None,
+    cycle_id: str,
+    target_tickers: list[str] | None = None,
+    user_id: str | None = None,
+    channel_id: str | None = None,
+    thread_ts: str | None = None,
+) -> int | None:
+    """Log Slack command receipt. Returns log ID."""
+    resolved_targets = [value for value in (target_tickers or []) if value]
+    if not resolved_targets and ticker:
+        resolved_targets = [ticker]
+    session = get_session()
+    try:
+        log = SlackCommandLog(
+            channel_id=channel_id,
+            user_id=user_id,
+            thread_ts=thread_ts,
+            raw_message=intent.raw_message,
+            parsed_intent_json=intent.to_json(),
+            ticker=ticker,
+            action=intent.action,
+            cycle_id=cycle_id,
+            status="processing",
+            command_kind=intent.command_kind,
+            execution_mode=intent.execution_mode,
+            target_order_class=intent.cancel_order_class,
+            target_tickers_json=json.dumps(resolved_targets),
+        )
+        session.add(log)
+        session.commit()
+        return log.id
+    except Exception as e:
+        session.rollback()
+        logger.warning(f"Failed to log slack command: {e}")
+        return None
+    finally:
+        session.close()
+
+
+def update_slack_command_log(
+    log_id: int | None,
+    *,
+    status: str | None = None,
+    order_id: int | None = None,
+    rejection_reason: str | None = None,
+    response_message: str | None = None,
+    result_json: dict[str, Any] | None = None,
+) -> None:
+    """Update an existing Slack command log entry."""
+    if log_id is None:
+        return
+    session = get_session()
+    try:
+        log = session.query(SlackCommandLog).filter(SlackCommandLog.id == log_id).first()
+        if log:
+            if status is not None:
+                log.status = status
+            if order_id is not None:
+                log.order_id = order_id
+            if rejection_reason:
+                log.rejection_reason = rejection_reason
+            if response_message is not None:
+                log.response_message = response_message
+            if result_json is not None:
+                log.result_json = json.dumps(result_json)
+            session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.warning(f"Failed to update command log: {e}")
+    finally:
+        session.close()
+
+
 @dataclass
 class PreparedTradeExecution:
     """Prepared execution payload used for confirmation + final order placement."""
@@ -34,16 +116,17 @@ class PreparedTradeExecution:
     current_price: float
     quantity_override: float | None
     price_gbp: float | None = None
-    strategy: str = "slack_command"
+    strategy: str = "slack_strategy"
     conviction: int = 0
     moderation_result: str = ""
     risk_result: str = ""
     moderation_overridden: bool = False
+    execution_mode: str = "strategy"
 
 
 @dataclass
 class SingleTickerResult:
-    """Result of a single-ticker pipeline run."""
+    """Result of a Slack command run."""
 
     ticker_t212: str
     ticker_yf: str
@@ -72,6 +155,12 @@ class SingleTickerResult:
     quantity: float = 0.0
     value_gbp: float = 0.0
     command_log_id: int | None = None
+    command_kind: str = "trade"
+    execution_mode: str = "strategy"
+    trigger_strategy: bool = False
+    cancel_order_class: str | None = None
+    target_tickers: list[str] = field(default_factory=list)
+    result_details: dict[str, Any] | None = None
     prepared_execution: PreparedTradeExecution | None = field(default=None, repr=False)
 
 
@@ -100,6 +189,43 @@ class SingleTickerRunner:
             self._order_manager = OrderManager(dry_run=self.dry_run)
         return self._order_manager
 
+    def _safe_moderation_to_dict(
+        self,
+        *,
+        mod_result: Any,
+        cycle_id: str,
+        ticker: str,
+        action: str,
+    ) -> dict[str, Any]:
+        """Serialize moderation results without letting malformed extras break Slack runs."""
+        try:
+            return mod_result.to_dict()
+        except Exception as exc:
+            gpt_verdict = getattr(mod_result, "gpt4o_verdict", None)
+            gemini_verdict = getattr(mod_result, "gemini_verdict", None)
+            logger.warning(
+                "Moderation serialization fallback for %s %s in %s: %s | "
+                "gpt_type=%s gpt_mod_type=%s gemini_type=%s gemini_mod_type=%s",
+                action,
+                ticker,
+                cycle_id,
+                exc,
+                type(gpt_verdict).__name__,
+                type((gpt_verdict or {}).get("modifications")).__name__ if isinstance(gpt_verdict, dict) else "n/a",
+                type(gemini_verdict).__name__,
+                type((gemini_verdict or {}).get("modifications")).__name__ if isinstance(gemini_verdict, dict) else "n/a",
+            )
+            return {
+                "ticker": getattr(mod_result, "ticker", ticker),
+                "consensus": getattr(mod_result, "consensus", "UNKNOWN"),
+                "strategy_verdict": getattr(mod_result, "strategy_verdict", "AGREE"),
+                "gpt4o_verdict": gpt_verdict if isinstance(gpt_verdict, dict) else None,
+                "gemini_verdict": gemini_verdict if isinstance(gemini_verdict, dict) else None,
+                "moderators_available": getattr(mod_result, "moderators_available", 0),
+                "caution_flag": bool(getattr(mod_result, "caution_flag", False)),
+                "modifications": None,
+            }
+
     def run(
         self,
         ticker_t212: str,
@@ -108,7 +234,7 @@ class SingleTickerRunner:
         channel_id: str | None = None,
         thread_ts: str | None = None,
     ) -> SingleTickerResult:
-        """Execute single-ticker pipeline with user intent override."""
+        """Execute the strategy-backed Slack command path with user intent override."""
         result = self.prepare(
             ticker_t212=ticker_t212,
             intent=intent,
@@ -130,20 +256,26 @@ class SingleTickerRunner:
     ) -> SingleTickerResult:
         """Prepare a single-ticker run through risk without placing an order."""
         ticker_yf = t212_to_yf(ticker_t212)
-        cycle_id = f"slack-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}"
+        cycle_id = build_slack_cycle_id()
 
         result = SingleTickerResult(
             ticker_t212=ticker_t212,
             ticker_yf=ticker_yf,
             cycle_id=cycle_id,
             user_action=intent.action,
+            command_kind=intent.command_kind,
+            execution_mode=intent.execution_mode,
+            trigger_strategy=intent.trigger_strategy,
+            cancel_order_class=intent.cancel_order_class,
+            target_tickers=[ticker_t212],
         )
 
         # Log command receipt
-        cmd_log = self._log_command(
+        cmd_log = log_slack_command(
             intent=intent,
-            ticker_t212=ticker_t212,
+            ticker=ticker_t212,
             cycle_id=cycle_id,
+            target_tickers=[ticker_t212],
             user_id=user_id,
             channel_id=channel_id,
             thread_ts=thread_ts,
@@ -156,7 +288,7 @@ class SingleTickerRunner:
             if validation_error:
                 result.status = "rejected"
                 result.rejection_reason = validation_error
-                self._update_command_log(cmd_log, "rejected", rejection_reason=validation_error)
+                update_slack_command_log(cmd_log, status="rejected", rejection_reason=validation_error)
                 return result
 
             # --- Phase 1: Data ---
@@ -165,14 +297,14 @@ class SingleTickerRunner:
             if not stock_data or stock_data.get("error"):
                 result.status = "error"
                 result.error_message = f"Data fetch failed for {ticker_yf}"
-                self._update_command_log(cmd_log, "error", rejection_reason=result.error_message)
+                update_slack_command_log(cmd_log, status="error", rejection_reason=result.error_message)
                 return result
 
             current_price = self._extract_price(stock_data)
             if not current_price or current_price <= 0:
                 result.status = "error"
                 result.error_message = f"Could not determine price for {ticker_yf}"
-                self._update_command_log(cmd_log, "error", rejection_reason=result.error_message)
+                update_slack_command_log(cmd_log, status="error", rejection_reason=result.error_message)
                 return result
             result.price = current_price
 
@@ -235,7 +367,7 @@ class SingleTickerRunner:
             except ValueError as e:
                 result.status = "rejected"
                 result.rejection_reason = str(e)
-                self._update_command_log(cmd_log, "rejected", rejection_reason=result.rejection_reason)
+                update_slack_command_log(cmd_log, status="rejected", rejection_reason=result.rejection_reason)
                 return result
             result.quantity = abs(quantity_override) if quantity_override is not None else (
                 abs(target_amount_gbp / price_gbp) if price_gbp > 0 else 0.0
@@ -270,7 +402,12 @@ class SingleTickerRunner:
                     conviction=result.conviction,
                     cycle_id=cycle_id,
                 )
-                result.moderation_result = mod_result.to_dict()
+                result.moderation_result = self._safe_moderation_to_dict(
+                    mod_result=mod_result,
+                    cycle_id=cycle_id,
+                    ticker=ticker_t212,
+                    action=moderation_action,
+                )
                 result.moderation_consensus = mod_result.consensus
 
                 if intent.action != "REVIEW" and result.moderation_consensus == "BLOCKED":
@@ -283,9 +420,9 @@ class SingleTickerRunner:
                     else:
                         result.status = "rejected"
                         result.rejection_reason = "BLOCKED by moderation consensus"
-                        self._update_command_log(
+                        update_slack_command_log(
                             cmd_log,
-                            "rejected",
+                            status="rejected",
                             rejection_reason=result.rejection_reason,
                         )
                         logger.info(f"[{cycle_id}] {ticker_t212} BLOCKED by moderation panel")
@@ -294,7 +431,7 @@ class SingleTickerRunner:
             # --- Phase 5: REVIEW stops here ---
             if intent.action == "REVIEW":
                 result.status = "review_only"
-                self._update_command_log(cmd_log, "review_only")
+                update_slack_command_log(cmd_log, status="review_only")
                 logger.info(
                     f"[{cycle_id}] REVIEW complete for {ticker_t212}: "
                     f"{result.strategy_action} (conviction {result.conviction}), "
@@ -346,7 +483,7 @@ class SingleTickerRunner:
                 else:
                     result.status = "rejected"
                     result.rejection_reason = f"Risk VETO: {risk_verdict.reasoning}"
-                    self._update_command_log(cmd_log, "rejected", rejection_reason=result.rejection_reason)
+                    update_slack_command_log(cmd_log, status="rejected", rejection_reason=result.rejection_reason)
                     logger.info(f"[{cycle_id}] {intent.action} {ticker_t212} REJECTED by risk: {risk_verdict.reasoning}")
                     return result
 
@@ -376,6 +513,7 @@ class SingleTickerRunner:
                 moderation_result="OVERRIDDEN" if result.moderation_overridden else result.moderation_consensus,
                 risk_result=result.risk_verdict_str,
                 moderation_overridden=result.moderation_overridden,
+                execution_mode=intent.execution_mode,
             )
             result.status = "ready"
             return result
@@ -384,7 +522,7 @@ class SingleTickerRunner:
             logger.error(f"[{cycle_id}] Single-ticker pipeline error: {e}", exc_info=True)
             result.status = "error"
             result.error_message = str(e)
-            self._update_command_log(cmd_log, "error", rejection_reason=str(e))
+            update_slack_command_log(cmd_log, status="error", rejection_reason=str(e))
             return result
 
     def execute_prepared(self, result: SingleTickerResult) -> SingleTickerResult:
@@ -414,10 +552,11 @@ class SingleTickerRunner:
 
         if exec_result.get("status") in ("filled", "dry_run", "pending"):
             result.status = "executed"
-            self._update_command_log(
+            update_slack_command_log(
                 result.command_log_id,
-                "executed",
+                status="executed",
                 order_id=exec_result.get("order_id"),
+                result_json=exec_result,
             )
             logger.info(
                 f"[{result.cycle_id}] {result.user_action} {result.ticker_t212} EXECUTED: "
@@ -427,10 +566,11 @@ class SingleTickerRunner:
         elif exec_result.get("status") == "skipped":
             result.status = "rejected"
             result.rejection_reason = self._format_execution_rejection(exec_result)
-            self._update_command_log(
+            update_slack_command_log(
                 result.command_log_id,
-                "rejected",
+                status="rejected",
                 rejection_reason=result.rejection_reason,
+                result_json=exec_result,
             )
             logger.info(
                 f"[{result.cycle_id}] {result.user_action} {result.ticker_t212} SKIPPED: "
@@ -439,10 +579,11 @@ class SingleTickerRunner:
         else:
             result.status = "error"
             result.error_message = exec_result.get("reason", "Execution failed")
-            self._update_command_log(
+            update_slack_command_log(
                 result.command_log_id,
-                "error",
+                status="error",
                 rejection_reason=result.error_message,
+                result_json=exec_result,
             )
             logger.warning(
                 f"[{result.cycle_id}] {result.user_action} {result.ticker_t212} FAILED: "
@@ -755,33 +896,21 @@ class SingleTickerRunner:
         intent: TradeCommandIntent,
         ticker_t212: str,
         cycle_id: str,
+        target_tickers: list[str] | None = None,
         user_id: str | None = None,
         channel_id: str | None = None,
         thread_ts: str | None = None,
     ) -> int | None:
         """Log Slack command to slack_command_log table. Returns log ID."""
-        session = get_session()
-        try:
-            log = SlackCommandLog(
-                channel_id=channel_id,
-                user_id=user_id,
-                thread_ts=thread_ts,
-                raw_message=intent.raw_message,
-                parsed_intent_json=intent.to_json(),
-                ticker=ticker_t212,
-                action=intent.action,
-                cycle_id=cycle_id,
-                status="processing",
-            )
-            session.add(log)
-            session.commit()
-            return log.id
-        except Exception as e:
-            session.rollback()
-            logger.warning(f"Failed to log slack command: {e}")
-            return None
-        finally:
-            session.close()
+        return log_slack_command(
+            intent=intent,
+            ticker=ticker_t212,
+            cycle_id=cycle_id,
+            target_tickers=target_tickers or [ticker_t212],
+            user_id=user_id,
+            channel_id=channel_id,
+            thread_ts=thread_ts,
+        )
 
     def _update_command_log(
         self,
@@ -790,28 +919,17 @@ class SingleTickerRunner:
         order_id: int | None = None,
         rejection_reason: str | None = None,
         response_message: str | None = None,
+        result_json: dict[str, Any] | None = None,
     ) -> None:
         """Update existing command log entry."""
-        if log_id is None:
-            return
-        session = get_session()
-        try:
-            log = session.query(SlackCommandLog).filter(SlackCommandLog.id == log_id).first()
-            if log:
-                if status is not None:
-                    log.status = status
-                if order_id is not None:
-                    log.order_id = order_id
-                if rejection_reason:
-                    log.rejection_reason = rejection_reason
-                if response_message is not None:
-                    log.response_message = response_message
-                session.commit()
-        except Exception as e:
-            session.rollback()
-            logger.warning(f"Failed to update command log: {e}")
-        finally:
-            session.close()
+        update_slack_command_log(
+            log_id,
+            status=status,
+            order_id=order_id,
+            rejection_reason=rejection_reason,
+            response_message=response_message,
+            result_json=result_json,
+        )
 
     def update_command_log_entry(
         self,
@@ -820,6 +938,7 @@ class SingleTickerRunner:
         order_id: int | None = None,
         rejection_reason: str | None = None,
         response_message: str | None = None,
+        result_json: dict[str, Any] | None = None,
     ) -> None:
         """Public wrapper for updating Slack command log fields."""
         self._update_command_log(
@@ -828,6 +947,7 @@ class SingleTickerRunner:
             order_id=order_id,
             rejection_reason=rejection_reason,
             response_message=response_message,
+            result_json=result_json,
         )
 
     def close(self) -> None:

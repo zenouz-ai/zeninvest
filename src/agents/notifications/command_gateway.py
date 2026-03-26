@@ -1,13 +1,16 @@
 """Inbound command gateway for ChatOps trade controls (US-1.6).
 
-Routes parsed commands to the single-ticker pipeline. Handles ticker resolution,
-command logging, and result formatting.
+Routes parsed Slack commands to the appropriate execution path:
+- strategy review / strategy-triggered trade
+- direct trade
+- cancel pending orders
 """
 
 from dataclasses import dataclass
 import re
 from typing import Any
 
+from src.agents.notifications.cancel_command_runner import CancelCommandRunner
 from src.agents.notifications.trade_command_parser import _strip_force_prefix
 from src.agents.notifications.trade_command_parser import TradeCommandIntent, parse_trade_command
 from src.utils.config import get_settings
@@ -34,7 +37,7 @@ class CommandGatewayDisabledError(RuntimeError):
 
 
 class CommandGateway:
-    """Inbound command gateway — routes parsed commands to single-ticker pipeline."""
+    """Inbound command gateway that resolves and dispatches Slack trade commands."""
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -44,10 +47,15 @@ class CommandGateway:
         return self.settings.slack_trade_commands_enabled
 
     def _extract_subject_phrase(self, text: str) -> str:
-        """Extract the user-typed subject phrase after BUY/SELL/REVIEW."""
+        """Extract the user-typed subject phrase after the leading command."""
         cleaned, _ = _strip_force_prefix(text or "")
         cleaned = cleaned.strip()
-        cleaned = re.sub(r"^\s*(BUY|SELL|REVIEW)\s+", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(
+            r"^\s*(CANCEL\s+STOP\s+SELL|CANCEL\s+BUY|CANCEL\s+SELL|BUY|SELL|REVIEW)\s+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
         cleaned = re.sub(
             r"^(?:[£$]\d+(?:\.\d+)?\s+(?:of\s+|worth\s+(?:of\s+)?)?)",
             "",
@@ -82,9 +90,10 @@ class CommandGateway:
         """Build a helpful reply for unsupported conversational requests."""
         normalized = " ".join((text or "").strip().lower().split())
         examples = (
-            "Currently supported one-ticker commands include "
-            "`BUY AAPL`, `SELL 10 TSLA`, `REVIEW MSFT`, `BUY £500 NVDA`, and "
-            "`force sell TSLA`."
+            "Currently supported commands include "
+            "`BUY AAPL`, `SELL 10 TSLA`, `REVIEW MSFT`, `BUY £500 NVDA`, "
+            "`buy Apple and trigger strategy`, `review Apple and buy`, and "
+            "`cancel stop sell NVDA, Microsoft`."
         )
 
         portfolio_keywords = (
@@ -107,6 +116,26 @@ class CommandGateway:
 
         return f"I couldn't parse that trade command. {examples}"
 
+    def _resolve_subjects(self, intent: TradeCommandIntent) -> tuple[list[str], str | None]:
+        resolved: list[str] = []
+        raw_subjects = getattr(intent, "subject_phrases", None)
+        subjects: list[str] = []
+        if isinstance(raw_subjects, (list, tuple)):
+            subjects = [str(subject).strip() for subject in raw_subjects if str(subject).strip()]
+        elif isinstance(raw_subjects, str) and raw_subjects.strip():
+            subjects = [raw_subjects.strip()]
+
+        ticker = str(getattr(intent, "ticker", "") or "").strip()
+        if not subjects and ticker:
+            subjects = [ticker]
+
+        for subject in subjects:
+            ticker_t212 = resolve_ticker_to_t212(subject)
+            if not ticker_t212:
+                return [], subject
+            resolved.append(ticker_t212)
+        return resolved, None
+
     def resolve_request(self, request: CommandRequest) -> dict[str, Any]:
         """Parse and resolve an inbound command without running the pipeline."""
         if not self.enabled:
@@ -118,20 +147,25 @@ class CommandGateway:
         if not intent:
             return {"status": "unparseable", "message": self._unparseable_message(text)}
 
-        ticker_t212 = resolve_ticker_to_t212(intent.ticker)
-        if not ticker_t212:
+        resolved_tickers, unknown_subject = self._resolve_subjects(intent)
+        if unknown_subject:
             return {
                 "status": "unknown_ticker",
-                "ticker": intent.ticker,
+                "ticker": unknown_subject.upper(),
                 "message": self._unknown_ticker_message(intent, text),
             }
 
-        return {
+        resolved: dict[str, Any] = {
             "status": "ok",
             "intent": intent,
-            "ticker_t212": ticker_t212,
             "text": text,
         }
+        command_kind = str(getattr(intent, "command_kind", "trade") or "trade").lower()
+        if command_kind == "cancel":
+            resolved["ticker_t212s"] = resolved_tickers
+        else:
+            resolved["ticker_t212"] = resolved_tickers[0]
+        return resolved
 
     def handle(self, request: CommandRequest) -> dict[str, Any]:
         """Route an inbound command to the appropriate handler.
@@ -143,27 +177,57 @@ class CommandGateway:
             return resolved
 
         intent = resolved["intent"]
-        ticker_t212 = resolved["ticker_t212"]
         thread_ts = request.raw_payload.get("thread_ts") or request.raw_payload.get("ts", "")
 
-        from src.orchestrator.single_ticker_run import SingleTickerRunner
-
-        runner = SingleTickerRunner(dry_run=False)
         try:
-            result = runner.run(
-                ticker_t212=ticker_t212,
-                intent=intent,
-                user_id=request.user_id,
-                channel_id=request.channel_id,
-                thread_ts=thread_ts,
-            )
-            resp: dict[str, Any] = {
-                "status": result.status,
-                "result": result,
-                "intent": intent,
-                "ticker_t212": ticker_t212,
-            }
-            # Propagate error/rejection messages so the listener can display them
+            command_kind = str(getattr(intent, "command_kind", "trade") or "trade").lower()
+            execution_mode = str(getattr(intent, "execution_mode", "strategy") or "strategy").lower()
+
+            if command_kind == "cancel":
+                runner = CancelCommandRunner(dry_run=False)
+                try:
+                    result = runner.run(
+                        ticker_t212s=resolved["ticker_t212s"],
+                        intent=intent,
+                        user_id=request.user_id,
+                        channel_id=request.channel_id,
+                        thread_ts=thread_ts,
+                    )
+                    resp: dict[str, Any] = {
+                        "status": result.status,
+                        "result": result,
+                        "intent": intent,
+                        "ticker_t212s": resolved["ticker_t212s"],
+                    }
+                finally:
+                    runner.close()
+            else:
+                if execution_mode == "strategy":
+                    from src.orchestrator.single_ticker_run import SingleTickerRunner
+
+                    runner = SingleTickerRunner(dry_run=False)
+                else:
+                    from src.orchestrator.direct_trade_run import DirectTradeRunner
+
+                    runner = DirectTradeRunner(dry_run=False)
+
+                try:
+                    result = runner.run(
+                        ticker_t212=resolved["ticker_t212"],
+                        intent=intent,
+                        user_id=request.user_id,
+                        channel_id=request.channel_id,
+                        thread_ts=thread_ts,
+                    )
+                    resp = {
+                        "status": result.status,
+                        "result": result,
+                        "intent": intent,
+                        "ticker_t212": resolved["ticker_t212"],
+                    }
+                finally:
+                    runner.close()
+
             if result.error_message:
                 resp["message"] = result.error_message
             elif result.rejection_reason:
@@ -172,5 +236,3 @@ class CommandGateway:
         except Exception as e:
             logger.error(f"Command gateway pipeline error: {e}", exc_info=True)
             return {"status": "error", "message": str(e)}
-        finally:
-            runner.close()
