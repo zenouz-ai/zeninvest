@@ -8,7 +8,7 @@ import httpx
 
 from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.data.database import get_session
-from src.data.models import Order
+from src.data.models import Instrument, Order
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -74,6 +74,15 @@ def _format_http_error_message(exc: BaseException, *, prefix: str) -> str:
     return f"{prefix}: HTTP {status_code}"
 
 
+def _is_instrument_not_tradable_error(exc: BaseException) -> bool:
+    """Detect Trading212 400 payloads indicating the instrument cannot be traded."""
+    _, status_code, body_snip = _unwrap_order_http_error(exc)
+    if status_code != 400:
+        return False
+    low = (body_snip or "").lower()
+    return "instrument-invisible" in low or "instrument can not be traded" in low
+
+
 class OrderManager:
     """Manages order execution with deduplication and logging."""
 
@@ -105,6 +114,22 @@ class OrderManager:
         """Create a deduplication key: ticker_direction_absqty."""
         direction = "BUY" if quantity > 0 else "SELL"
         return f"{ticker}_{direction}_{abs(quantity):.2f}"
+
+    def _mark_instrument_unavailable(self, ticker: str, reason: str) -> None:
+        """Mark instrument as unavailable so future screening/execution can skip it."""
+        session = get_session()
+        try:
+            inst = session.query(Instrument).filter_by(ticker=ticker).first()
+            if inst:
+                inst.data_available = False
+                inst.updated_at = datetime.now(timezone.utc)
+                session.commit()
+                logger.warning("Marked %s unavailable after execution failure: %s", ticker, reason)
+        except Exception as e:
+            session.rollback()
+            logger.warning("Failed to mark %s unavailable after execution failure: %s", ticker, e)
+        finally:
+            session.close()
 
     def _is_duplicate(self, dedup_key: str) -> bool:
         """Check if a similar order was placed within the dedup window."""
@@ -964,6 +989,11 @@ class OrderManager:
 
         except Exception as e:
             error_msg = _format_http_error_message(e, prefix=f"Order failed for {ticker}")
+            if action == "BUY" and _is_instrument_not_tradable_error(e):
+                self._mark_instrument_unavailable(
+                    ticker,
+                    "t212_instrument_not_tradable",
+                )
             logger.error("%s", error_msg)
             # Update the pre-written record to failed
             self._update_order_status(order.id, "failed", error_message=error_msg)
