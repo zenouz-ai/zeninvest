@@ -373,6 +373,18 @@ class SingleTickerRunner:
                 abs(target_amount_gbp / price_gbp) if price_gbp > 0 else 0.0
             )
             result.value_gbp = max(target_amount_gbp, 0.0)
+            if intent.action == "BUY":
+                required_cash = target_amount_gbp
+                if quantity_override is None and self.settings.buy_whole_shares_preferred:
+                    required_cash *= 1 + (self.settings.buy_whole_share_max_overspend_pct / 100)
+                available_cash = self._get_available_cash_gbp()
+                if available_cash < required_cash:
+                    result.status = "rejected"
+                    result.rejection_reason = (
+                        f"Insufficient cash. Available: £{available_cash:.2f}, required: £{required_cash:.2f}"
+                    )
+                    update_slack_command_log(cmd_log, status="rejected", rejection_reason=result.rejection_reason)
+                    return result
 
             # --- Phase 4: Moderation ---
             logger.info(f"[{cycle_id}] Running moderation for {ticker_t212}")
@@ -674,6 +686,9 @@ class SingleTickerRunner:
         else:
             target_amount_gbp = total_value * (base_allocation_pct / 100.0)
 
+        if intent.action == "BUY" and quantity_override is None:
+            target_amount_gbp = max(target_amount_gbp, float(self.settings.min_order_value_gbp))
+
         target_allocation_pct = (target_amount_gbp / total_value * 100) if total_value > 0 else 0.0
         return target_allocation_pct, target_amount_gbp, quantity_override
 
@@ -708,10 +723,12 @@ class SingleTickerRunner:
             total = self._get_total_value_gbp(account_summary, cash_data, positions)
             cash = self._extract_available_cash(cash_data if cash_data else account_summary.get("cash", {}))
             cash_pct = (cash / total * 100) if total > 0 else 10.0
+            invested = float(((account_summary.get("investments") or {}).get("currentValue", 0)) or 0)
             return {
                 "total_value": total,
                 "cash": cash,
                 "cash_pct": cash_pct,
+                "invested": invested,
                 "positions": positions,
                 "account_summary": account_summary,
             }
@@ -730,8 +747,12 @@ class SingleTickerRunner:
             return current_price
         positions = (portfolio_data or {}).get("positions", [])
         invested_gbp = float(
-            (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
-            .get("currentValue", 0) or 0
+            (
+                (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
+                .get("currentValue", 0)
+            )
+            or (portfolio_data or {}).get("invested", 0)
+            or 0
         )
         scale = self._compute_position_value_scale(positions, invested_gbp)
         return current_price * scale

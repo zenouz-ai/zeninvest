@@ -176,11 +176,11 @@ class StopLossManager:
         pending_stops = self._get_pending_stops()
         results: list[dict[str, Any]] = []
 
-        min_profit_pct = float(
-            self.settings._config.get("order_management", {})
-            .get("trailing_stops", {})
-            .get("min_profit_pct", 0)
-        )
+        min_profit_pct_raw = getattr(self.settings, "trailing_stop_min_profit_pct", None)
+        if isinstance(min_profit_pct_raw, (int, float)):
+            min_profit_pct = float(min_profit_pct_raw)
+        else:
+            min_profit_pct = 20.0
 
         for pos in positions:
             ticker = (pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")

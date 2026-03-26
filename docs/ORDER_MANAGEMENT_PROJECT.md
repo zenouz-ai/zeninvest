@@ -1,7 +1,7 @@
 ---
 tags: [order-management, stop-loss, trailing, limit-orders]
 status: delivered
-last_updated: 2026-03-10
+last_updated: 2026-03-26
 ---
 
 # Order Management
@@ -10,7 +10,7 @@ last_updated: 2026-03-10
 
 ## Purpose
 
-Manage post-trade order lifecycle — initial stop-loss placement, ATR-based reassessment, software trailing stops, and limit dip-buy orders. All adjustments are audited and gated by config switches.
+Manage post-trade order lifecycle — initial stop-loss placement, ATR-based reassessment, software trailing stops, and limit dip-buy orders. All adjustments are audited and gated by config switches. Autonomous exits are intentionally slower than entries: BUY remains active, while ordinary SELL and REDUCE actions are profit-gated upstream before order management executes them.
 
 ## Scope
 
@@ -31,9 +31,10 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 
 - **Before SELL/REDUCE execution:** `OrderManager.execute_market_order()` calls `cancel_conflicting_stops(ticker)` to cancel any pending stop-loss orders for the ticker before placing the market SELL/REDUCE. T212 reserves shares for pending stop orders, so attempting a SELL without cancelling the stop first causes T212 to reject the order. If cancellation fails (and it's not a 404/already-gone), the SELL is aborted. For `liquidate_all()`, stop cancellation is fail-open (attempt SELL regardless). After a REDUCE, `place_missing_stops()` in the same cycle places a new stop for the remaining shares.
 - **Newer HOLD/QUEUED decision after an earlier pending SELL:** On live cycles, the orchestrator calls `cancel_pending_market_sells(ticker, reason)` before recording the `strategy_hold` / `strategy_queued` rejection path. This cancels any still-live pending broker market SELL for the ticker and marks the local `orders` row `cancelled`, preventing stale pre-open exits from surviving a newer strategy view.
-- **After BUY execution:** Orchestrator calls `OrderManager.place_stop_loss(ticker, quantity, current_price, stop_loss_pct)` when `exec_result.status` in (filled, dry_run). Pending market BUYs are **not** given an immediate stop because T212 rejects stop placement before the position exists; they are covered by the next cycle's `place_missing_stops()` once the BUY fills. Stop price = `current_price × (1 + stop_loss_pct/100)` (e.g. -8% → 92% of price). The T212 API expects `timeValidity: "GOOD_TILL_CANCEL"` (not `"GTC"`); `T212Client` maps config/caller values accordingly.
+- **After BUY execution:** Orchestrator calls `OrderManager.place_stop_loss(ticker, quantity, current_price, stop_loss_pct)` when `exec_result.status` in (filled, dry_run). Pending market BUYs are **not** given an immediate stop because T212 rejects stop placement before the position exists; they are covered by the next cycle's `place_missing_stops()` once the BUY fills. Stop price = `current_price × (1 + stop_loss_pct/100)` (e.g. -15% → 85% of price). The T212 API expects `timeValidity: "GOOD_TILL_CANCEL"` (not `"GTC"`); `T212Client` maps config/caller values accordingly.
 - **Place missing stops:** Before reassessment each cycle, `StopLossManager.place_missing_stops(positions, stocks_data)` places stops for positions without one, using `default_stop_loss_pct` (or ATR-based when available).
-- **BUY path (market vs limit):** For each approved BUY, orchestrator reads `decision.entry_type` (default `"market"`). If `"limit_dip"`, it calls `StopLossManager.place_limit_buy(...)` with `target_amount_gbp`, `current_price`, and optional `offset_pct`; otherwise executes market order as today.
+- **BUY path (market vs limit):** For each approved BUY, orchestrator reads `decision.entry_type` (default `"market"`). If `"limit_dip"`, it calls `StopLossManager.place_limit_buy(...)` with `target_amount_gbp`, `current_price`, and optional `offset_pct`; otherwise executes market order as today. Autonomous BUY sizing enforces the £500 minimum ticket, prefers whole-share quantities with a small overspend tolerance, and only falls back to fractional shares when a whole-share order cannot satisfy policy.
+- **Autonomous exit policy upstream of order placement:** Ordinary SELL decisions are blocked unless the position is up at least `sell_min_profit_pct` (default `15%`) and the strategy marks the exit as `gain_realization`, or the exit is explicitly tagged `hard_exit`. REDUCE is reserved for rare profit trims only: only `25%` or `50%` trims survive orchestration, and only once the relevant profit thresholds have been reached.
 - **Post-execution (same cycle):** After all trades, orchestrator calls:
   - `StopLossManager.place_missing_stops(positions, stocks_data, cycle_id)` — Place stops for positions without one.
   - `StopLossManager.reassess_stops(positions, stocks_data, cycle_id)` — ATR-based stop levels for all positions; only tighten if `only_tighten_stops` is true.
@@ -54,7 +55,7 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 - HWM per ticker from latest `StopLossAdjustment` with `adjustment_type="trailing"` or from current price if first time.
 - When current price &gt; HWM, update HWM and set new stop = `HWM × (1 - trail_pct/100)`; **cancel old stop first, then place new one**. T212 only allows one pending stop per instrument — placing a second stop while the first is still active is rejected by T212. If the new stop placement fails after the old is cancelled, an emergency stop at the old price is immediately re-placed to restore protection.
 - **Guard:** If the computed new stop ≥ current price (price has fallen below HWM-stop level), the ratchet is skipped and recorded as `status=skipped, trigger_reason=trailing_ratchet_invalid`.
-- **Min profit gate:** Trailing stops are gated by `min_profit_pct: 10` — trailing only activates when the position is in profit by at least 10%. When enabled (`trailing_stops.enabled: true`), positions below this threshold do not get trailing adjustments.
+- **Min profit gate:** Trailing stops are gated by `min_profit_pct: 20` — trailing only activates when the position is in profit by at least 20%. When enabled (`trailing_stops.enabled: true`), positions below this threshold do not get trailing adjustments.
 
 ### Limit dip-buy
 
@@ -74,12 +75,12 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 ```yaml
 order_management:
   enabled: true
-  default_stop_loss_pct: -8   # Used when placing missing stops (no ATR or no decision)
+  default_stop_loss_pct: -15   # Used when placing missing stops (no ATR or no decision)
   reassess_stops: true
   trailing_stops:
     enabled: true
-    default_trail_pct: 5.0
-    min_profit_pct: 10   # Trailing only activates when position is in profit by at least 10%
+    default_trail_pct: 10.0
+    min_profit_pct: 20   # Trailing only activates when position is in profit by at least 20%
   limit_orders:
     enabled: true
     default_offset_pct: 2.0
@@ -96,7 +97,7 @@ order_management:
 | `reassess_stops` | ATR-based stop reassessment each cycle. |
 | `trailing_stops.enabled` | Software trailing stops (HWM ratchet). Now enabled by default. |
 | `trailing_stops.default_trail_pct` | Trail distance % below HWM. |
-| `trailing_stops.min_profit_pct` | Gate: trailing only activates when position profit ≥ this % (default 10). |
+| `trailing_stops.min_profit_pct` | Gate: trailing only activates when position profit ≥ this % (default 20). |
 | `limit_orders.enabled` | Allow limit BUYs when strategy outputs `entry_type: "limit_dip"`. |
 | `limit_orders.default_offset_pct` | Default % below current price for limit. |
 | `limit_orders.time_validity` | DAY or GTC. |
@@ -112,7 +113,7 @@ order_management:
 |--------|-------------|---------|--------|
 | GTC stop after BUY | Yes | On | Claude's `stop_loss_pct`; no switch (always on when BUY executes). |
 | ATR reassessment | Yes | On | `reassess_stops: true`. |
-| Trailing stops | Yes | On | `trailing_stops.enabled: true`; gated by `min_profit_pct: 10`. |
+| Trailing stops | Yes | On | `trailing_stops.enabled: true`; gated by `min_profit_pct: 20`. |
 | Limit dip-buy | Yes | On | `limit_orders.enabled: true`; strategy must output `entry_type: "limit_dip"` to use. |
 
 ---

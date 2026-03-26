@@ -656,7 +656,16 @@ class OrderManager:
         if quantity_override is not None and quantity_override > 0:
             quantity = quantity_override
         else:
-            quantity = calculate_quantity(target_amount_gbp, price_gbp or current_price)
+            quantity = calculate_quantity(
+                target_amount_gbp,
+                price_gbp or current_price,
+                prefer_whole_shares=(
+                    action == "BUY"
+                    and self.settings.buy_whole_shares_preferred
+                ),
+                max_overspend_pct=self.settings.buy_whole_share_max_overspend_pct,
+                allow_fractional_fallback=self.settings.buy_fractional_fallback_enabled,
+            )
         if quantity <= 0:
             logger.warning(f"Calculated quantity is 0 for {ticker} @ {current_price}")
             return {
@@ -779,6 +788,8 @@ class OrderManager:
                     "value_gbp": abs(quantity) * current_price,
                 }
 
+            if action == "SELL" and (quantity_override is None or quantity_override <= 0):
+                quantity = -available
             abs_req = abs(quantity)
             if abs_req > available:
                 logger.warning(

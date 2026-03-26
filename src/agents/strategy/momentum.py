@@ -24,7 +24,8 @@ def evaluate_momentum(
 
     BUY: above 50-day MA, RSI 50-70, positive MACD crossover, RS>1.0 vs S&P.
     Volume can confirm breakouts via OBV and 20-day average volume ratio.
-    SELL: RSI>80 OR below 50-day MA OR MACD bearish crossover.
+    For held positions, bearish technicals become HOLD/caution context rather than
+    automatic SELL signals. Autonomous exits are handled at a higher policy layer.
     """
     if "error" in indicators:
         return MomentumSignal(
@@ -44,22 +45,22 @@ def evaluate_momentum(
     score = 0.0
     reasons: list[str] = []
 
-    # SELL signals (check first for existing holdings)
+    # Existing holdings: surface technical weakness as caution, not an automatic SELL.
     if current_holding:
-        sell_reasons: list[str] = []
+        caution_reasons: list[str] = []
         if rsi > 80:
-            sell_reasons.append(f"RSI overbought ({rsi:.1f}>80)")
+            caution_reasons.append(f"RSI overbought ({rsi:.1f}>80)")
         if not above_50ma:
-            sell_reasons.append("Price below 50-day MA")
+            caution_reasons.append("Price below 50-day MA")
         if macd_bearish:
-            sell_reasons.append("MACD bearish crossover")
+            caution_reasons.append("MACD bearish crossover")
 
-        if sell_reasons:
+        if caution_reasons:
             return MomentumSignal(
                 ticker=ticker,
-                action="SELL",
-                score=max(60, min(100, len(sell_reasons) * 30)),
-                reasoning="Momentum sell: " + "; ".join(sell_reasons),
+                action="HOLD",
+                score=max(35, 70 - len(caution_reasons) * 5),
+                reasoning="Momentum caution for held position: " + "; ".join(caution_reasons),
                 indicators=indicators,
             )
 

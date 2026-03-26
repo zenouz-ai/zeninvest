@@ -238,8 +238,11 @@ class DirectTradeRunner:
     ) -> str | None:
         if intent.action == "BUY":
             cash = self._get_available_cash_gbp()
-            if cash < target_amount_gbp:
-                return f"Insufficient cash. Available: £{cash:.2f}, requested: £{target_amount_gbp:.2f}"
+            required_cash = target_amount_gbp
+            if quantity_override is None and self.settings.buy_whole_shares_preferred:
+                required_cash *= 1 + (self.settings.buy_whole_share_max_overspend_pct / 100)
+            if cash < required_cash:
+                return f"Insufficient cash. Available: £{cash:.2f}, required: £{required_cash:.2f}"
             return None
 
         position = self.t212_client.get_position(ticker_t212)
@@ -265,7 +268,10 @@ class DirectTradeRunner:
 
         quantity_override = intent.quantity_shares
         if intent.amount_gbp is not None:
-            return float(intent.amount_gbp), quantity_override
+            amount = float(intent.amount_gbp)
+            if quantity_override is None:
+                amount = max(amount, float(self.settings.min_order_value_gbp))
+            return amount, quantity_override
         if quantity_override is not None:
             return float(quantity_override) * current_price_gbp, quantity_override
         return float(self.settings.min_order_value_gbp), None
@@ -304,10 +310,12 @@ class DirectTradeRunner:
         total = self._get_total_value_gbp(account_summary, cash_data, positions)
         cash = self._extract_available_cash(cash_data)
         cash_pct = (cash / total * 100) if total > 0 else 10.0
+        invested = float(((account_summary.get("investments") or {}).get("currentValue", 0)) or 0)
         return {
             "total_value": total,
             "cash": cash,
             "cash_pct": cash_pct,
+            "invested": invested,
             "positions": positions,
             "account_summary": account_summary,
         }
@@ -336,8 +344,11 @@ class DirectTradeRunner:
             return current_price
         positions = (portfolio_data or {}).get("positions", [])
         invested_gbp = float(
-            (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
-            .get("currentValue", 0)
+            (
+                (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
+                .get("currentValue", 0)
+            )
+            or (portfolio_data or {}).get("invested", 0)
             or 0
         )
         scale = self._compute_position_value_scale(positions, invested_gbp)

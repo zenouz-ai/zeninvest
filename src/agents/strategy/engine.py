@@ -474,6 +474,7 @@ class StrategyEngine:
     def _validate_decisions(result: dict[str, Any]) -> dict[str, Any]:
         """Validate and filter decisions — drop any with missing required fields (audit fix H-5)."""
         valid_actions = {"BUY", "SELL", "HOLD", "REDUCE", "QUEUED"}
+        valid_exit_trigger_types = {"none", "gain_realization", "hard_exit", "profit_trim"}
         validated = []
         for d in result.get("decisions", []):
             ticker = d.get("ticker", "").strip()
@@ -488,6 +489,34 @@ class StrategyEngine:
             if action in ("BUY", "SELL", "REDUCE") and (conviction is None or conviction == 0):
                 logger.warning(f"Dropping {action} decision for {ticker}: conviction is {conviction}")
                 continue
+            raw_exit_trigger = str(d.get("exit_trigger_type", "") or "").strip().lower()
+            if not raw_exit_trigger:
+                raw_exit_trigger = "none" if action in {"BUY", "HOLD", "QUEUED"} else ""
+            if raw_exit_trigger not in valid_exit_trigger_types:
+                logger.warning(
+                    "Dropping %s decision for %s: invalid exit_trigger_type %r",
+                    action,
+                    ticker,
+                    d.get("exit_trigger_type"),
+                )
+                continue
+            if action == "SELL" and raw_exit_trigger not in {"gain_realization", "hard_exit"}:
+                logger.warning(
+                    "Dropping SELL decision for %s: exit_trigger_type %r is not allowed",
+                    ticker,
+                    raw_exit_trigger,
+                )
+                continue
+            if action == "REDUCE" and raw_exit_trigger != "profit_trim":
+                logger.warning(
+                    "Dropping REDUCE decision for %s: exit_trigger_type %r is not profit_trim",
+                    ticker,
+                    raw_exit_trigger,
+                )
+                continue
+            if action in {"BUY", "HOLD", "QUEUED"}:
+                raw_exit_trigger = "none"
+            d["exit_trigger_type"] = raw_exit_trigger
             validated.append(d)
         dropped = len(result.get("decisions", [])) - len(validated)
         if dropped > 0:

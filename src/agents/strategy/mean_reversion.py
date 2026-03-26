@@ -26,7 +26,8 @@ def evaluate_mean_reversion(
 
     BUY: RSI<30, below lower BB, IF fundamentals sound (P/E < sector avg,
          positive earnings, debt/equity < 1.5).
-    SELL: price at 20-day MA or RSI>60.
+    For held positions, mean-reversion recovery is treated as HOLD/caution context.
+    Profit-taking decisions are handled by higher-level policy.
     """
     if "error" in indicators:
         return MeanReversionSignal(
@@ -49,20 +50,20 @@ def evaluate_mean_reversion(
     score = 0.0
     reasons: list[str] = []
 
-    # SELL signals for existing holdings
+    # Existing holdings: recovery from oversold is a caution signal, not an automatic SELL.
     if current_holding:
-        sell_reasons: list[str] = []
+        caution_reasons: list[str] = []
         if ma_20 > 0 and current_price >= ma_20:
-            sell_reasons.append(f"Price reached 20-day MA ({ma_20:.2f})")
+            caution_reasons.append(f"Price reached 20-day MA ({ma_20:.2f})")
         if rsi > 60:
-            sell_reasons.append(f"RSI recovered ({rsi:.1f}>60)")
+            caution_reasons.append(f"RSI recovered ({rsi:.1f}>60)")
 
-        if sell_reasons:
+        if caution_reasons:
             return MeanReversionSignal(
                 ticker=ticker,
-                action="SELL",
-                score=max(60, min(100, len(sell_reasons) * 35)),
-                reasoning="Mean reversion target: " + "; ".join(sell_reasons),
+                action="HOLD",
+                score=max(35, 70 - len(caution_reasons) * 5),
+                reasoning="Mean reversion caution for held position: " + "; ".join(caution_reasons),
                 indicators=indicators,
                 fundamentals=fundamentals,
             )

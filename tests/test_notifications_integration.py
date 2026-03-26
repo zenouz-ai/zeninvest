@@ -577,28 +577,32 @@ def test_execute_trade_reduce_converts_to_full_sell_below_floor(monkeypatch) -> 
 
 
 @pytest.mark.parametrize(
-    ("pnl_pct", "position_pct", "sector_pct", "expected_allow"),
+    ("pnl_pct", "position_pct", "target_alloc", "exit_trigger_type", "expected_allow", "expected_code"),
     [
-        (5.0, 8.0, 20.0, False),
-        (12.0, 8.0, 20.0, True),
-        (5.0, 21.0, 20.0, True),
-        (5.0, 8.0, 45.0, True),
+        (5.0, 8.0, 6.0, "profit_trim", False, "reduce_guardrail_below_profit_floor"),
+        (27.0, 8.0, 6.0, "profit_trim", True, None),
+        (45.0, 8.0, 4.0, "profit_trim", True, None),
+        (45.0, 8.0, 6.0, "gain_realization", False, "reduce_guardrail_invalid_trigger"),
     ],
 )
-def test_reduce_guardrail_requires_gain_or_risk_breach(
+def test_reduce_guardrail_requires_profit_trim_threshold(
     pnl_pct: float,
     position_pct: float,
-    sector_pct: float,
+    target_alloc: float,
+    exit_trigger_type: str,
     expected_allow: bool,
+    expected_code: str | None,
 ) -> None:
     orchestrator = Orchestrator(dry_run=True)
 
     allow, code, reason = orchestrator._evaluate_reduce_guardrail(
         ticker="AAPL_US_EQ",
+        decision={"action": "REDUCE", "exit_trigger_type": exit_trigger_type},
         sector="Technology",
         position_context={"AAPL_US_EQ": {"pnl_pct": pnl_pct}},
         current_allocations={"AAPL_US_EQ": position_pct},
-        sector_allocations={"Technology": sector_pct},
+        sector_allocations={"Technology": 20.0},
+        target_allocation_pct=target_alloc,
     )
 
     assert allow is expected_allow
@@ -606,11 +610,11 @@ def test_reduce_guardrail_requires_gain_or_risk_breach(
         assert code is None
         assert reason is None
     else:
-        assert code == "reduce_guardrail_no_gain_or_risk"
+        assert code == expected_code
         assert "Held instead of reducing" in reason
 
 
-def test_deterministic_take_profit_override_marks_sell_and_bypasses_min_hold() -> None:
+def test_profit_threshold_no_longer_forces_take_profit_sell() -> None:
     orchestrator = Orchestrator(dry_run=True)
     decision = {
         "ticker": "AAPL_US_EQ",
@@ -631,10 +635,9 @@ def test_deterministic_take_profit_override_marks_sell_and_bypasses_min_hold() -
         cycle_id="scheduled_20260325_120001",
     )
 
-    assert decision["action"] == "SELL"
-    assert decision["target_allocation_pct"] == 0.0
-    assert decision["deterministic_exit_reason_code"] == "take_profit_full_sell"
-    assert orchestrator._should_skip_min_holding_for_decision(decision) is True
+    assert decision["action"] == "HOLD"
+    assert "deterministic_exit_reason_code" not in decision
+    assert orchestrator._should_skip_min_holding_for_decision(decision) is False
 
 
 def test_small_position_cleanup_triggers_immediately_for_any_sub_threshold_holding() -> None:

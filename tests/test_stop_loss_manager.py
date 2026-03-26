@@ -39,9 +39,11 @@ def mock_settings():
     settings.reassess_stops_enabled = True
     settings.trailing_stops_enabled = True
     settings.trailing_stop_default_trail_pct = 5.0
+    settings.trailing_stop_min_profit_pct = 20.0
     settings.limit_orders_enabled = True
     settings.limit_order_default_offset_pct = 2.0
     settings.limit_order_time_validity = "GTC"
+    settings.default_stop_loss_pct = -15.0
     settings.min_order_value_gbp = 500.0
     settings.atr_multiplier = 2.0
     settings.min_stop_distance_pct = 3.0
@@ -449,7 +451,9 @@ class TestSettingsProperties:
         assert settings.order_management_enabled is False
         assert settings.reassess_stops_enabled is False
         assert settings.trailing_stops_enabled is False
-        assert settings.trailing_stop_default_trail_pct == 5.0
+        assert settings.default_stop_loss_pct == -15.0
+        assert settings.trailing_stop_default_trail_pct == 10.0
+        assert settings.trailing_stop_min_profit_pct == 20.0
         assert settings.limit_orders_enabled is False
         assert settings.limit_order_default_offset_pct == 2.0
         assert settings.limit_order_time_validity == "GTC"
@@ -469,7 +473,8 @@ class TestSettingsProperties:
             "order_management": {
                 "enabled": True,
                 "reassess_stops": True,
-                "trailing_stops": {"enabled": True, "default_trail_pct": 8.0},
+                "default_stop_loss_pct": -12.0,
+                "trailing_stops": {"enabled": True, "default_trail_pct": 8.0, "min_profit_pct": 12.0},
                 "limit_orders": {"enabled": True, "default_offset_pct": 3.5, "time_validity": "DAY"},
                 "atr_multiplier": 1.5,
                 "min_stop_distance_pct": 2.0,
@@ -480,7 +485,9 @@ class TestSettingsProperties:
         assert settings.order_management_enabled is True
         assert settings.reassess_stops_enabled is True
         assert settings.trailing_stops_enabled is True
+        assert settings.default_stop_loss_pct == -12.0
         assert settings.trailing_stop_default_trail_pct == 8.0
+        assert settings.trailing_stop_min_profit_pct == 12.0
         assert settings.limit_orders_enabled is True
         assert settings.limit_order_default_offset_pct == 3.5
         assert settings.limit_order_time_validity == "DAY"

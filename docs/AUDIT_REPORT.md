@@ -202,7 +202,7 @@ Conviction-based, constrained by risk rules:
 - VIX > 25: max 8%; VIX > 35: max 5%
 - Must maintain 10% cash floor
 - Max 15 concurrent positions
-- REDUCE uses tier rounding: nearest of [25%, 50%, 70%, 100%]
+- REDUCE is restricted to rare profit trims of 25% or 50%
 
 **No Kelly Criterion, risk-parity, or volatility targeting.**
 
@@ -437,8 +437,8 @@ dashboard, runs, status, universe, portfolio, orders, events, decisions, moderat
 | `min_order_value_gbp` | 500 | BUY/REDUCE floor |
 | `max_single_stock_pct` | 15 | Max per-position (8% in CAUTIOUS) |
 | `max_sector_pct` | 35 | Max per-sector |
-| `default_stop_loss_pct` | -8 | Default stop distance |
-| `trailing_stops.default_trail_pct` | 5.0 | Trailing stop distance |
+| `default_stop_loss_pct` | -15 | Default stop distance |
+| `trailing_stops.default_trail_pct` | 10.0 | Trailing stop distance |
 | `opportunity.mode` | `active` | UOV optimizer live |
 | `opportunity.immediate_threshold_z` | 0.3 | BUY immediately threshold |
 | `opportunity.queue_ttl_cycles` | 6 | Queue expiry |

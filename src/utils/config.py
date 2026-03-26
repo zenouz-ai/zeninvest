@@ -139,29 +139,44 @@ class Settings:
 
     @property
     def reduce_tiers_pct(self) -> list[float]:
-        """Round REDUCE to nearest tier (25, 50, 70, 100)."""
-        val = self.trading.get("reduce_tiers_pct", [25, 50, 70, 100])
-        return [float(x) for x in val] if isinstance(val, list) else [25.0, 50.0, 70.0, 100.0]
+        """Round REDUCE to nearest allowed tier."""
+        val = self.trading.get("reduce_tiers_pct", [25, 50])
+        return [float(x) for x in val] if isinstance(val, list) else [25.0, 50.0]
 
     @property
-    def reduce_requires_gain_or_risk(self) -> bool:
-        """Only allow REDUCE when the position is a meaningful winner or over a risk limit."""
-        return bool(self.trading.get("reduce_requires_gain_or_risk", True))
+    def sell_min_profit_pct(self) -> float:
+        """Minimum unrealized gain for ordinary autonomous SELL decisions."""
+        return float(self.trading.get("sell_min_profit_pct", 15.0))
 
     @property
-    def reduce_min_unrealized_gain_pct(self) -> float:
-        """Minimum unrealized gain before REDUCE is allowed without a hard risk breach."""
-        return float(self.trading.get("reduce_min_unrealized_gain_pct", 10.0))
+    def reduce_25_min_profit_pct(self) -> float:
+        """Minimum unrealized gain before a 25% profit trim is allowed."""
+        return float(self.trading.get("reduce_25_min_profit_pct", 25.0))
+
+    @property
+    def reduce_50_min_profit_pct(self) -> float:
+        """Minimum unrealized gain before a 50% profit trim is allowed."""
+        return float(self.trading.get("reduce_50_min_profit_pct", 40.0))
+
+    @property
+    def buy_whole_shares_preferred(self) -> bool:
+        """Prefer integer-share autonomous BUY orders when sizing permits."""
+        return bool(self.trading.get("buy_whole_shares_preferred", True))
+
+    @property
+    def buy_whole_share_max_overspend_pct(self) -> float:
+        """Allow modest overspend to land on a whole-share quantity."""
+        return float(self.trading.get("buy_whole_share_max_overspend_pct", 5.0))
+
+    @property
+    def buy_fractional_fallback_enabled(self) -> bool:
+        """Allow fractional autonomous BUYs only when whole-share sizing cannot satisfy policy."""
+        return bool(self.trading.get("buy_fractional_fallback_enabled", True))
 
     @property
     def take_profit_full_sell_pct(self) -> float:
-        """Deterministic take-profit threshold for full position exits."""
+        """Legacy take-profit threshold retained for compatibility."""
         return float(self.trading.get("take_profit_full_sell_pct", 15.0))
-
-    @property
-    def take_profit_allow_before_min_hold(self) -> bool:
-        """Whether take-profit SELL may bypass the ordinary minimum holding rule."""
-        return bool(self.trading.get("take_profit_allow_before_min_hold", True))
 
     @property
     def small_position_cleanup_enabled(self) -> bool:
@@ -613,7 +628,7 @@ class Settings:
     @property
     def default_stop_loss_pct(self) -> float:
         """Default stop-loss % when placing missing stops (no ATR or no decision)."""
-        return float(self.order_management.get("default_stop_loss_pct", -8.0))
+        return float(self.order_management.get("default_stop_loss_pct", -15.0))
 
     @property
     def reassess_stops_enabled(self) -> bool:
@@ -627,7 +642,12 @@ class Settings:
     @property
     def trailing_stop_default_trail_pct(self) -> float:
         ts = self.order_management.get("trailing_stops", {})
-        return float(ts.get("default_trail_pct", 5.0)) if isinstance(ts, dict) else 5.0
+        return float(ts.get("default_trail_pct", 10.0)) if isinstance(ts, dict) else 10.0
+
+    @property
+    def trailing_stop_min_profit_pct(self) -> float:
+        ts = self.order_management.get("trailing_stops", {})
+        return float(ts.get("min_profit_pct", 20.0)) if isinstance(ts, dict) else 20.0
 
     @property
     def limit_orders_enabled(self) -> bool:

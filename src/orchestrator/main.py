@@ -126,16 +126,6 @@ class Orchestrator:
             if not position:
                 continue
 
-            take_profit_reason = self._take_profit_reason(position)
-            if take_profit_reason:
-                self._apply_deterministic_sell_override(
-                    decision=decision,
-                    reason_code="take_profit_full_sell",
-                    reason_detail=take_profit_reason,
-                    conviction_floor=90,
-                )
-                continue
-
             cleanup_reason = self._small_position_cleanup_reason(position)
             if cleanup_reason:
                 self._apply_deterministic_sell_override(
@@ -192,8 +182,24 @@ class Orchestrator:
                     "indicators": {"current_price": current_price},
                     "fundamentals": {},
                 }],
-            })
+                })
         return candidates
+
+    @staticmethod
+    def _position_context_for_ticker(
+        ticker: str,
+        position_context: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        return position_context.get(ticker, {})
+
+    @staticmethod
+    def _normalize_exit_trigger_type(decision: dict[str, Any]) -> str:
+        action = str(decision.get("action", "") or "").strip().upper()
+        trigger = str(decision.get("exit_trigger_type", "") or "").strip().lower()
+        if not trigger and action in {"BUY", "HOLD", "QUEUED"}:
+            trigger = "none"
+        decision["exit_trigger_type"] = trigger
+        return trigger
 
     def _execute_pre_strategy_cleanup_sells(
         self,
@@ -317,16 +323,6 @@ class Orchestrator:
 
         return cleanup_tickers
 
-    def _take_profit_reason(self, position: dict[str, Any]) -> str | None:
-        pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
-        threshold = self.settings.take_profit_full_sell_pct
-        if pnl_pct < threshold:
-            return None
-        return (
-            f"Deterministic take-profit SELL: unrealized gain {pnl_pct:.1f}% "
-            f"meets or exceeds the {threshold:.1f}% threshold"
-        )
-
     def _small_position_cleanup_reason(
         self,
         position: dict[str, Any],
@@ -353,6 +349,7 @@ class Orchestrator:
         decision["action"] = "SELL"
         decision["target_allocation_pct"] = 0.0
         decision.pop("claude_target_allocation_pct", None)
+        decision["exit_trigger_type"] = "hard_exit"
         decision["deterministic_exit_reason_code"] = reason_code
         decision["deterministic_exit_reason"] = reason_detail
         if original_action != "SELL":
@@ -366,13 +363,41 @@ class Orchestrator:
         if not decision.get("exit_conditions"):
             decision["exit_conditions"] = reason_detail
         if not decision.get("expected_holding_period"):
-            decision["expected_holding_period"] = "2-15 trading days"
+            decision["expected_holding_period"] = "5-30 trading days"
 
     def _should_skip_min_holding_for_decision(self, decision: dict[str, Any]) -> bool:
-        return bool(
-            self.settings.take_profit_allow_before_min_hold
-            and decision.get("deterministic_exit_reason_code") == "take_profit_full_sell"
-        )
+        return False
+
+    def _evaluate_sell_guardrail(
+        self,
+        *,
+        ticker: str,
+        decision: dict[str, Any],
+        position_context: dict[str, dict[str, Any]],
+    ) -> tuple[bool, str | None, str | None]:
+        exit_trigger_type = self._normalize_exit_trigger_type(decision)
+        if decision.get("deterministic_exit_reason_code") == "small_position_cleanup":
+            return True, None, None
+        if exit_trigger_type == "hard_exit":
+            return True, None, None
+
+        position = self._position_context_for_ticker(ticker, position_context)
+        pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
+        profit_floor = self.settings.sell_min_profit_pct
+
+        if exit_trigger_type != "gain_realization":
+            reason = (
+                f"Held instead of selling: exit_trigger_type must be gain_realization or hard_exit, "
+                f"got {exit_trigger_type or 'missing'}"
+            )
+            return False, "sell_guardrail_invalid_trigger", reason
+        if pnl_pct < profit_floor:
+            reason = (
+                f"Held instead of selling: unrealized gain {pnl_pct:.1f}% is below "
+                f"the {profit_floor:.1f}% sell profit floor"
+            )
+            return False, "sell_guardrail_below_profit_floor", reason
+        return True, None, None
 
     def run_cycle(self, scheduled_cycle_id: str | None = None) -> dict[str, Any]:
         """Run a full investment cycle.
@@ -1070,6 +1095,7 @@ class Orchestrator:
                 if target_alloc != raw_alloc:
                     logger.warning(f"Clamped target_allocation_pct for {ticker}: {raw_alloc} -> {target_alloc}")
                 decision["target_allocation_pct"] = target_alloc
+                self._normalize_exit_trigger_type(decision)
                 if decision.get("action") == "BUY":
                     decision["claude_target_allocation_pct"] = target_alloc
 
@@ -1118,13 +1144,28 @@ class Orchestrator:
                 target_alloc = float(decision.get("target_allocation_pct", 0.0) or 0.0)
                 sector = self._get_sector(ticker, stocks_data)
 
+                if action == "SELL":
+                    allow_sell, guardrail_code, guardrail_reason = self._evaluate_sell_guardrail(
+                        ticker=ticker,
+                        decision=decision,
+                        position_context=position_context,
+                    )
+                    if not allow_sell:
+                        decision["action"] = "HOLD"
+                        decision["guardrail_original_action"] = "SELL"
+                        decision["guardrail_reason_code"] = guardrail_code
+                        decision["guardrail_reason"] = guardrail_reason
+                        action = "HOLD"
+
                 if action == "REDUCE":
                     allow_reduce, guardrail_code, guardrail_reason = self._evaluate_reduce_guardrail(
                         ticker=ticker,
+                        decision=decision,
                         sector=sector,
                         position_context=position_context,
                         current_allocations=portfolio_allocs,
                         sector_allocations=sector_allocs,
+                        target_allocation_pct=target_alloc,
                     )
                     if not allow_reduce:
                         decision["action"] = "HOLD"
@@ -2912,8 +2953,12 @@ class Orchestrator:
             return current_price  # Unknown suffix — no conversion
         positions = (portfolio_data or {}).get("positions", [])
         invested_gbp = float(
-            (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
-            .get("currentValue", 0) or 0
+            (
+                (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
+                .get("currentValue", 0)
+            )
+            or (portfolio_data or {}).get("invested", 0)
+            or 0
         )
         scale = self._compute_position_value_scale(positions, invested_gbp)
         # scale == 1.0 when no positions exist (empty portfolio) — graceful fallback
@@ -3524,31 +3569,49 @@ class Orchestrator:
         self,
         *,
         ticker: str,
+        decision: dict[str, Any] | None = None,
         sector: str,
         position_context: dict[str, dict[str, Any]],
         current_allocations: dict[str, float],
         sector_allocations: dict[str, float],
+        target_allocation_pct: float | None = None,
     ) -> tuple[bool, str | None, str | None]:
-        if not self.settings.reduce_requires_gain_or_risk:
-            return True, None, None
+        normalized_decision = decision or {"action": "REDUCE", "exit_trigger_type": "profit_trim"}
+        exit_trigger_type = self._normalize_exit_trigger_type(normalized_decision)
+        if exit_trigger_type != "profit_trim":
+            return False, "reduce_guardrail_invalid_trigger", (
+                f"Held instead of reducing: exit_trigger_type must be profit_trim, "
+                f"got {exit_trigger_type or 'missing'}"
+            )
         position = position_context.get(ticker, {})
         pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
         position_pct = float(current_allocations.get(ticker, 0.0) or 0.0)
-        sector_pct = float(sector_allocations.get(sector, 0.0) or 0.0)
+        if position_pct <= 0:
+            return False, "reduce_guardrail_no_position", (
+                "Held instead of reducing: no current position allocation was found"
+            )
 
-        gain_threshold = self.settings.reduce_min_unrealized_gain_pct
-        over_position_limit = position_pct > self.settings.max_single_stock_pct
-        over_sector_limit = sector_pct > self.settings.max_sector_pct
-        meaningful_gain = pnl_pct >= gain_threshold
-
-        if meaningful_gain or over_position_limit or over_sector_limit:
+        if target_allocation_pct is None:
+            target_allocation_pct = position_pct * 0.75
+        reduction_pct = max(0.0, ((position_pct - target_allocation_pct) / position_pct) * 100)
+        nearest = min(self.settings.reduce_tiers_pct, key=lambda t: abs(t - reduction_pct))
+        if nearest not in {25.0, 50.0}:
+            return False, "reduce_guardrail_invalid_tier", (
+                f"Held instead of reducing: only 25% or 50% trims are allowed, got {nearest:.0f}%"
+            )
+        gain_threshold = (
+            self.settings.reduce_50_min_profit_pct
+            if nearest >= 50.0
+            else self.settings.reduce_25_min_profit_pct
+        )
+        if pnl_pct >= gain_threshold:
             return True, None, None
 
         reason = (
-            f"Held instead of reducing: unrealized gain {pnl_pct:.1f}% is below {gain_threshold:.1f}% "
-            f"and no risk limit is breached (position {position_pct:.1f}%, sector {sector_pct:.1f}%)"
+            f"Held instead of reducing: unrealized gain {pnl_pct:.1f}% is below the "
+            f"{gain_threshold:.1f}% threshold for a {nearest:.0f}% profit trim"
         )
-        return False, "reduce_guardrail_no_gain_or_risk", reason
+        return False, "reduce_guardrail_below_profit_floor", reason
 
     def _build_rejected_from_trade_entry(
         self,

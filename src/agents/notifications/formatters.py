@@ -650,10 +650,18 @@ def _human_reason(reason_code: Any, *, fallback: Any = "", context: dict[str, An
         return "Candidate was removed from the queue because it no longer qualified"
     if code == "cash_floor_guard":
         return "No order was sent because available cash would have fallen below the cash floor"
-    if code == "reduce_guardrail_no_gain_or_risk":
-        return "Held instead of reducing because there is no significant gain or portfolio risk breach"
+    if code in {"reduce_guardrail_no_gain_or_risk", "reduce_guardrail_below_profit_floor"}:
+        return "Held instead of reducing because the position has not reached the required profit threshold"
+    if code == "reduce_guardrail_invalid_trigger":
+        return "Held instead of reducing because REDUCE is reserved for rare profit trims only"
+    if code == "reduce_guardrail_invalid_tier":
+        return "Held instead of reducing because only 25% or 50% trims are allowed"
+    if code == "sell_guardrail_below_profit_floor":
+        return "Held instead of selling because unrealized profit has not reached the sell threshold"
+    if code == "sell_guardrail_invalid_trigger":
+        return "Held instead of selling because there was no valid hard-exit or gain-realization trigger"
     if code == "take_profit_full_sell":
-        return "Full SELL triggered because unrealized gain reached the take-profit threshold"
+        return "Legacy take-profit threshold was reached, so a full SELL was submitted"
     if code == "small_position_cleanup":
         return "Full SELL triggered because the holding fell below the small-position cleanup threshold"
     if code == "risk_rejected":

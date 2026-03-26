@@ -1212,7 +1212,7 @@ class TestFxAwareQuantity:
     """Tests for price_gbp / fx-aware quantity calculation in execute_market_order."""
 
     def test_buy_with_price_gbp_uses_gbp_for_quantity(self, db_session):
-        """BUY quantity is calculated using price_gbp, not native current_price."""
+        """BUY quantity prefers whole shares while still using price_gbp for sizing."""
         manager = OrderManager(client=MagicMock(), dry_run=True)
         # USD price $232, GBP equivalent £179 (≈ GBP/USD 0.772)
         result = manager.execute_market_order(
@@ -1222,16 +1222,16 @@ class TestFxAwareQuantity:
             current_price=232.0,  # USD (native)
             price_gbp=179.0,      # GBP equivalent
         )
-        # quantity = floor(500 / 179 * 100) / 100 = floor(279.3) / 100 = 2.79
+        # 3 shares would cost £537 (>5% overspend), so the whole-share policy uses 2.
         assert result["status"] == "dry_run"
-        assert result["quantity"] == 2.79
+        assert result["quantity"] == 2.0
         orders = db_session.query(Order).all()
         assert len(orders) == 1
         # value_gbp for BUY always uses target_amount_gbp regardless of price_gbp
         assert orders[0].value_gbp == 500.0
 
     def test_buy_without_price_gbp_falls_back_to_current_price(self, db_session):
-        """When price_gbp is not provided, current_price is used (backward compat)."""
+        """When price_gbp is not provided, current_price is used with the whole-share policy."""
         manager = OrderManager(client=MagicMock(), dry_run=True)
         result = manager.execute_market_order(
             ticker="MPC_US_EQ",
@@ -1239,8 +1239,20 @@ class TestFxAwareQuantity:
             target_amount_gbp=500.0,
             current_price=232.0,
         )
-        # quantity = floor(500 / 232 * 100) / 100 = floor(215.5) / 100 = 2.15
-        assert result["quantity"] == 2.15
+        assert result["quantity"] == 2.0
+
+    def test_buy_fractional_fallback_when_no_whole_share_fits_policy(self, db_session):
+        manager = OrderManager(client=MagicMock(), dry_run=True)
+
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=500.0,
+            current_price=900.0,
+        )
+
+        assert result["status"] == "dry_run"
+        assert result["quantity"] == 0.55
 
     def test_sell_with_price_gbp_uses_gbp_for_value_logging(self, db_session):
         """SELL value_gbp is logged using price_gbp when provided."""

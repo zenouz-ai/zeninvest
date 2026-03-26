@@ -93,23 +93,24 @@ class TestMomentum:
         signal = evaluate_momentum("AAPL", indicators, 0.8)
         assert signal.action == "HOLD"
 
-    def test_sell_overbought(self):
+    def test_overbought_held_position_becomes_caution_hold(self):
         indicators = _good_momentum_indicators()
         indicators["rsi_14"] = 85.0
         signal = evaluate_momentum("AAPL", indicators, 1.1, current_holding=True)
-        assert signal.action == "SELL"
+        assert signal.action == "HOLD"
+        assert "Momentum caution" in signal.reasoning
 
-    def test_sell_below_ma(self):
+    def test_below_ma_held_position_becomes_caution_hold(self):
         indicators = _good_momentum_indicators()
         indicators["above_50ma"] = False
         signal = evaluate_momentum("AAPL", indicators, 1.1, current_holding=True)
-        assert signal.action == "SELL"
+        assert signal.action == "HOLD"
 
-    def test_sell_macd_bearish(self):
+    def test_macd_bearish_held_position_becomes_caution_hold(self):
         indicators = _good_momentum_indicators()
         indicators["macd_bearish_crossover"] = True
         signal = evaluate_momentum("AAPL", indicators, 1.1, current_holding=True)
-        assert signal.action == "SELL"
+        assert signal.action == "HOLD"
 
     def test_error_indicators(self):
         signal = evaluate_momentum("AAPL", {"error": "no data"}, None)
@@ -151,21 +152,21 @@ class TestMeanReversion:
         signal = evaluate_mean_reversion("XYZ", _oversold_indicators(), bad_fund)
         assert signal.action == "HOLD"
 
-    def test_sell_at_target(self):
+    def test_recovery_target_becomes_caution_hold(self):
         indicators = _oversold_indicators()
         indicators["current_price"] = 135.0  # Above 20-day MA of 130
         signal = evaluate_mean_reversion(
             "XYZ", indicators, _good_fundamentals(), current_holding=True,
         )
-        assert signal.action == "SELL"
+        assert signal.action == "HOLD"
 
-    def test_sell_rsi_recovered(self):
+    def test_rsi_recovered_becomes_caution_hold(self):
         indicators = _oversold_indicators()
         indicators["rsi_14"] = 65.0
         signal = evaluate_mean_reversion(
             "XYZ", indicators, _good_fundamentals(), current_holding=True,
         )
-        assert signal.action == "SELL"
+        assert signal.action == "HOLD"
 
     def test_volume_confirmation_can_promote_mean_reversion_buy(self):
         indicators = _oversold_indicators()
@@ -217,11 +218,11 @@ class TestFactor:
 
 
 class TestPrompts:
-    def test_active_swing_prompt_language(self):
-        assert "active swing trader" in STRATEGY_SYSTEM_PROMPT.lower()
-        assert "2-15 trading days" in STRATEGY_SYSTEM_PROMPT
+    def test_profit_gated_hold_friendly_prompt_language(self):
+        assert "conviction-led stock picker" in STRATEGY_SYSTEM_PROMPT.lower()
         assert "underpriced-with-catalyst setups" in STRATEGY_SYSTEM_PROMPT
         assert "SELL vs REDUCE" in STRATEGY_SYSTEM_PROMPT
+        assert "EXIT TRIGGER TYPE" in STRATEGY_SYSTEM_PROMPT
 
     def test_build_prompt(self):
         prompt = build_strategy_prompt(
@@ -248,7 +249,7 @@ class TestPrompts:
         assert "AAPL" in prompt
         assert "BULL" in prompt
         assert "50.0%" in prompt
-        assert '"expected_holding_period": "2-15 trading days"' in prompt
+        assert '"expected_holding_period": "5-30 trading days"' in prompt
 
     def test_cautious_mode_prompt(self):
         prompt = build_strategy_prompt(

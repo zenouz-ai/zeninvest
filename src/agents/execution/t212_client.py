@@ -331,13 +331,31 @@ class T212Client:
 
 # --- Utility functions ---
 
-def calculate_quantity(target_amount: float, price: float) -> float:
+def calculate_quantity(
+    target_amount: float,
+    price: float,
+    *,
+    prefer_whole_shares: bool = False,
+    max_overspend_pct: float = 0.0,
+    allow_fractional_fallback: bool = True,
+) -> float:
     """Calculate order quantity from target amount and price.
 
-    Returns quantity floored to 2 decimal places.
+    Default behavior returns quantity floored to 2 decimal places.
+    When prefer_whole_shares is enabled, attempt an integer share count first.
     """
     if price <= 0:
         return 0.0
+    if prefer_whole_shares:
+        floor_shares = math.floor(target_amount / price)
+        ceil_shares = math.ceil(target_amount / price)
+        overspend_limit = target_amount * (1 + max(max_overspend_pct, 0.0) / 100)
+        if ceil_shares > 0 and (ceil_shares * price) <= overspend_limit:
+            return float(ceil_shares)
+        if floor_shares > 0:
+            return float(floor_shares)
+        if not allow_fractional_fallback:
+            return 0.0
     raw = target_amount / price
     return math.floor(raw * 100) / 100
 
