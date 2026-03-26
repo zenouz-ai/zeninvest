@@ -193,13 +193,13 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | Logging | Rich |
 | CLI | Click |
 | Containerization | Docker + Docker Compose |
-| Testing | pytest (701 tests) |
+| Testing | pytest (703 tests) |
 
 ---
 
 ## Slide 11: Testing & Quality
 
-**701 automated tests covering:**
+**703 automated tests covering:**
 - Risk manager: 43 tests (all rules + state transitions + REDUCE check)
 - Strategy engine: 17 tests (momentum, mean reversion, factor, prompts, synthesis)
 - Moderation: 21 tests (consensus logic, panel integration, context formatting)
@@ -347,7 +347,7 @@ docker compose logs -f investment-agent
 | Metric | Value |
 |--------|-------|
 | Components | 24+ Python modules |
-| Tests | 701 (all passing) |
+| Tests | 703 (all passing) |
 | LLM Providers | 3 (Anthropic, OpenAI, Google) |
 | Data Sources | 3 (yfinance, Finnhub, Alpha Vantage) |
 | Risk Rules | 9 (hard, never overridden by LLMs) |
