@@ -10,6 +10,7 @@ import sys
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from statistics import median
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
@@ -1000,6 +1001,65 @@ class Orchestrator:
                         "risk_verdict": "not invoked",
                         "final_allocation_pct": None,
                     })
+                    continue
+
+                deterministic_cleanup_sell = (
+                    action == "SELL"
+                    and decision.get("deterministic_exit_reason_code") == "small_position_cleanup"
+                )
+                if deterministic_cleanup_sell:
+                    logger.info(
+                        "Deterministic cleanup SELL bypassing moderation/risk: %s",
+                        ticker,
+                    )
+                    bypass_reason = str(
+                        decision.get("deterministic_exit_reason")
+                        or "Deterministic small-position cleanup SELL",
+                    )
+                    direct_mod = SimpleNamespace(consensus="BYPASSED")
+                    direct_risk = SimpleNamespace(
+                        verdict="BYPASSED",
+                        rules_checked=[],
+                        triggered_rules=[],
+                        reasoning=bypass_reason,
+                    )
+                    executed = self._execute_trade(
+                        cycle_id,
+                        decision,
+                        "SELL",
+                        ticker,
+                        final_alloc=0.0,
+                        current_value=current_value,
+                        cash_gbp=cash_gbp,
+                        total_return_pct=total_return_pct,
+                        alpha_pct=alpha_pct,
+                        existing_tickers=existing_tickers,
+                        market_regime=market_regime,
+                        vix=vix,
+                        macro=macro,
+                        stocks_data=stocks_data,
+                        analyst_data_map=analyst_data_map,
+                        av_broad_sentiment=av_broad_sentiment,
+                        mod_result=direct_mod,
+                        risk_verdict=direct_risk,
+                        portfolio_data=portfolio_data,
+                    )
+                    if executed:
+                        result["trades"].append(executed)
+                        if executed.get("execution", {}).get("status") in ("filled", "dry_run"):
+                            sells_executed = True
+                        opportunity_evaluations.append({
+                            "ticker": ticker,
+                            "action": "SELL",
+                            "stage": "approved",
+                            "decision": decision,
+                            "moderation": {"consensus": "BYPASSED"},
+                            "reason": bypass_reason,
+                            "moderation_consensus": "BYPASSED",
+                            "risk_verdict": "BYPASSED",
+                            "final_allocation_pct": 0.0,
+                            "execution": executed.get("execution", {}),
+                        })
                     continue
 
                 # Moderation — build rich market context for moderators

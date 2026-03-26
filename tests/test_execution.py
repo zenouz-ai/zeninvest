@@ -10,7 +10,7 @@ from tenacity import RetryError, Future
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from src.data.models import Base, Order
+from src.data.models import Base, Instrument, Order
 
 try:
     from dashboard.backend.app.database import Base as DashboardBase
@@ -312,6 +312,36 @@ class TestOrderManager:
         assert result["status"] == "failed"
         assert "HTTP 400" in result["error"]
         assert "Minimum order value not met" in result["error"]
+
+    def test_buy_marks_instrument_unavailable_on_not_tradable_http_400(self, db_session):
+        db_session.add(Instrument(ticker="BIO_B_US_EQ", data_available=True))
+        db_session.commit()
+
+        mock_client = MagicMock()
+        response = MagicMock()
+        response.status_code = 400
+        response.text = (
+            '{"type":"/api-errors/instrument-invisible","title":"Error while placing the order",'
+            '"status":400,"detail":"Instrument can not be traded."}'
+        )
+        mock_client.place_market_order.side_effect = httpx.HTTPStatusError(
+            "400 Bad Request",
+            request=MagicMock(),
+            response=response,
+        )
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="BIO_B_US_EQ",
+            action="BUY",
+            target_amount_gbp=500.0,
+            current_price=25.0,
+        )
+
+        assert result["status"] == "failed"
+        db_session.expire_all()
+        inst = db_session.query(Instrument).filter(Instrument.ticker == "BIO_B_US_EQ").one()
+        assert inst.data_available is False
 
     def test_portfolio_state(self):
         mock_client = MagicMock()
