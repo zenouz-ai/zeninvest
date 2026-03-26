@@ -151,12 +151,12 @@ Each phase handles its own errors independently. Failures are logged but cycle c
 
 ### 3.4 Scheduling
 
-**File:** `src/scheduler/scheduler.py` (333 lines)
+**File:** `src/scheduler/scheduler.py`
 
-| Mode | Times (UTC) | Frequency |
-|------|------------|-----------|
-| `intraday` (current) | 08:00, 12:00, 16:00 | 3×/day, Mon-Fri |
-| `standard` | 07:00, 19:00 | 2×/day, Mon-Fri |
+| Mode | Times | Frequency |
+|------|-------|-----------|
+| `intraday` (current) | 10:00, 12:30, 15:15 America/New_York | 3×/day, Mon-Fri |
+| `standard` | 07:00, 19:00 UTC | 2×/day, Mon-Fri |
 
 Additional jobs: daily snapshot (21:30 UTC), weekly report (Fri 22:00), instrument refresh (Sun 12:00), batch enrichment (daily 06:00).
 

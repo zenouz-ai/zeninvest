@@ -9,7 +9,7 @@ Autonomous investment agent that trades via the Trading 212 API (Practice/Demo m
 ## Architecture
 
 ```
-Orchestrator (configurable: 3 cycles at 08/12/16 UTC or 2 at 07/19 UTC)
+Orchestrator (configurable: intraday = 10:00/12:30/15:15 America/New_York, standard = 07:00/19:00 UTC)
   ├── Market Data Agent    → yfinance + Finnhub + Alpha Vantage (per-ticker news)
   ├── Universe Screener    → Sector-balanced, cap-tiered candidate discovery
   ├── Strategy Agent       → Momentum + Mean Reversion + Factor → Claude Sonnet synthesis
@@ -51,7 +51,7 @@ poetry run alembic upgrade head
 Edit `config/settings.yaml` for trading parameters, risk limits, cost budgets, and model selection.
 
 Key settings:
-- **Trading:** `cycle_frequency` (intraday | standard), cycle times, position limits, cash floor
+- **Trading:** `cycle_frequency` (intraday | standard), `schedule_mode`, cycle times, position limits, cash floor
 - **Risk:** drawdown thresholds, VIX limits, sector caps, correlation limits, risk-parity overlay (`risk_parity_enabled`, `risk_parity_lookback_days`, `risk_parity_vol_floor`, `risk_parity_target_vol`)
 - **Universe:** candidate count, sector balance, market-cap tiers, screening cooldown
 - **Opportunity:** UOV mode (`shadow|active`), thresholds (`immediate_threshold_z`, `queue_threshold_z`), EWMA half-life, queue TTL, swap delta
@@ -165,12 +165,12 @@ npm run build  # Production build (outputs to dist/)
 
 | Job | When | Notes |
 |-----|------|-------|
-| Analysis cycles | Mon–Fri, from `cycle_times_utc` | `intraday`: 08:00, 12:00, 16:00 UTC (3 cycles). `standard`: 07:00, 19:00 UTC (2 cycles). |
+| Analysis cycles | Mon–Fri, from configured schedule mode | `intraday`: `10:00`, `12:30`, `15:15` America/New_York (DST-aware; resolves to `14:00`, `16:30`, `19:15` UTC during US EDT). `standard`: `07:00`, `19:00` UTC (2 cycles). |
 | Daily snapshot | 21:30 UTC daily | Portfolio snapshot + daily report |
 | Weekly report | Friday 22:00 UTC | End-of-week summary |
 | Instrument refresh | Sunday 12:00 UTC | Update tradable universe from T212 |
 
-Set `cycle_frequency: intraday` in `config/settings.yaml` for 3 cycles during market hours; use `standard` for the original 2-cycle cadence.
+Set `cycle_frequency: intraday`, `schedule_mode: market_session`, `schedule_timezone: America/New_York`, and `cycle_times_local: ["10:00", "12:30", "15:15"]` in `config/settings.yaml` for DST-aware regular-session scheduling. Use `standard` for the original 2-cycle fixed-UTC cadence.
 
 ### Docker
 
@@ -215,7 +215,12 @@ docker exec -it investment-agent poetry run python -m src.orchestrator.main --dr
 
 Outbound chat interface v1 is live with persistent audit logging.
 
-- **Delivered (US-1.6):** Inbound Slack natural language trade commands — e.g. "BUY AAPL", "SELL 10 TSLA", "REVIEW MSFT", "BUY £500 NVDA", "buy apple", "sell google", "review nvidia". Slack Socket Mode listener triggers a full single-ticker pipeline (data → strategy → moderation → risk → execution) with user intent override. Moderation now reviews the final user-intended action/size, large orders enter a real confirmation flow before execution, and replies/audit rows persist `response_message` plus confirmation lifecycle statuses. Explicit GBP orders are now sized with FX-aware GBP-equivalent pricing for `_US_EQ` / OTC names, so `BUY £550 ENGGY` targets the requested GBP amount instead of dividing by the native USD quote. **Force buy/sell:** `force buy MSFT`, `!buy AAPL`, `override buy NVDA` bypass explicit committee/risk blocks for Slack commands while still running the full pipeline and preserving the original objections in the audit trail. Rejected and error replies now carry contextual next-step tips: risk VETO shows `force buy` / `force sell`, moderation blocks explain that `force` can override the block if the operator still wants to proceed, minimum-order rejects suggest a larger GBP amount, price-data errors suggest retry/review, pending executions explain that Trading 212 accepted but has not yet filled the order, and unknown tickers suggest retrying with the company name. Regex-first NL parser (zero cost, supports ticker symbols and single-word company names) with Claude fallback for ambiguous messages. `SlackCommandLog` audit trail. **Dashboard Commands page** surfaces all command history with stats, filters, and expandable detail rows. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`. Docker deployment now includes an always-on `slack-listener` service so Slack access survives deploys and reboots. Focused US-1.6/US-1.9 regression suite: 117 passing tests. See [Chat & Commands](docs/CHAT_AND_COMMANDS.md).
+- **Delivered (US-1.6):** Inbound Slack natural language trade commands now support 4 explicit modes:
+  - `review` — e.g. `REVIEW MSFT`, strategy/moderation/risk analysis only, no execution
+  - `direct_trade` — plain `BUY AAPL`, `SELL 10 TSLA`, `BUY £500 NVDA`; bypasses strategy, moderation, and risk and goes straight to quote lookup, preflight checks, confirmation, and execution
+  - `strategy_trade` — e.g. `review Apple and buy`, `buy Apple and trigger strategy`; runs the full single-ticker committee path first, then executes the user-requested trade
+  - `cancel` — e.g. `cancel buy Apple`, `cancel sell TSLA`, `cancel stop sell NVDA, Microsoft`; resolves one or more tickers and cancels matching pending Trading 212 orders without triggering strategy
+  Direct trades keep existing broker-side safety rails such as cash/position preflight, order deduplication, min-order handling, stop-cancel preflight for SELL, and large-order confirmation. Strategy-triggered trades preserve moderation/risk behavior and `force` overrides. Cancel commands are immediate and keep a per-message audit trail with target tickers, target order class, and cancellation result details in `SlackCommandLog`. Explicit GBP orders remain FX-aware for `_US_EQ` / OTC names, so `BUY £550 ENGGY` targets the requested GBP amount instead of dividing by the native USD quote. Regex-first parsing now covers direct, strategy-triggered, and cancel commands, with Claude fallback for ambiguous phrasing. **Dashboard Commands page** surfaces execution mode, cancel metadata, and expanded result payloads. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`. Docker deployment includes an always-on `slack-listener` service so Slack access survives deploys and reboots. See [Chat & Commands](docs/CHAT_AND_COMMANDS.md).
 - **Delivered foundation for `US-1.9`:** Conversational Trading Workflow DB schema (`chat_sessions`, `chat_turns`) + `SessionManager` CRUD stub + dashboard chat API endpoints. Hardened skeleton: missing sessions now return `404`, request models validate `channel_type`/`role`, and `chat_turns` has FK + unique turn-order protection. The full MVP remains active in the current roadmap and adds multi-turn continuity, explicit confirmation, risk-veto preservation, and auditable operator flow.
 - Channels (outbound): Slack webhook + SMTP email
 - Event types:
@@ -412,6 +417,9 @@ Execution behavior:
 - **REDUCE floor safeguard** — If a REDUCE would leave a position below £500, execution is automatically converted to a full SELL
 - **Deterministic exits** — Positions with unrealized gain at or above `take_profit_full_sell_pct` (default `15%`) are automatically converted to full SELLs every cycle, even before the ordinary 24h hold rule. Residual holdings below `small_position_cleanup_value_gbp` (default `£200`) are liquidated on the final intraday cycle once they are at least 24h old
 - **Order deduplication** — 5-minute window prevents double-execution
+- **Stale pending SELL cleanup** — If a later live cycle flips a ticker from an earlier pending market `SELL` to `HOLD`/`QUEUED`, the orchestrator cancels the stale pending broker order so the latest view wins
+- **Moderation fail-open serialization** — moderator `MODIFY` extras are normalized defensively; malformed `modifications` payloads are ignored instead of crashing the cycle or Slack single-ticker review path
+- **Broker error detail preservation** — failed market and stop orders now keep the Trading 212 HTTP status/body snippet in the recorded error so alerts can distinguish issues like minimum order value vs reserved-share conflicts
 - **Ticker normalization** — plain symbols returned by strategy (e.g. `AAPL`) are normalized to T212 instrument IDs (e.g. `AAPL_US_EQ`) before execution when an unambiguous mapping exists
 
 ## Universe Screening

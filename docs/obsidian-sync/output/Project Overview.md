@@ -12,9 +12,9 @@ Autonomous investment agent that trades US equities via the Trading 212 Practice
 
 **POC v1.0** — deployed to VPS, collecting live performance data on Trading 212 Practice.
 
-- 326 tests passing
+- 701 tests passing
 - 10 user stories delivered, 22 in pipeline
-- Configurable scheduling: 3 intraday cycles (08/12/16 UTC) or 2 standard cycles (07/19 UTC), Mon–Fri
+- Configurable scheduling: 3 DST-aware intraday cycles (10:00/12:30/15:15 America/New_York) or 2 standard cycles (07:00/19:00 UTC), Mon–Fri
 - NYSE market holidays auto-skipped
 - Dashboard (Phase 1 + Phase 1.5 Analytics Lite) live on VPS via Docker
 

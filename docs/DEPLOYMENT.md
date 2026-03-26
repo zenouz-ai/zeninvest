@@ -265,7 +265,10 @@ Review `config/settings.yaml` and adjust if needed. Key parameters:
 trading:
   mode: practice                          # practice or live
   cycle_frequency: intraday                # intraday (3 cycles) or standard (2 cycles)
-  cycle_times_utc: ["08:00", "12:00", "16:00"]  # when intraday; ["07:00", "19:00"] when standard
+  schedule_mode: market_session
+  schedule_timezone: America/New_York
+  cycle_times_local: ["10:00", "12:30", "15:15"]  # when intraday; standard keeps fixed UTC times
+  cycle_times_utc: ["08:00", "12:00", "16:00"]  # legacy fixed-UTC fallback only
 cost_limits:
   anthropic_daily_gbp: 1.00
   openai_daily_gbp: 0.75
@@ -1777,7 +1780,7 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 
 | Job | Schedule | Description |
 |-----|----------|-------------|
-| `analysis_cycle_*` | From cycle_times_utc (intraday: 08/12/16 UTC; standard: 07/19 UTC) Mon-Fri | Analysis + trading cycle |
+| `analysis_cycle_*` | From configured schedule mode (intraday: 10:00/12:30/15:15 America/New_York; standard: 07:00/19:00 UTC) Mon-Fri | Analysis + trading cycle |
 | `daily_snapshot` | 21:30 UTC daily | Portfolio snapshot + daily report |
 | `weekly_report` | 22:00 UTC Friday | Weekly performance report |
 | `instrument_refresh` | 12:00 UTC Sunday | Refresh tradeable instrument universe from T212 |

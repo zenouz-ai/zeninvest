@@ -58,7 +58,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-1.3** | Performance Dashboard (CLI) | CLI `--dashboard`: portfolio value, Sharpe, win rate, costs, active positions | Immediate visibility into system behaviour | **Delivered** (export/summary open) |
 | **US-1.4** | Deploy POC to VPS | Docker on VPS, health check, backup, first cycle logged | Begin gathering live market data and performance evidence | **Delivered** |
 | **US-1.5** | Chat Interface & Trade Alerts | Outbound Slack + Email alerts for trades, cycle summary, state transitions, failures; `notification_logs` | Real-time operator visibility; foundation for human-in-the-loop | **Delivered** |
-| **US-1.6** | Slack NL Trade Commands | Inbound Slack: BUY/SELL/REVIEW + ticker/company name; single-ticker pipeline, user intent overwrites decision; Risk can veto; dashboard Commands page | Manual override with full audit trail + dashboard visibility | **Delivered** |
+| **US-1.6** | Slack NL Trade Commands | Inbound Slack supports `review`, plain direct BUY/SELL, strategy-triggered BUY/SELL, and `cancel buy|sell|stop sell`; dashboard Commands page shows full command audit trail | Manual override plus fast operator execution and cancellation with dashboard visibility | **Delivered** |
 | **US-1.7** | Dashboard & Visualisation | Web dashboard base: 10 core pages (Home with state badge, Universe, Run History, Portfolio, Opportunity, Order Mgmt, Commands, World News, Costs, Roadmap) plus the full operator API (decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system); later extended by `US-1.10` with the dedicated Evolution Planner workspace. | Full operational visibility; personal quant experience | **Delivered** |
 | **US-1.7.1** | Dashboard UX Phase 1 | AlertBanner (alert aggregation on all pages), Dashboard Home restructure (positions on home, always-visible activity + cycle summary, independent section loading, performance card, pause/resume toggle, PAUSED badge), accessibility (`aria-expanded`, `aria-live`), mobile nav fix. See `docs/UX_AUDIT.md`. | Reduces time-to-insight from 4 clicks to 0; surfaces anomalies proactively | **Delivered** |
 | **US-1.7.2** | Dashboard UX Phase 2 | Force Sell from Portfolio, data freshness indicators, keyboard-accessible tables, focus trap on modals, colour accessibility (▲/▼ arrows + aria-labels), chart colour alignment. See `docs/UX_AUDIT.md`. | 19/28 audit findings resolved; full keyboard + screen reader accessibility | **Delivered** |
@@ -397,24 +397,26 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-1.6: Slack Natural Language Trade Commands**
-**Value:** Manual override with full audit trail; single-ticker pipeline; user intent overwrites decision; Risk can veto
+**Value:** Manual override with full audit trail; strategy review when needed; fast direct execution and pending-order cancellation when strategy is not needed
 **Effort:** Medium–Large (5–8 days)
-**Data Sources:** Full pipeline; new `slack_command_log`
+**Data Sources:** Strategy pipeline for review/strategy-triggered trades; direct execution and broker pending-order APIs for plain trades/cancel; `slack_command_log`
 **Stage:** Delivered
 
 **Detailed plan:** `docs/CHAT_AND_COMMANDS.md`.
 
 **Acceptance Criteria:**
 - [x] Inbound Slack listener (Socket Mode) — `src/agents/notifications/slack_listener.py`
-- [x] NL parser: BUY/SELL/REVIEW + ticker + quantity or amount (£) — regex-first with Claude fallback
-- [x] Single-ticker pipeline (cycle_id = `slack-{ts}`); moderation reviews final user action/size, risk can veto or explicit force can override — `src/orchestrator/single_ticker_run.py`
+- [x] NL parser: review, direct BUY/SELL, strategy-triggered BUY/SELL, and `cancel buy|sell|stop sell ...` — regex-first with Claude fallback
+- [x] Strategy path (cycle_id = `slack-{ts}`); moderation reviews final user action/size, risk can veto or explicit force can override — `src/orchestrator/single_ticker_run.py`
+- [x] Direct trade path executes plain BUY/SELL via OrderManager without strategy/moderation/risk — `src/orchestrator/direct_trade_run.py`
+- [x] Cancel path resolves all requested tickers and cancels matching pending broker orders — `src/agents/notifications/cancel_command_runner.py`
 - [x] REVIEW: run pipeline, post summary, no order
-- [x] Execute via OrderManager; Order.strategy = `slack_command`; confirm in Slack
-- [x] Safety: ticker validation, cash/position checks, real large-order confirmation, risk veto messaging, persisted response/audit status
+- [x] Execute via OrderManager; `Order.strategy = "slack_strategy"` for strategy-triggered trades and `Order.strategy = "slack_direct"` for plain direct trades; confirm in Slack when BUY/SELL exceeds the confirmation threshold
+- [x] Safety: ticker validation, cash/position checks, real large-order confirmation, risk veto messaging on strategy trades, cancel classification, and persisted response/audit status
 - [x] `slack_command_log`; CLI `slack_trade_listener`
-- [x] Focused US-1.6/US-1.9 regression suite: 117 passing tests
+- [x] Focused US-1.6/US-1.9 regression suite covers the parser, strategy/direct/cancel runners, listener/gateway, commands API, and chat workflow plumbing
 
-**Integration:** Long-running process; reuses Strategy/Moderation/Risk/Execution stack. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`.
+**Integration:** Long-running process; reuses the Strategy/Moderation/Risk/Execution stack for review and strategy-triggered trades, plus a lighter direct-trade runner and a broker cancellation runner for the new operator shortcuts. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`.
 
 ---
 
@@ -431,7 +433,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - [x] `SessionManager` stub with real CRUD: `create_session()`, `add_turn()`, `get_session()`, `end_session()`
 - [x] Dashboard chat API endpoints: `POST /api/chat/sessions`, `POST /sessions/{id}/turns`, `GET /sessions/{id}`, `POST /sessions/{id}/end`
 - [x] Missing-session `404`s, `channel_type` / `role` validation, and FK + unique turn-order protections
-- [x] Focused US-1.6/US-1.9 regression suite: 117 passing tests
+- [x] Focused US-1.6/US-1.9 regression suite covers the parser, strategy/direct/cancel runners, listener/gateway, commands API, and chat workflow plumbing
 
 **Current-week MVP scope:**
 - [ ] Session management supports start/resume/end/timeout with persistent multi-turn context

@@ -28,7 +28,7 @@ to autonomously analyze markets and execute trades.*
 
 **Opportunity:** LLMs can process vast amounts of data, maintain consistency, and operate 24/7 — but a single model carries concentration risk.
 
-**Solution:** A multi-LLM investment committee with hard safety guardrails, operating autonomously on a configurable schedule (intraday: 3 cycles at 08/12/16 UTC; standard: 2 cycles at 07/19 UTC).
+**Solution:** A multi-LLM investment committee with hard safety guardrails, operating autonomously on a configurable schedule (intraday: 3 DST-aware cycles at 10:00/12:30/15:15 America/New_York; standard: 2 cycles at 07:00/19:00 UTC).
 
 ---
 
@@ -193,13 +193,13 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | Logging | Rich |
 | CLI | Click |
 | Containerization | Docker + Docker Compose |
-| Testing | pytest (326 tests) |
+| Testing | pytest (701 tests) |
 
 ---
 
 ## Slide 11: Testing & Quality
 
-**326 unit tests covering:**
+**701 automated tests covering:**
 - Risk manager: 43 tests (all rules + state transitions + REDUCE check)
 - Strategy engine: 17 tests (momentum, mean reversion, factor, prompts, synthesis)
 - Moderation: 21 tests (consensus logic, panel integration, context formatting)
@@ -347,7 +347,7 @@ docker compose logs -f investment-agent
 | Metric | Value |
 |--------|-------|
 | Components | 24+ Python modules |
-| Tests | 326 (all passing) |
+| Tests | 701 (all passing) |
 | LLM Providers | 3 (Anthropic, OpenAI, Google) |
 | Data Sources | 3 (yfinance, Finnhub, Alpha Vantage) |
 | Risk Rules | 9 (hard, never overridden by LLMs) |

@@ -154,6 +154,7 @@ const ARCHITECTURE_STAGES: ArchitectureStage[] = [
         stories: ['US-2.3', 'US-2.4', 'US-1.6'],
         bullets: [
           'GPT-4o Skeptic + Gemini Risk yield APPROVED, CAUTION, or BLOCKED',
+          'Strategy-triggered Slack trades still pass through moderation, while direct trades and cancels intentionally skip the committee path',
           'Explicit Slack force overrides are audited instead of silently bypassing review',
         ],
       },
@@ -190,6 +191,7 @@ const ARCHITECTURE_STAGES: ArchitectureStage[] = [
         stories: ['US-1.6', 'US-1.7', 'US-1.9', 'US-3.6'],
         bullets: [
           'Always-on Slack listener, Commands page, live dashboard APIs, and SSE activity feed',
+          'Operator commands now split into review, direct trade, strategy-triggered trade, and cancel flows with separate audit metadata',
           'Notifications now distinguish submitted, queued, skipped, filtered, and deterministic exit outcomes in plain English',
           'ChatSession and ChatTurn provide the skeleton for future conversational workflows',
         ],

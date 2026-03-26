@@ -37,7 +37,7 @@ The Investment Agent is an autonomous trading system that uses a multi-LLM pipel
 **Architecture at a glance:**
 
 ```
-Orchestrator (configurable: cycle_frequency intraday = 3 cycles at 08:00, 12:00, 16:00 UTC; standard = 2 cycles at 07:00, 19:00 UTC; Mon-Fri)
+Orchestrator (configurable: cycle_frequency intraday = 3 cycles at 10:00, 12:30, 15:15 America/New_York; standard = 2 cycles at 07:00, 19:00 UTC; Mon-Fri)
   +-- Market Data Agent    -> yfinance + Finnhub + Alpha Vantage (per-ticker news, macro intelligence)
   +-- Universe Screener    -> Sector-balanced, cap-tiered candidate discovery
   +-- Strategy Agent       -> Momentum + Mean Reversion + Factor -> Claude Sonnet synthesis
@@ -63,7 +63,7 @@ The system is designed as a **human-supervised autonomous agent**, not a fully u
 - **Pause/Resume control.** A human operator can pause all trading at any time via `--pause` and resume with `--resume`. The paused state is persisted in the database and survives restarts.
 - **Force sell capability.** Any position can be force-liquidated immediately via `--force-sell <TICKER>`, bypassing the normal strategy-moderation-risk pipeline.
 - **Force buy/sell via Slack.** The `force buy <TICKER>` command (also `override buy`, `!buy`) bypasses explicit moderation/risk blocks and proceeds to execution. The override is shown/logged as `OVERRIDDEN`, while the original moderator/risk objections remain visible in the audit trail and Slack reply. This is an explicit human override for situations where the operator has conviction beyond the committee/risk rules.
-- **Scheduled execution only.** The system runs on a fixed schedule (configurable via `cycle_frequency`: intraday = 08/12/16 UTC, standard = 07/19 UTC, Monday-Friday). It does not react to intraday events autonomously. **US market holidays** (NYSE) are automatically skipped via `src/utils/market_holidays.py`; configurable via `skip_market_holidays: true` in settings.yaml.
+- **Scheduled execution only.** The system runs on a fixed scheduler cadence (configurable via `cycle_frequency`: intraday = 10:00/12:30/15:15 America/New_York in `market_session` mode, standard = 07:00/19:00 UTC, Monday-Friday). It does not react to intraday events autonomously. **US market holidays** (NYSE) are automatically skipped via `src/utils/market_holidays.py`; configurable via `skip_market_holidays: true` in settings.yaml.
 - **Daily and weekly reports.** Automated reports are generated at 21:30 UTC daily and 22:00 UTC Fridays, providing full transparency into decisions, costs, and performance.
 
 ### 2.2 Defense in Depth
@@ -78,7 +78,10 @@ No single component has unchecked authority. Every trade must pass through multi
 | 4 | Opportunity Agent (UOV optimizer) | Ranks/queues approved BUYs only (shadow or active mode) | **No -- deterministic Python** |
 | 5 | Execution Agent (T212 client) | Executes with deduplication | **No -- never** |
 
-The Risk Agent is implemented as pure deterministic Python code (`src/agents/risk/risk_manager.py`). It does not call any LLM and cannot be influenced by prompt injection or model hallucination. Its decisions are final for autonomous (scheduled) cycles. For Slack trade commands, an explicit human `force` prefix can override explicit moderation/risk blocks — this is an intentional escape hatch for the human operator, not an LLM bypass. All force overrides are surfaced as `OVERRIDDEN`, while the underlying committee/risk objections are still preserved in the audit trail.
+The Risk Agent is implemented as pure deterministic Python code (`src/agents/risk/risk_manager.py`). It does not call any LLM and cannot be influenced by prompt injection or model hallucination. Its decisions are final for autonomous (scheduled) cycles. For Slack trade commands there are now two paths:
+
+- **Strategy-triggered review/trade commands** still run the full committee path, and an explicit human `force` prefix can override explicit moderation/risk blocks. This is an intentional escape hatch for the human operator, not an LLM bypass. All force overrides are surfaced as `OVERRIDDEN`, while the underlying committee/risk objections are still preserved in the audit trail.
+- **Plain direct BUY/SELL commands** intentionally bypass strategy, moderation, and risk. Their guardrails are broker-side only: ticker resolution, quote lookup, cash/position preflight, order deduplication, minimum-order handling, stop-cancel preflight for SELL, and optional large-order confirmation.
 
 ### 2.3 Fail-Safe Defaults
 
@@ -196,9 +199,10 @@ The T212 client (`src/agents/execution/t212_client.py`) implements rate limiting
 
 - The `OrderManager._is_duplicate()` method checks for matching orders (same ticker, direction, and quantity) placed within the last 5 minutes.
 - Duplicate orders are logged and skipped with `"status": "skipped", "reason": "duplicate"`.
-- **Order status from T212**: The T212 API response `status` is mapped: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/etc→pending, REJECTED/CANCELLED→failed. Do not assume a 200 OK implies execution; pending orders may not appear in T212 order history until filled. **Order sync**: At the start of each cycle (non–dry-run), `OrderManager.sync_order_status_from_t212()` fetches T212 order history and updates local `Order.status` from pending to filled.
+- **Order status from T212**: The T212 API response `status` is mapped: FILLED/PARTIALLY_FILLED→filled, NEW/CONFIRMED/etc→pending, REJECTED/CANCELLED→failed. Do not assume a 200 OK implies execution; pending orders may not appear in T212 order history until filled. **Order sync**: At the start of each cycle (non–dry-run), `OrderManager.sync_order_status_from_t212()` fetches T212 order history and updates local `Order.status` from pending to filled. **Stale pending SELL cleanup**: when a later live cycle changes a ticker to `HOLD` or `QUEUED`, the orchestrator calls `cancel_pending_market_sells()` so any still-live broker market SELL from an earlier cycle is cancelled and the local order row is marked `cancelled`. **Broker rejection detail**: failed market and stop orders preserve the T212 HTTP status/body snippet in the stored error/notification payload so operators can distinguish minimum-size, reserved-share, and other 400-series rejects.
 - **Stop cancel before SELL/REDUCE**: `cancel_conflicting_stops` treats HTTP 404 and common 400/409 bodies meaning “order not found / already cancelled / not pending” as **idempotent success** (DELETE is still never retried). **Position clamp**: After stops are cleared, SELL/REDUCE quantity is capped to `get_position()` so value/price rounding cannot request more shares than the broker reports as held.
 - **Pending semantics**: `pending` is not always an issue. For `MARKET` orders it means accepted but not yet executed (`NEW`, often outside market hours). For `STOP` orders it usually means a live protective order waiting for trigger price; this can remain pending for multiple days.
+- **Moderation serialization safety**: moderator `modifications` payloads are normalized before use. If an LLM returns malformed extras (for example a plain string instead of a JSON object), the system drops the malformed modification, logs a warning with ticker/cycle context, and continues rather than failing the cycle.
 - **FX-aware BUY quantity and value logging**: For `_US_EQ` instruments, BUY quantity is calculated using a GBP-equivalent price (`current_price × GBP/USD scale`) derived from `_compute_position_value_scale()` in the orchestrator. This ensures `floor(target_gbp / price_gbp)` shares are purchased rather than `floor(target_gbp / price_usd)`, preventing ~21% under-allocation. `Order.value_gbp` for BUY remains the GBP target amount. Stop-loss `Order.value_gbp` uses `current_price_gbp` when available for accurate GBP logging. Config: `trading.fx_aware_quantity: true` (default on; falls back to scale=1.0 on empty portfolio).
 - After successful BUY executions (or when status is pending — optimistic placement), the system automatically places a GTC stop-loss order via `OrderManager.place_stop_loss()` using the `stop_loss_pct` from Claude's decision. `StopLossManager.place_missing_stops()` runs each cycle to place stops for positions without one (using `default_stop_loss_pct` when no ATR). This protects against downside risk without requiring manual intervention.
 - The REDUCE action is supported alongside BUY and SELL — it executes as a partial sell, allowing position trimming without full liquidation. **Min holding period**: Risk blocks REDUCE/SELL on positions held &lt; 24h unless over max_single_stock or max_sector (config: `min_holding_hours_before_reduce`). **Deterministic take-profit**: when `take_profit_full_sell_pct` is reached (default `15%` unrealized gain), the orchestrator upgrades the position to a full SELL before ordinary SELL/REDUCE handling. This take-profit path may bypass the ordinary 24h minimum-holding rule when `take_profit_allow_before_min_hold` is enabled. **Small-position cleanup**: holdings below `small_position_cleanup_value_gbp` (default `£200`) are liquidated on the configured final intraday cleanup cycle once they are at least `small_position_cleanup_min_holding_hours` old. **Min order value**: MARKET BUY and limit-BUY requests below `min_order_value_gbp` are upgraded to the floor when enough cash remains after the cash-floor guard; otherwise the BUY is skipped. REDUCE still uses `min_order_value_gbp` as a true floor. Explicit market SELL decisions and protective stop-loss SELL orders are allowed below the floor to fully exit/protect small holdings. **Residual floor safeguard**: if a REDUCE would leave a position below £500, execution is converted to a full SELL. **Reduction tiers**: REDUCE is rounded to nearest tier (25%, 50%, 70%, 100%); reductions below 25% are skipped unless the residual-floor safeguard triggers (config: `min_reduce_pct_of_position`, `reduce_tiers_pct`). **Deterministic REDUCE guardrail**: when `reduce_requires_gain_or_risk` is enabled, REDUCE is downgraded to HOLD unless unrealized gain is at least `reduce_min_unrealized_gain_pct` or a max single-stock / sector risk limit is breached.
@@ -775,8 +779,11 @@ trading:
   mode: active                            # active or practice
   base_url: https://demo.trading212.com/api/v0
   cycle_frequency: intraday                # intraday (3 cycles) or standard (2 cycles)
+  schedule_mode: market_session
+  schedule_timezone: America/New_York
   cycle_hours: 4
-  cycle_times_utc: ["08:00", "12:00", "16:00"]  # when intraday; ["07:00", "19:00"] when standard
+  cycle_times_local: ["10:00", "12:30", "15:15"]  # when intraday; standard keeps fixed UTC times
+  cycle_times_utc: ["08:00", "12:00", "16:00"]  # legacy fixed-UTC fallback only
   market_days: [0, 1, 2, 3, 4]           # Mon-Fri
   skip_market_holidays: true              # Skip analysis cycles on NYSE holidays
   max_positions: 15
@@ -870,7 +877,7 @@ All data is stored in a SQLite database managed via SQLAlchemy + Alembic migrati
 | `performance_metrics` | Rolling Sharpe, Sortino, drawdown, win rates by strategy | Updated per cycle / daily |
 | `trade_outcomes` | Per-trade P&L (BUY→SELL), conviction and moderator linkage | 0-15+ per cycle (on SELL) |
 | `notification_logs` | Outbound alert attempts (Slack/email): sent, failed, skipped, deduped | 0-20+ per cycle |
-| `slack_command_log` | Inbound Slack trade command audit: raw message, parsed intent, cycle_id, order_id, status, rejection_reason, response_message | Delivered with US-1.6 |
+| `slack_command_log` | Inbound Slack command audit: raw message, parsed intent, command kind, execution mode, target order class, target tickers, cycle_id, order_id, status, rejection_reason, response_message, and result payload | Delivered with US-1.6 |
 
 ---
 

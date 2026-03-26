@@ -22,7 +22,7 @@ This document is the single source of truth for the investment agent's technical
 |  +-----------------+     +------------------------------------------+     |
 |  | APScheduler     |     |           ORCHESTRATOR                    |     |
 |  |                 |---->|  State Machine: ACTIVE/CAUTIOUS/HALTED    |     |
-|  | 08/12/16 or 07/19 UTC cycles |     |  Cycle ID tracking                       |     |
+|  | 10:00/12:30/15:15 America/New_York or 07/19 UTC cycles |     |  Cycle ID tracking                       |     |
 |  | Mon-Fri, skip NYSE holidays  |     |  Error handling & recovery                |     |
 |  | 21:30 snapshot  |     |                                           |     |
 |  | Fri 22:00 weekly|     +----+-----------+-----------+----------+---+     |
@@ -418,7 +418,7 @@ Moderator context receives volume signal summaries for qualitative reasoning. Fe
 ```mermaid
 graph TB
     subgraph Scheduler["APScheduler"]
-        S1[Analysis Cycles<br/>From cycle_times_utc]
+        S1[Analysis Cycles<br/>From market-session local times or fixed UTC fallback]
         S2[21:30 Daily Snapshot]
         S3[Fri 22:00 Weekly Report]
         S4[Sun 12:00 Instrument Refresh]
@@ -631,6 +631,7 @@ Execution floor guardrails:
 - **FX-aware BUY quantity:** For `_US_EQ` instruments the orchestrator derives a GBP-equivalent price (`current_price × account-level GBP/USD scale`) before calling `calculate_quantity()`. The scale comes from `_compute_position_value_scale(positions, invested_gbp)` which divides T212's GBP `invested` value by the sum of native-currency positions. This prevents ~21% under-allocation caused by dividing a GBP target by a USD price. Controlled by `trading.fx_aware_quantity: true`; falls back to scale=1.0 when portfolio is empty. Stop prices sent to T212 always remain in native currency.
 - **Market orders:** `OrderManager` calls T212 `POST /equity/orders/market` once per decision (no retry wrapper). Mutating POSTs are never auto-retried; only safe GETs use tenacity retries in `T212Client`.
 - **SELL/REDUCE:** After cancelling conflicting stop orders, execution clamps share quantity to `GET /equity/portfolio/{ticker}` so a value/price-derived size cannot exceed the broker-reported position (reduces spurious 400 responses). Stop cancel failures with HTTP 404/400/409 “already gone” style bodies are treated as idempotent success.
+- **Later HOLD/QUEUED beats earlier pending SELL:** On live cycles, if a newer strategy decision for a ticker is `HOLD` or `QUEUED`, the orchestrator cancels any still-live pending market SELL already sitting at T212 for that ticker so stale pre-open exits do not survive the latest decision.
 
 ### Cycle Output Structure
 
@@ -797,7 +798,7 @@ graph TB
 
 For the full prioritised backlog and detailed user story specifications, see [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md). Key delivered extensions that interact with the architecture above:
 
-- **Chat & Notifications (US-1.5/1.6)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. Events: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`. **Inbound Slack trade commands (US-1.6):** Socket Mode listener → `CommandGateway` → `SingleTickerRunner` (full data → strategy → moderation → risk pipeline for one ticker). Bot self-message filtering via `auth.test` user_id. REVIEW replies include full per-moderator verdicts (GPT-4o Skeptic + Gemini Risk with scores and reasoning). See [Chat & Commands](CHAT_AND_COMMANDS.md).
+- **Chat & Notifications (US-1.5/1.6)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. Events: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`. **Inbound Slack trade commands (US-1.6):** Socket Mode listener → `CommandGateway` → one of 3 execution paths: `SingleTickerRunner` for `REVIEW` and strategy-triggered trades, `DirectTradeRunner` for plain BUY/SELL commands, or `CancelCommandRunner` for `cancel buy|sell|stop sell ...`. Bot self-message filtering via `auth.test` user_id. REVIEW replies include full per-moderator verdicts (GPT-4o Skeptic + Gemini Risk with scores and reasoning), while direct trades and cancel commands keep a lighter execution/audit path. See [Chat & Commands](CHAT_AND_COMMANDS.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
 - **Dashboard (US-1.7/1.8 + US-1.10 extension)** — FastAPI REST API + SSE stream, React frontend (11 current pages including the authenticated Evolution Planner workspace). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md), [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md), and [Zen Evolution Engine](ZEN_EVOLUTION_ENGINE.md).
 - **Zen Evolution Engine (US-1.10)** — Separate change-management workflow domain for operator-requested natural-language system changes. Phase 1 is planner-only: scoped plan, risk class, validation matrix, repo context, clarification loop, and auditable blocked build/deploy approvals. See [Zen Evolution Engine](ZEN_EVOLUTION_ENGINE.md).

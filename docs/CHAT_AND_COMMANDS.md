@@ -306,9 +306,9 @@ flowchart TB
 
     subgraph Parse
         NL[NL Parser]
-        Intent[Intent: BUY/SELL/REVIEW]
-        Ticker[Ticker Symbol]
-        Qty[Quantity or Amount GBP]
+        Intent[Intent: review/direct trade/strategy trade/cancel]
+        Ticker[Resolved ticker or ticker list]
+        Qty[Quantity, GBP amount, or cancel order class]
     end
 
     subgraph SingleTickerPipeline
@@ -382,20 +382,36 @@ slack_trade_commands:
 #### 3. Natural Language Parser
 
 - **New module:** `src/agents/notifications/trade_command_parser.py`
-  - Use Claude to extract `{action: BUY|SELL|REVIEW, ticker: str, quantity_shares: float | None, amount_gbp: float | None}`.
-  - **REVIEW:** Run full pipeline, no execution; post strategy + moderation + risk + fundamentals/news summary to Slack.
+  - Regex-first parser plus Claude fallback now extracts a richer intent envelope:
+    - `command_kind`: `review | trade | cancel`
+    - `execution_mode`: `strategy | direct | cancel_only`
+    - `trade_action`: `BUY | SELL | REVIEW | CANCEL`
+    - `trigger_strategy`, `cancel_order_class`, `subject_phrases`, `quantity_shares`, `amount_gbp`, `force`
+  - **REVIEW:** Run full strategy pipeline, no execution; post strategy + moderation + risk + fundamentals/news summary to Slack.
+  - **Direct BUY/SELL:** Plain `buy` / `sell` default to `execution_mode="direct"`.
+  - **Strategy-triggered trade:** `review Apple and buy` and `buy Apple and trigger strategy` use `execution_mode="strategy"`.
+  - **Cancel:** `cancel buy|sell|stop sell ...` uses `execution_mode="cancel_only"`.
   - Return `TradeCommandIntent` dataclass or `None` if unparseable.
 
-#### 4. Single-Ticker Pipeline (Core Design)
+#### 4. Slack Command Execution Paths
 
-- **New orchestrator path or module:** `src/orchestrator/single_ticker_run.py` — `run_single_ticker_cycle(ticker_t212: str, user_intent: TradeCommandIntent) -> SingleTickerResult`.
+- **Strategy path:** `src/orchestrator/single_ticker_run.py`
   - **Step 1 — Data:** Build `stocks_data` for that one ticker only: DataFetcher.get_stock_analysis (or get_stock_analysis_lite + optional Finnhub/AV). Same data shape as full cycle.
   - **Step 2 — Strategy:** Run StrategyEngine for that ticker; persist **StrategyDecision** with `cycle_id` = e.g. `slack-{ts}` so it's clearly slack-triggered.
   - **Step 3 — Moderation:** Run ModerationPanel on the strategy output; persist **ModerationLog**.
   - **Step 4 — Override:** Ignore strategy action/size; set **final action** and **size** from `user_intent` (BUY/SELL + quantity or amount_gbp). For REVIEW, stop here and return summary.
   - **Step 5 — Risk:** Run RiskManager with the **user-intent** trade (ticker, action, quantity/amount). Persist **RiskDecision**. If risk VETO, return rejected; do not execute.
-  - **Step 6 — Execution:** If BUY/SELL and risk passed, call OrderManager.execute_market_order (or by quantity); persist **Order** with `strategy="slack_command"`.
+  - **Step 6 — Execution:** If BUY/SELL and risk passed, call OrderManager.execute_market_order (or by quantity); persist **Order** with `strategy="slack_strategy"`.
   - Return: strategy view, moderation view, risk view, order result (or rejection), so Slack can format one summary message.
+- **Direct trade path:** `src/orchestrator/direct_trade_run.py`
+  - Ticker resolution, quote lookup, FX-aware GBP sizing, cash/position preflight, large-order confirmation, and `OrderManager.execute_market_order`.
+  - No strategy, moderation, or risk call.
+  - Orders persist with `strategy="slack_direct"`.
+- **Cancel path:** `src/agents/notifications/cancel_command_runner.py`
+  - Resolve all requested tickers up front.
+  - Fetch pending T212 orders once.
+  - Classify matches as `buy`, `sell`, or `stop_sell`, preferring local `orders` rows and falling back to the live T212 payload.
+  - Cancel matching pending orders, update local rows to `cancelled`, and persist a structured per-message result in `SlackCommandLog.result_json`.
 - **Ticker resolution:** Extract `resolve_ticker_to_t212(plain_symbol)` to `src/utils/ticker_utils.py` (Instrument table + T212 fallback). Run before pipeline; reject if not found.
 
 #### 5. Portfolio and Cash Validation
@@ -416,7 +432,7 @@ slack_trade_commands:
 
 #### 8. Persistence and Audit
 
-- **Existing tables:** StrategyDecision, ModerationLog, RiskDecision, Order — all populated by single-ticker run; use `cycle_id` like `slack-{timestamp}` and `strategy="slack_command"` on Order.
+- **Existing tables:** StrategyDecision, ModerationLog, RiskDecision, Order — populated as needed by the strategy path or direct path; use `cycle_id` like `slack-{timestamp}`.
 - **New table:** `slack_command_log` with columns:
   - `id` (PK)
   - `timestamp` (UTC)
@@ -424,36 +440,43 @@ slack_trade_commands:
   - `user_id`
   - `raw_message`
   - `parsed_intent_json`
+  - `command_kind`
+  - `execution_mode`
   - `ticker`
   - `action`
+  - `target_order_class`
+  - `target_tickers_json`
   - `cycle_id` (FK)
   - `order_id` (FK, nullable)
   - `status`
   - `rejection_reason`
   - `response_message`
+  - `result_json`
 
   This links Slack trigger to cycle and order.
 
 #### 8a. Database: Scheduled vs Manual (No Mandatory Schema Change)
 
-**Do the databases need to change to account for scheduled vs manual?** No mandatory change. Existing columns are enough:
+**Do the databases need to change to account for scheduled vs manual?** For the current command split, the existing trading tables still work, but `slack_command_log` now carries richer mode/result metadata:
 
-- **Order:** Use existing `strategy` column: set `strategy="slack_command"` for manual Slack orders. Scheduled orders use `primary_strategy` (e.g. momentum, mean_reversion) or "liquidation". Query manual orders with `WHERE strategy = 'slack_command'`.
+- **Order:** Slack-triggered trades now use `strategy="slack_direct"` for plain BUY/SELL commands and `strategy="slack_strategy"` for strategy-triggered trade commands. Scheduled orders continue to use the actual strategy family (e.g. momentum, mean_reversion) or "liquidation".
 - **StrategyDecision / ModerationLog / RiskDecision:** Use existing `cycle_id`. Scheduled runs use cycle IDs like `"2026-03-06-08:00"`; Slack runs use `"slack-{iso_timestamp}"`. Query manual runs with `WHERE cycle_id LIKE 'slack-%'`.
-- **SlackCommandLog:** New table only stores Slack-triggered runs and links to `order_id`; any row there implies manual.
+- **SlackCommandLog:** now stores `command_kind`, `execution_mode`, `target_order_class`, `target_tickers_json`, and `result_json` in addition to the original message/action/order linkage.
 
-**Optional improvement:** Add an explicit **`trigger`** column to **Order** (e.g. `trigger VARCHAR(20)` with values `'cycle'` | `'slack'`) for clearer semantics and future triggers (e.g. API, Telegram). Recommendation: implement without it first; add in a follow-up migration if desired.
+An explicit `trigger` column on `orders` is still optional for a future follow-up, but the current implementation is fully attributable without it.
 
 #### 9. Slack Reply Format
 
-- **REVIEW:** Full pipeline detail — price, strategy action/conviction/allocation/stop-loss/reasoning (not truncated), per-moderator GPT-4o/Gemini verdicts with scores and reasoning. "No order placed."
-- **BUY/SELL (executed):** Quantity, price (native currency), value (GBP), execution status, strategy summary/reasoning, moderation consensus, risk verdict, order ID. For FX-traded names, explicit GBP orders are sized using a GBP-equivalent price before quantity flooring, while the reply still shows the native quote for transparency. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override bypassed moderation and/or risk, the overridden stage is shown as `OVERRIDDEN` while still displaying the underlying GPT-4o/Gemini/risk detail. If T212 accepts but has not filled the market order yet (`pending`), reply includes a tip to check dashboard / Trading 212 for status updates.
+- **REVIEW:** Full pipeline detail — price, strategy action/conviction/allocation/stop-loss/reasoning (not truncated), per-moderator GPT-4o/Gemini verdicts with scores and reasoning. Reply labels the mode as `strategy review`. No order is placed.
+- **Direct BUY/SELL:** Reply labels the mode as `direct trade`. Strategy, moderation, and risk are intentionally absent; the reply focuses on quote, quantity/value, execution status, order ID, confirmation outcome, and any direct-trade tip. A `force` prefix is accepted for backward compatibility but recorded as unnecessary.
+- **Strategy-triggered BUY/SELL:** Reply labels the mode as `strategy-triggered trade`. It includes the same execution details as before plus strategy, moderation, and risk context. If user overrode strategy: "(Strategy suggested HOLD; you overrode to BUY)". If force override bypassed moderation and/or risk, the overridden stage is shown as `OVERRIDDEN` while still displaying the underlying GPT-4o/Gemini/risk detail.
+- **CANCEL:** Reply labels the mode as `cancel command` and shows the requested order class (`buy`, `sell`, `stop sell`), resolved target tickers, number of matching pending orders, cancelled order IDs, and any partial failures.
 - **Rejected (risk/cash/ticker):** Full pipeline detail — price, strategy reasoning, per-moderator verdicts, risk triggered rules. Includes contextual next-step tips: risk VETO suggests action-specific `force buy <ticker>` / `force sell <ticker>`; moderation BLOCKED now suggests either `force buy <ticker>` / `force sell <ticker>` to proceed anyway or `REVIEW <ticker>` first; minimum-order rejects suggest a larger GBP order; no-position SELL rejects suggest reviewing current holdings first.
-- **Error:** Error replies now include contextual tips when possible, e.g. retrying `REVIEW <ticker>` after market data refresh when price determination fails.
+- **Error:** Error replies now include contextual tips when possible, e.g. retrying `REVIEW <ticker>` after market data refresh when price determination fails. Malformed moderator `modifications` payloads are treated as warning-only and do not abort the strategy-backed review/trade path.
 
 #### 10. Entry Point and Deployment
 
-- **New CLI:** `poetry run python -m src.agents.notifications.slack_trade_listener` — long-running process; connects via Socket Mode; processes each message by running single-ticker pipeline (or confirmation flow).
+- **New CLI:** `poetry run python -m src.agents.notifications.slack_trade_listener` — long-running process; connects via Socket Mode; processes each message by dispatching to the strategy, direct-trade, or cancel runner (plus confirmation flow for large BUY/SELL commands).
 - **Docker:** Dedicated always-on `slack-listener` service when `SLACK_APP_TOKEN` and `SLACK_BOT_TOKEN` are configured. `docker compose up -d --build` starts the scheduler, dashboard, and Slack listener together.
 - **Systemd:** Optional unit file for VPS.
 
@@ -465,6 +488,9 @@ slack_trade_commands:
 | Insufficient cash (BUY) | Reject with current cash |
 | No position (SELL) | Reject |
 | Order > threshold | Require "yes" confirmation |
+| Plain BUY/SELL | Execute as direct trade; skip strategy, moderation, and risk |
+| `review X and buy/sell`, `buy/sell X and trigger strategy` | Run full strategy → moderation → risk path before execution |
+| `cancel buy/sell/stop sell ...` | Resolve all requested tickers first, then cancel matching pending broker orders immediately |
 | Risk VETO | Reject after pipeline; log reason. Hint suggests action-specific `force buy` / `force sell` override. |
 | Moderation BLOCKED | Reject after moderation by default; explicit `force` prefix can override for Slack commands while preserving committee reasoning in reply/audit trail. |
 | Below minimum order size | Reject before broker placement; hint suggests a larger GBP amount or `REVIEW <ticker>`. |
@@ -495,15 +521,18 @@ slack_trade_commands:
 | `config/settings.yaml` | Add slack_trade_commands |
 | `src/utils/config.py` | New config keys |
 | `src/utils/ticker_utils.py` | New — resolve_ticker_to_t212 |
-| `src/orchestrator/single_ticker_run.py` | New — single-ticker pipeline + user override |
-| `src/agents/notifications/trade_command_parser.py` | New — NL parsing (BUY/SELL/REVIEW) |
-| `src/agents/notifications/slack_listener.py` | New — Socket Mode handler, invokes single_ticker_run |
-| `src/agents/execution/order_manager.py` | Optional quantity param in execute_market_order |
-| `src/data/models.py` | Add SlackCommandLog |
-| `alembic/versions/xxx_slack_command_log.py` | Migration |
+| `src/orchestrator/single_ticker_run.py` | New — strategy review + strategy-triggered trade pipeline with user override |
+| `src/orchestrator/direct_trade_run.py` | New — plain BUY/SELL path without strategy, moderation, or risk |
+| `src/agents/notifications/cancel_command_runner.py` | New — multi-ticker pending-order cancellation path |
+| `src/agents/notifications/trade_command_parser.py` | New — NL parsing for review, direct trade, strategy-triggered trade, and cancel |
+| `src/agents/notifications/slack_listener.py` | New — Socket Mode handler, dispatches to strategy/direct/cancel runners |
+| `src/agents/execution/order_manager.py` | Optional quantity param in execute_market_order; pending-order classification + cancellation helpers |
+| `src/data/models.py` | Add SlackCommandLog; extend with mode/target/result fields |
+| `src/data/migrations/versions/p1q2r3s4t5u6_extend_slack_command_log_for_command_split.py` | Migration for command split metadata |
 | `src/agents/notifications/slack_trade_listener.py` | New — CLI entry |
 | `tests/test_trade_command_parser.py` | New |
-| `tests/test_single_ticker_run.py` | New — single-ticker pipeline + override |
+| `tests/test_single_ticker_run.py` | New — strategy path + override |
+| `tests/test_direct_trade_run.py` | New — direct trade + cancel coverage |
 | `tests/test_slack_listener.py` | New (mocked) |
 | `.env.example` | Add SLACK_APP_TOKEN, SLACK_BOT_TOKEN |
 
@@ -552,17 +581,19 @@ Placeholder for browser-based chat interface, post-Phase 2 stabilisation. Will p
 
 ### Phase 2 (Inbound Trade Commands — Delivered)
 
-- [x] Natural language parser (`trade_command_parser.py`) extracts intent (BUY/SELL/REVIEW), ticker, quantity, and amount_gbp — regex-first (zero cost, supports ticker symbols and single-word company names like "buy apple", "sell google") with Claude fallback for ambiguous messages.
-- [x] Single-ticker pipeline (`single_ticker_run.py`) runs full data → strategy → moderation → risk flow with user intent override.
+- [x] Natural language parser (`trade_command_parser.py`) extracts command kind, execution mode, ticker subject phrases, quantity/amount, and cancel order class — regex-first (zero cost, supports ticker symbols, multi-word company names, strategy-trigger phrases, and multi-ticker cancel commands) with Claude fallback for ambiguous messages.
+- [x] Strategy path (`single_ticker_run.py`) runs full data → strategy → moderation → risk flow with user intent override for REVIEW and strategy-triggered BUY/SELL commands.
+- [x] Direct trade path (`direct_trade_run.py`) executes plain BUY/SELL commands without strategy, moderation, or risk while preserving quote lookup, preflight checks, confirmation, execution, and audit logging.
+- [x] Cancel path (`cancel_command_runner.py`) resolves all requested tickers first, fetches pending broker orders once, cancels matching `buy` / `sell` / `stop sell` orders, updates local order status, and returns aggregated success or partial results.
 - [x] RiskManager veto prevents execution by default; explicit `force` prefixes are logged as `OVERRIDDEN` and preserve triggered rules in the audit trail.
-- [x] `SlackCommandLog` table captures all Slack-triggered runs; linked to Order and cycle_id.
+- [x] `SlackCommandLog` table captures all Slack-triggered runs; linked to Order and cycle_id, with mode, target-order, target-ticker, and result metadata.
 - [x] Slack Socket Mode listener (`slack_listener.py`) processes messages from configured channel; replies in thread.
 - [x] Large order confirmation flow requires "yes" confirmation for orders > `confirmation_threshold_gbp`.
 - [x] Ticker resolution (`resolve_ticker_to_t212`) rejects unknown symbols before pipeline invocation.
 - [x] Cash/position validation prevents insufficient-fund and non-existent-position orders.
 - [x] REVIEW commands persist `review_only`; confirmation lifecycle persists `awaiting_confirmation`, `cancelled`, `expired`, and final `response_message`.
 - [x] All trades (autonomous and Slack-initiated) visible in portfolio and audit logs with consistent cycle_id format (`slack-{timestamp}`).
-- [x] Focused US-1.6/US-1.9 regression suite: 117 passing tests across parser, ticker resolution, single-ticker runner, listener/gateway, commands API, chat session manager/API, Slack reply formatting, FX-aware GBP sizing, and scheduler cadence cleanup.
+- [x] Focused US-1.6/US-1.9 regression suite covers parser, ticker resolution, strategy/direct/cancel runners, listener/gateway, commands API, chat session manager/API, Slack reply formatting, FX-aware GBP sizing, and scheduler cadence cleanup.
 - [x] **Dashboard Commands page** (`/commands`): Stats cards (total, executed, rejected, review), action/status filters, command history table with expandable rows showing cycle_id, order linkage, rejection reasons, and response messages. Backend: `GET /api/commands/` (filtered + paginated), `GET /api/commands/stats`.
 - [x] **Post-deployment fixes (2026-03-24):** Bot self-message loop prevention (`_resolve_bot_user_id` via `auth.test` + `bot_id`/user_id filtering); error message propagation from pipeline to Slack reply (gateway now surfaces `error_message`/`rejection_reason`); price extraction fix (`indicators.current_price` not `.close`); REVIEW reply shows full details — price, allocation %, stop-loss %, full reasoning (no truncation), per-moderator GPT-4o/Gemini verdicts with scores and reasoning; completion log lines for all terminal states (review_only, executed, rejected, error).
 - [x] **Hardening pass (2026-03-24):** real confirmation gate before execution for large orders; moderation now reviews the final user action/size; force replies and rejection hints use action-specific wording; non-command chatter no longer leaves a stray processing reply; dashboard audit rows persist `response_message`; contextual Slack tips now cover risk vetoes, moderation blocks, unknown tickers, minimum-order rejects, price-data failures, no-position SELLs, duplicate orders, and pending broker acceptance.

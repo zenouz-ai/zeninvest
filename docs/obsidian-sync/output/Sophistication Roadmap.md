@@ -25,7 +25,7 @@ Prioritised backlog: 10 delivered, 22 in pipeline. Ordered by value × feasibili
 | 3 | US-1.3 | CLI Dashboard | `--dashboard`: portfolio, metrics, costs, positions |
 | 4 | US-1.4 | Deploy POC to VPS | Docker, health check, first cycle logged |
 | 5 | US-1.5 | Chat & Alerts | Slack + Email, 6 event types, fail-open, audit trail |
-| 6 | US-1.7 | Dashboard & Visualisation | Full API + 8 pages, ZENOUZ.ai brand |
+| 6 | US-1.7 | Dashboard & Visualisation | Full API + 11-page authenticated surface, ZENOUZ.ai brand |
 | 7 | US-1.8 | Dashboard VPS Deployment | Docker multi-stage, SPA fallback |
 | 8 | US-3.4 | UOV Ranking & Queue | Cross-cycle EWMA, ranked BUY queue, swap suggestions |
 | 9 | US-3.5 | Intelligent Order Management | ATR stops, trailing stops, limit dip-buy |

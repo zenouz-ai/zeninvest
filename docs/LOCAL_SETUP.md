@@ -192,7 +192,7 @@ Use these only if running investigation steps in `docs/Nemotron_3_Super_Integrat
 poetry run pytest -v
 ```
 
-This runs all 326 tests using in-memory SQLite fixtures.
+This runs all 701 tests using in-memory SQLite fixtures.
 
 ### Individual Test Files
 
@@ -450,7 +450,7 @@ echo $! > scheduler.pid
 
 | Job | Schedule | Description |
 |-----|----------|-------------|
-| Analysis cycle | From `cycle_times_utc` (intraday: 08/12/16 UTC; standard: 07/19 UTC) Mon-Fri | Trading cycle |
+| Analysis cycle | From configured schedule mode (intraday: 10:00/12:30/15:15 America/New_York; standard: 07:00/19:00 UTC) Mon-Fri | Trading cycle |
 | Daily snapshot | 21:30 UTC daily | Portfolio snapshot + daily report |
 | Weekly report | Fri 22:00 UTC | Weekly performance summary |
 | Instrument refresh | Sun 12:00 UTC | Update tradable instrument universe |
