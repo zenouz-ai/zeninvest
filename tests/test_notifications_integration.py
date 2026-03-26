@@ -106,6 +106,16 @@ def patch_all_get_session(db_session):
         p.stop()
 
 
+@pytest.fixture(autouse=True)
+def patch_runtime_cycle_lock():
+    class DummyLock:
+        def release(self) -> None:
+            return
+
+    with patch("src.orchestrator.main.acquire_runtime_lock", return_value=DummyLock()):
+        yield
+
+
 def test_orchestrator_paused_emits_cycle_summary(monkeypatch) -> None:
     orchestrator = Orchestrator(dry_run=True)
     notifications = CaptureNotifications()
@@ -627,7 +637,7 @@ def test_deterministic_take_profit_override_marks_sell_and_bypasses_min_hold() -
     assert orchestrator._should_skip_min_holding_for_decision(decision) is True
 
 
-def test_small_position_cleanup_only_runs_on_final_cycle_and_after_min_holding() -> None:
+def test_small_position_cleanup_triggers_immediately_for_any_sub_threshold_holding() -> None:
     orchestrator = Orchestrator(dry_run=True)
 
     active_cleanup = {
@@ -636,13 +646,13 @@ def test_small_position_cleanup_only_runs_on_final_cycle_and_after_min_holding()
         "conviction": 0,
         "reasoning": "No clear edge",
     }
-    too_early_cycle = {
+    still_holds_above_threshold = {
         "ticker": "ROST_US_EQ",
         "action": "HOLD",
         "conviction": 0,
         "reasoning": "No clear edge",
     }
-    too_young = {
+    immediate_cleanup_even_if_new = {
         "ticker": "ORCL_US_EQ",
         "action": "HOLD",
         "conviction": 0,
@@ -655,20 +665,161 @@ def test_small_position_cleanup_only_runs_on_final_cycle_and_after_min_holding()
         cycle_id="scheduled_20260325_191501",
     )
     orchestrator._apply_deterministic_exit_overrides(
-        decisions=[too_early_cycle],
-        position_context={"ROST_US_EQ": {"pnl_pct": 1.0, "value_gbp": 150.0, "held_hours": 30.0}},
+        decisions=[still_holds_above_threshold],
+        position_context={"ROST_US_EQ": {"pnl_pct": 1.0, "value_gbp": 250.0, "held_hours": 30.0}},
         cycle_id="scheduled_20260325_163001",
     )
     orchestrator._apply_deterministic_exit_overrides(
-        decisions=[too_young],
+        decisions=[immediate_cleanup_even_if_new],
         position_context={"ORCL_US_EQ": {"pnl_pct": 1.0, "value_gbp": 150.0, "held_hours": 8.0}},
-        cycle_id="scheduled_20260325_191501",
+        cycle_id="scheduled_20260325_120001",
     )
 
     assert active_cleanup["action"] == "SELL"
     assert active_cleanup["deterministic_exit_reason_code"] == "small_position_cleanup"
-    assert too_early_cycle["action"] == "HOLD"
-    assert too_young["action"] == "HOLD"
+    assert still_holds_above_threshold["action"] == "HOLD"
+    assert immediate_cleanup_even_if_new["action"] == "SELL"
+    assert immediate_cleanup_even_if_new["deterministic_exit_reason_code"] == "small_position_cleanup"
+
+
+def test_run_cycle_cleanup_sell_skips_strategy_and_uses_live_quantity(monkeypatch, db_session) -> None:
+    db_session.add(
+        Order(
+            ticker="VRTX_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=5,
+            price=20.0,
+            value_gbp=100.0,
+            status="filled",
+            timestamp=datetime.now(timezone.utc) - timedelta(hours=30),
+        )
+    )
+    db_session.commit()
+
+    orchestrator = Orchestrator(dry_run=True)
+    notifications = CaptureNotifications()
+    orchestrator.notification_service = notifications
+
+    class DummyStateMachine:
+        is_paused = False
+        current_state = "ACTIVE"
+
+        @staticmethod
+        def update_peak(current_value: float) -> None:
+            return
+
+        @staticmethod
+        def get_state() -> dict:
+            return {"peak_portfolio_value": 10000.0, "daily_loss_halt_until": None}
+
+        @staticmethod
+        def transition(new_state: str, notes: str | None = None) -> None:
+            return
+
+        @staticmethod
+        def update_drawdown(drawdown_pct: float) -> None:
+            return
+
+        @staticmethod
+        def record_cycle() -> None:
+            return
+
+    orchestrator.state_machine = DummyStateMachine()
+    trading_config = orchestrator.settings._config.setdefault("trading", {})
+    trading_config["cycle_frequency"] = "intraday"
+    trading_config["small_position_cleanup_enabled"] = True
+    orchestrator.settings._config.setdefault("opportunity", {})["enabled"] = False
+
+    orchestrator._get_portfolio_state = lambda: {
+        "cash": 9850.0,
+        "total_value": 10000.0,
+        "invested": 150.0,
+        "positions": [
+                {
+                    "ticker": "VRTX_US_EQ",
+                    "quantity": 5,
+                    "currentPrice": 30.0,
+                    "averagePrice": 29.0,
+                    "value_gbp": 150.0,
+                    "pnl_gbp": 5.0,
+                }
+            ],
+        "num_positions": 1,
+        "daily_pnl_pct": 0.0,
+        "total_return_pct": 0.0,
+        "alpha_pct": 0.0,
+    }
+
+    seen_current_positions: list[str] = []
+
+    def fake_fetch_stocks_data(current_positions, exclude_tickers=None, system_state="ACTIVE", cycle_id=None, **kwargs):
+        seen_current_positions[:] = [pos["ticker"] for pos in current_positions]
+        return []
+
+    orchestrator._fetch_stocks_data = fake_fetch_stocks_data
+    orchestrator.data_fetcher = SimpleNamespace(
+        get_macro_data=lambda: {"vix": 18, "market_regime": "BULL"},
+        get_cached_news_sentiment=lambda ticker, source, data_type: None,
+        cache_news_sentiment=lambda *args, **kwargs: None,
+        get_analyst_data_cached=lambda ticker: {},
+        alpha_vantage=SimpleNamespace(get_broad_market_sentiment=lambda: {}),
+        get_market_news_sentiment=lambda **kwargs: {"articles": [], "total_articles": 0},
+        close=lambda: None,
+    )
+    orchestrator.strategy_engine = SimpleNamespace(
+        run_sub_strategies=lambda stocks_data, existing_tickers: {
+            "momentum": [],
+            "mean_reversion": [],
+            "top_factor": [],
+            "factor": [],
+        },
+        synthesize_with_claude=lambda **kwargs: {"decisions": [], "market_assessment": ""},
+    )
+
+    def unexpected_review_trade(**kwargs):
+        raise AssertionError("cleanup ticker should not reach moderation")
+
+    def unexpected_risk_trade(**kwargs):
+        raise AssertionError("cleanup ticker should not reach risk")
+
+    orchestrator.moderation_panel = SimpleNamespace(review_trade=unexpected_review_trade)
+    orchestrator.risk_manager = SimpleNamespace(
+        evaluate_trade=unexpected_risk_trade,
+        get_drawdown_state=lambda current_value, peak_value: "ACTIVE",
+    )
+    orchestrator._t212_client = SimpleNamespace(get_position=lambda ticker: {"quantity": 7.0})
+    orchestrator._save_snapshot = lambda portfolio_data, state: None
+
+    captured: dict[str, float | str] = {}
+
+    def fake_execute_trade(cycle_id, decision, action, ticker, **kwargs):
+        captured["ticker"] = ticker
+        captured["quantity_override"] = kwargs["quantity_override"]
+        captured["moderation"] = kwargs["mod_result"].consensus
+        captured["risk"] = kwargs["risk_verdict"].verdict
+        return {
+            "ticker": ticker,
+            "action": "SELL",
+            "execution": {"status": "dry_run"},
+            "moderation": kwargs["mod_result"].consensus,
+            "risk": kwargs["risk_verdict"].verdict,
+        }
+
+    orchestrator._execute_trade = fake_execute_trade
+
+    monkeypatch.setattr("src.orchestrator.main.get_degradation_level", lambda: DegradationLevel.FULL)
+    monkeypatch.setattr("src.orchestrator.main.get_cost_summary", lambda days=1: {})
+
+    result = orchestrator.run_cycle(scheduled_cycle_id="scheduled_20260325_191501")
+
+    assert result["status"] == "completed"
+    assert len(result["trades"]) == 1
+    assert seen_current_positions == []
+    assert captured["ticker"] == "VRTX_US_EQ"
+    assert captured["quantity_override"] == 7.0
+    assert captured["moderation"] == "BYPASSED"
+    assert captured["risk"] == "BYPASSED"
 
 
 def test_scheduled_cycle_skips_live_execution_outside_regular_market_session(monkeypatch) -> None:
@@ -755,6 +906,83 @@ def test_execute_trade_emits_take_profit_reason_code(monkeypatch) -> None:
     assert trade["reason_code"] == "take_profit_full_sell"
     assert len(notifications.execution_payloads) == 1
     assert notifications.execution_payloads[0]["reason_code"] == "take_profit_full_sell"
+
+
+def test_execute_trade_cleanup_sell_uses_quantity_override(monkeypatch) -> None:
+    orchestrator = Orchestrator(dry_run=True)
+    notifications = CaptureNotifications()
+    orchestrator.notification_service = notifications
+
+    class DummyOrderManager:
+        last_kwargs: dict | None = None
+
+        @classmethod
+        def execute_market_order(cls, **kwargs):
+            cls.last_kwargs = kwargs
+            return {"status": "dry_run", "quantity": 7.0, "value_gbp": kwargs["target_amount_gbp"]}
+
+        @staticmethod
+        def place_stop_loss(**kwargs):
+            return {"status": "skipped"}
+
+    class DummyMod:
+        consensus = "BYPASSED"
+
+        @staticmethod
+        def to_dict() -> dict:
+            return {"consensus": "BYPASSED"}
+
+    class DummyRisk:
+        verdict = "BYPASSED"
+        rules_checked: list[str] = []
+        triggered_rules: list[str] = []
+        reasoning = "Deterministic cleanup SELL"
+
+    orchestrator._order_manager = DummyOrderManager()
+    monkeypatch.setattr("src.orchestrator.main.generate_trade_journal", lambda **kwargs: "journals/test.md")
+
+    trade = orchestrator._execute_trade(
+        cycle_id="cycle_cleanup",
+        decision={
+            "conviction": 75,
+            "primary_strategy": "factor",
+            "stop_loss_pct": -8.0,
+            "reasoning": "Cleanup triggered",
+            "deterministic_exit_reason_code": "small_position_cleanup",
+            "deterministic_exit_reason": "Deterministic cleanup SELL: value below threshold",
+        },
+        action="SELL",
+        ticker="AAPL_US_EQ",
+        final_alloc=0.0,
+        current_value=10_000,
+        cash_gbp=5_000,
+        total_return_pct=0.0,
+        alpha_pct=0.0,
+        existing_tickers={"AAPL_US_EQ"},
+        market_regime="BULL",
+        vix=18,
+        macro={"sp500_pct_above_200ma": 5.0},
+        stocks_data=[{"ticker": "AAPL_US_EQ", "indicators": {"current_price": 10}, "fundamentals": {}}],
+        analyst_data_map={},
+        av_broad_sentiment={},
+        mod_result=DummyMod(),
+        risk_verdict=DummyRisk(),
+        portfolio_data={
+            "total_value": 10_000.0,
+            "positions": [{"ticker": "AAPL_US_EQ", "value_gbp": 600.0}],
+        },
+        quantity_override=7.0,
+    )
+
+    assert trade is not None
+    assert DummyOrderManager.last_kwargs is not None
+    assert DummyOrderManager.last_kwargs["quantity_override"] == 7.0
+    assert DummyOrderManager.last_kwargs["target_amount_gbp"] == pytest.approx(70.0)
+    assert trade["display_action"] == "SELL_CLEAN_UP"
+    assert trade["reason_code"] == "small_position_cleanup"
+    assert len(notifications.execution_payloads) == 1
+    assert notifications.execution_payloads[0]["display_action"] == "SELL_CLEAN_UP"
+    assert notifications.execution_payloads[0]["reason_code"] == "small_position_cleanup"
 
 
 def test_position_summary_includes_last_buy_context(db_session) -> None:

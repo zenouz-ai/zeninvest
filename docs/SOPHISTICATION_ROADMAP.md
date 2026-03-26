@@ -353,7 +353,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - Strategy prompt now targets **2-15 trading day** swings and allows BUYs at lower conviction when supported by catalyst/valuation context.
 - Universe and UOV gates are loosened so more approved BUYs can execute in-cycle (`effective_screening_cooldown_override=4`, `review_cooldown_days=2`, `max_reviews_per_30_days=10`, `immediate_threshold_z=0.0`, `queue_threshold_z=-0.15`).
 - Adds deterministic **full SELL take-profit** when unrealized gain reaches `15%`, even before the ordinary 24h minimum-holding rule when enabled.
-- Adds deterministic **small-position cleanup** on the final intraday cycle for holdings below `£200` once they are at least 24h old.
+- Adds deterministic **small-position cleanup** for holdings below `£200`, executed immediately in a pre-strategy pass without LLM involvement for that cleanup ticker.
 - Updates Slack/email summaries and strategy-performance reporting so operators can distinguish submitted, queued, skipped, take-profit, cleanup, and risk-driven outcomes in plain English.
 
 **Integration:**  

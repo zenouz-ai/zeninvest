@@ -82,9 +82,13 @@ def _title_for_event(event: NotificationEvent) -> str:
     return mapping.get(event.event_type, event.event_type)
 
 
+def _display_action(payload: dict[str, Any]) -> Any:
+    return payload.get("display_action") or payload.get("action", "N/A")
+
+
 def _slack_trade_instruction(payload: dict[str, Any], *, prefix: str) -> str:
     ticker = payload.get("ticker", "N/A")
-    action = payload.get("action", "N/A")
+    action = _display_action(payload)
     kind = _trade_decision_heading(payload)
     alloc = payload.get("final_allocation_pct") or payload.get("target_allocation_pct")
     qty_display = f"Target: {alloc}% allocation" if alloc is not None else "Target: pending"
@@ -111,7 +115,7 @@ def _slack_trade_instruction(payload: dict[str, Any], *, prefix: str) -> str:
 
 def _slack_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
     ticker = payload.get("ticker", "N/A")
-    action = payload.get("action", "N/A")
+    action = _display_action(payload)
     qty = payload.get("quantity")
     qty_display = qty if qty is not None else "N/A"
     execution_status = _display_exec_status(payload.get("execution_status"))
@@ -199,7 +203,7 @@ def _slack_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
 
     for d in rows_for_slack:
         ticker = d.get("ticker", "N/A")
-        action = d.get("action", "N/A")
+        action = d.get("display_action") or d.get("action", "N/A")
         status_label = d.get("notification_status") or _summary_status_label(d)
         qty = d.get("quantity")
         qty_display = qty if qty is not None else "queued"
@@ -238,7 +242,7 @@ def _email_trade_instruction(payload: dict[str, Any], *, prefix: str) -> str:
         f"Cycle: {payload.get('cycle_id', 'N/A')}\n"
         f"Dry-run: {payload.get('dry_run', False)}\n\n"
         f"Ticker: {payload.get('ticker', 'N/A')}\n"
-        f"Action: {payload.get('action', 'N/A')}\n"
+        f"Action: {_display_action(payload)}\n"
         f"Account: {payload.get('account_label', 'N/A')}\n"
         f"Notification kind: {payload.get('notification_kind', 'N/A')}\n"
         f"Target Allocation %: {payload.get('target_allocation_pct', 'N/A')}\n"
@@ -269,7 +273,7 @@ def _email_trade_execution(payload: dict[str, Any], *, prefix: str) -> str:
         f"Cycle: {payload.get('cycle_id', 'N/A')}\n"
         f"Dry-run: {payload.get('dry_run', False)}\n\n"
         f"Ticker: {payload.get('ticker', 'N/A')}\n"
-        f"Action: {payload.get('action', 'N/A')}\n"
+        f"Action: {_display_action(payload)}\n"
         f"Account: {payload.get('account_label', 'N/A')}\n"
         f"Notification kind: {payload.get('notification_kind', 'N/A')}\n"
         f"Order type: {payload.get('order_type', 'market')}\n"
@@ -339,7 +343,7 @@ def _email_cycle_summary(payload: dict[str, Any], *, prefix: str) -> str:
     lines.append("Ticker Decision Details")
     for idx, decision in enumerate(decisions, start=1):
         lines.append("")
-        lines.append(f"{idx}. {decision.get('ticker', 'N/A')} {decision.get('action', 'N/A')}")
+        lines.append(f"{idx}. {decision.get('ticker', 'N/A')} {decision.get('display_action') or decision.get('action', 'N/A')}")
         lines.append(f"   Status: {decision.get('notification_status') or _summary_status_label(decision)}")
         reason = decision.get("notification_reason") or _human_reason(
             decision.get("reason_code"),

@@ -44,7 +44,7 @@ from src.runtime import RuntimeLockHeldError, acquire_runtime_lock
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
 from src.utils.logger import get_logger
-from src.utils.scheduling import current_cycle_clock_time, is_within_regular_market_session
+from src.utils.scheduling import is_within_regular_market_session
 from src.utils.ticker_utils import t212_to_yf
 
 logger = get_logger("orchestrator")
@@ -108,19 +108,6 @@ class Orchestrator:
     def _account_label(self) -> str:
         return "practice/demo" if self.settings.account_type == "practice" else "live"
 
-    def _current_cycle_clock_time(self, cycle_id: str | None) -> str:
-        return current_cycle_clock_time(self.settings, cycle_id)
-
-    def _is_small_position_cleanup_cycle(self, cycle_id: str | None) -> bool:
-        if self.settings.cycle_frequency != "intraday":
-            return False
-        target_clock = (
-            self.settings.small_position_cleanup_cycle_local
-            if self.settings.schedule_mode == "market_session"
-            else self.settings.small_position_cleanup_cycle_utc
-        )
-        return self._current_cycle_clock_time(cycle_id) == target_clock
-
     def _apply_deterministic_exit_overrides(
         self,
         *,
@@ -131,7 +118,6 @@ class Orchestrator:
         if not decisions or not position_context:
             return
 
-        cleanup_cycle = self._is_small_position_cleanup_cycle(cycle_id)
         for decision in decisions:
             ticker = str(decision.get("ticker", "")).strip().upper()
             if not ticker:
@@ -150,7 +136,7 @@ class Orchestrator:
                 )
                 continue
 
-            cleanup_reason = self._small_position_cleanup_reason(position, cleanup_cycle=cleanup_cycle)
+            cleanup_reason = self._small_position_cleanup_reason(position)
             if cleanup_reason:
                 self._apply_deterministic_sell_override(
                     decision=decision,
@@ -158,6 +144,178 @@ class Orchestrator:
                     reason_detail=cleanup_reason,
                     conviction_floor=75,
                 )
+
+    def _plan_pre_strategy_cleanup_candidates(
+        self,
+        *,
+        portfolio_data: dict[str, Any],
+        cycle_id: str | None,
+    ) -> list[dict[str, Any]]:
+        position_context = self._build_position_context_map(portfolio_data)
+        if not position_context:
+            return []
+
+        positions_by_ticker = {
+            ticker: pos
+            for pos in portfolio_data.get("positions", [])
+            if (ticker := self._ticker_from_position(pos))
+        }
+        candidates: list[dict[str, Any]] = []
+        for ticker, position in position_context.items():
+            cleanup_reason = self._small_position_cleanup_reason(position)
+            if not cleanup_reason:
+                continue
+
+            decision = {
+                "ticker": ticker,
+                "action": "HOLD",
+                "conviction": 0,
+                "reasoning": cleanup_reason,
+                "primary_strategy": "order_management",
+                "stop_loss_pct": 0,
+            }
+            self._apply_deterministic_sell_override(
+                decision=decision,
+                reason_code="small_position_cleanup",
+                reason_detail=cleanup_reason,
+                conviction_floor=75,
+            )
+
+            raw_position = positions_by_ticker.get(ticker, {})
+            current_price = float(raw_position.get("currentPrice", 0) or 0)
+            candidates.append({
+                "ticker": ticker,
+                "decision": decision,
+                "reason": cleanup_reason,
+                "stocks_data": [{
+                    "ticker": ticker,
+                    "indicators": {"current_price": current_price},
+                    "fundamentals": {},
+                }],
+            })
+        return candidates
+
+    def _execute_pre_strategy_cleanup_sells(
+        self,
+        *,
+        cycle_id: str,
+        portfolio_data: dict[str, Any],
+        current_value: float,
+        cash_gbp: float,
+        existing_tickers: set[str],
+        market_regime: str,
+        vix: float | None,
+        macro: dict[str, Any],
+        analyst_data_map: dict[str, dict[str, Any]],
+        av_broad_sentiment: dict[str, Any],
+        result: dict[str, Any],
+        opportunity_evaluations: list[dict[str, Any]],
+    ) -> set[str]:
+        cleanup_candidates = self._plan_pre_strategy_cleanup_candidates(
+            portfolio_data=portfolio_data,
+            cycle_id=cycle_id,
+        )
+        if not cleanup_candidates:
+            return set()
+
+        cleanup_tickers: set[str] = set()
+        direct_mod = SimpleNamespace(consensus="BYPASSED")
+
+        for candidate in cleanup_candidates:
+            ticker = candidate["ticker"]
+            decision = candidate["decision"]
+            bypass_reason = candidate["reason"]
+            stocks_data = candidate["stocks_data"]
+            cleanup_tickers.add(ticker)
+
+            logger.info("Pre-strategy deterministic cleanup SELL executing directly: %s", ticker)
+            direct_risk = SimpleNamespace(
+                verdict="BYPASSED",
+                rules_checked=[],
+                triggered_rules=[],
+                reasoning=bypass_reason,
+            )
+
+            live_qty = 0.0
+            try:
+                live_pos = self.t212_client.get_position(ticker)
+                live_qty = float(live_pos.get("quantity", 0) or 0)
+            except Exception as qty_err:
+                logger.warning("Failed to fetch live position quantity for cleanup %s: %s", ticker, qty_err)
+
+            if live_qty <= 0:
+                skip_reason = "No live position quantity available for deterministic cleanup sell"
+                result["rejected_stocks"].append({
+                    "ticker": ticker,
+                    "action": "SELL",
+                    "stage": "execution_skipped",
+                    "reason": skip_reason,
+                    "reason_code": "cleanup_no_live_quantity",
+                    "stage_reason_code": "cleanup_no_live_quantity",
+                    "conviction": decision.get("conviction", 0),
+                    "moderation_consensus": "BYPASSED",
+                    "risk_verdict": "BYPASSED",
+                    **self._get_stock_metadata(ticker, stocks_data),
+                })
+                opportunity_evaluations.append({
+                    "ticker": ticker,
+                    "action": "SELL",
+                    "stage": "execution_skipped",
+                    "decision": decision,
+                    "reason": skip_reason,
+                    "moderation_consensus": "BYPASSED",
+                    "risk_verdict": "BYPASSED",
+                    "final_allocation_pct": 0.0,
+                })
+                continue
+
+            trade_entry = self._execute_trade(
+                cycle_id=cycle_id,
+                decision=decision,
+                action="SELL",
+                ticker=ticker,
+                final_alloc=0.0,
+                current_value=current_value,
+                cash_gbp=cash_gbp,
+                total_return_pct=portfolio_data.get("total_return_pct", 0),
+                alpha_pct=portfolio_data.get("alpha_pct", 0),
+                existing_tickers=existing_tickers,
+                market_regime=market_regime,
+                vix=vix,
+                macro=macro,
+                stocks_data=stocks_data,
+                analyst_data_map=analyst_data_map,
+                av_broad_sentiment=av_broad_sentiment,
+                mod_result=direct_mod,
+                risk_verdict=direct_risk,
+                portfolio_data=portfolio_data,
+                quantity_override=live_qty,
+            )
+            if trade_entry:
+                exec_status = trade_entry.get("execution", {}).get("status")
+                if exec_status in self._submitted_execution_statuses():
+                    result["trades"].append(trade_entry)
+                else:
+                    result["rejected_stocks"].append(
+                        self._build_rejected_from_trade_entry(
+                            trade_entry=trade_entry,
+                            stocks_data=stocks_data,
+                        )
+                    )
+                opportunity_evaluations.append({
+                    "ticker": ticker,
+                    "action": "SELL",
+                    "stage": "approved" if exec_status in self._submitted_execution_statuses() else trade_entry.get("stage"),
+                    "decision": decision,
+                    "moderation": {"consensus": "BYPASSED"},
+                    "reason": bypass_reason,
+                    "moderation_consensus": "BYPASSED",
+                    "risk_verdict": "BYPASSED",
+                    "final_allocation_pct": 0.0,
+                    "execution": trade_entry.get("execution", {}),
+                })
+
+        return cleanup_tickers
 
     def _take_profit_reason(self, position: dict[str, Any]) -> str | None:
         pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
@@ -172,21 +330,15 @@ class Orchestrator:
     def _small_position_cleanup_reason(
         self,
         position: dict[str, Any],
-        *,
-        cleanup_cycle: bool,
     ) -> str | None:
-        if not self.settings.small_position_cleanup_enabled or not cleanup_cycle:
+        if not self.settings.small_position_cleanup_enabled:
             return None
         value_gbp = float(position.get("value_gbp", 0.0) or 0.0)
         if value_gbp >= self.settings.small_position_cleanup_value_gbp:
             return None
-        held_hours = position.get("held_hours")
-        min_hours = self.settings.small_position_cleanup_min_holding_hours
-        if held_hours is None or float(held_hours) < min_hours:
-            return None
         return (
             f"Deterministic cleanup SELL: holding value GBP {value_gbp:.2f} is below "
-            f"the GBP {self.settings.small_position_cleanup_value_gbp:.2f} cleanup threshold"
+            f"the GBP {self.settings.small_position_cleanup_value_gbp:.2f} cleanup threshold and is exited immediately"
         )
 
     @staticmethod
@@ -585,11 +737,46 @@ class Orchestrator:
                 vix = None
                 market_regime = "SIDEWAYS"
 
-            existing_tickers = {t for p in portfolio_data.get("positions", []) if (t := self._ticker_from_position(p))}
+            original_positions = portfolio_data.get("positions", [])
+            original_existing_tickers = {t for p in original_positions if (t := self._ticker_from_position(p))}
+            pre_strategy_cleanup_tickers = self._execute_pre_strategy_cleanup_sells(
+                cycle_id=cycle_id,
+                portfolio_data=portfolio_data,
+                current_value=current_value,
+                cash_gbp=cash_gbp,
+                existing_tickers=original_existing_tickers,
+                market_regime=market_regime,
+                vix=vix,
+                macro=macro,
+                analyst_data_map={},
+                av_broad_sentiment={},
+                result=result,
+                opportunity_evaluations=opportunity_evaluations,
+            )
+            if pre_strategy_cleanup_tickers and not self.dry_run:
+                try:
+                    portfolio_data = self._get_portfolio_state()
+                    current_value = portfolio_data["total_value"]
+                    cash_gbp = portfolio_data["cash"]
+                    cash_pct = (cash_gbp / current_value * 100) if current_value > 0 else 100
+                    logger.info(
+                        "Portfolio refreshed after pre-strategy cleanup sells: cash=GBP %.2f total=GBP %.2f",
+                        cash_gbp,
+                        current_value,
+                    )
+                except Exception as refresh_err:
+                    logger.warning("Failed to refresh portfolio after cleanup sells: %s", refresh_err)
+
+            active_positions = [
+                pos
+                for pos in portfolio_data.get("positions", [])
+                if (ticker := self._ticker_from_position(pos)) and ticker not in pre_strategy_cleanup_tickers
+            ]
+            existing_tickers = {t for p in active_positions if (t := self._ticker_from_position(p))}
 
             # Get data for current positions AND screen universe for new candidates
             stocks_data = self._fetch_stocks_data(
-                current_positions=portfolio_data.get("positions", []),
+                current_positions=active_positions,
                 exclude_tickers=existing_tickers,
                 system_state=current_state,
                 cycle_id=cycle_id,
@@ -1023,6 +1210,34 @@ class Orchestrator:
                         triggered_rules=[],
                         reasoning=bypass_reason,
                     )
+                    live_qty = 0.0
+                    try:
+                        live_pos = self.t212_client.get_position(ticker)
+                        live_qty = float(live_pos.get("quantity", 0) or 0)
+                    except Exception as qty_err:
+                        logger.warning("Failed to fetch live position quantity for %s: %s", ticker, qty_err)
+                    if live_qty <= 0:
+                        skip_reason = "No live position quantity available for deterministic cleanup sell"
+                        result["rejected_stocks"].append({
+                            "ticker": ticker,
+                            "action": "SELL",
+                            "stage": "execution_skipped",
+                            "reason": skip_reason,
+                            "conviction": conviction,
+                            "moderation": "BYPASSED",
+                            **self._get_stock_metadata(ticker, stocks_data),
+                        })
+                        opportunity_evaluations.append({
+                            "ticker": ticker,
+                            "action": "SELL",
+                            "stage": "execution_skipped",
+                            "decision": decision,
+                            "reason": skip_reason,
+                            "moderation_consensus": "BYPASSED",
+                            "risk_verdict": "BYPASSED",
+                            "final_allocation_pct": 0.0,
+                        })
+                        continue
                     executed = self._execute_trade(
                         cycle_id,
                         decision,
@@ -1031,8 +1246,8 @@ class Orchestrator:
                         final_alloc=0.0,
                         current_value=current_value,
                         cash_gbp=cash_gbp,
-                        total_return_pct=total_return_pct,
-                        alpha_pct=alpha_pct,
+                        total_return_pct=portfolio_data.get("total_return_pct", 0),
+                        alpha_pct=portfolio_data.get("alpha_pct", 0),
                         existing_tickers=existing_tickers,
                         market_regime=market_regime,
                         vix=vix,
@@ -1043,6 +1258,7 @@ class Orchestrator:
                         mod_result=direct_mod,
                         risk_verdict=direct_risk,
                         portfolio_data=portfolio_data,
+                        quantity_override=live_qty,
                     )
                     if executed:
                         result["trades"].append(executed)
@@ -1627,7 +1843,11 @@ class Orchestrator:
             # --- STEP 7: Intelligent order management (stop-loss reassessment) ---
             if self.settings.order_management_enabled:
                 try:
-                    current_positions = portfolio_data.get("positions", [])
+                    current_positions = [
+                        pos
+                        for pos in portfolio_data.get("positions", [])
+                        if (ticker := self._ticker_from_position(pos)) and ticker not in pre_strategy_cleanup_tickers
+                    ]
                     all_adjustments: list[dict[str, Any]] = []
 
                     # Place missing stops for positions without one
@@ -1990,6 +2210,7 @@ class Orchestrator:
         mod_result: Any,
         risk_verdict: Any,
         portfolio_data: dict[str, Any] | None = None,
+        quantity_override: float | None = None,
     ) -> dict[str, Any] | None:
         """Execute an approved trade and generate journal + stop-loss where relevant."""
         current_price = self._get_current_price(ticker, stocks_data)
@@ -1999,6 +2220,7 @@ class Orchestrator:
         min_order = self.settings.min_order_value_gbp
         decision_reason_code = decision.get("deterministic_exit_reason_code")
         decision_reason_detail = decision.get("deterministic_exit_reason")
+        display_action = self._display_trade_action(action, decision_reason_code)
 
         def _emit_and_build_entry(
             *,
@@ -2011,6 +2233,7 @@ class Orchestrator:
             stage: str | None = None,
         ) -> dict[str, Any]:
             actual_action = effective_action or action
+            display_actual_action = self._display_trade_action(actual_action, reason_code or decision_reason_code)
             self.notification_service.emit_trade_execution_result(
                 cycle_id=cycle_id,
                 payload={
@@ -2018,6 +2241,7 @@ class Orchestrator:
                     "dry_run": self.dry_run,
                     "ticker": ticker,
                     "action": actual_action,
+                    "display_action": display_actual_action,
                     "execution_status": execution_status,
                     "quantity": quantity,
                     "price": current_price,
@@ -2044,6 +2268,7 @@ class Orchestrator:
             return {
                 "ticker": ticker,
                 "action": actual_action,
+                "display_action": display_actual_action,
                 "allocation_pct": final_alloc,
                 "reasoning": decision.get("reasoning", ""),
                 "execution": {
@@ -2118,7 +2343,9 @@ class Orchestrator:
             target_position_value = current_value * final_alloc / 100
             reduction_amount = current_position_value - target_position_value
 
-            if action == "SELL":
+            if action == "SELL" and quantity_override is not None and quantity_override > 0:
+                trade_value = float(quantity_override) * (price_gbp or current_price)
+            elif action == "SELL":
                 reduction_pct = 100.0
                 reduction_amount = current_position_value
                 trade_value = current_position_value
@@ -2190,6 +2417,7 @@ class Orchestrator:
             conviction=conviction,
             moderation_result=mod_result.consensus,
             risk_result=risk_verdict.verdict,
+            quantity_override=quantity_override,
         )
 
         try:
@@ -2322,6 +2550,7 @@ class Orchestrator:
                 "dry_run": self.dry_run,
                 "ticker": ticker,
                 "action": action,
+                "display_action": display_action,
                 "target_allocation_pct": final_alloc,
                 "execution_status": exec_result.get("status"),
                 "quantity": notify_qty,
@@ -2358,6 +2587,7 @@ class Orchestrator:
         return {
             "ticker": ticker,
             "action": action,
+            "display_action": display_action,
             "allocation_pct": final_alloc,
             "reasoning": decision.get("reasoning", ""),
             **self._get_stock_metadata(ticker, stocks_data),
@@ -2897,6 +3127,11 @@ class Orchestrator:
                 trade=trade,
                 action=action,
             )
+            display_action = (
+                trade.get("display_action")
+                or rejected.get("display_action")
+                or self._display_trade_action(action, reason_code)
+            )
             notification_status = self._decision_notification_status(stage, execution_status)
 
             # HOLD/QUEUED skip moderation and risk — show "not invoked" instead of null
@@ -2910,6 +3145,7 @@ class Orchestrator:
             records.append({
                 "ticker": ticker,
                 "action": action,
+                "display_action": display_action,
                 "stage": stage,
                 "conviction": decision.get("conviction"),
                 "target_allocation_pct": decision.get("target_allocation_pct"),
@@ -3277,6 +3513,13 @@ class Orchestrator:
     def _submitted_execution_statuses() -> set[str]:
         return {"filled", "pending", "dry_run", "placed"}
 
+    @staticmethod
+    def _display_trade_action(action: str, reason_code: str | None = None) -> str:
+        normalized = str(action or "").strip().upper() or "N/A"
+        if normalized == "SELL" and str(reason_code or "").strip().lower() == "small_position_cleanup":
+            return "SELL_CLEAN_UP"
+        return normalized
+
     def _evaluate_reduce_guardrail(
         self,
         *,
@@ -3327,6 +3570,7 @@ class Orchestrator:
         rejected = {
             "ticker": trade_entry.get("ticker"),
             "action": trade_entry.get("action"),
+            "display_action": trade_entry.get("display_action"),
             "stage": stage,
             "reason": reason,
             "reason_code": reason_code,

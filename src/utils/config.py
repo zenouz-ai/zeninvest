@@ -165,33 +165,13 @@ class Settings:
 
     @property
     def small_position_cleanup_enabled(self) -> bool:
-        """Whether residual small holdings should be liquidated on the cleanup cycle."""
+        """Whether residual small holdings should be liquidated immediately."""
         return bool(self.trading.get("small_position_cleanup_enabled", False))
 
     @property
     def small_position_cleanup_value_gbp(self) -> float:
-        """Full-sell threshold for residual small holdings during cleanup."""
+        """Full-sell threshold for residual small holdings."""
         return float(self.trading.get("small_position_cleanup_value_gbp", 200.0))
-
-    @property
-    def small_position_cleanup_cycle_utc(self) -> str:
-        """Configured UTC cycle time used for small-position cleanup."""
-        return str(self.trading.get("small_position_cleanup_cycle_utc", "16:00"))
-
-    @property
-    def small_position_cleanup_cycle_local(self) -> str:
-        """Configured local cycle time used for small-position cleanup in market-session mode."""
-        return str(
-            self.trading.get(
-                "small_position_cleanup_cycle_local",
-                self.trading.get("small_position_cleanup_cycle_utc", "15:15"),
-            )
-        )
-
-    @property
-    def small_position_cleanup_min_holding_hours(self) -> int:
-        """Minimum age before a small position can be cleaned up automatically."""
-        return int(self.trading.get("small_position_cleanup_min_holding_hours", 24))
 
     # --- Risk ---
     @property
