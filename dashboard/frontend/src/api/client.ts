@@ -20,6 +20,7 @@ import type {
   PortfolioHistoryStart,
   Run,
   SlackCommand,
+  StopLossCurrent,
   UniverseBubbleItem,
 } from '../types'
 import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
@@ -386,7 +387,7 @@ export const outcomesApi = {
 
 // Stop-loss API
 export const stopLossApi = {
-  getCurrent: async (): Promise<{ ticker: string; stop_price: number | null; source: string }[]> => {
+  getCurrent: async (): Promise<StopLossCurrent[]> => {
     const response = await api.get('/api/stop-loss/current')
     return response.data
   },

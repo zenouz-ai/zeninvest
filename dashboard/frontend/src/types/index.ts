@@ -153,6 +153,10 @@ export interface Position {
   pnl_gbp: number
   pnl_pct: number
   sector: string | null
+  profit_lock_status?: string | null
+  profit_lock_required_price_gbp?: number | null
+  profit_lock_stop_price_gbp?: number | null
+  profit_lock_protected_qty?: number | null
 }
 
 export interface PortfolioSnapshot {
@@ -168,6 +172,16 @@ export interface PortfolioSnapshot {
 
 export interface PortfolioHistoryStart {
   timestamp: string | null
+}
+
+export interface StopLossCurrent {
+  ticker: string
+  stop_price: number | null
+  source: string
+  profit_lock_status?: string | null
+  profit_lock_required_price_gbp?: number | null
+  profit_lock_stop_price_gbp?: number | null
+  profit_lock_protected_qty?: number | null
 }
 
 export interface Order {

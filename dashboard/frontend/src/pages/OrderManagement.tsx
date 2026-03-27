@@ -3,13 +3,47 @@ import { ordersApi, stopLossApi } from '../api/client'
 import { TableSkeleton } from '../components/Skeleton'
 import { safeFormat } from '../utils/date'
 import { PageBrandHeader } from '../components/PageBrandHeader'
+import { StatusPill, type PillVariant } from '../components/StatusPill'
+import { cleanTicker, type StopLossCurrent } from '../types'
 
-function cleanTicker(t: string) {
-  return t.replace(/_US_EQ$/, '').replace(/_UK_EQ$/, '')
+function formatMoney(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `£${value.toFixed(2)}`
+}
+
+function formatQuantity(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+function profitLockLabel(status: string | null | undefined): string {
+  switch (status) {
+    case 'protected':
+      return 'Protected'
+    case 'eligible':
+      return 'Needs Lock'
+    case 'exit_required':
+      return 'Exit Required'
+    default:
+      return 'Inactive'
+  }
+}
+
+function profitLockVariant(status: string | null | undefined): PillVariant {
+  switch (status) {
+    case 'protected':
+      return 'active'
+    case 'eligible':
+      return 'warning'
+    case 'exit_required':
+      return 'alert'
+    default:
+      return 'dim'
+  }
 }
 
 export default function OrderManagement() {
-  const [current, setCurrent] = useState<{ ticker: string; stop_price: number | null; source: string }[]>([])
+  const [current, setCurrent] = useState<StopLossCurrent[]>([])
   const [adjustments, setAdjustments] = useState<any[]>([])
   const [recentOrders, setRecentOrders] = useState<any[]>([])
   const [expandedErrorOrderId, setExpandedErrorOrderId] = useState<number | null>(null)
@@ -70,7 +104,7 @@ export default function OrderManagement() {
     <div className="space-y-6">
       <PageBrandHeader
         title="Order Management"
-        description="Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent broker orders include failure details and any off-hours placement notes."
+        description="Stop-loss levels for current positions, profit-lock coverage for winners above the sell threshold, and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent broker orders include failure details and any off-hours placement notes."
       />
 
       {health && (
@@ -186,6 +220,9 @@ export default function OrderManagement() {
 
       <div className="card">
         <h2 className="text-lg font-semibold tracking-wide mb-3">Current Stop-Loss Levels ({current.length})</h2>
+        <p className="text-xs text-terminal-text-dim mb-3">
+          Live stop price is the broker/native stop. Profit-lock fields are shown in GBP so you can verify whether a winning position is fully protected above the policy threshold.
+        </p>
         {current.length === 0 ? (
           <p className="text-terminal-text-dim">No stop levels (no positions or no stop orders).</p>
         ) : (
@@ -194,15 +231,25 @@ export default function OrderManagement() {
               <thead className="sticky top-0 bg-terminal-surface z-10">
                 <tr className="border-b border-terminal-border text-left">
                   <th className="py-2 font-mono">Ticker</th>
-                  <th className="py-2 font-mono">Stop price</th>
+                  <th className="py-2 font-mono">Live stop</th>
+                  <th className="py-2 font-mono">Profit lock</th>
+                  <th className="py-2 font-mono">Lock line GBP</th>
+                  <th className="py-2 font-mono">Active stop GBP</th>
+                  <th className="py-2 font-mono">Protected qty</th>
                   <th className="py-2 font-mono">Source</th>
                 </tr>
               </thead>
               <tbody>
                 {current.map((c) => (
                   <tr key={c.ticker} className="border-b border-terminal-border">
-                    <td className="py-2 font-mono">{c.ticker}</td>
+                    <td className="py-2 font-mono">{cleanTicker(c.ticker)}</td>
                     <td className="py-2 font-mono">{c.stop_price != null ? c.stop_price.toFixed(2) : '—'}</td>
+                    <td className="py-2">
+                      <StatusPill label={profitLockLabel(c.profit_lock_status)} variant={profitLockVariant(c.profit_lock_status)} className="w-fit" />
+                    </td>
+                    <td className="py-2 font-mono">{formatMoney(c.profit_lock_required_price_gbp)}</td>
+                    <td className="py-2 font-mono">{formatMoney(c.profit_lock_stop_price_gbp)}</td>
+                    <td className="py-2 font-mono">{formatQuantity(c.profit_lock_protected_qty)}</td>
                     <td className="py-2 text-terminal-text-dim">{c.source}</td>
                   </tr>
                 ))}

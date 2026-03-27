@@ -59,9 +59,9 @@ In the browser, confirm each route loads without errors:
 | Dashboard Home  | `/`                    | Skeleton loading → state badge, metrics, SSE feed, positions with sparklines, alert banner |
 | Universe        | `/universe`            | Table skeleton → sortable table, expand row for pipeline waterfall + committee reasoning; deep-link: `/universe/AAPL`; URL params: `?q=AAPL&sector=Technology` |
 | Run History     | `/runs`                | Table skeleton → timeline, run diff (from/to)       |
-| Portfolio       | `/portfolio`           | Table skeleton → positions with sparklines + Force Sell button per row, P&L with ▲/▼ arrows, mobile card layout (resize < 640px) |
+| Portfolio       | `/portfolio`           | Table skeleton → positions with sparklines + Force Sell button per row, P&L with ▲/▼ arrows, profit-lock protection state with required/current lock prices, mobile card layout (resize < 640px) |
 | Opportunity     | `/opportunity`         | Table skeleton → UOV queue and scores table (via "More" dropdown) |
-| Order Management| `/orders`              | Table skeleton → current stops, adjustment history (via "More" dropdown) |
+| Order Management| `/orders`              | Table skeleton → current stops merged across orders/adjustments, profit-lock status/required line/active stop/protected qty, adjustment history (via "More" dropdown) |
 | Costs           | `/costs`               | Card skeleton → degradation badge, daily chart, monthly table (via "More" dropdown) |
 | Roadmap         | `/roadmap`             | Project timeline, topic filter, Architecture tab (via "More" dropdown) |
 

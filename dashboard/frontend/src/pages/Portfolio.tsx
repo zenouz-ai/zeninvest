@@ -4,6 +4,7 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
 import { Sparkline } from '../components/Sparkline'
 import { TableSkeleton } from '../components/Skeleton'
+import { StatusPill, type PillVariant } from '../components/StatusPill'
 import type { PortfolioSnapshot, Position } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
@@ -105,6 +106,75 @@ function computeContextYDomain(values: number[]): [number, number] {
   const rawLow = center - span / 2
   const rawHigh = center + span / 2
   return [Math.floor(rawLow / 100) * 100, Math.ceil(rawHigh / 100) * 100]
+}
+
+function formatMoney(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `£${value.toFixed(2)}`
+}
+
+function formatQuantity(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+function profitLockLabel(status: string | null | undefined): string {
+  switch (status) {
+    case 'protected':
+      return 'Protected'
+    case 'eligible':
+      return 'Needs Lock'
+    case 'exit_required':
+      return 'Exit Required'
+    default:
+      return 'Inactive'
+  }
+}
+
+function profitLockVariant(status: string | null | undefined): PillVariant {
+  switch (status) {
+    case 'protected':
+      return 'active'
+    case 'eligible':
+      return 'warning'
+    case 'exit_required':
+      return 'alert'
+    default:
+      return 'dim'
+  }
+}
+
+function hasProfitLockInfo(status: string | null | undefined): boolean {
+  return Boolean(status && status !== 'inactive')
+}
+
+function ProfitLockSummary({
+  status,
+  requiredPriceGbp,
+  stopPriceGbp,
+  protectedQty,
+  quantity,
+}: {
+  status: string | null | undefined
+  requiredPriceGbp?: number | null
+  stopPriceGbp?: number | null
+  protectedQty?: number | null
+  quantity?: number | null
+}) {
+  if (!hasProfitLockInfo(status)) {
+    return <span className="text-terminal-text-dim text-xs">—</span>
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <StatusPill label={profitLockLabel(status)} variant={profitLockVariant(status)} className="w-fit" />
+      <div className="font-mono text-[11px] leading-relaxed text-terminal-text-dim">
+        <div>Lock {formatMoney(requiredPriceGbp)}</div>
+        <div>Stop {formatMoney(stopPriceGbp)}</div>
+        <div>Qty {formatQuantity(protectedQty)} / {formatQuantity(quantity)}</div>
+      </div>
+    </div>
+  )
 }
 
 export default function Portfolio({ publicView = false }: { publicView?: boolean }) {
@@ -363,8 +433,8 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
           ) : null
         }
         description={publicView
-          ? 'Read-only portfolio view: current positions, cash, and value history from the latest snapshot. Charts show portfolio value over time and sector allocation; operator actions remain private.'
-          : 'Current positions, cash, and value history from the latest snapshot (updated each run). Charts show portfolio value over time and sector allocation. Positions table lists ticker, quantity, value, and P&L per position.'}
+          ? 'Read-only portfolio view: current positions, cash, value history, and protection state from the latest snapshot. Charts show portfolio value over time and sector allocation; operator actions remain private.'
+          : 'Current positions, cash, value history, and profit-lock protection state from the latest snapshot (updated each run). Positions table lists ticker, quantity, value, P&L, and whether winners above the sell threshold are fully protected.'}
       />
 
       {/* Force Sell confirmation modal */}
@@ -631,6 +701,9 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
       {/* Positions — mobile cards + desktop table */}
       <div className="card">
         <h3 className="text-lg font-semibold tracking-wide mb-4">Current Positions</h3>
+        <p className="text-xs text-terminal-text-dim mb-4">
+          Profit lock shows whether a winner above the sell threshold is fully protected by a live stop, still needs protection, or should be exited.
+        </p>
         {positions.length === 0 ? (
           <div className="text-center py-8 text-terminal-text-dim">
             No positions
@@ -704,6 +777,18 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
                       </div>
                     )}
                   </div>
+                  {hasProfitLockInfo(pos.profit_lock_status) && (
+                    <div className="mt-3 pt-3 border-t border-terminal-border">
+                      <div className="text-terminal-text-dim text-xs mb-1">Profit Lock</div>
+                      <ProfitLockSummary
+                        status={pos.profit_lock_status}
+                        requiredPriceGbp={pos.profit_lock_required_price_gbp}
+                        stopPriceGbp={pos.profit_lock_stop_price_gbp}
+                        protectedQty={pos.profit_lock_protected_qty}
+                        quantity={pos.quantity}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -761,6 +846,7 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
                       onSort={handlePositionSort}
                       className="px-4 py-3 text-left text-sm"
                     />
+                    <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Protection</th>
                     <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Trend</th>
                     {!publicView && <th scope="col" className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>}
                   </tr>
@@ -776,6 +862,15 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
                       </td>
                       <td className="px-4 py-3 font-mono"><PnlCurrency value={pos.pnl_gbp} /></td>
                       <td className="px-4 py-3 font-mono"><PnlValue value={pos.pnl_pct} suffix="%" /></td>
+                      <td className="px-4 py-3 align-top">
+                        <ProfitLockSummary
+                          status={pos.profit_lock_status}
+                          requiredPriceGbp={pos.profit_lock_required_price_gbp}
+                          stopPriceGbp={pos.profit_lock_stop_price_gbp}
+                          protectedQty={pos.profit_lock_protected_qty}
+                          quantity={pos.quantity}
+                        />
+                      </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
                         {positionSparklines[pos.ticker]?.length >= 2 ? (
                           <Sparkline data={positionSparklines[pos.ticker]} directional width={72} height={20} />

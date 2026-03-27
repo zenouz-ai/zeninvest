@@ -37,7 +37,7 @@
    - Portfolio summary cards (cash balance, positions count, last updated)
    - Portfolio value history line chart
    - Sector allocation pie chart
-   - Current positions table with P&L
+   - Current positions table with P&L and profit-lock protection state
    - Color-coded gains/losses
    - Auto-refresh every 30 seconds
 

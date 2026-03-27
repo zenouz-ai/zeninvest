@@ -102,6 +102,23 @@ def _positions_without_stops(position_map: dict[str, dict], tickers_with_stops: 
     return result
 
 
+def _merge_current_stops(
+    from_orders: list[StopLossCurrentSchema],
+    from_adjustments: list[StopLossCurrentSchema],
+) -> list[StopLossCurrentSchema]:
+    """Prefer live order-backed stops, but keep adjustment-backed rows for tickers with no current order row."""
+    merged: list[StopLossCurrentSchema] = []
+    seen: set[str] = set()
+
+    for item in from_orders + from_adjustments:
+        if item.ticker in seen:
+            continue
+        merged.append(item)
+        seen.add(item.ticker)
+
+    return merged
+
+
 @router.get("/current", response_model=list[StopLossCurrentSchema])
 async def get_current_stops():
     """Current stop-loss levels for all positions (from orders, adjustments, then positions without stops)."""
@@ -114,7 +131,7 @@ async def get_current_stops():
         from_orders = _current_stops_from_orders(session, position_map)
         from_adjustments = _current_stops_from_adjustments(session, position_map)
         tickers_with_stops = {c.ticker for c in from_orders} | {c.ticker for c in from_adjustments}
-        result = from_orders if from_orders else from_adjustments
+        result = _merge_current_stops(from_orders, from_adjustments)
         # Add positions that have no stop order or adjustment
         missing = _positions_without_stops(position_map, tickers_with_stops)
         return result + missing

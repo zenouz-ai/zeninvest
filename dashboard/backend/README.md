@@ -70,12 +70,16 @@ curl -N http://localhost:8000/api/events/stream
 - `GET /api/universe/{ticker}` — Get instrument details with latest committee reasoning
 
 ### Portfolio
-- `GET /api/portfolio/` — Current portfolio snapshot
+- `GET /api/portfolio/` — Current portfolio snapshot, including per-position profit-lock status and required/active lock prices
 - `GET /api/portfolio/history` — Portfolio history (pagination, date filtering)
 
 ### Orders
 - `GET /api/orders/` — Order history (pagination, filtering by ticker/action/status/date)
 - `GET /api/orders/{id}` — Get specific order
+
+### Stop Loss
+- `GET /api/stop-loss/current` — Current live stop rows per ticker, merged from broker orders, stop adjustments, and positions without stops; includes profit-lock fields
+- `GET /api/stop-loss/adjustments` — Stop-loss adjustment history
 
 ### Events
 - `GET /api/events/` — Event log history (pagination, filtering by type/source/date)

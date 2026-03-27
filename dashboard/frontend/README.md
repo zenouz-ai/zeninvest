@@ -43,7 +43,8 @@ VITE_API_URL=http://localhost:8000
 - **Dashboard Home**: Real-time activity feed via SSE, portfolio summary, latest run status
 - **Stock Universe**: Searchable, filterable table of all stocks in the universe
 - **Run History**: Timeline view of all analysis cycles with details
-- **Portfolio**: Current positions, portfolio value history chart, sector allocation
+- **Portfolio**: Current positions, portfolio value history chart, sector allocation, and profit-lock protection state for winners above the sell threshold
+- **Order Management**: Current live stops, profit-lock coverage with required/current GBP stop context, stop adjustment history, and recent broker-order health
 
 ## Tech Stack
 
