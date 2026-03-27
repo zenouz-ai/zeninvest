@@ -1,7 +1,7 @@
 ---
 tags: [agentic-research, implementation, us-4.4]
-status: current
-last_updated: 2026-03-16
+status: delivered
+last_updated: 2026-03-27
 ---
 
 # US-4.4 Agentic Research — Implementation Plan
@@ -17,10 +17,10 @@ last_updated: 2026-03-16
 
 ## Context
 
-- **Status:** US-4.4 is active and partially implemented.
-- **Deferred:** US-2.1/2.2 (calibration), US-5.2 (parameter sensitivity), US-1.6 (Slack commands) — await data or later sprint.
+- **Status:** US-4.4 is delivered. Phase 0 and Phases A-D are complete.
+- **Follow-on stories:** US-2.1/2.2 (calibration) and US-5.2 (parameter sensitivity) remain separate, later-stage work and are not blockers for US-4.4 completion.
 
-## Todo List (Execution Order)
+## Execution Order (Delivered)
 
 | # | Task | Phase | Est. |
 |---|------|-------|------|
@@ -34,7 +34,7 @@ last_updated: 2026-03-16
 | 8 | Wire tool-use into Moderation (GPT-4o skeptic, Gemini risk) | C | 1 session |
 | 9 | Dashboard research panel, API `/api/research/*`, Slack, EventsLog | D | 1 session |
 
-**Total:** ~6 sessions. Phase 0 complete. Phases A–D are sequential; B and C can be parallelised after A.
+**Total:** ~6 sessions delivered. Phase 0 and Phases A-D are complete.
 
 ### Phase 0 Context
 
@@ -50,25 +50,25 @@ last_updated: 2026-03-16
 
 ## Phase A Checklist
 
-- [ ] `src/agents/research/providers/base.py` — `SearchProviderProtocol`, `SearchResult`
-- [ ] `src/agents/research/providers/brave.py` — Brave Search client (reuse HTTP patterns from `brave_enrichment`)
-- [ ] `src/agents/research/providers/tavily.py` — Tavily client
-- [ ] `src/agents/research/providers/router.py` — ProviderRouter (primary/fallback/additional)
-- [ ] `src/agents/research/sec_search.py` — SEC EDGAR (direct API)
-- [ ] `src/agents/research/cache.py` — ResearchCache (4h TTL)
-- [ ] `src/agents/research/budget.py` — ResearchBudget (per-member caps 20/8/7, total 35)
-- [ ] `src/agents/research/executor.py` — ResearchExecutor
-- [ ] `src/agents/research/tools.py` — tool definitions
-- [ ] `ResearchLog` model + Alembic migration
-- [ ] Config: `research` block in settings.yaml
-- [ ] Integration: `search_api_tracker.check_search_api_budget()` before each search
-- [ ] Tests passing; `research.enabled: false` default
+- [x] `src/agents/research/providers/base.py` — `SearchProviderProtocol`, `SearchResult`
+- [x] `src/agents/research/providers/brave.py` — Brave Search client (reuse HTTP patterns from `brave_enrichment`)
+- [x] `src/agents/research/providers/tavily.py` — Tavily client
+- [x] `src/agents/research/providers/router.py` — ProviderRouter (primary/fallback/additional)
+- [x] `src/agents/research/sec_search.py` — SEC EDGAR (direct API)
+- [x] `src/agents/research/cache.py` — ResearchCache (4h TTL)
+- [x] `src/agents/research/budget.py` — ResearchBudget (per-member caps 20/8/7, total 35)
+- [x] `src/agents/research/executor.py` — ResearchExecutor
+- [x] `src/agents/research/tools.py` — tool definitions
+- [x] `ResearchLog` model + Alembic migration
+- [x] Config: `research` block in settings.yaml
+- [x] Integration: `search_api_tracker.check_search_api_budget()` before each search
+- [x] Tests passing; `research.enabled: false` default
 
 ## Phase B Checklist
 
-- [ ] Refactor `synthesize_with_claude()` for tool-use loop
-- [ ] Max 8 iterations, 30s timeout
-- [ ] `research.strategy_research_enabled: false` default
+- [x] Refactor `synthesize_with_claude()` for tool-use loop
+- [x] Max 8 iterations, 30s timeout
+- [x] `research.strategy_research_enabled: false` default
 
 ## Phase C Checklist
 
@@ -91,4 +91,4 @@ last_updated: 2026-03-16
 | GOVERNANCE.md | ResearchLog audit, budget monitoring |
 | DATA_RATIONALE.md | Research tools as data sources |
 | DASHBOARD.md | Research panel |
-| SOPHISTICATION_ROADMAP.md | US-4.4 status reflects partial implementation (In Progress) |
+| SOPHISTICATION_ROADMAP.md | US-4.4 status reflects delivered implementation |
