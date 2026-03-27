@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.agents.conversation.orchestrator import ConversationOrchestrator
+from src.agents.conversation.specialists import ChatSpecialistEngine
 from src.agents.conversation.planner import ChatPlannerDecision
 from src.agents.conversation.session_manager import SessionManager
 from src.data.models import Base, Instrument
@@ -471,6 +472,32 @@ def test_committee_fallback_fills_missing_roles(orchestrator):
     assert roles.count("bear") == 1
     assert "bull" in roles
     assert "risk" in roles
+
+
+def test_specialist_payload_parser_salvages_plain_text():
+    engine = ChatSpecialistEngine()
+
+    payload = engine._parse_specialist_payload(  # noqa: SLF001
+        "Bull case: AMD still has constructive AI demand momentum and improving relative strength.",
+        role="bull",
+        summary_keys=("summary", "thesis"),
+    )
+
+    assert "constructive AI demand momentum" in payload["summary"]
+    assert payload["thesis"] == payload["summary"]
+
+
+def test_specialist_payload_parser_extracts_fenced_json():
+    engine = ChatSpecialistEngine()
+
+    payload = engine._parse_specialist_payload(  # noqa: SLF001
+        "```json\n{\"summary\":\"Macro risk remains elevated.\",\"confidence\":0.52}\n```",
+        role="risk",
+        summary_keys=("summary", "assessment"),
+    )
+
+    assert payload["summary"] == "Macro risk remains elevated."
+    assert payload["confidence"] == 0.52
 
 
 def test_agentic_turn_persists_workflow_and_evidence(orchestrator):

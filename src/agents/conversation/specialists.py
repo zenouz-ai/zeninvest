@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import Any
 
 import anthropic
@@ -82,8 +83,8 @@ class ChatSpecialistEngine:
                 cycle_id=f"chat-specialist-{ticker}",
                 purpose="conversation_specialist_bull",
             )
-            content = response.content[0].text if response.content else "{}"
-            payload = json.loads(content)
+            content = self._extract_anthropic_text(response)
+            payload = self._parse_specialist_payload(content, role="bull", summary_keys=("summary", "thesis"))
             return {
                 "role": "bull",
                 "provider": Provider.ANTHROPIC.value,
@@ -189,7 +190,11 @@ class ChatSpecialistEngine:
                 cycle_id=f"chat-specialist-{ticker}",
                 purpose="conversation_specialist_risk",
             )
-            payload = json.loads((response.text or "{}").strip())
+            payload = self._parse_specialist_payload(
+                (response.text or "").strip(),
+                role="risk",
+                summary_keys=("summary", "assessment"),
+            )
             return {
                 "role": "risk",
                 "provider": Provider.GOOGLE.value,
@@ -201,6 +206,64 @@ class ChatSpecialistEngine:
         except Exception as exc:
             logger.warning("Risk specialist failed: %s", exc, exc_info=True)
             return None
+
+    def _extract_anthropic_text(self, response: Any) -> str:
+        blocks = getattr(response, "content", None) or []
+        parts: list[str] = []
+        for block in blocks:
+            text = getattr(block, "text", None)
+            if text:
+                parts.append(str(text))
+        return "\n".join(parts).strip()
+
+    def _parse_specialist_payload(
+        self,
+        content: str,
+        *,
+        role: str,
+        summary_keys: tuple[str, ...],
+    ) -> dict[str, Any]:
+        cleaned = (content or "").strip()
+        if not cleaned:
+            raise ValueError(f"{role} specialist returned empty content")
+
+        candidate_texts = [cleaned]
+        fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+        if fenced_match:
+            candidate_texts.append(fenced_match.group(1).strip())
+
+        object_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+        if object_match:
+            candidate_texts.append(object_match.group(0).strip())
+
+        for candidate in candidate_texts:
+            try:
+                payload = json.loads(candidate)
+            except Exception:
+                continue
+            if isinstance(payload, dict):
+                return payload
+
+        # Salvage useful plain text when the model ignored the JSON-only instruction.
+        logger.info("%s specialist returned non-JSON text; salvaging summary output.", role.capitalize())
+        summary = self._summarize_plain_text(cleaned)
+        if not summary:
+            raise ValueError(f"{role} specialist returned unparsable content")
+        payload: dict[str, Any] = {"summary": summary}
+        if "assessment" in summary_keys:
+            payload["assessment"] = summary
+        if "thesis" in summary_keys:
+            payload["thesis"] = summary
+        return payload
+
+    def _summarize_plain_text(self, content: str) -> str:
+        stripped = re.sub(r"```(?:json)?|```", "", content, flags=re.IGNORECASE).strip()
+        stripped = re.sub(r"\s+", " ", stripped)
+        if not stripped:
+            return ""
+        if len(stripped) <= 320:
+            return stripped
+        return stripped[:317].rstrip() + "..."
 
     def _fallback_committee_views(
         self,
