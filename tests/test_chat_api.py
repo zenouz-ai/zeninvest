@@ -49,6 +49,7 @@ def test_create_list_and_get_session(client):
     assert detail["title"] == "Test session"
     assert detail["turns"] == []
     assert detail["actions"] == []
+    assert detail["cost_summary"]["total_cost_gbp"] == 0.0
 
     listed = client.get("/api/chat/sessions")
     assert listed.status_code == 200

@@ -18,7 +18,7 @@ Define a single implementation plan for a dialogue-driven trading workflow that 
 - Agentic research capabilities (US-4.4, delivered)
 
 This document is the canonical design for cross-channel conversational trade operations.
-Current implementation state: the core US-1.9 MVP has landed in the repo. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, bounded conversational intents, chat SSE events, and the chat-first dashboard `Commands` console are now implemented. Final end-to-end validation, migration rollout, and deployment verification are still pending before the story is treated as closed.
+Current implementation state: the core US-1.9 MVP is now deployed on the VPS. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, bounded conversational intents, chat SSE events, Slack thread continuity, dashboard-to-Slack reply mirroring for Slack-backed sessions, and the chat-first dashboard `Commands` console are implemented. Chat-triggered LLM calls and paid research calls now carry `chat_session_id` / `chat_turn_id` attribution so session-level operator spend can be measured directly.
 
 ---
 

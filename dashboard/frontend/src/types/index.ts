@@ -304,6 +304,18 @@ export interface ChatResearchLog {
   created_at: string | null
 }
 
+export interface ChatCostSummary {
+  llm_calls: number
+  llm_cost_gbp: number
+  research_calls: number
+  research_cost_usd: number
+  research_cost_gbp: number
+  total_cost_gbp: number
+  by_provider_gbp: Record<string, number>
+  by_model_gbp: Record<string, number>
+  research_by_provider_gbp: Record<string, number>
+}
+
 export interface ChatSessionSummary {
   id: number
   status: string
@@ -326,6 +338,7 @@ export interface ChatSessionDetail extends ChatSessionSummary {
   turns: ChatTurn[]
   actions: ChatAction[]
   research_logs: ChatResearchLog[]
+  cost_summary?: ChatCostSummary | null
 }
 
 // --- Evolution Planner ---

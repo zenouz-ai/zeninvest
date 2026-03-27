@@ -395,6 +395,8 @@ class ResearchLog(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     cycle_id = Column(String(50), nullable=True, index=True)
+    chat_session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    chat_turn_id = Column(Integer, ForeignKey("chat_turns.id", ondelete="SET NULL"), nullable=True, index=True)
     member = Column(String(30), nullable=False)  # strategy, skeptic, risk
     ticker = Column(String(50), nullable=True, index=True)
     tool_name = Column(String(50), nullable=False)
@@ -418,6 +420,8 @@ class CostLog(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    chat_session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    chat_turn_id = Column(Integer, ForeignKey("chat_turns.id", ondelete="SET NULL"), nullable=True, index=True)
     provider = Column(String(50), nullable=False)  # anthropic, openai, google
     model = Column(String(100), nullable=False)
     input_tokens = Column(Integer, nullable=False, default=0)

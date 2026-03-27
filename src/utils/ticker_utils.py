@@ -2,6 +2,8 @@
 
 # See CLAUDE.md Ticker Format Gotcha for rationale.
 
+import re
+
 from src.data.database import get_session
 from src.data.models import Instrument
 from src.utils.logger import get_logger
@@ -20,6 +22,18 @@ MARKET_SYMBOL_TO_T212_OVERRIDES = {
     market_symbol: t212_symbol
     for t212_symbol, market_symbol in T212_TO_MARKET_SYMBOL_OVERRIDES.items()
 }
+
+# Common user-facing company aliases that do not appear verbatim in instrument names.
+COMPANY_NAME_ALIASES = {
+    "GOOGLE": "GOOGL",
+    "GOOGLE CLASS A": "GOOGL",
+    "GOOGLE CLASS C": "GOOG",
+    "ALPHABET CLASS A": "GOOGL",
+    "ALPHABET CLASS C": "GOOG",
+    "FACEBOOK": "META",
+}
+
+_LEADING_TRAILING_PUNCT_RE = re.compile(r"^[^\w]+|[^\w./-]+$")
 
 
 def t212_to_yf(ticker: str) -> str:
@@ -65,7 +79,10 @@ def resolve_ticker_to_t212(symbol: str) -> str | None:
     """
     if not symbol or not symbol.strip():
         return None
-    symbol = symbol.strip().upper()
+    symbol = _LEADING_TRAILING_PUNCT_RE.sub("", symbol.strip()).upper()
+    symbol = COMPANY_NAME_ALIASES.get(symbol, symbol)
+    if not symbol:
+        return None
     session = get_session()
     try:
         # 0. Known alias override (e.g. IONQ -> DMYI_US_EQ, RKLB -> VACQ_US_EQ)

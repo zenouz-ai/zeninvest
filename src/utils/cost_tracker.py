@@ -8,6 +8,7 @@ from sqlalchemy import func
 
 from src.data.database import get_session
 from src.data.models import CostLog
+from src.utils.chat_cost_context import current_chat_cost_context
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -90,14 +91,23 @@ def log_cost(
     output_tokens: int,
     cycle_id: str | None = None,
     purpose: str | None = None,
+    chat_session_id: int | None = None,
+    chat_turn_id: int | None = None,
 ) -> CostResult:
     """Log an LLM API call cost to the database."""
     cost_gbp = calculate_cost(provider, input_tokens, output_tokens)
+    bound_session_id, bound_turn_id = current_chat_cost_context()
+    if chat_session_id is None:
+        chat_session_id = bound_session_id
+    if chat_turn_id is None:
+        chat_turn_id = bound_turn_id
 
     session = get_session()
     try:
         entry = CostLog(
             timestamp=datetime.now(timezone.utc),
+            chat_session_id=chat_session_id,
+            chat_turn_id=chat_turn_id,
             provider=provider,
             model=model,
             input_tokens=input_tokens,

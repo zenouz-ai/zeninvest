@@ -6,8 +6,10 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from sqlalchemy import func
+
 from src.data.database import get_session
-from src.data.models import ChatAction, ChatResearchLog, ChatSession, ChatTurn
+from src.data.models import ChatAction, ChatResearchLog, ChatSession, ChatTurn, CostLog, ResearchLog
 from src.utils.logger import get_logger
 
 logger = get_logger("session_manager")
@@ -543,4 +545,71 @@ class SessionManager:
         summary["turns"] = [self._serialize_turn(turn) for turn in turns]
         summary["actions"] = [self._serialize_action(action) for action in actions]
         summary["research_logs"] = [self._serialize_research_log(log) for log in research_logs]
+        summary["cost_summary"] = self._serialize_cost_summary(int(row.id), session)
         return summary
+
+    def _serialize_cost_summary(self, session_id: int, session: Any) -> dict[str, Any]:
+        llm_rows = (
+            session.query(
+                CostLog.provider,
+                CostLog.model,
+                func.count(CostLog.id).label("calls"),
+                func.coalesce(func.sum(CostLog.cost_gbp), 0.0).label("cost_gbp"),
+            )
+            .filter(CostLog.chat_session_id == session_id)
+            .group_by(CostLog.provider, CostLog.model)
+            .all()
+        )
+        research_rows = (
+            session.query(
+                ResearchLog.provider,
+                func.count(ResearchLog.id).label("calls"),
+                func.coalesce(func.sum(ResearchLog.cost_usd), 0.0).label("cost_usd"),
+            )
+            .filter(ResearchLog.chat_session_id == session_id)
+            .group_by(ResearchLog.provider)
+            .all()
+        )
+
+        llm_calls = 0
+        llm_cost_gbp = 0.0
+        by_provider_gbp: dict[str, float] = {}
+        by_model_gbp: dict[str, float] = {}
+        for provider, model, calls, cost_gbp in llm_rows:
+            provider_key = str(provider or "unknown")
+            model_key = str(model or "unknown")
+            calls_int = int(calls or 0)
+            cost_value = round(float(cost_gbp or 0.0), 4)
+            llm_calls += calls_int
+            llm_cost_gbp += cost_value
+            by_provider_gbp[provider_key] = round(by_provider_gbp.get(provider_key, 0.0) + cost_value, 4)
+            by_model_gbp[model_key] = round(by_model_gbp.get(model_key, 0.0) + cost_value, 4)
+
+        research_calls = 0
+        research_cost_usd = 0.0
+        research_by_provider_gbp: dict[str, float] = {}
+        for provider, calls, cost_usd in research_rows:
+            provider_key = str(provider or "unknown")
+            calls_int = int(calls or 0)
+            usd_value = float(cost_usd or 0.0)
+            gbp_value = round(usd_value * 0.79, 4)
+            research_calls += calls_int
+            research_cost_usd += usd_value
+            research_by_provider_gbp[provider_key] = round(
+                research_by_provider_gbp.get(provider_key, 0.0) + gbp_value,
+                4,
+            )
+
+        research_cost_gbp = round(research_cost_usd * 0.79, 4)
+        llm_cost_gbp = round(llm_cost_gbp, 4)
+        return {
+            "llm_calls": llm_calls,
+            "llm_cost_gbp": llm_cost_gbp,
+            "research_calls": research_calls,
+            "research_cost_usd": round(research_cost_usd, 4),
+            "research_cost_gbp": research_cost_gbp,
+            "total_cost_gbp": round(llm_cost_gbp + research_cost_gbp, 4),
+            "by_provider_gbp": by_provider_gbp,
+            "by_model_gbp": by_model_gbp,
+            "research_by_provider_gbp": research_by_provider_gbp,
+        }

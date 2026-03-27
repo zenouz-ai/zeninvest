@@ -24,6 +24,7 @@ from src.data.models import ChatAction, Instrument, PortfolioSnapshot
 from src.orchestrator.direct_trade_run import DirectTradeRunner
 from src.orchestrator.single_ticker_run import PreparedTradeExecution, SingleTickerResult, SingleTickerRunner
 from src.utils.config import get_settings
+from src.utils.chat_cost_context import bind_chat_cost_context
 from src.utils.logger import get_logger
 from src.utils.ticker_utils import resolve_ticker_to_t212, t212_to_yf
 
@@ -56,6 +57,11 @@ PORTFOLIO_PNL_RE = re.compile(
 )
 CONFIRM_WORDS = {"yes", "y", "confirm", "approved", "do it", "go ahead"}
 REJECT_WORDS = {"no", "n", "reject", "cancel", "stop"}
+RESEARCH_PREFIX_RE = re.compile(
+    r"^\s*(?:what about|how about|tell me about|research|look into|explain|dig deeper on|happening with)\s+",
+    re.IGNORECASE,
+)
+SLACK_REPLY_MAX_CHARS = 3500
 
 
 def _utcnow() -> datetime:
@@ -106,6 +112,7 @@ class ConversationOrchestrator:
         self.session_manager = session_manager or SessionManager()
         self._data_fetcher = data_fetcher
         self._order_manager = order_manager
+        self._slack_web_client: Any | None = None
 
     @property
     def data_fetcher(self) -> DataFetcher:
@@ -195,15 +202,16 @@ class ConversationOrchestrator:
                 return self.reject_action(session_id=session_id, action_id=pending_action["id"], channel_type=channel_type)
 
             intent = self._classify_intent(message_text, context)
-            result = self._handle_intent(
-                session_id=session_id,
-                turn_id=user_turn_id,
-                message_text=message_text,
-                intent=intent,
-                context=context,
-                channel_type=channel_type,
-                user_id=user_id,
-            )
+            with bind_chat_cost_context(session_id=session_id, turn_id=user_turn_id):
+                result = self._handle_intent(
+                    session_id=session_id,
+                    turn_id=user_turn_id,
+                    message_text=message_text,
+                    intent=intent,
+                    context=context,
+                    channel_type=channel_type,
+                    user_id=user_id,
+                )
 
             self.session_manager.add_turn(
                 session_id,
@@ -211,6 +219,11 @@ class ConversationOrchestrator:
                 message_text=result["assistant_text"],
                 response_json=result.get("response_json"),
                 channel_type=channel_type,
+            )
+            self._mirror_assistant_reply_to_slack(
+                session_id=session_id,
+                message_text=result["assistant_text"],
+                source_channel_type=channel_type,
             )
             next_context = result.get("context_update")
             if isinstance(next_context, dict):
@@ -239,6 +252,11 @@ class ConversationOrchestrator:
                 message_text=error_text,
                 response_json={"error": str(exc)},
                 channel_type=channel_type,
+            )
+            self._mirror_assistant_reply_to_slack(
+                session_id=session_id,
+                message_text=error_text,
+                source_channel_type=channel_type,
             )
             return self._require_session(session_id)
 
@@ -756,10 +774,40 @@ class ConversationOrchestrator:
         mode: str,
         context: dict[str, Any],
     ) -> dict[str, Any]:
-        tickers = [resolve_ticker_to_t212(subject) for subject in subjects]
-        tickers = [ticker for ticker in tickers if ticker]
+        resolved_pairs: list[tuple[str, str]] = []
+        unresolved: list[str] = []
+        for subject in subjects:
+            ticker = resolve_ticker_to_t212(subject)
+            if ticker:
+                resolved_pairs.append((subject, ticker))
+            else:
+                unresolved.append(subject)
+
+        tickers = list(dict.fromkeys(ticker for _, ticker in resolved_pairs))
         if not tickers and context.get("last_subject_tickers"):
             tickers = [ticker for ticker in context["last_subject_tickers"] if ticker]
+        if mode == "compare" and len(tickers) < 2:
+            unresolved_text = ", ".join(unresolved) if unresolved else "one of those companies"
+            if tickers:
+                assistant_text = (
+                    f"I could only resolve {', '.join(tickers)}. "
+                    f"I couldn't resolve {unresolved_text}. "
+                    "Use the ticker symbol or a more specific company name and I'll compare them."
+                )
+            else:
+                assistant_text = (
+                    f"I couldn't resolve {unresolved_text} to tradeable tickers. "
+                    "Use the ticker symbol or a more specific company name and I'll compare them."
+                )
+            return {
+                "assistant_text": assistant_text,
+                "context_update": context,
+                "response_json": {
+                    "kind": "research_error",
+                    "resolved_tickers": tickers,
+                    "unresolved_subjects": unresolved,
+                },
+            }
         if not tickers:
             return {
                 "assistant_text": "I need at least one ticker or company name to analyze.",
@@ -783,13 +831,24 @@ class ConversationOrchestrator:
             header = "Comparison"
         else:
             header = "Research summary"
+        prefix = ""
+        if unresolved:
+            prefix = (
+                "I couldn't resolve these names, so I left them out: "
+                + ", ".join(unresolved)
+                + ".\n\n"
+            )
         return {
-            "assistant_text": f"{header}\n\n" + "\n\n".join(lines),
+            "assistant_text": prefix + f"{header}\n\n" + "\n\n".join(lines),
             "context_update": {
                 "last_subject_tickers": tickers,
                 "last_selection_tickers": tickers,
             },
-            "response_json": {"kind": "research", "tickers": tickers},
+            "response_json": {
+                "kind": "research",
+                "tickers": tickers,
+                "unresolved_subjects": unresolved,
+            },
         }
 
     def _execute_action(self, action: dict[str, Any], *, channel_type: str) -> str:
@@ -996,6 +1055,11 @@ class ConversationOrchestrator:
             response_json={"message": message_text},
             channel_type=channel_type,
         )
+        self._mirror_assistant_reply_to_slack(
+            session_id=session_id,
+            message_text=message_text,
+            source_channel_type=channel_type,
+        )
 
     def _build_research_summary(self, ticker_t212: str) -> tuple[str, str]:
         yf_ticker = t212_to_yf(ticker_t212)
@@ -1116,11 +1180,17 @@ class ConversationOrchestrator:
             if context.get("last_subject_tickers") and any(token in lowered for token in ("that", "those", "it", "them")):
                 return list(context["last_subject_tickers"])
             chunks = re.split(r"\band\b|,|vs\.?|versus", message_text, flags=re.IGNORECASE)
-            subjects = [self._resolve_subject(chunk, context) for chunk in chunks]
+            subjects = [self._normalize_research_subject(chunk) for chunk in chunks]
+            subjects = [self._resolve_subject(subject, context) for subject in subjects]
             subjects = [subject for subject in subjects if subject and len(subject.split()) <= 6]
             if subjects:
                 return subjects
         return []
+
+    def _normalize_research_subject(self, subject: str) -> str:
+        cleaned = _clean_text(subject).strip(".,?!:;")
+        cleaned = RESEARCH_PREFIX_RE.sub("", cleaned).strip(".,?!:;")
+        return cleaned
 
     def _resolve_subjects(self, subjects: list[str], context: dict[str, Any]) -> list[str]:
         resolved: list[str] = []
@@ -1216,3 +1286,81 @@ class ConversationOrchestrator:
             )
         except Exception:
             logger.debug("Failed to emit chat event", exc_info=True)
+
+    def _get_slack_web_client(self) -> Any | None:
+        if self._slack_web_client is not None:
+            return self._slack_web_client
+
+        bot_token = self.settings.slack_bot_token
+        if not bot_token:
+            return None
+
+        try:
+            from slack_sdk import WebClient
+        except Exception:
+            logger.debug("slack_sdk unavailable; skipping Slack mirror", exc_info=True)
+            return None
+
+        self._slack_web_client = WebClient(token=bot_token)
+        return self._slack_web_client
+
+    def _chunk_slack_reply(self, text: str, *, max_chars: int = SLACK_REPLY_MAX_CHARS) -> list[str]:
+        if len(text) <= max_chars:
+            return [text]
+
+        lines = text.splitlines()
+        chunks: list[str] = []
+        current: list[str] = []
+        current_len = 0
+
+        for line in lines:
+            line_len = len(line) + 1
+            if current and current_len + line_len > max_chars:
+                chunks.append("\n".join(current))
+                current = [line]
+                current_len = line_len
+            else:
+                current.append(line)
+                current_len += line_len
+
+        if current:
+            chunks.append("\n".join(current))
+        return chunks or [text]
+
+    def _mirror_assistant_reply_to_slack(
+        self,
+        *,
+        session_id: int,
+        message_text: str,
+        source_channel_type: str,
+    ) -> None:
+        if source_channel_type == "slack" or not message_text.strip():
+            return
+
+        session_detail = self.session_manager.get_session(session_id)
+        if not session_detail or session_detail.get("channel_type") != "slack":
+            return
+
+        thread_ts = str(session_detail.get("channel_session_key") or "").strip()
+        channel_id = str(self.settings.slack_trade_channel_id or "").strip()
+        if not thread_ts or not channel_id:
+            return
+
+        client = self._get_slack_web_client()
+        if client is None:
+            return
+
+        try:
+            for idx, chunk in enumerate(self._chunk_slack_reply(message_text)):
+                chunk_text = chunk if idx == 0 else f"(continued)\n{chunk}"
+                client.chat_postMessage(
+                    channel=channel_id,
+                    thread_ts=thread_ts,
+                    text=chunk_text,
+                )
+        except Exception:
+            logger.warning(
+                "Failed to mirror dashboard reply to Slack thread for session %s",
+                session_id,
+                exc_info=True,
+            )

@@ -12,6 +12,7 @@ from src.agents.research.sec_search import sec_search
 from src.agents.research.types import SECResult, SearchResult
 from src.data.database import get_session
 from src.data.models import ResearchLog
+from src.utils.chat_cost_context import current_chat_cost_context
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -177,11 +178,14 @@ class ResearchExecutor:
         latency_ms: int = 0,
     ) -> None:
         """Persist to ResearchLog and emit EventsLog for dashboard."""
+        chat_session_id, chat_turn_id = current_chat_cost_context()
         session = get_session()
         try:
             session.add(
                 ResearchLog(
                     cycle_id=self._cycle_id,
+                    chat_session_id=chat_session_id,
+                    chat_turn_id=chat_turn_id,
                     member=member,
                     ticker=ticker,
                     tool_name=tool,

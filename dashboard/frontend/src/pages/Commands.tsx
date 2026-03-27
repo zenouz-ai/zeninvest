@@ -9,6 +9,7 @@ import { chatApi, commandsApi } from '../api/client'
 import { useSSE } from '../hooks/useSSE'
 import type {
   ChatAction,
+  ChatCostSummary,
   ChatResearchLog,
   ChatSessionDetail,
   ChatSessionSummary,
@@ -56,6 +57,16 @@ function safeFormat(iso: string | null): string {
   } catch {
     return iso
   }
+}
+
+function formatCurrency(value: number | null | undefined, currency = 'GBP'): string {
+  const numeric = Number(value ?? 0)
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(numeric)
 }
 
 function relativeSessionLabel(session: ChatSessionSummary): string {
@@ -324,9 +335,23 @@ function ActionRail({
     () => (sessionDetail?.research_logs || []).slice(0, 8),
     [sessionDetail]
   )
+  const costSummary = sessionDetail?.cost_summary
 
   return (
     <div className="space-y-4">
+      <Panel className="space-y-4">
+        <SectionHeader
+          eyebrow="Cost Attribution"
+          title="Session Spend"
+          subtitle="LLM and paid research calls triggered by this conversation are tagged to the session."
+        />
+        {!costSummary ? (
+          <p className="text-sm text-terminal-text-dim">No session cost summary available yet.</p>
+        ) : (
+          <SessionCostSummaryCard costSummary={costSummary} />
+        )}
+      </Panel>
+
       <Panel className="space-y-4">
         <SectionHeader
           eyebrow="Execution"
@@ -441,6 +466,87 @@ function ActionRail({
           </div>
         )}
       </Panel>
+    </div>
+  )
+}
+
+function SessionCostSummaryCard({ costSummary }: { costSummary: ChatCostSummary }) {
+  const providerEntries = Object.entries(costSummary.by_provider_gbp || {})
+  const modelEntries = Object.entries(costSummary.by_model_gbp || {})
+  const researchProviderEntries = Object.entries(costSummary.research_by_provider_gbp || {})
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-terminal-text-dim">Total</p>
+          <p className="mt-1 text-lg font-semibold text-terminal-text">{formatCurrency(costSummary.total_cost_gbp)}</p>
+        </div>
+        <div className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-terminal-text-dim">LLM</p>
+          <p className="mt-1 text-lg font-semibold text-terminal-text">{formatCurrency(costSummary.llm_cost_gbp)}</p>
+          <p className="mt-1 text-[11px] text-terminal-text-dim">{costSummary.llm_calls} calls</p>
+        </div>
+        <div className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-terminal-text-dim">Research</p>
+          <p className="mt-1 text-lg font-semibold text-terminal-text">{formatCurrency(costSummary.research_cost_gbp)}</p>
+          <p className="mt-1 text-[11px] text-terminal-text-dim">
+            {costSummary.research_calls} paid calls · {formatCurrency(costSummary.research_cost_usd, 'USD')}
+          </p>
+        </div>
+        <div className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
+          <p className="text-[11px] uppercase tracking-wide text-terminal-text-dim">Split</p>
+          <p className="mt-1 text-sm text-terminal-text">
+            Rules and free market-data paths do not show up here unless they trigger a paid model or paid search call.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[11px] uppercase tracking-wide text-terminal-text-dim">LLM by provider</p>
+        {providerEntries.length === 0 ? (
+          <p className="text-sm text-terminal-text-dim">No LLM spend recorded for this session.</p>
+        ) : (
+          <div className="space-y-2">
+            {providerEntries.map(([provider, value]) => (
+              <div key={provider} className="flex items-center justify-between rounded-xl border border-terminal-border bg-terminal-surface/30 px-3 py-2 text-sm">
+                <span className="text-terminal-text">{provider}</span>
+                <span className="font-mono text-terminal-text">{formatCurrency(value)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[11px] uppercase tracking-wide text-terminal-text-dim">LLM by model</p>
+        {modelEntries.length === 0 ? (
+          <p className="text-sm text-terminal-text-dim">No model-level spend recorded for this session.</p>
+        ) : (
+          <div className="space-y-2">
+            {modelEntries.map(([model, value]) => (
+              <div key={model} className="flex items-center justify-between rounded-xl border border-terminal-border bg-terminal-surface/30 px-3 py-2 text-sm">
+                <span className="break-all text-terminal-text">{model}</span>
+                <span className="font-mono text-terminal-text">{formatCurrency(value)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {researchProviderEntries.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-[11px] uppercase tracking-wide text-terminal-text-dim">Paid research by provider</p>
+          <div className="space-y-2">
+            {researchProviderEntries.map(([provider, value]) => (
+              <div key={provider} className="flex items-center justify-between rounded-xl border border-terminal-border bg-terminal-surface/30 px-3 py-2 text-sm">
+                <span className="text-terminal-text">{provider}</span>
+                <span className="font-mono text-terminal-text">{formatCurrency(value)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

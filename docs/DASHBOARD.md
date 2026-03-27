@@ -314,14 +314,19 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 ### Page 7: Commands & Operator Audit
 
-**Slack command audit trail:**
-- Table backed by `GET /api/commands/` with ticker/action/status filters, stats cards, and expandable rows
+**Chat-first conversational console:**
+- Shared session rail for dashboard-originated chat and Slack-originated threads continued in the browser
+- Live thread view with composer, explicit confirm/reject controls, recent action ledger, and conversational research trace
+- Dashboard replies continue the same session and mirror back into Slack when the session originated in Slack
+- Session spend card surfaces chat-triggered LLM and paid research cost so operator conversations can be measured independently from scheduled-cycle cost
+
+**Secondary legacy audit:**
+- `Command History` tab remains backed by `GET /api/commands/` with ticker/action/status filters, stats cards, and expandable rows
 - Each row preserves the operator intent, confirmation state, force-override usage, cycle linkage, order linkage, and human-readable response message
-- Designed to make Slack-originated trade actions inspectable from the same dashboard surface as scheduled cycles
 
 **Operational value:**
 - Confirms whether a manual request was blocked by moderation, vetoed by risk, waiting on confirmation, accepted by Trading 212, or failed downstream
-- Keeps conversational/operator workflow evidence separate from autonomous scheduled-cycle evidence
+- Keeps conversational/operator workflow evidence separate from autonomous scheduled-cycle evidence while retaining the older one-shot Slack command ledger
 
 ### Page 8: World News & Macro Regime
 
@@ -342,6 +347,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Dashboard Home "Cumulative" card (separate): Screened, Investigated (with breakdown: 1×, 2×, 3+ reviews), Uninvestigated (with breakdown: enriched vs not enriched), Orders — lifetime stats.
 - Costs page: daily chart stacks API (Brave/Tavily) + Agentic Research + LLM (Anthropic, OpenAI, Google); monthly table has API, Research, LLM, and per-provider columns
 - API cost is estimated from `api_logs` call counts × published rates (Brave, Tavily); LLM cost from `cost_logs`; Research cost from `research_logs.cost_usd` (converted USD→GBP)
+- Conversational session detail also exposes a session-scoped cost summary by aggregating `cost_logs.chat_session_id` and `research_logs.chat_session_id`, so `/commands` can show what a specific operator conversation consumed
 
 **LLM costs (from `cost_logs`):**
 - Daily spend by provider (Anthropic, OpenAI, Google) — bar/area chart
