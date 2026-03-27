@@ -256,6 +256,78 @@ export interface CommandStats {
   by_action: Record<string, number>
 }
 
+// --- Conversational Trading ---
+
+export interface ChatTurn {
+  id: number
+  session_id: number
+  turn_index: number
+  role: 'user' | 'assistant' | 'system'
+  channel_type: 'dashboard' | 'slack' | null
+  message_text: string
+  intent_json?: Record<string, unknown> | null
+  resolution_json?: Record<string, unknown> | null
+  response_json?: Record<string, unknown> | null
+  created_at: string | null
+}
+
+export interface ChatAction {
+  id: number
+  session_id: number
+  turn_id: number | null
+  action_type: string
+  status: string
+  title: string | null
+  ticker: string | null
+  payload_json?: Record<string, unknown> | null
+  preview_text: string | null
+  result_json?: Record<string, unknown> | null
+  requires_confirmation: boolean
+  rejection_reason: string | null
+  expires_at: string | null
+  confirmed_at: string | null
+  executed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface ChatResearchLog {
+  id: number
+  session_id: number
+  turn_id: number | null
+  tool_name: string
+  provider: string | null
+  query: string | null
+  result_summary: string | null
+  cache_hit: boolean
+  latency_ms: number | null
+  created_at: string | null
+}
+
+export interface ChatSessionSummary {
+  id: number
+  status: string
+  channel_type: 'dashboard' | 'slack'
+  channel_session_key: string | null
+  last_channel_type: 'dashboard' | 'slack' | null
+  user_id: string | null
+  title: string | null
+  started_at: string | null
+  last_activity_at: string | null
+  ended_at: string | null
+  linked_cycle_id: string | null
+  last_message_text: string | null
+  last_message_role: 'user' | 'assistant' | 'system' | null
+  pending_actions_count: number
+}
+
+export interface ChatSessionDetail extends ChatSessionSummary {
+  context_json?: Record<string, unknown> | null
+  turns: ChatTurn[]
+  actions: ChatAction[]
+  research_logs: ChatResearchLog[]
+}
+
 // --- Evolution Planner ---
 
 export interface EvolutionValidationCheck {

@@ -53,6 +53,8 @@ class DirectTradeRunner:
         user_id: str | None = None,
         channel_id: str | None = None,
         thread_ts: str | None = None,
+        *,
+        log_command: bool = True,
     ) -> SingleTickerResult:
         result = self.prepare(
             ticker_t212=ticker_t212,
@@ -60,6 +62,7 @@ class DirectTradeRunner:
             user_id=user_id,
             channel_id=channel_id,
             thread_ts=thread_ts,
+            log_command=log_command,
         )
         if result.status != "ready":
             return result
@@ -72,6 +75,8 @@ class DirectTradeRunner:
         user_id: str | None = None,
         channel_id: str | None = None,
         thread_ts: str | None = None,
+        *,
+        log_command: bool = True,
     ) -> SingleTickerResult:
         ticker_yf = t212_to_yf(ticker_t212)
         cycle_id = build_slack_cycle_id()
@@ -89,15 +94,17 @@ class DirectTradeRunner:
         if intent.force:
             result.result_details = {"force_ignored": True}
 
-        cmd_log = log_slack_command(
-            intent=intent,
-            ticker=ticker_t212,
-            cycle_id=cycle_id,
-            target_tickers=[ticker_t212],
-            user_id=user_id,
-            channel_id=channel_id,
-            thread_ts=thread_ts,
-        )
+        cmd_log = None
+        if log_command:
+            cmd_log = log_slack_command(
+                intent=intent,
+                ticker=ticker_t212,
+                cycle_id=cycle_id,
+                target_tickers=[ticker_t212],
+                user_id=user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+            )
         result.command_log_id = cmd_log
 
         try:

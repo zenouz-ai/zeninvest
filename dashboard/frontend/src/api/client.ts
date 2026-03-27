@@ -1,5 +1,7 @@
 import axios from 'axios'
 import type {
+  ChatSessionDetail,
+  ChatSessionSummary,
   CommandStats,
   Event,
   EvolutionArtifact,
@@ -158,6 +160,67 @@ export const eventsApi = {
   
   getById: async (id: number): Promise<Event> => {
     const response = await api.get(`/api/events/${id}`)
+    return response.data
+  },
+}
+
+// Conversational trading API
+export const chatApi = {
+  listSessions: async (params?: {
+    limit?: number
+    status?: string
+  }): Promise<ChatSessionSummary[]> => {
+    const response = await api.get('/api/chat/sessions', { params })
+    return response.data
+  },
+  createSession: async (body?: {
+    channel_type?: 'dashboard' | 'slack'
+    user_id?: string
+    channel_session_key?: string
+    title?: string
+  }): Promise<ChatSessionDetail> => {
+    const response = await api.post('/api/chat/sessions', body ?? { channel_type: 'dashboard' })
+    return response.data
+  },
+  getSession: async (sessionId: number): Promise<ChatSessionDetail> => {
+    const response = await api.get(`/api/chat/sessions/${sessionId}`)
+    return response.data
+  },
+  submitTurn: async (
+    sessionId: number,
+    body: {
+      message_text: string
+      channel_type?: 'dashboard' | 'slack'
+      user_id?: string
+    }
+  ): Promise<ChatSessionDetail> => {
+    const response = await api.post(`/api/chat/sessions/${sessionId}/turns`, body)
+    return response.data
+  },
+  confirmAction: async (
+    sessionId: number,
+    actionId: number,
+    body?: { channel_type?: 'dashboard' | 'slack' }
+  ): Promise<ChatSessionDetail> => {
+    const response = await api.post(
+      `/api/chat/sessions/${sessionId}/actions/${actionId}/confirm`,
+      body ?? { channel_type: 'dashboard' }
+    )
+    return response.data
+  },
+  rejectAction: async (
+    sessionId: number,
+    actionId: number,
+    body?: { channel_type?: 'dashboard' | 'slack' }
+  ): Promise<ChatSessionDetail> => {
+    const response = await api.post(
+      `/api/chat/sessions/${sessionId}/actions/${actionId}/reject`,
+      body ?? { channel_type: 'dashboard' }
+    )
+    return response.data
+  },
+  endSession: async (sessionId: number): Promise<{ status: string; session_id: number }> => {
+    const response = await api.post(`/api/chat/sessions/${sessionId}/end`)
     return response.data
   },
 }

@@ -221,3 +221,9 @@ dashboard:
   # Public read-only APIs live under /api/public/*.
   # Operator login is blocked over plain HTTP except localhost-only dev mode
   # with DASHBOARD_INSECURE_DEV_MODE=true.
+
+conversation:
+  enabled: true
+  confirmation_timeout_minutes: 10
+  inactivity_timeout_minutes: 480
+  max_session_list_size: 50

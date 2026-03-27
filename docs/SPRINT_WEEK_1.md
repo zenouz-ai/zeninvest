@@ -22,7 +22,7 @@ last_updated: 2026-03-27
 | US-1.7.3 | Dashboard Visual Design System | Delivered | Shared design tokens, primitives, and navigation refresh |
 | US-4.5 | Proactive Macro News Intelligence | Delivered | Scheduled macro scan, persisted state, and action-plan context |
 | US-1.6 | Slack NL Trade Commands | Delivered | Slack review/buy/sell workflow with confirmations and audit trail |
-| US-1.9 | Conversational Trading Workflow skeleton | Delivered | Chat DB/API foundation only; MVP flow still open |
+| US-1.9 | Conversational Trading Workflow MVP implementation | In validation | Shared Slack/dashboard conversational flow is implemented in repo; final test/deploy checklist still open |
 | US-7.7 | Dashboard HTTPS Domain & Canonical Access | Delivered | Canonical `https://zeninvest.zenouz.ai`, internal-only dashboard app, public raw `:8000` removed |
 | US-7.5 | Quick Hardening Slice | Delivered | Off-hours order annotations, HALTED auto-recovery, peak inflation detection, DB constraints, dashboard visibility |
 
@@ -53,7 +53,7 @@ last_updated: 2026-03-27
 ### Conversational Operator Workflow
 
 - `US-1.6` is the delivered foundation.
-- `US-1.9` is active this week as an MVP story, not a full end-state conversational platform.
+- `US-1.9` implementation has landed in repo this week, but it should not be treated as fully closed until the final validation and deployment checklist is complete.
 - This sprint’s `US-1.9` scope is:
   - multi-turn continuity
   - explicit confirmation before execution

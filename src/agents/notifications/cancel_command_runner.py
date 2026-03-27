@@ -37,6 +37,7 @@ class CancelCommandRunner:
         user_id: str | None = None,
         channel_id: str | None = None,
         thread_ts: str | None = None,
+        log_command: bool = True,
     ) -> SingleTickerResult:
         cycle_id = build_slack_cycle_id()
         primary_ticker = ticker_t212s[0] if ticker_t212s else ""
@@ -52,15 +53,17 @@ class CancelCommandRunner:
             target_tickers=ticker_t212s,
         )
 
-        cmd_log = log_slack_command(
-            intent=intent,
-            ticker=primary_ticker,
-            cycle_id=cycle_id,
-            target_tickers=ticker_t212s,
-            user_id=user_id,
-            channel_id=channel_id,
-            thread_ts=thread_ts,
-        )
+        cmd_log = None
+        if log_command:
+            cmd_log = log_slack_command(
+                intent=intent,
+                ticker=primary_ticker,
+                cycle_id=cycle_id,
+                target_tickers=ticker_t212s,
+                user_id=user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+            )
         result.command_log_id = cmd_log
 
         if not ticker_t212s:

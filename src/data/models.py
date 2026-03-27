@@ -548,9 +548,11 @@ class ChatSession(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     status = Column(String(20), nullable=False, default="active")
-    channel_type = Column(String(20), nullable=False)
+    channel_type = Column(String(20), nullable=False)  # origin channel
     channel_session_key = Column(String(100), nullable=True)
     user_id = Column(String(100), nullable=True)
+    title = Column(String(200), nullable=True)
+    last_channel_type = Column(String(20), nullable=True)
     started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_activity_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     ended_at = Column(DateTime, nullable=True)
@@ -570,11 +572,58 @@ class ChatTurn(Base):
     session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
     turn_index = Column(Integer, nullable=False, default=0)
     role = Column(String(20), nullable=False)
+    channel_type = Column(String(20), nullable=True)
     message_text = Column(Text, nullable=True)
     intent_json = Column(Text, nullable=True)
     resolution_json = Column(Text, nullable=True)
     response_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ChatAction(Base):
+    """Proposed or executed conversational action attached to a session."""
+
+    __tablename__ = "chat_actions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    turn_id = Column(Integer, ForeignKey("chat_turns.id", ondelete="SET NULL"), nullable=True, index=True)
+    action_type = Column(String(50), nullable=False)
+    status = Column(String(30), nullable=False, default="draft", index=True)
+    title = Column(String(200), nullable=True)
+    ticker = Column(String(50), nullable=True, index=True)
+    payload_json = Column(Text, nullable=True)
+    preview_text = Column(Text, nullable=True)
+    result_json = Column(Text, nullable=True)
+    requires_confirmation = Column(Boolean, nullable=False, default=False)
+    rejection_reason = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    confirmed_at = Column(DateTime, nullable=True)
+    executed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class ChatResearchLog(Base):
+    """Research trace emitted during conversational turns."""
+
+    __tablename__ = "chat_research_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    turn_id = Column(Integer, ForeignKey("chat_turns.id", ondelete="SET NULL"), nullable=True, index=True)
+    tool_name = Column(String(50), nullable=False)
+    provider = Column(String(50), nullable=True)
+    query = Column(Text, nullable=True)
+    result_summary = Column(Text, nullable=True)
+    cache_hit = Column(Boolean, nullable=False, default=False)
+    latency_ms = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
 class EvolutionRequest(Base):

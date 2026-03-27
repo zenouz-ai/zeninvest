@@ -574,13 +574,15 @@ GET /api/docs/SOPHISTICATION_ROADMAP # docs/SOPHISTICATION_ROADMAP.md
 GET /api/docs/ZEN_EVOLUTION_ENGINE  # docs/ZEN_EVOLUTION_ENGINE.md
 ```
 
-### Chat Session Foundation
+### Conversational Trading
 
 ```
 GET /api/chat/sessions              # List chat sessions
 POST /api/chat/sessions             # Create chat session
 GET /api/chat/sessions/{id}         # Session detail
-POST /api/chat/sessions/{id}/turns  # Add turn
+POST /api/chat/sessions/{id}/turns  # Submit turn and get refreshed session
+POST /api/chat/sessions/{id}/actions/{action_id}/confirm  # Confirm pending action
+POST /api/chat/sessions/{id}/actions/{action_id}/reject   # Reject pending action
 POST /api/chat/sessions/{id}/end    # End session
 ```
 

@@ -1,7 +1,7 @@
 ---
 tags: [chat, slack, dashboard, conversational, trading, workflow]
 status: current
-last_updated: 2026-03-24
+last_updated: 2026-03-27
 ---
 
 # Conversational Trading Workflow (Unified Spec)
@@ -18,7 +18,7 @@ Define a single implementation plan for a dialogue-driven trading workflow that 
 - Agentic research capabilities (US-4.4, delivered)
 
 This document is the canonical design for cross-channel conversational trade operations.
-Current implementation state: US-1.9 remains a hardened skeleton only. Session CRUD, validation, and integrity protections are delivered; multi-turn orchestration, explicit conversational action confirmation, Slack thread continuity, and research depth are still future phases.
+Current implementation state: the core US-1.9 MVP has landed in the repo. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, bounded conversational intents, chat SSE events, and the chat-first dashboard `Commands` console are now implemented. Final end-to-end validation, migration rollout, and deployment verification are still pending before the story is treated as closed.
 
 ---
 
@@ -93,20 +93,20 @@ flowchart LR
     CO --> S1
 ```
 
-### New Modules (Proposed)
+### Current Implementation Modules
 
 - `src/agents/conversation/session_manager.py`
-  - session lifecycle, timeout, resume, context windowing
-- `src/agents/conversation/conversation_orchestrator.py`
-  - per-turn planner/executor, response synthesis, confirmation handling
-- `src/agents/conversation/research_orchestrator.py`
-  - tool routing policy: committee-only vs committee+agentic research
-- `src/agents/conversation/context_resolver.py`
-  - resolve references like "the first one", "that ticker"
-- `src/agents/notifications/slack_conversation_listener.py`
-  - Slack thread ingress/egress for conversational sessions
+  - session lifecycle, action ledger, research trace persistence, resume helpers
+- `src/agents/conversation/orchestrator.py`
+  - per-turn intent classification, response synthesis, confirmation handling, execution dispatch
+- `src/agents/notifications/slack_listener.py`
+  - existing Socket Mode listener extended so thread replies and broad natural-language requests route into shared conversational sessions
 - `dashboard/backend/app/routers/chat.py`
-  - session/turn/confirm endpoints + SSE topic hooks
+  - session list/detail/turn/confirm/reject/end endpoints for the operator console
+- `dashboard/frontend/src/pages/Commands.tsx`
+  - chat-first operator console with session rail, live thread, proposal rail, research trace, and secondary legacy command history
+
+Potential future refactors such as a dedicated context resolver or deeper research orchestrator remain optional design refinements, not required components for the current MVP.
 
 ### Existing Modules to Extend
 

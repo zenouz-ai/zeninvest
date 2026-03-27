@@ -64,7 +64,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-1.7.2** | Dashboard UX Phase 2 | Force Sell from Portfolio, data freshness indicators, keyboard-accessible tables, focus trap on modals, colour accessibility (▲/▼ arrows + aria-labels), chart colour alignment. See `docs/UX_AUDIT.md`. | 19/28 audit findings resolved; full keyboard + screen reader accessibility | **Delivered** |
 | **US-1.7.3** | Dashboard Visual Design System | Formalised ZENOUZ.ai visual language from `dashboard-style-guide.md`: Syne heading font, full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`), violet soft-fill accents, glass-dark card treatment (radial-gradient + panel shadow + 1.5rem radius), brand gradient updated to violet→cyan→emerald, 72px violet atmospheric grid, blurred sticky nav bar, pill active state. Tailwind: `font-heading`, `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`. Four new shared primitives: `Panel` (glass-dark surface), `MetricCard` (Syne KPI), `StatusPill` (brand pill/badge), `SectionHeader` (Syne heading + mono eyebrow). | Unified, polished visual identity across the entire dashboard; primitives unblock consistent page migration | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Original Dockerized VPS deployment path for the dashboard; the raw VPS/IP route is now superseded in production by US-7.7 canonical HTTPS ingress. See `docs/DASHBOARD_DEPLOYMENT.md`. | Operational visibility on live VPS | **Delivered** |
-| **US-1.9** | Conversational Trading Workflow | Skeleton delivered; active MVP this week focuses on multi-turn continuity, explicit confirmation, deterministic risk veto preservation, and auditable operator workflow across Slack + dashboard | Highest-leverage next operator workflow improvement after US-1.6 | **Active now (skeleton delivered)** |
+| **US-1.9** | Conversational Trading Workflow | Core MVP implementation has landed in repo; final validation and deployment verification remain before closure | Highest-leverage next operator workflow improvement after US-1.6 | **In validation** |
 | **US-1.10** | Evolution Planner | Authenticated dashboard-first evolution planner with natural-language intake, intent normalization, repo context retrieval, risk classification, validation matrix, clarifying-question loop, and full audit trail | Starts the policy-constrained software evolution track without granting code or deploy authority | **Delivered (planner-only)** |
 | **US-1.11** | Branch-Based Evolution Runner | Isolated branch workspace, scoped code edits, semantic change summary, validation artifact pack, and review-ready PR generation | True v1 autonomy target after CI and branch governance foundations exist | **Later / gated** |
 | **US-1.12** | Policy-Gated Promotion | Manual build/deploy approvals, environment protections, deployment records, and rollback metadata for approved evolution artifacts | Introduces controlled promotion without relaxing financial guardrails | **Later / gated** |
@@ -424,24 +424,25 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Value:** Multi-turn collaborative trading across Slack and dashboard with persistent context and explicit action confirmation
 **Effort:** Large (8–12 days, phased delivery)
 **Data Sources:** Existing pipeline + new chat session/turn/action tables + optional agentic research tools
-**Stage:** Active now (skeleton delivered; MVP in current week)
+**Stage:** Implementation landed in repo; final validation pending
 
 **Detailed plan:** `docs/CONVERSATIONAL_TRADING_WORKFLOW.md`.
 
-**Skeleton (delivered):**
+**Previously delivered foundation:**
 - [x] `ChatSession` and `ChatTurn` DB models + Alembic migration
 - [x] `SessionManager` stub with real CRUD: `create_session()`, `add_turn()`, `get_session()`, `end_session()`
 - [x] Dashboard chat API endpoints: `POST /api/chat/sessions`, `POST /sessions/{id}/turns`, `GET /sessions/{id}`, `POST /sessions/{id}/end`
 - [x] Missing-session `404`s, `channel_type` / `role` validation, and FK + unique turn-order protections
 - [x] Focused US-1.6/US-1.9 regression suite covers the parser, strategy/direct/cancel runners, listener/gateway, commands API, and chat workflow plumbing
 
-**Current-week MVP scope:**
-- [ ] Session management supports start/resume/end/timeout with persistent multi-turn context
-- [ ] Shared backend supports Slack thread and dashboard chat continuity
-- [ ] Every trade action requires explicit confirmation; no execution on ambiguous intent
-- [ ] RiskManager remains final deterministic veto with clear rejection reasons
-- [ ] Full audit trail for turns, recommendations, confirmations, and executions
-- [ ] Dashboard chat APIs and SSE events support real-time conversational updates
+**Repo implementation now present (pending final validation):**
+- [x] Session management supports start/resume/end with persistent multi-turn context and action/research ledgers
+- [x] Shared backend supports Slack thread and dashboard chat continuity
+- [x] Every trade action requires explicit confirmation; no execution on ambiguous intent
+- [x] Existing deterministic safety/risk flow is preserved and surfaced back into the conversation
+- [x] Full audit trail exists for turns, recommendations, confirmations, and executions
+- [x] Dashboard chat APIs and SSE events support real-time conversational updates
+- [ ] Final end-to-end validation, migration rollout, and deployment verification
 
 **Deferred beyond MVP:**
 - [ ] Agent provides structured research summaries and follow-up refinements by turn

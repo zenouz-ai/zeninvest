@@ -233,6 +233,8 @@ class SingleTickerRunner:
         user_id: str | None = None,
         channel_id: str | None = None,
         thread_ts: str | None = None,
+        *,
+        log_command: bool = True,
     ) -> SingleTickerResult:
         """Execute the strategy-backed Slack command path with user intent override."""
         result = self.prepare(
@@ -241,6 +243,7 @@ class SingleTickerRunner:
             user_id=user_id,
             channel_id=channel_id,
             thread_ts=thread_ts,
+            log_command=log_command,
         )
         if result.status != "ready":
             return result
@@ -253,6 +256,8 @@ class SingleTickerRunner:
         user_id: str | None = None,
         channel_id: str | None = None,
         thread_ts: str | None = None,
+        *,
+        log_command: bool = True,
     ) -> SingleTickerResult:
         """Prepare a single-ticker run through risk without placing an order."""
         ticker_yf = t212_to_yf(ticker_t212)
@@ -271,15 +276,17 @@ class SingleTickerRunner:
         )
 
         # Log command receipt
-        cmd_log = log_slack_command(
-            intent=intent,
-            ticker=ticker_t212,
-            cycle_id=cycle_id,
-            target_tickers=[ticker_t212],
-            user_id=user_id,
-            channel_id=channel_id,
-            thread_ts=thread_ts,
-        )
+        cmd_log = None
+        if log_command:
+            cmd_log = log_slack_command(
+                intent=intent,
+                ticker=ticker_t212,
+                cycle_id=cycle_id,
+                target_tickers=[ticker_t212],
+                user_id=user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+            )
         result.command_log_id = cmd_log
 
         try:

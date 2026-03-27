@@ -12,12 +12,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from src.agents.conversation.orchestrator import ConversationOrchestrator
+from src.agents.conversation.session_manager import SessionManager
 from src.agents.notifications.command_gateway import (
     CommandGateway,
     CommandGatewayDisabledError,
     CommandRequest,
 )
 from src.agents.notifications.formatters import format_trade_command_reply
+from src.agents.notifications.trade_command_parser import parse_trade_command
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -42,6 +45,8 @@ class SlackTradeListener:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.gateway = CommandGateway()
+        self.session_manager = SessionManager()
+        self.conversation = ConversationOrchestrator(session_manager=self.session_manager)
         self._pending: dict[str, PendingConfirmation] = {}
         worker_count = max(1, int(getattr(self.settings, "slack_trade_worker_count", 1)))
         self._executor = ThreadPoolExecutor(
@@ -149,6 +154,22 @@ class SlackTradeListener:
                 )
                 return
 
+            conversation_key = thread_ts or ts
+            if self._should_route_to_conversation(
+                text=text,
+                user_id=user_id,
+                conversation_key=conversation_key,
+                is_thread_reply=bool(thread_ts),
+            ):
+                self._submit_task(
+                    self._process_conversation,
+                    msg_channel,
+                    conversation_key,
+                    user_id,
+                    text,
+                )
+                return
+
             # Process as new command via a bounded worker pool so bursts do not
             # create unbounded daemon threads on a small VPS.
             self._submit_task(
@@ -190,6 +211,57 @@ class SlackTradeListener:
             self._executor.submit(fn, *args)
         except RuntimeError as e:
             logger.warning(f"Slack worker pool rejected task: {e}")
+
+    def _should_route_to_conversation(
+        self,
+        *,
+        text: str,
+        user_id: str,
+        conversation_key: str,
+        is_thread_reply: bool,
+    ) -> bool:
+        """Decide whether an inbound Slack message belongs to the chat workflow."""
+        if is_thread_reply:
+            return True
+
+        existing = self.session_manager.find_active_session(
+            channel_type="slack",
+            channel_session_key=conversation_key,
+            user_id=user_id,
+        )
+        if existing is not None:
+            return True
+
+        return parse_trade_command(text, use_llm_fallback=False) is None
+
+    def _process_conversation(
+        self,
+        channel: str,
+        thread_ts: str,
+        user_id: str,
+        text: str,
+    ) -> None:
+        """Process a Slack message through the shared conversational workflow."""
+        try:
+            session = self.conversation.start_session(
+                channel_type="slack",
+                user_id=user_id,
+                channel_session_key=thread_ts,
+                title=text[:120],
+            )
+            session_detail = self.conversation.process_turn(
+                session_id=int(session["id"]),
+                message_text=text,
+                channel_type="slack",
+                user_id=user_id,
+            )
+            reply = self._extract_latest_assistant_message(session_detail)
+            if reply:
+                self._post_reply(channel, thread_ts, reply)
+            logger.info("Conversation turn completed in Slack thread %s", thread_ts)
+        except Exception as e:
+            logger.error("Error processing conversational Slack request: %s", e, exc_info=True)
+            self._post_reply(channel, thread_ts, f"Error: {e}")
 
     def _process_command(
         self, channel: str, ts: str, user_id: str, text: str
@@ -322,6 +394,14 @@ class SlackTradeListener:
         except Exception as e:
             logger.error(f"Error processing command: {e}", exc_info=True)
             self._post_reply(channel, ts, f"Error: {e}")
+
+    def _extract_latest_assistant_message(self, session_detail: dict[str, Any]) -> str | None:
+        """Return the latest assistant turn text from a session payload."""
+        turns = list(session_detail.get("turns") or [])
+        for turn in reversed(turns):
+            if turn.get("role") == "assistant" and turn.get("message_text"):
+                return str(turn["message_text"])
+        return None
 
     def _handle_confirmation(
         self, channel: str, thread_ts: str, user_id: str, message: str

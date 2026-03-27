@@ -781,6 +781,33 @@ class Settings:
     def slack_trade_worker_count(self) -> int:
         return max(1, int(self._slack_trade_commands.get("worker_count", 1)))
 
+    # --- Conversational Trading (US-1.9) ---
+    @property
+    def _conversation(self) -> dict[str, Any]:
+        convo = self._config.get("conversation", {})
+        return convo if isinstance(convo, dict) else {}
+
+    @property
+    def conversation_enabled(self) -> bool:
+        return bool(self._conversation.get("enabled", True))
+
+    @property
+    def conversation_confirmation_timeout_minutes(self) -> int:
+        return int(
+            self._conversation.get(
+                "confirmation_timeout_minutes",
+                self.slack_trade_confirmation_timeout_minutes,
+            )
+        )
+
+    @property
+    def conversation_inactivity_timeout_minutes(self) -> int:
+        return int(self._conversation.get("inactivity_timeout_minutes", 480))
+
+    @property
+    def conversation_max_session_list_size(self) -> int:
+        return max(1, int(self._conversation.get("max_session_list_size", 50)))
+
     # --- Environment variables ---
     @staticmethod
     def get_env(key: str) -> str:
