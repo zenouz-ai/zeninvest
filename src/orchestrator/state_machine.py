@@ -36,6 +36,7 @@ class StateMachine:
                     state="ACTIVE",
                     peak_portfolio_value=None,
                     current_drawdown_pct=0.0,
+                    halted_recovery_streak=0,
                     paused=False,
                     updated_at=datetime.now(timezone.utc),
                 )
@@ -56,9 +57,11 @@ class StateMachine:
                 "state": state.state,
                 "peak_portfolio_value": state.peak_portfolio_value,
                 "current_drawdown_pct": state.current_drawdown_pct,
+                "halted_recovery_streak": state.halted_recovery_streak,
                 "last_cycle_at": state.last_cycle_at,
                 "daily_loss_halt_until": state.daily_loss_halt_until,
                 "paused": state.paused,
+                "peak_inflation_warning_note": state.peak_inflation_warning_note,
                 "notes": state.notes,
             }
         finally:
@@ -111,6 +114,7 @@ class StateMachine:
                 return
             if state.peak_portfolio_value is None or current_value > state.peak_portfolio_value:
                 state.peak_portfolio_value = current_value
+                state.peak_inflation_warning_note = None
                 state.updated_at = datetime.now(timezone.utc)
                 session.commit()
                 logger.info(f"New portfolio peak: {current_value:.2f}")
@@ -125,6 +129,45 @@ class StateMachine:
             if state is None:
                 return
             state.current_drawdown_pct = drawdown_pct
+            state.updated_at = datetime.now(timezone.utc)
+            session.commit()
+        finally:
+            session.close()
+
+    def set_peak_inflation_warning(self, note: str) -> None:
+        """Persist the current peak inflation warning note."""
+        session = get_session()
+        try:
+            state = session.query(SystemState).first()
+            if state is None:
+                return
+            state.peak_inflation_warning_note = note
+            state.updated_at = datetime.now(timezone.utc)
+            session.commit()
+        finally:
+            session.close()
+
+    def clear_peak_inflation_warning(self) -> None:
+        """Clear any active peak inflation warning."""
+        session = get_session()
+        try:
+            state = session.query(SystemState).first()
+            if state is None or not state.peak_inflation_warning_note:
+                return
+            state.peak_inflation_warning_note = None
+            state.updated_at = datetime.now(timezone.utc)
+            session.commit()
+        finally:
+            session.close()
+
+    def set_halted_recovery_streak(self, streak: int) -> None:
+        """Persist the current HALTED auto-recovery streak."""
+        session = get_session()
+        try:
+            state = session.query(SystemState).first()
+            if state is None:
+                return
+            state.halted_recovery_streak = max(0, streak)
             state.updated_at = datetime.now(timezone.utc)
             session.commit()
         finally:
@@ -208,6 +251,8 @@ class StateMachine:
             state.state = "ACTIVE"
             state.paused = False
             state.notes = f"Peak reset from {old_peak} to current {current_value}"
+            state.halted_recovery_streak = 0
+            state.peak_inflation_warning_note = None
             state.updated_at = datetime.now(timezone.utc)
             session.commit()
             logger.info("Peak reset to %.2f, state %s -> ACTIVE", current_value, old_state)

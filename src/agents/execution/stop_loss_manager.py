@@ -304,6 +304,19 @@ class StopLossManager:
             )
             return {"status": "skipped", "order_type": "limit", "reason": reject_reason}
 
+        can_place_off_hours, warning_note = self.order_manager.check_off_hours_order_policy(
+            ticker=ticker,
+            action="BUY",
+            order_type="limit",
+        )
+        if not can_place_off_hours:
+            return {
+                "status": "skipped",
+                "order_type": "limit",
+                "reason": "outside_regular_market_session",
+                "warning_note": warning_note,
+            }
+
         if self.dry_run:
             logger.info(
                 f"[DRY RUN] Would place limit BUY: {quantity} x {ticker} "
@@ -320,6 +333,7 @@ class StopLossManager:
                 status="dry_run",
                 strategy=strategy,
                 conviction=conviction,
+                warning_note=warning_note,
             )
             self._record_adjustment(
                 ticker=ticker,
@@ -337,6 +351,7 @@ class StopLossManager:
                 "ticker": ticker,
                 "limit_price": limit_price,
                 "quantity": quantity,
+                "warning_note": warning_note,
             }
 
         try:
@@ -360,6 +375,7 @@ class StopLossManager:
                 status="pending",
                 strategy=strategy,
                 conviction=conviction,
+                warning_note=warning_note,
             )
             self._record_adjustment(
                 ticker=ticker,
@@ -383,6 +399,7 @@ class StopLossManager:
                 "ticker": ticker,
                 "limit_price": limit_price,
                 "quantity": quantity,
+                "warning_note": warning_note,
             }
         except Exception as e:
             error_msg = str(e)
@@ -396,6 +413,7 @@ class StopLossManager:
                 value_gbp=order_value,
                 status="failed",
                 strategy=strategy,
+                warning_note=warning_note,
                 error_message=error_msg,
             )
             self._record_adjustment(

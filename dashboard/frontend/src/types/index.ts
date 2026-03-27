@@ -185,6 +185,7 @@ export interface Order {
   strategy: string | null
   conviction: number | null
   t212_order_id?: string | null
+  warning_note?: string | null
   error_message?: string | null
 }
 

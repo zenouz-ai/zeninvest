@@ -29,6 +29,7 @@ trading:
   cash_floor_pct: 10
   benchmark_ticker: "^GSPC"
   fx_aware_quantity: true   # Convert native-currency (USD/GBX) prices to GBP before quantity calculation
+  allow_off_hours_orders: true  # Allow orders outside the regular market session, but annotate them clearly
 
 risk:
   min_holding_hours_before_reduce: 24  # Block REDUCE/SELL on positions held < 24h unless risk limit exceeded
@@ -45,6 +46,11 @@ risk:
   risk_parity_lookback_days: 60
   risk_parity_vol_floor: 0.05
   risk_parity_target_vol: 0.15
+  halted_auto_recovery_enabled: true
+  halted_auto_recovery_consecutive_cycles: 3
+  peak_inflation_guard_enabled: true
+  peak_inflation_multiplier: 2.0
+  peak_inflation_lookback_snapshots: 5
 
 strategy:
   momentum_weight: 0.35

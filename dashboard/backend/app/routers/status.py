@@ -40,12 +40,21 @@ async def get_status():
             if state_row:
                 result["state"] = state_row.state
                 result["paused"] = state_row.paused
+                result["halted_recovery_streak"] = state_row.halted_recovery_streak or 0
+                result["halted_auto_recovery_target"] = settings.halted_auto_recovery_consecutive_cycles
+                result["peak_inflation_warning_note"] = state_row.peak_inflation_warning_note
             else:
                 result["state"] = "ACTIVE"
                 result["paused"] = False
+                result["halted_recovery_streak"] = 0
+                result["halted_auto_recovery_target"] = settings.halted_auto_recovery_consecutive_cycles
+                result["peak_inflation_warning_note"] = None
         finally:
             session.close()
     except Exception:
         result["state"] = "ACTIVE"
         result["paused"] = False
+        result["halted_recovery_streak"] = 0
+        result["halted_auto_recovery_target"] = settings.halted_auto_recovery_consecutive_cycles
+        result["peak_inflation_warning_note"] = None
     return result

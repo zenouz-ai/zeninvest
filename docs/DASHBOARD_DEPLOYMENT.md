@@ -1,12 +1,12 @@
 ---
 tags: [dashboard, deployment, vps, docker]
 status: delivered
-last_updated: 2026-03-25
+last_updated: 2026-03-27
 ---
 
 # Dashboard Deployment
 
-> VPS deployment plan for the 10-page monitoring dashboard (US-1.8).
+> VPS deployment plan for the 11-page monitoring dashboard (US-1.8 + US-7.7).
 
 ## Purpose
 
@@ -41,9 +41,11 @@ The three app services share the same SQLite DB via `./data` volume. The `dashbo
 - `Dockerfile.agent`: Python 3.12-slim, Poetry deps, application code. No Node.js, no frontend build.
 - `Dockerfile`: Stage 1 (Node 20-slim) builds the React/Vite frontend with no secrets injected at build time. Stage 2 (Python 3.12-slim) installs Poetry deps, copies app code + built frontend dist.
 
-**Frontend API URL:** The frontend is served from the same origin as the API. Requests use relative paths (`/api/*`). The SSE activity feed uses `/api/events/stream` (same-origin), so it works through either the current VPS/IP path or the planned canonical domain path.
+**Frontend API URL:** The frontend is served from the same origin as the API. Requests use relative paths (`/api/*`). The SSE activity feed uses `/api/events/stream` (same-origin), so it works through the canonical HTTPS domain and any localhost/dev tunnel using the same-origin path.
 
 **Authentication:** Public, read-only routes live under `/api/public/*`, including the anonymous Portfolio and World News data feeds. Operator routes require backend login and a signed session cookie. Operator login is blocked on plain HTTP except localhost-only development mode.
+
+**Hardening visibility:** Order rows can now include `warning_note` for off-hours submissions, and status/system payloads expose HALTED auto-recovery progress plus any active peak-inflation warning note for dashboard alerts.
 
 ### Cloudflare and TLS prerequisites
 

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -31,9 +32,11 @@ class SystemState(Base):
     state = Column(String(20), nullable=False, default="ACTIVE")  # ACTIVE, CAUTIOUS, HALTED
     peak_portfolio_value = Column(Float, nullable=True)
     current_drawdown_pct = Column(Float, default=0.0)
+    halted_recovery_streak = Column(Integer, nullable=False, default=0)
     last_cycle_at = Column(DateTime, nullable=True)
     daily_loss_halt_until = Column(DateTime, nullable=True)
     paused = Column(Boolean, default=False)
+    peak_inflation_warning_note = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     notes = Column(Text, nullable=True)
 
@@ -85,6 +88,16 @@ class Order(Base):
     """All orders placed through the system."""
 
     __tablename__ = "orders"
+    __table_args__ = (
+        CheckConstraint(
+            "(action = 'BUY' AND quantity > 0) OR (action IN ('SELL', 'REDUCE') AND quantity < 0)",
+            name="ck_orders_quantity_sign_by_action",
+        ),
+        CheckConstraint(
+            "conviction IS NULL OR (conviction >= 0 AND conviction <= 100)",
+            name="ck_orders_conviction_range",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
@@ -102,6 +115,7 @@ class Order(Base):
     conviction = Column(Integer, nullable=True)
     moderation_result = Column(String(20), nullable=True)
     risk_result = Column(String(20), nullable=True)
+    warning_note = Column(Text, nullable=True)
     error_message = Column(Text, nullable=True)
     journal_path = Column(String(500), nullable=True)
     dedup_key = Column(String(200), nullable=True, index=True)
@@ -111,6 +125,20 @@ class StrategyDecision(Base):
     """Strategy agent decisions log."""
 
     __tablename__ = "strategy_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "conviction IS NULL OR (conviction >= 0 AND conviction <= 100)",
+            name="ck_strategy_decisions_conviction_range",
+        ),
+        CheckConstraint(
+            "target_allocation_pct IS NULL OR (target_allocation_pct >= 0 AND target_allocation_pct <= 100)",
+            name="ck_strategy_decisions_target_allocation_range",
+        ),
+        CheckConstraint(
+            "risk_parity_target_allocation_pct IS NULL OR (risk_parity_target_allocation_pct >= 0 AND risk_parity_target_allocation_pct <= 100)",
+            name="ck_strategy_decisions_risk_parity_allocation_range",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
@@ -142,6 +170,20 @@ class ModerationLog(Base):
     """Moderation panel decisions."""
 
     __tablename__ = "moderation_logs"
+    __table_args__ = (
+        CheckConstraint(
+            "growth_score IS NULL OR (growth_score >= 1 AND growth_score <= 10)",
+            name="ck_moderation_logs_growth_score_range",
+        ),
+        CheckConstraint(
+            "risk_score IS NULL OR (risk_score >= 1 AND risk_score <= 10)",
+            name="ck_moderation_logs_risk_score_range",
+        ),
+        CheckConstraint(
+            "confidence_score IS NULL OR (confidence_score >= 1 AND confidence_score <= 10)",
+            name="ck_moderation_logs_confidence_score_range",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
@@ -166,6 +208,16 @@ class RiskDecision(Base):
     """Risk agent decisions."""
 
     __tablename__ = "risk_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "proposed_allocation_pct IS NULL OR (proposed_allocation_pct >= 0 AND proposed_allocation_pct <= 100)",
+            name="ck_risk_decisions_proposed_allocation_range",
+        ),
+        CheckConstraint(
+            "adjusted_allocation_pct IS NULL OR (adjusted_allocation_pct >= 0 AND adjusted_allocation_pct <= 100)",
+            name="ck_risk_decisions_adjusted_allocation_range",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)

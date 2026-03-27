@@ -108,6 +108,118 @@ class Orchestrator:
     def _account_label(self) -> str:
         return "practice/demo" if self.settings.account_type == "practice" else "live"
 
+    def _get_recent_snapshot_average(self) -> float | None:
+        """Return the average portfolio value across the configured recent snapshots."""
+        lookback = self.settings.peak_inflation_lookback_snapshots
+        session = get_session()
+        try:
+            snapshots = (
+                session.query(PortfolioSnapshot.total_value_gbp)
+                .order_by(PortfolioSnapshot.timestamp.desc())
+                .limit(lookback)
+                .all()
+            )
+        finally:
+            session.close()
+
+        values = [float(row[0]) for row in snapshots if row[0] and row[0] > 0]
+        if len(values) < lookback:
+            return None
+        return sum(values) / len(values)
+
+    def _update_peak_inflation_warning(self, peak_value: float | None) -> str | None:
+        """Detect and persist peak inflation warnings without auto-correcting state."""
+        current_warning = self.state_machine.get_state().get("peak_inflation_warning_note")
+        if not self.settings.peak_inflation_guard_enabled or peak_value is None or peak_value <= 0:
+            if current_warning:
+                self.state_machine.clear_peak_inflation_warning()
+            return None
+
+        recent_average = self._get_recent_snapshot_average()
+        if not recent_average or recent_average <= 0:
+            return current_warning
+
+        threshold = recent_average * self.settings.peak_inflation_multiplier
+        if peak_value <= threshold:
+            if current_warning:
+                self.state_machine.clear_peak_inflation_warning()
+            return None
+
+        note = (
+            f"Peak inflation warning: stored peak £{peak_value:.2f} exceeds "
+            f"{self.settings.peak_inflation_multiplier:.1f}x the average of the last "
+            f"{self.settings.peak_inflation_lookback_snapshots} portfolio snapshots "
+            f"(£{recent_average:.2f}). Review --reset-peak if the peak was set incorrectly."
+        )
+        if note != current_warning:
+            self.state_machine.set_peak_inflation_warning(note)
+            logger.warning(note)
+            if DASHBOARD_AVAILABLE and log_event is not None:
+                try:
+                    log_event(
+                        event_type="system_warning",
+                        source="orchestrator",
+                        message=note,
+                        metadata={
+                            "warning_type": "peak_inflation",
+                            "peak_portfolio_value": peak_value,
+                            "recent_average_value": recent_average,
+                            "multiplier": self.settings.peak_inflation_multiplier,
+                        },
+                    )
+                except Exception:
+                    pass
+        return note
+
+    def _handle_halted_auto_recovery(self, *, current_value: float, peak_value: float) -> str:
+        """Advance or reset the HALTED recovery streak and return the effective state."""
+        drawdown_pct = ((peak_value - current_value) / peak_value * 100) if peak_value > 0 else 0.0
+        self.state_machine.update_drawdown(drawdown_pct)
+
+        if not self.settings.halted_auto_recovery_enabled:
+            return "HALTED"
+
+        if drawdown_pct < self.settings.cautious_drawdown_pct:
+            streak = int(self.state_machine.get_state().get("halted_recovery_streak") or 0) + 1
+            self.state_machine.set_halted_recovery_streak(streak)
+
+            if streak >= self.settings.halted_auto_recovery_consecutive_cycles:
+                note = (
+                    f"HALTED auto-recovery triggered after {streak} consecutive live cycles "
+                    f"below the cautious drawdown threshold at portfolio value £{current_value:.2f}."
+                )
+                self.state_machine.transition("ACTIVE", note)
+                self.state_machine.set_halted_recovery_streak(0)
+                logger.info(note)
+                return "ACTIVE"
+
+            pending_note = (
+                f"HALTED auto-recovery pending: {streak}/"
+                f"{self.settings.halted_auto_recovery_consecutive_cycles} clean cycles below "
+                f"the cautious drawdown threshold."
+            )
+            logger.warning(pending_note)
+            if DASHBOARD_AVAILABLE and log_event is not None:
+                try:
+                    log_event(
+                        event_type="system_warning",
+                        source="orchestrator",
+                        message=pending_note,
+                        metadata={
+                            "warning_type": "halted_auto_recovery_pending",
+                            "halted_recovery_streak": streak,
+                            "halted_auto_recovery_target": self.settings.halted_auto_recovery_consecutive_cycles,
+                            "drawdown_pct": drawdown_pct,
+                        },
+                    )
+                except Exception:
+                    pass
+            return "HALTED"
+
+        if self.state_machine.get_state().get("halted_recovery_streak"):
+            self.state_machine.set_halted_recovery_streak(0)
+        return "HALTED"
+
     def _apply_deterministic_exit_overrides(
         self,
         *,
@@ -653,22 +765,20 @@ class Orchestrator:
             if scheduled_cycle_id and not self.dry_run:
                 if not is_within_regular_market_session(self.settings):
                     local_now = datetime.now(timezone.utc).astimezone(ZoneInfo(self.settings.schedule_timezone))
-                    skip_reason = (
+                    warning_note = (
                         "Scheduled cycle started outside the regular US market session; "
-                        "skipping live execution for safety."
+                        "orders remain allowed but will be annotated as off-hours."
                     )
-                    logger.warning("%s cycle_id=%s", skip_reason, cycle_id)
-                    result["skip_reason"] = "outside_regular_market_session"
-                    result["skip_message"] = skip_reason
+                    logger.warning("%s cycle_id=%s", warning_note, cycle_id)
+                    result["market_session_warning"] = warning_note
                     result["guard_checked_at_utc"] = datetime.now(timezone.utc).isoformat()
                     result["guard_checked_at_local"] = local_now.isoformat()
-                    return _finalize("skipped_market_closed")
 
             current_state = self.state_machine.current_state
+            portfolio_data: dict[str, Any] | None = None
 
             # --- STEP 1: HALTED state handling ---
             if current_state == "HALTED":
-                logger.error("System is HALTED. Liquidating all positions.")
                 # Fetch portfolio before liquidation for meaningful notifications (audit fix M-11)
                 try:
                     portfolio_data = self._get_portfolio_state()
@@ -679,18 +789,55 @@ class Orchestrator:
                     }
                 except Exception as port_err:
                     logger.warning(f"Could not fetch portfolio data during HALT: {port_err}")
-                if not self.dry_run:
-                    liquidation = self.order_manager.liquidate_all()
-                    result["liquidation"] = liquidation
-                return _finalize("halted_liquidation")
+                    portfolio_data = None
+
+                if portfolio_data:
+                    current_value = float(portfolio_data["total_value"])
+                    peak_value = float(
+                        self.state_machine.get_state().get("peak_portfolio_value") or current_value
+                    )
+                    peak_warning = self._update_peak_inflation_warning(peak_value)
+                    if peak_warning:
+                        result["peak_inflation_warning_note"] = peak_warning
+
+                    if not self.dry_run and not self.settings.is_practice_account:
+                        recovered_state = self._handle_halted_auto_recovery(
+                            current_value=current_value,
+                            peak_value=peak_value,
+                        )
+                        result["halted_recovery_streak"] = int(
+                            self.state_machine.get_state().get("halted_recovery_streak") or 0
+                        )
+                        if recovered_state == "ACTIVE":
+                            current_state = "ACTIVE"
+                        else:
+                            logger.error("System is HALTED. Recovery pending or liquidation still required.")
+                            if portfolio_data.get("num_positions", 0) > 0:
+                                liquidation = self.order_manager.liquidate_all()
+                                result["liquidation"] = liquidation
+                                return _finalize("halted_liquidation")
+                            return _finalize("halted_recovery_pending")
+                    else:
+                        logger.error("System is HALTED. Liquidating all positions.")
+                        if not self.dry_run:
+                            liquidation = self.order_manager.liquidate_all()
+                            result["liquidation"] = liquidation
+                        return _finalize("halted_liquidation")
+                else:
+                    logger.error("System is HALTED. Liquidating all positions.")
+                    if not self.dry_run:
+                        liquidation = self.order_manager.liquidate_all()
+                        result["liquidation"] = liquidation
+                    return _finalize("halted_liquidation")
 
             # --- STEP 2: Get portfolio state ---
-            try:
-                portfolio_data = self._get_portfolio_state()
-            except Exception as e:
-                logger.error(f"Failed to get portfolio state: {e}")
-                result["errors"].append(f"portfolio_state: {e}")
-                return _finalize("error")
+            if portfolio_data is None:
+                try:
+                    portfolio_data = self._get_portfolio_state()
+                except Exception as e:
+                    logger.error(f"Failed to get portfolio state: {e}")
+                    result["errors"].append(f"portfolio_state: {e}")
+                    return _finalize("error")
 
             current_value = portfolio_data["total_value"]
             cash_gbp = portfolio_data["cash"]
@@ -719,6 +866,11 @@ class Orchestrator:
             practice_skips_state_machine = self.settings.is_practice_account
             if not self.dry_run and not practice_skips_state_machine:
                 # Live + real account: full state machine (CAUTIOUS/HALTED)
+                state_info = self.state_machine.get_state()
+                peak_value = state_info.get("peak_portfolio_value", current_value)
+                peak_warning = self._update_peak_inflation_warning(peak_value)
+                if peak_warning:
+                    result["peak_inflation_warning_note"] = peak_warning
                 self.state_machine.update_peak(current_value)
                 state_info = self.state_machine.get_state()
                 peak_value = state_info.get("peak_portfolio_value", current_value)

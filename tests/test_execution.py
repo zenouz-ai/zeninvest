@@ -234,6 +234,70 @@ class TestOrderManager:
         assert result2["status"] == "skipped"
         assert result2["reason"] == "duplicate"
 
+    def test_dry_run_market_order_adds_off_hours_warning_note(self, db_session, monkeypatch):
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+        monkeypatch.setattr(
+            "src.agents.execution.order_manager.is_within_regular_market_session",
+            lambda settings: False,
+        )
+
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=525.0,
+            current_price=175.0,
+            strategy="momentum",
+            conviction=80,
+        )
+
+        order = db_session.query(Order).one()
+        assert result["status"] == "dry_run"
+        assert result["warning_note"] is not None
+        assert order.warning_note == result["warning_note"]
+
+    def test_in_hours_market_order_has_no_warning_note(self, db_session, monkeypatch):
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+        monkeypatch.setattr(
+            "src.agents.execution.order_manager.is_within_regular_market_session",
+            lambda settings: True,
+        )
+
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=525.0,
+            current_price=175.0,
+            strategy="momentum",
+            conviction=80,
+        )
+
+        order = db_session.query(Order).one()
+        assert result["status"] == "dry_run"
+        assert result.get("warning_note") is None
+        assert order.warning_note is None
+
+    def test_stop_loss_adds_off_hours_warning_note(self, db_session, monkeypatch):
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+        monkeypatch.setattr(
+            "src.agents.execution.order_manager.is_within_regular_market_session",
+            lambda settings: False,
+        )
+
+        result = manager.place_stop_loss(
+            ticker="AAPL_US_EQ",
+            quantity=2.0,
+            current_price=100.0,
+            stop_loss_pct=-10.0,
+        )
+
+        order = db_session.query(Order).one()
+        assert result["status"] == "dry_run"
+        assert result["warning_note"] is not None
+        assert order.warning_note == result["warning_note"]
+
     def test_zero_quantity_skipped(self, db_session):
         mock_client = MagicMock()
         manager = OrderManager(client=mock_client, dry_run=True)

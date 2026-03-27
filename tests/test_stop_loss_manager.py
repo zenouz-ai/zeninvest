@@ -438,6 +438,29 @@ class TestExtractAtr:
         assert StopLossManager._extract_atr({}) is None
 
 
+class TestLimitOrders:
+    def test_limit_buy_adds_off_hours_warning_note(self, manager, db_session, monkeypatch):
+        monkeypatch.setattr(
+            "src.agents.execution.order_manager.is_within_regular_market_session",
+            lambda settings: False,
+        )
+
+        result = manager.place_limit_buy(
+            ticker="AAPL_US_EQ",
+            target_amount_gbp=600.0,
+            current_price=100.0,
+            offset_pct=2.0,
+            strategy="momentum",
+            conviction=82,
+            cycle_id="limit_off_hours",
+        )
+
+        order = db_session.query(Order).one()
+        assert result["status"] == "dry_run"
+        assert result["warning_note"] is not None
+        assert order.warning_note == result["warning_note"]
+
+
 class TestSettingsProperties:
     """Test the new order management Settings properties."""
 

@@ -23,12 +23,20 @@ async def get_system_state():
     try:
         row = session.query(SystemState).first()
         if not row:
-            return SystemStateSchema(state="ACTIVE", paused=False)
+            return SystemStateSchema(
+                state="ACTIVE",
+                paused=False,
+                halted_recovery_streak=0,
+                halted_auto_recovery_target=settings.halted_auto_recovery_consecutive_cycles,
+            )
         return SystemStateSchema(
             state=row.state,
             paused=row.paused,
             current_drawdown_pct=row.current_drawdown_pct,
             peak_portfolio_value=row.peak_portfolio_value,
+            halted_recovery_streak=row.halted_recovery_streak or 0,
+            halted_auto_recovery_target=settings.halted_auto_recovery_consecutive_cycles,
+            peak_inflation_warning_note=row.peak_inflation_warning_note,
             last_cycle_at=row.last_cycle_at,
         )
     finally:

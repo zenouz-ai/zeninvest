@@ -193,7 +193,7 @@ Stocks considered but not traded are recorded with the stage that blocked them (
 | Logging | Rich |
 | CLI | Click |
 | Containerization | Docker + Docker Compose |
-| Testing | pytest (703 tests) |
+| Testing | pytest (721 tests collected) |
 
 ---
 

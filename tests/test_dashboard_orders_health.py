@@ -4,16 +4,24 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
+from dashboard.backend.app.routers import orders as orders_router
 from dashboard.backend.app.routers.orders import get_orders_health
 from src.data.models import Base, Order
 
 
 def test_orders_health_excludes_resolved_old_failures():
     """Old failed orders with later success should not be unresolved."""
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
 
@@ -162,3 +170,43 @@ def test_orders_health_dry_run_does_not_resolve_failed():
 
     assert result.failed_open_count == 1
     assert result.failed_recent[0].ticker == "X_US_EQ"
+
+
+def test_orders_list_serializes_warning_note():
+    """Orders API should expose warning_note for off-hours order annotations."""
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    seed = Session()
+    seed.add(
+        Order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=2.0,
+            status="pending",
+            warning_note="Placed outside market hours",
+            timestamp=datetime.now(timezone.utc),
+        )
+    )
+    seed.commit()
+    seed.close()
+
+    app = FastAPI()
+    app.include_router(orders_router.router, prefix="/api/orders")
+
+    with patch("dashboard.backend.app.routers.orders.get_session", side_effect=lambda: Session()), patch(
+        "dashboard.backend.app.routers.orders.settings"
+    ) as mock_settings:
+        mock_settings.dashboard_enabled = True
+        client = TestClient(app)
+        response = client.get("/api/orders/")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["warning_note"] == "Placed outside market hours"

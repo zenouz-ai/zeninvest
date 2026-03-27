@@ -102,7 +102,7 @@ describe('timeline section grouping', () => {
     expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.4')
     expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.2')
     expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.1')
-    expect(hardening?.columns.Next.map((milestone) => milestone.id)).toContain('US-7.5')
+    expect(hardening?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-7.5')
     expect(hardening?.columns.Soon.map((milestone) => milestone.id)).toContain('US-7.3')
   })
 

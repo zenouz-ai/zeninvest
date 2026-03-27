@@ -70,7 +70,7 @@ export default function OrderManagement() {
     <div className="space-y-6">
       <PageBrandHeader
         title="Order Management"
-        description="Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent market orders (BUY/SELL/REDUCE) are listed below."
+        description="Stop-loss levels for current positions and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent broker orders include failure details and any off-hours placement notes."
       />
 
       {health && (
@@ -120,6 +120,7 @@ export default function OrderManagement() {
                   <th className="py-2 font-mono">Qty</th>
                   <th className="py-2 font-mono">Type</th>
                   <th className="py-2 font-mono">Status</th>
+                  <th className="py-2 font-mono">Notes</th>
                   <th className="py-2 font-mono">Error</th>
                 </tr>
               </thead>
@@ -134,7 +135,10 @@ export default function OrderManagement() {
                       <td className="py-1 text-terminal-text-dim">{o.order_type}</td>
                       <td className={`py-1 ${o.status === 'failed' ? 'text-loss' : ''}`}>{o.status}</td>
                       <td className="py-1 text-xs text-terminal-text-dim">
-                        {o.error_message ? (
+                        {o.warning_note ? 'note' : '—'}
+                      </td>
+                      <td className="py-1 text-xs text-terminal-text-dim">
+                        {o.error_message || o.warning_note ? (
                           <button
                             type="button"
                             className="underline hover:text-terminal-text"
@@ -147,11 +151,27 @@ export default function OrderManagement() {
                     </tr>
                     {expandedErrorOrderId === o.id && o.error_message && (
                       <tr className="border-b border-terminal-border bg-terminal-surface/30">
-                        <td className="py-2 text-xs text-terminal-text-dim" colSpan={7}>
+                        <td className="py-2 text-xs text-terminal-text-dim" colSpan={8}>
                           <div><span className="font-semibold">Order ID:</span> {o.id}</div>
                           <div><span className="font-semibold">Broker ID:</span> {o.t212_order_id ?? '—'}</div>
+                          {o.warning_note && (
+                            <div className="mt-1 whitespace-pre-wrap break-words text-warning">
+                              <span className="font-semibold">Note:</span> {o.warning_note}
+                            </div>
+                          )}
                           <div className="mt-1 whitespace-pre-wrap break-words">
                             <span className="font-semibold">Error:</span> {o.error_message}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {expandedErrorOrderId === o.id && !o.error_message && o.warning_note && (
+                      <tr className="border-b border-terminal-border bg-terminal-surface/30">
+                        <td className="py-2 text-xs text-terminal-text-dim" colSpan={8}>
+                          <div><span className="font-semibold">Order ID:</span> {o.id}</div>
+                          <div><span className="font-semibold">Broker ID:</span> {o.t212_order_id ?? '—'}</div>
+                          <div className="mt-1 whitespace-pre-wrap break-words text-warning">
+                            <span className="font-semibold">Note:</span> {o.warning_note}
                           </div>
                         </td>
                       </tr>

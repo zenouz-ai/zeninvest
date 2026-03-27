@@ -48,7 +48,7 @@ My CV is strong in insurance/financial services. This project adds quantitative 
 
 ### 6. Evidence-Based Engineering Culture
 
-The project embodies the "measure before you build" philosophy: 703 tests, backtesting with promotion reports (fail-closed — weak evidence blocks deployment), experiment reproducibility (seed + config), and a sophistication roadmap that gates features on data availability. This mirrors how I run teams at L&G.
+The project embodies the "measure before you build" philosophy: 721 collected tests, backtesting with promotion reports (fail-closed — weak evidence blocks deployment), experiment reproducibility (seed + config), and a sophistication roadmap that gates features on data availability. This mirrors how I run teams at L&G.
 
 **CV angle:** "Applied evidence-based engineering: 703 automated tests, walk-forward backtesting with quantitative promotion gates, and a data-gated sophistication roadmap — the same discipline I bring to enterprise AI delivery."
 

@@ -53,7 +53,7 @@ This guide covers end-to-end deployment of the investment agent on a VPS: server
 - **RAM**: The docker-compose file enforces a 2 GB memory limit. Each analysis cycle loads pandas DataFrames, runs three LLM calls (Anthropic, OpenAI, Google), and processes market data. 2 GB provides comfortable headroom.
 - **CPU**: Analysis cycles are I/O-bound (API calls), so 1 vCPU works. 2 vCPU helps when yfinance downloads overlap with LLM calls.
 - **Storage**: The SQLite database grows slowly (market data cache is pruned). Logs and journals accumulate over months. 20 GB gives a year of runway with logrotate in place.
-- **Network**: The agent makes outbound HTTPS calls only. For the dashboard, inbound port 8000 (or 80 via nginx) is needed. See [§13 Dashboard VPS Deployment](#13-dashboard-vps-deployment).
+- **Network**: The agent makes outbound HTTPS calls only. For the dashboard, the normal production ingress is `80/443` via nginx; raw `8000` should only appear for localhost/dev or an explicit rollback. See [§13 Dashboard VPS Deployment](#13-dashboard-vps-deployment).
 
 ### Recommended Providers
 
@@ -337,7 +337,7 @@ Scheduled jobs:
 Before relying on scheduler-only execution, trigger one manual dry cycle and one manual live cycle. You can use either the dashboard buttons or CLI:
 
 **Option A: Dashboard** (when dashboard is running)
-- Open `http://VPS_IP:8000` → click **Dry Run** or **Live Run** (Live Run requires confirmation)
+- Open `https://zeninvest.zenouz.ai` in production, or `http://localhost:8000` in local/dev mode, then click **Dry Run** or **Live Run** (Live Run requires confirmation)
 - Calls `POST /api/runs/trigger` or `POST /api/runs/trigger-live`; cycle runs in the dashboard container
 
 **Option B: CLI**

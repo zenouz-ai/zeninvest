@@ -2,13 +2,13 @@
 tags: [sprint, planning, week-1, delivery, zeninvest]
 status: active
 created: 2026-03-21
-last_updated: 2026-03-25
+last_updated: 2026-03-27
 ---
 
 # Sprint Plan — Week 1 (ZenInvest)
 
 > This sprint doc is a synchronized view of `docs/SOPHISTICATION_ROADMAP.md`, which is now the planning source of truth.
-> Remaining-week priorities below reflect the agreed order as of 2026-03-25.
+> Current delivery order below reflects the agreed sequence as of 2026-03-27.
 
 ---
 
@@ -23,17 +23,18 @@ last_updated: 2026-03-25
 | US-4.5 | Proactive Macro News Intelligence | Delivered | Scheduled macro scan, persisted state, and action-plan context |
 | US-1.6 | Slack NL Trade Commands | Delivered | Slack review/buy/sell workflow with confirmations and audit trail |
 | US-1.9 | Conversational Trading Workflow skeleton | Delivered | Chat DB/API foundation only; MVP flow still open |
+| US-7.7 | Dashboard HTTPS Domain & Canonical Access | Delivered | Canonical `https://zeninvest.zenouz.ai`, internal-only dashboard app, public raw `:8000` removed |
+| US-7.5 | Quick Hardening Slice | Delivered | Off-hours order annotations, HALTED auto-recovery, peak inflation detection, DB constraints, dashboard visibility |
 
 ---
 
-## Remaining Week Order
+## Current Delivery Order
 
 | Order | ID | Story | Why now | Success criteria |
 |-------|----|-------|---------|------------------|
-| 1 | US-7.7 | Dashboard HTTPS Domain & Canonical Access | Highest-leverage production posture fix; app-side HTTPS/session handling already exists | No public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy |
-| 2 | US-7.5 | Quick Hardening Slice | Clear safety wins with narrow scope; prevents backlog sprawl | Hardening slice shipped with tests and no broader backlog creep |
-| 3 | US-1.9 | Conversational Trading Workflow MVP | Builds directly on the delivered Slack/chat foundation and adds real operator value | Real operator workflow MVP, not just CRUD skeleton |
-| 4 | US-8.1 | Open-Source Launch Preparation | Repo must be public-ready once posture and workflow priorities are in place | Repo can be made public without legal, CI, or contributor-experience gaps |
+| 1 | US-1.9 | Conversational Trading Workflow MVP | Builds directly on the delivered Slack/chat foundation and adds real operator value | Real operator workflow MVP, not just CRUD skeleton |
+| 2 | US-8.1 | Open-Source Launch Preparation | Repo must be public-ready once posture and workflow priorities are in place | Repo can be made public without legal, CI, or contributor-experience gaps |
+| 3 | US-7.3 | Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow work | Slippage becomes measurable before any live-account posture change |
 
 ---
 
@@ -41,13 +42,13 @@ last_updated: 2026-03-25
 
 ### Production Access & Safety
 
-- `US-7.7` is the top remaining-week task.
-- `US-7.5` is explicitly scoped to the quick slice only:
-  - market-hours check
+- `US-7.7` is delivered and should now be treated as the canonical production ingress posture.
+- `US-7.5` shipped as the narrow hardening slice only:
+  - off-hours order annotations
   - HALTED auto-recovery
   - peak inflation detection
   - DB-level constraints
-- Broader audit backlog items stay parked under the same story for later follow-up.
+- Broader audit backlog items remain parked under the same story for later follow-up.
 
 ### Conversational Operator Workflow
 
@@ -62,7 +63,7 @@ last_updated: 2026-03-25
 ### Open-Source Launch Readiness
 
 - `US-8.1` stays in the current week, but after the production posture and operator-workflow work above.
-- `US-7.7` is treated as a practical prerequisite for a clean community/operator posture, even though it is a separate hardening story.
+- `US-7.7` is already delivered and now acts as a practical prerequisite for a clean community/operator posture.
 
 ---
 

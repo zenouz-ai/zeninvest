@@ -27,6 +27,20 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
       if (status.paused) {
         newAlerts.push({ id: 'state-paused', severity: 'warning', message: 'Trading is paused' })
       }
+      if (status.state === 'HALTED' && (status.halted_recovery_streak ?? 0) > 0) {
+        newAlerts.push({
+          id: 'state-halted-recovery',
+          severity: 'warning',
+          message: `HALTED auto-recovery progress: ${status.halted_recovery_streak}/${status.halted_auto_recovery_target ?? '—'} clean cycles`,
+        })
+      }
+      if (status.peak_inflation_warning_note) {
+        newAlerts.push({
+          id: 'peak-inflation-warning',
+          severity: 'warning',
+          message: status.peak_inflation_warning_note,
+        })
+      }
     } catch { /* silent */ }
 
     // 2. SSE disconnected (stable: avoids false positive on load / brief reconnect gaps)

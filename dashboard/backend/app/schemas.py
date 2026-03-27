@@ -140,6 +140,7 @@ class OrderSchema(BaseModel):
     strategy: str | None
     conviction: int | None
     t212_order_id: str | None = None
+    warning_note: str | None = None
     error_message: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -460,6 +461,9 @@ class SystemStateSchema(BaseModel):
     paused: bool
     current_drawdown_pct: float | None = None
     peak_portfolio_value: float | None = None
+    halted_recovery_streak: int = 0
+    halted_auto_recovery_target: int | None = None
+    peak_inflation_warning_note: str | None = None
     last_cycle_at: datetime | None = None
 
 

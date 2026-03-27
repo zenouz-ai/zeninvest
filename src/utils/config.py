@@ -108,6 +108,11 @@ class Settings:
         return bool(self.trading.get("fx_aware_quantity", True))
 
     @property
+    def allow_off_hours_orders(self) -> bool:
+        """Allow order placement outside the regular market session with explicit warnings."""
+        return bool(self.trading.get("allow_off_hours_orders", True))
+
+    @property
     def max_positions(self) -> int:
         return self.trading["max_positions"]
 
@@ -259,6 +264,26 @@ class Settings:
             )
             return floor + 0.01
         return val
+
+    @property
+    def halted_auto_recovery_enabled(self) -> bool:
+        return bool(self.risk.get("halted_auto_recovery_enabled", True))
+
+    @property
+    def halted_auto_recovery_consecutive_cycles(self) -> int:
+        return max(1, int(self.risk.get("halted_auto_recovery_consecutive_cycles", 3)))
+
+    @property
+    def peak_inflation_guard_enabled(self) -> bool:
+        return bool(self.risk.get("peak_inflation_guard_enabled", True))
+
+    @property
+    def peak_inflation_multiplier(self) -> float:
+        return max(1.0, float(self.risk.get("peak_inflation_multiplier", 2.0)))
+
+    @property
+    def peak_inflation_lookback_snapshots(self) -> int:
+        return max(1, int(self.risk.get("peak_inflation_lookback_snapshots", 5)))
 
     # --- Strategy ---
     @property

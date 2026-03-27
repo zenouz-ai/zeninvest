@@ -1,7 +1,7 @@
 ---
 tags: [dashboard, frontend, api]
 status: current
-last_updated: 2026-03-25
+last_updated: 2026-03-27
 ---
 
 # Dashboard System
@@ -34,7 +34,7 @@ The dashboard is the primary visualisation and monitoring surface for the invest
 | **Database Models** | Complete | `events_log` + `runs` tables with Alembic migration; backend queries existing agent tables only |
 | **Event Logger** | Complete | Non-blocking, fail-open, background thread + queue |
 | **Agent Instrumentation** | Complete | Scheduler + orchestrator emit events throughout pipeline |
-| **React Frontend** | Complete | **11 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture, and Evolution Planner. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. Public-surface update (2026-03-25): signed-out visitors can open Overview, Portfolio, World News, and Roadmap in read-only mode, while operator controls and the remaining pages stay authenticated. Active swing follow-through (2026-03-25): Dashboard home can now surface richer cycle summary counts such as broker orders submitted, queued buys, and skipped buys when present in the run summary payload, the roadmap data includes the delivered Active Swing Rotation story, and authenticated operators can open a dedicated Evolution Planner workspace for policy-constrained change planning. See `docs/DASHBOARD_DESIGN_REVIEW.md` and `docs/ZEN_EVOLUTION_ENGINE.md`. |
+| **React Frontend** | Complete | **11 pages:** Dashboard Home (`ZenInvest Agent`, system state badge ACTIVE/CAUTIOUS/HALTED, paused), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands (Slack trade command audit log), World News, Costs, Roadmap & Architecture, and Evolution Planner. Design: ZENOUZ.ai visual system with dark `#06060a`, cyan/violet/emerald accents, atmospheric grid/orbs, glass panels, and branded pills. UX improvements (2026-03-13): active nav state, mobile hamburger menu, loading spinner, error handling with retry, button consistency, sticky table headers, card shadow, focus styles. Branding update (2026-03-24): company/product hierarchy standardised as `ZENOUZ.ai` / `ZenInvest` / `ZenInvest Agent`; shared page header across all tabs now uses a right-aligned hybrid bold Z mark inside a subtle glass panel. Public-surface update (2026-03-25): signed-out visitors can open Overview, Portfolio, World News, and Roadmap in read-only mode, while operator controls and the remaining pages stay authenticated. Hardening follow-through (2026-03-27): AlertBanner now surfaces HALTED auto-recovery progress and peak-inflation warnings when active, Order Management shows off-hours order warning notes, and roadmap data reflects `US-7.7` and `US-7.5` as delivered. See `docs/DASHBOARD_DESIGN_REVIEW.md` and `docs/ZEN_EVOLUTION_ENGINE.md`. |
 | **Config** | Complete | `dashboard.enabled`, `dashboard.events_enabled` in settings.yaml |
 
 ### Phase 1.5 Analytics Lite (delivered)
@@ -112,7 +112,7 @@ Next: continue migrating the 11-page surface to use these primitives in place of
 
 ### Deployment (delivered)
 
-See `docs/DASHBOARD_DEPLOYMENT.md` — two Docker services: `investment-agent` (`Dockerfile.agent`, Python-only scheduler) and `dashboard` (`Dockerfile`, multi-stage Node + Python with frontend build). SPA fallback on port 8000. Activity feed (SSE) uses relative URL. CORS origins configurable via `dashboard.cors_origins` in `config/settings.yaml`. Authentication is session-based for operator routes, with explicit anonymous read-only routes under `/api/public/*`.
+See `docs/DASHBOARD_DEPLOYMENT.md` — the dashboard app stays internal-only on the Compose network while nginx serves the canonical HTTPS domain `https://zeninvest.zenouz.ai`. Activity feed (SSE) uses relative URL. CORS origins are configurable via `dashboard.cors_origins` in `config/settings.yaml`. Authentication is session-based for operator routes, with explicit anonymous read-only routes under `/api/public/*`.
 
 ### Stabilisation (done)
 
@@ -291,6 +291,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Table of all recent orders: time, ticker, action, quantity, order type, status (filled/pending/dry_run/failed)
 - Market orders (BUY/SELL/REDUCE) and stop orders in one view
 - Failed rows expose error details directly in the table (drill-down with full error message and broker order ID when available)
+- Off-hours market/limit/stop orders can carry a `warning_note` explaining that the order was placed outside the regular US market session and may remain pending until the market opens
 - Order-value floor behavior is visible in execution outcomes: BUY/REDUCE/limit/stop below £500 are skipped (for MARKET BUYs, floor check uses target trade value to avoid rounding dips), while explicit market SELL can still execute for full exits
 - REDUCE decisions that would leave a residual position below £500 appear as executed SELL actions in the orders stream
 - Status reflects T212 API response when live (FILLED→filled, NEW→pending, REJECTED→failed)
@@ -300,6 +301,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Local DB statuses are reconciled at the start of each non-dry-run cycle via `sync_order_status_from_t212()` (pending -> filled when T212 reports FILLED/PARTIALLY_FILLED).
 - Dashboard health endpoint (`/api/orders/health`) also reconciles stale local pending stop orders against live T212 pending orders and reports local/live/stale counts. **Unresolved failed orders** are those with `status=failed` that still lack a later **filled** or **cancelled** row for the same `(ticker, action, order_type)`; a later **`dry_run` row does not** clear the alert (dry run does not fix a live broker failure).
 - **Route ordering:** `GET /api/orders/health` must be declared *before* `GET /api/orders/{order_id}` in the orders router. If the parameterized route is registered first, requests to `/health` match `{order_id}` and FastAPI returns **422** (cannot coerce `"health"` to `int`).
+- Status/system payloads also expose `halted_recovery_streak`, `halted_auto_recovery_target`, and `peak_inflation_warning_note` so the dashboard can surface hardening-state warnings without adding a separate alert subsystem.
 
 **Current stop-loss levels (from `orders` + `stop_loss_adjustments`):**
 - Current stop-loss levels for all positions with distance from current price
@@ -921,7 +923,7 @@ def db_session():
 
 ### Verification Results
 
-- `poetry run pytest -v` — all 703 tests pass ✅
+- `poetry run pytest -v` — 721 tests collected; current backend verification is green ✅
 - `cd dashboard/frontend && npm run build` — no TypeScript errors ✅
 - `cd dashboard/frontend && npm test` — Vitest (SSE parser utilities) ✅
 - `poetry run python -m src.orchestrator.main --dry-run` — produces stocks ✅

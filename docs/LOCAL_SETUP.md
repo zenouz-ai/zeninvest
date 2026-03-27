@@ -192,7 +192,7 @@ Use these only if running investigation steps in `docs/Nemotron_3_Super_Integrat
 poetry run pytest -v
 ```
 
-This runs all 703 tests using in-memory SQLite fixtures.
+This runs all 721 collected tests using in-memory SQLite fixtures.
 
 ### Individual Test Files
 
@@ -215,6 +215,20 @@ poetry run pytest --cov=src --cov-report=term-missing -v
 ```bash
 poetry run mypy src/
 ```
+
+### Dashboard Frontend Runtime
+
+Use Node 20 LTS for `dashboard/frontend`.
+
+```bash
+cd dashboard/frontend
+nvm use   # reads .nvmrc
+npm install
+npm test
+npm run build
+```
+
+The frontend toolchain is pinned to `node >=20 <21`. Newer major Node versions are not part of the supported local toolchain.
 
 ## Diagnostics Notebook
 

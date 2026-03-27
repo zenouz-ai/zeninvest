@@ -11,6 +11,7 @@ from src.data.database import get_session
 from src.data.models import Instrument, Order
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
+from src.utils.scheduling import is_within_regular_market_session
 
 logger = get_logger("order_manager")
 
@@ -114,6 +115,43 @@ class OrderManager:
         """Create a deduplication key: ticker_direction_absqty."""
         direction = "BUY" if quantity > 0 else "SELL"
         return f"{ticker}_{direction}_{abs(quantity):.2f}"
+
+    def check_off_hours_order_policy(
+        self,
+        *,
+        ticker: str,
+        action: str,
+        order_type: str,
+    ) -> tuple[bool, str | None]:
+        """Return whether order placement is allowed and any off-hours warning note."""
+        if is_within_regular_market_session(self.settings):
+            return True, None
+
+        note = (
+            f"Placed {action} {order_type} order for {ticker} outside the regular US market session; "
+            "it may remain pending until the market opens."
+        )
+        logger.warning(note)
+
+        if DASHBOARD_AVAILABLE and log_event is not None:
+            try:
+                log_event(
+                    event_type="order_warning",
+                    source="execution",
+                    message=note,
+                    metadata={
+                        "ticker": ticker,
+                        "action": action,
+                        "order_type": order_type,
+                        "warning_note": note,
+                    },
+                )
+            except Exception:
+                pass
+
+        if not self.settings.allow_off_hours_orders:
+            return False, note
+        return True, note
 
     def _mark_instrument_unavailable(self, ticker: str, reason: str) -> None:
         """Mark instrument as unavailable so future screening/execution can skip it."""
@@ -557,6 +595,7 @@ class OrderManager:
         risk_result: str | None = None,
         error_message: str | None = None,
         dedup_key: str | None = None,
+        warning_note: str | None = None,
     ) -> Order:
         """Log an order to the database."""
         session = get_session()
@@ -577,6 +616,7 @@ class OrderManager:
                 conviction=conviction,
                 moderation_result=moderation_result,
                 risk_result=risk_result,
+                warning_note=warning_note,
                 error_message=error_message,
                 dedup_key=dedup_key,
             )
@@ -853,6 +893,23 @@ class OrderManager:
                 "value_gbp": value_gbp,
             }
 
+        can_place_off_hours, warning_note = self.check_off_hours_order_policy(
+            ticker=ticker,
+            action=action,
+            order_type="market",
+        )
+        if not can_place_off_hours:
+            return {
+                "status": "skipped",
+                "reason": "outside_regular_market_session",
+                "ticker": ticker,
+                "action": action,
+                "quantity": abs(quantity),
+                "price": current_price,
+                "value_gbp": value_gbp,
+                "warning_note": warning_note,
+            }
+
         if self.dry_run:
             logger.info(f"[DRY RUN] Would execute: {action} {abs(quantity)} x {ticker} @ {current_price}")
             order = self._log_order(
@@ -868,6 +925,7 @@ class OrderManager:
                 moderation_result=moderation_result,
                 risk_result=risk_result,
                 dedup_key=dedup_key,
+                warning_note=warning_note,
             )
             
             # Log order_placed event
@@ -887,6 +945,7 @@ class OrderManager:
                             "status": "dry_run",
                             "strategy": strategy,
                             "conviction": conviction,
+                            "warning_note": warning_note,
                         },
                     )
                 except Exception:
@@ -900,6 +959,7 @@ class OrderManager:
                 "quantity": abs(quantity),
                 "price": current_price,
                 "value_gbp": value_gbp,
+                "warning_note": warning_note,
             }
 
         # Write-before-execute: create a "submitting" DB record BEFORE the T212
@@ -918,6 +978,7 @@ class OrderManager:
             moderation_result=moderation_result,
             risk_result=risk_result,
             dedup_key=dedup_key,
+            warning_note=warning_note,
         )
 
         try:
@@ -936,6 +997,7 @@ class OrderManager:
                             "value_gbp": value_gbp,
                             "strategy": strategy,
                             "conviction": conviction,
+                            "warning_note": warning_note,
                         },
                     )
                 except Exception:
@@ -982,6 +1044,7 @@ class OrderManager:
                             "t212_status": t212_status,
                             "strategy": strategy,
                             "conviction": conviction,
+                            "warning_note": warning_note,
                         },
                     )
                 except Exception:
@@ -996,6 +1059,7 @@ class OrderManager:
                 "quantity": abs(quantity),
                 "price": current_price,
                 "value_gbp": value_gbp,
+                "warning_note": warning_note,
             }
 
         except Exception as e:
@@ -1017,6 +1081,7 @@ class OrderManager:
                 "quantity": abs(quantity),
                 "price": current_price,
                 "value_gbp": value_gbp,
+                "warning_note": warning_note,
             }
 
     def sync_order_status_from_t212(self) -> int:
@@ -1236,6 +1301,19 @@ class OrderManager:
             )
             return {"status": "skipped", "order_type": "stop", "reason": reject_reason}
 
+        can_place_off_hours, warning_note = self.check_off_hours_order_policy(
+            ticker=ticker,
+            action="SELL",
+            order_type="stop",
+        )
+        if not can_place_off_hours:
+            return {
+                "status": "skipped",
+                "order_type": "stop",
+                "reason": "outside_regular_market_session",
+                "warning_note": warning_note,
+            }
+
         if self.dry_run:
             logger.info(
                 f"[DRY RUN] Would place stop-loss: SELL {quantity} x {ticker} "
@@ -1251,6 +1329,7 @@ class OrderManager:
                 value_gbp=stop_order_value,
                 status="dry_run",
                 strategy=strategy,
+                warning_note=warning_note,
             )
             return {
                 "status": "dry_run",
@@ -1259,6 +1338,7 @@ class OrderManager:
                 "ticker": ticker,
                 "stop_price": stop_price,
                 "quantity": quantity,
+                "warning_note": warning_note,
             }
 
         try:
@@ -1281,6 +1361,7 @@ class OrderManager:
                 t212_order_id=str(t212_order_id) if t212_order_id else None,
                 status="pending",
                 strategy=strategy,
+                warning_note=warning_note,
             )
 
             logger.info(
@@ -1295,6 +1376,7 @@ class OrderManager:
                 "ticker": ticker,
                 "stop_price": stop_price,
                 "quantity": quantity,
+                "warning_note": warning_note,
             }
         except Exception as e:
             error_msg = _format_http_error_message(e, prefix=f"Stop-loss order failed for {ticker}")
@@ -1308,6 +1390,7 @@ class OrderManager:
                 value_gbp=stop_order_value,
                 status="failed",
                 strategy=strategy,
+                warning_note=warning_note,
                 error_message=error_msg,
             )
             return {"status": "failed", "order_type": "stop", "error": error_msg}
@@ -1322,6 +1405,11 @@ class OrderManager:
                 quantity = float(position.get("quantity", 0))
                 if quantity > 0:
                     try:
+                        _, warning_note = self.check_off_hours_order_policy(
+                            ticker=ticker,
+                            action="SELL",
+                            order_type="market",
+                        )
                         # Cancel conflicting stops (fail-open for liquidation)
                         try:
                             self.cancel_conflicting_stops(ticker)
@@ -1346,6 +1434,7 @@ class OrderManager:
                             t212_order_id=str(t212_order_id) if t212_order_id else None,
                             status=db_status,
                             strategy="liquidation",
+                            warning_note=warning_note,
                         )
                         results.append({"ticker": ticker, "status": db_status, "result": result})
                         logger.info(f"Liquidated {quantity} x {ticker} (status={db_status})")

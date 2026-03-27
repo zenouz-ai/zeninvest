@@ -173,6 +173,9 @@ export const statusApi = {
     schedule_timezone: string | null
     state?: string
     paused?: boolean
+    halted_recovery_streak?: number
+    halted_auto_recovery_target?: number | null
+    peak_inflation_warning_note?: string | null
   }> => {
     const response = await api.get('/api/status/')
     return response.data

@@ -1,7 +1,7 @@
 ---
 tags: [roadmap, planning, user-stories, priorities]
 status: current
-last_updated: 2026-03-25
+last_updated: 2026-03-27
 ---
 
 # Sophistication Roadmap
@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **26** · Pipeline **21**
+**At a glance:** Delivered **27** · Pipeline **20**
 
 ### Priority rules
 
@@ -25,20 +25,20 @@ This document tracks every planned and delivered enhancement to the investment a
 3. **Data-gated learning stories only after enough `trade_outcomes` exist**  
 4. **Lower-leverage investigations stay later unless tied to an immediate business need**  
 
-### Remaining week order (through March 25, 2026)
+### Current delivery order (as of March 27, 2026)
 
 | Order | Story | Why it matters now | Success criteria |
 |------|-------|--------------------|------------------|
-| 1 | **US-7.5** Quick Hardening Slice | Fast, material safety wins without opening the full backlog | Hardening slice shipped with tests and no broader backlog creep |
-| 2 | **US-1.9** Conversational Trading Workflow MVP | Turns the delivered skeleton into a real operator workflow | Real operator workflow MVP, not just CRUD skeleton |
-| 3 | **US-8.1** Open-Source Launch Preparation | Repo must be public-ready once posture and workflow work land | Repo can be made public without legal, CI, or contributor-experience gaps |
-| 4 | **US-7.3** Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow work | Slippage becomes measurable before any live-account posture change |
+| 1 | **US-1.9** Conversational Trading Workflow MVP | Turns the delivered skeleton into a real operator workflow | Real operator workflow MVP, not just CRUD skeleton |
+| 2 | **US-8.1** Open-Source Launch Preparation | Repo must be public-ready once posture and workflow work land | Repo can be made public without legal, CI, or contributor-experience gaps |
+| 3 | **US-7.3** Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow work | Slippage becomes measurable before any live-account posture change |
+| 4 | **US-7.2** Partial Fill Resubmission | Immediate follow-on once execution telemetry exists | Unfilled remainder can be recovered safely when the thesis still holds |
 
 ### Near-term umbrella tracks
 
 | Track | Included stories | Status | Why now |
 |-------|------------------|--------|---------|
-| **Production Access & Safety** | `US-7.7`, `US-7.5`, `US-7.3`, `US-7.2` | **Active now** | Production posture and execution reliability are the highest-leverage remaining gaps |
+| **Production Access & Safety** | delivered `US-7.7`, delivered `US-7.5`, next `US-7.3`, then `US-7.2` | **Execution-quality follow-on active** | Canonical ingress and the quick hardening slice are shipped; the next leverage point is execution reliability |
 | **Conversational Operator Workflow** | delivered foundation `US-1.6`, active MVP `US-1.9` | **Active now** | Existing Slack + chat plumbing is already in place; the next step adds real operator value |
 | **Zen Evolution Engine** | delivered planner foundation `US-1.10`, later gated phases `US-1.11`–`US-1.14` | **Later / gated rollout** | Valuable north-star capability, but authority should expand only after posture, workflow, and CI foundations are stable |
 | **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
@@ -63,7 +63,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-1.7.1** | Dashboard UX Phase 1 | AlertBanner (alert aggregation on all pages), Dashboard Home restructure (positions on home, always-visible activity + cycle summary, independent section loading, performance card, pause/resume toggle, PAUSED badge), accessibility (`aria-expanded`, `aria-live`), mobile nav fix. See `docs/UX_AUDIT.md`. | Reduces time-to-insight from 4 clicks to 0; surfaces anomalies proactively | **Delivered** |
 | **US-1.7.2** | Dashboard UX Phase 2 | Force Sell from Portfolio, data freshness indicators, keyboard-accessible tables, focus trap on modals, colour accessibility (▲/▼ arrows + aria-labels), chart colour alignment. See `docs/UX_AUDIT.md`. | 19/28 audit findings resolved; full keyboard + screen reader accessibility | **Delivered** |
 | **US-1.7.3** | Dashboard Visual Design System | Formalised ZENOUZ.ai visual language from `dashboard-style-guide.md`: Syne heading font, full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`), violet soft-fill accents, glass-dark card treatment (radial-gradient + panel shadow + 1.5rem radius), brand gradient updated to violet→cyan→emerald, 72px violet atmospheric grid, blurred sticky nav bar, pill active state. Tailwind: `font-heading`, `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`. Four new shared primitives: `Panel` (glass-dark surface), `MetricCard` (Syne KPI), `StatusPill` (brand pill/badge), `SectionHeader` (Syne heading + mono eyebrow). | Unified, polished visual identity across the entire dashboard; primitives unblock consistent page migration | **Delivered** |
-| **US-1.8** | Dashboard VPS Deployment | Deploy dashboard to VPS via Docker; access via VPS IP (no domain required); see `docs/DASHBOARD_DEPLOYMENT.md` | Operational visibility on live VPS | **Delivered** |
+| **US-1.8** | Dashboard VPS Deployment | Original Dockerized VPS deployment path for the dashboard; the raw VPS/IP route is now superseded in production by US-7.7 canonical HTTPS ingress. See `docs/DASHBOARD_DEPLOYMENT.md`. | Operational visibility on live VPS | **Delivered** |
 | **US-1.9** | Conversational Trading Workflow | Skeleton delivered; active MVP this week focuses on multi-turn continuity, explicit confirmation, deterministic risk veto preservation, and auditable operator workflow across Slack + dashboard | Highest-leverage next operator workflow improvement after US-1.6 | **Active now (skeleton delivered)** |
 | **US-1.10** | Evolution Planner | Authenticated dashboard-first evolution planner with natural-language intake, intent normalization, repo context retrieval, risk classification, validation matrix, clarifying-question loop, and full audit trail | Starts the policy-constrained software evolution track without granting code or deploy authority | **Delivered (planner-only)** |
 | **US-1.11** | Branch-Based Evolution Runner | Isolated branch workspace, scoped code edits, semantic change summary, validation artifact pack, and review-ready PR generation | True v1 autonomy target after CI and branch governance foundations exist | **Later / gated** |
@@ -86,7 +86,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-4.4** | Agentic Research | 5 tools (web_search, news_search, sector_search, sec_search, macro_search) with caps 20/8/7 (total 35/cycle). All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have full tool-use loops. Pipeline-wide shared budget enforcement. Brave primary, Tavily fallback. SEC EDGAR free. Latency/cost recorded. 37 unit tests. Phase 0/0.2 notebooks validated. | Stale context mitigation, follow-up ability, broader coverage | **Delivered** |
 | **US-7.0a** | Agent Logic Audit Fixes | 27 findings (5C+7H+9M+6L). All Critical + High fixed: MODIFY verdicts as conditional AGREE (C-1), CAUTION 25% allocation reduction (C-2), conviction/allocation clamping (C-3), Gemini score bounds (C-4), orphaned "submitting" sync (C-5), risk-driven exit bypass (H-1), entry_type in schema (H-2), strategy timeout 120s (H-3), consensus on all moderator rows (H-4), repaired-decision validation (H-5), ticker dedup (H-6). 36 new tests. See `docs/AGENT_LOGIC_AUDIT.md`. | Eliminates 5 critical + 7 high LLM output parsing and consensus bugs | **Delivered** |
 | **US-7.0b** | Formal Verification Fixes | 18 findings (3C+7W+8I). Phase 1: scheduler `max_instances=1` (concurrent cycle prevention), resume warns HALTED/CAUTIOUS. Phase 2: `trade_without_stop` alert (P2-5), OpportunityQueue `queue_status` lifecycle QUEUED→EXECUTING→EXECUTED + orphan reconciliation (P2-6), portfolio re-query before BUY after SELL/REDUCE (P2-4), decision chain integrity check (P2-3). 18 new tests. 12 invariants verified. See `docs/FORMAL_VERIFICATION_AUDIT.md`. | Crash safety, state machine correctness, DB atomicity | **Delivered** |
-| **US-7.5** | Remaining Audit Backlog | This week only ships the quick hardening slice: market hours check, HALTED auto-recovery, peak inflation detection, and DB CHECK constraints; the wider backlog remains parked under the same story | Material hardening before execution-quality and live-account posture work | **Active now** |
+| **US-7.5** | Remaining Audit Backlog | The quick hardening slice is now delivered: off-hours order annotations, HALTED auto-recovery, peak inflation detection, and DB CHECK constraints. The broader backlog remains parked under the same story. | Material hardening before execution-quality and live-account posture work | **Delivered (quick slice)** |
 | **US-7.6** | VPS Runtime Stability & Service Isolation | Single-instance runtime locks for API/scheduler/Slack/cycle execution; bounded manual trigger and Slack worker execution; separate migration service; current Docker Compose production posture plus optional lean systemd split for small VPS operation | Prevents duplicate/runaway processes and keeps idle CPU low on a resource-constrained host | **Delivered** |
 | **US-7.7** | Dashboard HTTPS Domain & Canonical Access | Expose the dashboard at `https://zeninvest.zenouz.ai` via Cloudflare-proxied DNS and Nginx TLS termination; keep the anonymous read-only surface limited to Overview, Portfolio, World News, and Roadmap; keep operator routes and trading controls session-protected; remove public port 8000 exposure; enforce canonical host access; and update deployment/runbook documentation. See `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`. | One safe, canonical public dashboard URL with working operator login over HTTPS | **Delivered** |
 | **US-4.5** | Proactive Macro News Intelligence | Scheduled macro/geopolitical scans, second-order effect reasoning, persistent macro state, confidence-scored signals, and macro action planning with full signal-to-action audit trail; integrates with committee context and risk veto. See `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`. | Portfolio-level anticipation of macro shocks/tailwinds with controlled, auditable positioning adjustments | **Delivered** |
@@ -106,7 +106,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Current state: POC (v1.0)
 
-The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All tests pass. It is ready for VPS deployment to begin gathering live performance data.
+The POC is a fully functional autonomous trading agent running on Trading 212 Practice API with a multi-LLM pipeline. All tests pass. It is already running in the Docker Compose VPS posture and continues to gather live performance data in practice mode.
 
 **What the POC establishes:**
 - End-to-end pipeline: Data → Screen → Strategy → Moderation → Risk → Execution → Journal → Notifications
@@ -137,7 +137,7 @@ The POC is a fully functional autonomous trading agent running on Trading 212 Pr
 
 ## Priority matrix
 
-This table is a historical impact/feasibility view of the backlog, not the current sprint queue. Active execution order is governed by the **Remaining week order** and the umbrella tracks above.
+This table is a historical impact/feasibility view of the backlog, not the current sprint queue. Active execution order is governed by the **Current delivery order** and the umbrella tracks above.
 
 | # | User Story | Value | Feasibility | Effort | Data Needed | Priority |
 |---|------------|-------|-------------|--------|-------------|----------|
@@ -888,7 +888,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - [x] P2-6: OpportunityQueue `queue_status` lifecycle (QUEUED→EXECUTING→EXECUTED) with orphan reconciliation
 - [x] 18 new tests; 12 invariants catalogued
 
-**Remaining (backlog → US-7.5):** Phase 3 (HALTED auto-recovery, market hours check) + Phase 4 (5 items: atomic cost budget, DB thread safety, peak inflation detection, halted ticker denial list, DB CHECK constraints)
+**Remaining (backlog → US-7.5):** Medium/low backlog only — atomic cost budget, DB thread safety, halted ticker denial list, and any residual audit cleanup outside the shipped quick slice
 
 ---
 
@@ -896,13 +896,14 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Value:** Medium — hardening items required before live-account transition
 **Effort:** Large (estimated 15–20 hours across multiple sprints)
 **Data Sources:** None
-**Stage:** Active now (quick slice this week; broader backlog later)
+**Stage:** Delivered (quick slice) with broader backlog later
 
-**This week only:**
-- [ ] P3-1: HALTED auto-recovery after N cycles below threshold
-- [ ] P3-2: Market hours check before order placement
-- [ ] P4-3: Peak inflation detection
-- [ ] P4-5: DB-level CHECK constraints
+**Delivered in the quick slice (2026-03-27):**
+- [x] P3-1: HALTED auto-recovery after 3 clean live cycles below the cautious threshold
+- [x] P3-2: Off-hours order check converted to note-only warnings before market/limit/stop placement
+- [x] P4-3: Peak inflation detection with dashboard/system warning note and `--reset-peak` guidance
+- [x] P4-5: DB-level CHECK constraints for signed order quantity, conviction/allocation bounds, and moderation score bounds
+- [x] Dashboard/API visibility for `warning_note`, `halted_recovery_streak`, recovery target, and active peak-inflation warning note
 
 **Later backlog remains parked under this story:**
 - [ ] Remaining medium/low agent-logic items
@@ -994,19 +995,23 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 ---
 
-## Remaining week focus
+## Current delivery focus
 
-**Canonical order through 2026-03-25:**
-1. **US-7.7** — Dashboard HTTPS Domain & Canonical Access
-2. **US-7.5** — Quick Hardening Slice
-3. **US-1.9** — Conversational Trading Workflow MVP
-4. **US-8.1** — Open-Source Launch Preparation
+**Canonical order as of 2026-03-27:**
+1. **US-1.9** — Conversational Trading Workflow MVP
+2. **US-8.1** — Open-Source Launch Preparation
+3. **US-7.3** — Execution Quality & Slippage Monitoring
+4. **US-7.2** — Partial Fill Resubmission
 
 **Success criteria:**
-- **US-7.7** — no public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy
-- **US-7.5** — hardening slice shipped with tests and no broader backlog creep
 - **US-1.9** — real operator workflow MVP, not just CRUD skeleton
 - **US-8.1** — repo can be made public without legal, CI, or contributor-experience gaps
+- **US-7.3** — decision-time price and slippage metrics exist before live trading posture changes
+- **US-7.2** — unfilled remainder can be resubmitted safely when the thesis still holds
+
+**Recently delivered:**
+- **US-7.7** — no public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy
+- **US-7.5** — quick hardening slice shipped with tests and no broader backlog creep
 
 **Next after 8.1:**
 - **US-7.3** then **US-7.2** as the first execution-quality and fill-recovery track

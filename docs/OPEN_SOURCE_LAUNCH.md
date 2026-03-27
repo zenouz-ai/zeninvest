@@ -10,7 +10,7 @@ last_updated: 2026-03-21
 > **Status:** Planned | **Priority:** P0 (prerequisite for repo going public) | **Effort:** Medium (2–3 days)
 > Sprint delivery: Day 8 — see `docs/SPRINT_WEEK_1.md`.
 > Roadmap entry: `docs/SOPHISTICATION_ROADMAP.md` § US-8.1 (Open-Source / Community).
-> Related Week 1 handoff: `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md` captures the planned canonical community/operator entrypoint at `https://zeninvest.zenouz.ai`.
+> Related Week 1 handoff: `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md` captures the delivered canonical community/operator entrypoint at `https://zeninvest.zenouz.ai`.
 
 ## Purpose
 
@@ -31,7 +31,7 @@ ZenInvest (formerly Investment Agent) is being open-sourced by Zenouz.ai under a
 
 Without these, an open-source launch creates friction for early contributors, legal ambiguity, and no automated quality protection for incoming PRs.
 
-The Week 1 sprint also tracks a related documentation-only handoff for `US-7.7 Dashboard HTTPS Domain & Canonical Access`. That work is not part of the US-8.1 implementation scope, but it supports the same community-facing launch posture by defining the intended canonical dashboard domain and production access model.
+The Week 1 sprint also tracks the now-delivered `US-7.7 Dashboard HTTPS Domain & Canonical Access` handoff. That work is not part of the US-8.1 implementation scope, but it supports the same community-facing launch posture by defining the canonical dashboard domain and production access model.
 
 ---
 

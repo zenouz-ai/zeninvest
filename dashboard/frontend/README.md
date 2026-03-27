@@ -4,9 +4,12 @@ React + TypeScript + Vite frontend for the Investment Agent dashboard.
 
 ## Setup
 
+Use Node 20 LTS for local frontend work. The frontend is pinned via `.nvmrc`, and `package.json` declares `node >=20 <21`.
+
 1. Install dependencies:
 ```bash
 cd dashboard/frontend
+nvm use  # or otherwise switch to Node 20 LTS
 npm install
 ```
 
