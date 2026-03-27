@@ -36,9 +36,16 @@ class ChatSpecialistEngine:
         bear = self._bear_view(primary, evidence_bundle)
         risk = self._risk_view(primary, evidence_bundle)
         views = [view for view in (bull, bear, risk) if view]
-        if views:
-            return views
-        return self._fallback_committee_views(primary, evidence_bundle, turn_mode)
+        fallback_views = self._fallback_committee_views(primary, evidence_bundle, turn_mode)
+        if not views:
+            return fallback_views
+
+        seen_roles = {str(view.get("role")) for view in views if isinstance(view, dict) and view.get("role")}
+        for fallback in fallback_views:
+            role = str(fallback.get("role") or "")
+            if role and role not in seen_roles:
+                views.append(fallback)
+        return views
 
     def _bull_view(self, ticker: str, evidence_bundle: dict[str, Any]) -> dict[str, Any] | None:
         if not self.settings.anthropic_api_key_optional or not check_budget(Provider.ANTHROPIC.value):

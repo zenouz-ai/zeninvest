@@ -450,6 +450,29 @@ def test_related_ticker_scan_prefers_same_suffix_and_semiconductor_peers(orchest
     assert all(ticker.endswith("_US_EQ") for ticker in tickers)
 
 
+def test_committee_fallback_fills_missing_roles(orchestrator):
+    with patch.object(orchestrator._specialists, "_bull_view", return_value=None):
+        with patch.object(
+            orchestrator._specialists,
+            "_bear_view",
+            return_value={"role": "bear", "summary": "Expensive setup.", "model": "gpt-4o"},
+        ):
+            with patch.object(orchestrator._specialists, "_risk_view", return_value=None):
+                views = orchestrator._specialists.build_committee_views(
+                    tickers=["AMD_US_EQ"],
+                    evidence_bundle={
+                        "market_snapshot": [{"ticker": "AMD_US_EQ", "relative_strength_6m": 1.29, "rsi_14": 49.2}],
+                        "related_tickers": [{"ticker": "NVDA_US_EQ"}],
+                    },
+                    turn_mode="committee",
+                )
+
+    roles = [view["role"] for view in views]
+    assert roles.count("bear") == 1
+    assert "bull" in roles
+    assert "risk" in roles
+
+
 def test_agentic_turn_persists_workflow_and_evidence(orchestrator):
     session = orchestrator.start_session(channel_type="dashboard", title="Agentic compare")
     planned = ChatPlannerDecision(
