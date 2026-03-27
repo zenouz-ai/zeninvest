@@ -1,16 +1,16 @@
 trading:
   mode: active
   account_type: practice  # practice = relaxed state machine (always ACTIVE); live = full CAUTIOUS/HALTED
-  min_order_value_gbp: 500       # Minimum order-value floor; full market SELLs are allowed below this
+  min_order_value_gbp: 500       # Minimum BUY order-value floor
   min_reduce_pct_of_position: 25  # Skip REDUCE below this % of position
-  reduce_tiers_pct: [25, 50]  # Round REDUCE to nearest tier
+  reduce_tiers_pct: [50]  # REDUCE is intentionally rare: only 50% trims are allowed
   sell_min_profit_pct: 15  # Ordinary autonomous SELL requires at least this unrealized gain unless hard-exit
   reduce_25_min_profit_pct: 25  # REDUCE 25% only when unrealized gain reaches this threshold
   reduce_50_min_profit_pct: 40  # REDUCE 50% only when unrealized gain reaches this threshold
   buy_whole_shares_preferred: true  # Prefer integer-share autonomous buys
   buy_whole_share_max_overspend_pct: 5  # Allow modest overspend to land on a whole-share quantity
   buy_fractional_fallback_enabled: true  # Use fractional shares only when whole-share buy cannot satisfy rules
-  take_profit_full_sell_pct: 15  # Legacy compatibility threshold; SELLs are profit-gated, not forced
+  take_profit_full_sell_pct: 15  # Legacy compatibility threshold retained for reporting/backward compatibility
   small_position_cleanup_enabled: true  # Liquidate residual holdings immediately before strategy runs
   small_position_cleanup_value_gbp: 200  # Full SELL any holding below this value without strategy/moderation/risk
   base_url: https://demo.trading212.com/api/v0

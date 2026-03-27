@@ -655,15 +655,25 @@ def _human_reason(reason_code: Any, *, fallback: Any = "", context: dict[str, An
     if code == "reduce_guardrail_invalid_trigger":
         return "Held instead of reducing because REDUCE is reserved for rare profit trims only"
     if code == "reduce_guardrail_invalid_tier":
-        return "Held instead of reducing because only 25% or 50% trims are allowed"
+        return "Held instead of reducing because only 50% trims are allowed"
     if code == "sell_guardrail_below_profit_floor":
         return "Held instead of selling because unrealized profit has not reached the sell threshold"
     if code == "sell_guardrail_invalid_trigger":
         return "Held instead of selling because there was no valid hard-exit or gain-realization trigger"
     if code == "take_profit_full_sell":
-        return "Legacy take-profit threshold was reached, so a full SELL was submitted"
+        return "Profit-lock policy triggered a full SELL after the target profit threshold was reached"
     if code == "small_position_cleanup":
         return "Full SELL triggered because the holding fell below the small-position cleanup threshold"
+    if code == "profit_lock_stop_placed":
+        return "Broker stop protection was placed to lock at least the target profit"
+    if code == "profit_lock_stop_already_sufficient":
+        return "Existing broker stop already locks at least the target profit"
+    if code == "profit_lock_unprotected_exit":
+        return "Full SELL triggered because the position could not be protected at the profit-lock threshold"
+    if code == "profit_lock_hold_blocked":
+        return "Held was disallowed because the position was above the profit threshold without qualifying stop protection"
+    if code == "profit_lock_remainder_unprotected":
+        return "REDUCE was converted to full SELL because the remaining shares could not be profit-locked"
     if code == "risk_rejected":
         text = _excerpt(fallback, 180)
         return text or "Risk rules rejected this trade"

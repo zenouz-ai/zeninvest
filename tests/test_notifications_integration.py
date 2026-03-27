@@ -502,7 +502,7 @@ def test_run_cycle_skips_small_buy_when_minimum_order_has_no_cash(
     assert notifications.instruction_payloads[0]["notification_kind"] == "buy_skipped"
 
 
-def test_execute_trade_reduce_converts_to_full_sell_below_floor(monkeypatch) -> None:
+def test_execute_trade_reduce_below_buy_floor_still_executes(monkeypatch) -> None:
     orchestrator = Orchestrator(dry_run=True)
     notifications = CaptureNotifications()
     orchestrator.notification_service = notifications
@@ -567,20 +567,20 @@ def test_execute_trade_reduce_converts_to_full_sell_below_floor(monkeypatch) -> 
     )
 
     assert trade is not None
-    assert trade["action"] == "SELL"
+    assert trade["action"] == "REDUCE"
     assert DummyOrderManager.last_kwargs is not None
-    assert DummyOrderManager.last_kwargs["action"] == "SELL"
-    assert DummyOrderManager.last_kwargs["target_amount_gbp"] == pytest.approx(600.0)
+    assert DummyOrderManager.last_kwargs["action"] == "REDUCE"
+    assert DummyOrderManager.last_kwargs["target_amount_gbp"] == pytest.approx(300.0)
     assert len(notifications.execution_payloads) == 1
-    assert notifications.execution_payloads[0]["action"] == "SELL"
-    assert "reduce_converted_to_sell_below_floor" in notifications.execution_payloads[0]["execution_note"]
+    assert notifications.execution_payloads[0]["action"] == "REDUCE"
+    assert notifications.execution_payloads[0]["execution_note"] is None
 
 
 @pytest.mark.parametrize(
     ("pnl_pct", "position_pct", "target_alloc", "exit_trigger_type", "expected_allow", "expected_code"),
     [
-        (5.0, 8.0, 6.0, "profit_trim", False, "reduce_guardrail_below_profit_floor"),
-        (27.0, 8.0, 6.0, "profit_trim", True, None),
+        (5.0, 8.0, 4.0, "profit_trim", False, "reduce_guardrail_below_profit_floor"),
+        (27.0, 8.0, 4.0, "profit_trim", False, "reduce_guardrail_below_profit_floor"),
         (45.0, 8.0, 4.0, "profit_trim", True, None),
         (45.0, 8.0, 6.0, "gain_realization", False, "reduce_guardrail_invalid_trigger"),
     ],
@@ -638,6 +638,103 @@ def test_profit_threshold_no_longer_forces_take_profit_sell() -> None:
     assert decision["action"] == "HOLD"
     assert "deterministic_exit_reason_code" not in decision
     assert orchestrator._should_skip_min_holding_for_decision(decision) is False
+
+
+def test_profit_lock_context_marks_full_stop_protection() -> None:
+    orchestrator = Orchestrator(dry_run=True)
+    portfolio_data = {
+        "invested": 1_200.0,
+        "positions": [
+            {
+                "ticker": "AAPL_US_EQ",
+                "quantity": 10.0,
+                "currentPrice": 120.0,
+                "averagePrice": 100.0,
+                "walletImpact": {
+                    "currentValue": 1_200.0,
+                    "totalCost": 1_000.0,
+                    "unrealizedProfitLoss": 200.0,
+                },
+            }
+        ],
+    }
+
+    profit_lock_context = orchestrator._build_profit_lock_context(
+        portfolio_data,
+        pending_stops={
+            "AAPL_US_EQ": {"ticker": "AAPL_US_EQ", "stopPrice": 115.0, "quantity": 10.0}
+        },
+    )
+
+    lock = profit_lock_context["AAPL_US_EQ"]
+    assert lock["threshold_crossed"] is True
+    assert lock["protected"] is True
+    assert lock["status"] == "protected"
+    assert lock["required_stop_price_gbp"] == pytest.approx(115.0)
+
+
+def test_pre_strategy_profit_lock_unprotected_winner_exits(monkeypatch) -> None:
+    orchestrator = Orchestrator(dry_run=True)
+    orchestrator.notification_service = CaptureNotifications()
+
+    captured: dict[str, object] = {}
+
+    def _fake_execute_trade(*args, **kwargs):
+        decision = kwargs["decision"]
+        captured["ticker"] = kwargs["ticker"]
+        captured["reason_code"] = decision.get("deterministic_exit_reason_code")
+        return {
+            "ticker": kwargs["ticker"],
+            "action": "SELL",
+            "execution": {"status": "dry_run", "quantity": 5.0, "value_gbp": 600.0},
+            "moderation": "BYPASSED",
+            "risk": "BYPASSED",
+            "reason_code": decision.get("deterministic_exit_reason_code"),
+        }
+
+    monkeypatch.setattr(orchestrator, "_execute_trade", _fake_execute_trade)
+    orchestrator._stop_loss_manager = SimpleNamespace(
+        _get_pending_stops=lambda: {},
+        enforce_profit_locks=lambda *args, **kwargs: [],
+    )
+    orchestrator._t212_client = SimpleNamespace(get_position=lambda ticker: {"quantity": 5.0})
+
+    cleanup_tickers = orchestrator._execute_pre_strategy_cleanup_sells(
+        cycle_id="cycle_profit_lock",
+        portfolio_data={
+            "total_value": 1_000.0,
+            "cash": 400.0,
+            "invested": 600.0,
+            "total_return_pct": 0.0,
+            "positions": [
+                {
+                    "ticker": "AAPL_US_EQ",
+                    "quantity": 5.0,
+                    "currentPrice": 120.0,
+                    "averagePrice": 100.0,
+                    "walletImpact": {
+                        "currentValue": 600.0,
+                        "totalCost": 500.0,
+                        "unrealizedProfitLoss": 100.0,
+                    },
+                }
+            ],
+        },
+        current_value=1_000.0,
+        cash_gbp=400.0,
+        existing_tickers={"AAPL_US_EQ"},
+        market_regime="BULL",
+        vix=18.0,
+        macro={},
+        analyst_data_map={},
+        av_broad_sentiment={},
+        result={"trades": [], "rejected_stocks": [], "errors": []},
+        opportunity_evaluations=[],
+    )
+
+    assert cleanup_tickers == {"AAPL_US_EQ"}
+    assert captured["ticker"] == "AAPL_US_EQ"
+    assert captured["reason_code"] == "profit_lock_unprotected_exit"
 
 
 def test_small_position_cleanup_triggers_immediately_for_any_sub_threshold_holding() -> None:
@@ -825,12 +922,51 @@ def test_run_cycle_cleanup_sell_skips_strategy_and_uses_live_quantity(monkeypatc
     assert captured["risk"] == "BYPASSED"
 
 
-def test_scheduled_cycle_skips_live_execution_outside_regular_market_session(monkeypatch) -> None:
+def test_scheduled_cycle_marks_live_off_hours_warning(monkeypatch) -> None:
     orchestrator = Orchestrator(dry_run=False)
     notifications = CaptureNotifications()
     orchestrator.notification_service = notifications
-    orchestrator.state_machine = SimpleNamespace(is_paused=False, current_state="ACTIVE")
-    orchestrator._get_portfolio_state = lambda: (_ for _ in ()).throw(AssertionError("portfolio should not be fetched"))
+    orchestrator.state_machine = SimpleNamespace(
+        is_paused=False,
+        current_state="ACTIVE",
+        get_state=lambda: {"peak_portfolio_value": 1000.0, "daily_loss_halt_until": None},
+        update_peak=lambda current_value: None,
+        update_drawdown=lambda drawdown_pct: None,
+        record_cycle=lambda: None,
+    )
+    orchestrator._order_manager = SimpleNamespace(sync_order_status_from_t212=lambda: None)
+    orchestrator._stop_loss_manager = SimpleNamespace(
+        _get_pending_stops=lambda: {},
+        enforce_profit_locks=lambda *args, **kwargs: [],
+        place_missing_stops=lambda *args, **kwargs: [],
+        reassess_stops=lambda *args, **kwargs: [],
+        apply_trailing_stops=lambda *args, **kwargs: [],
+    )
+    orchestrator._get_portfolio_state = lambda: {
+        "cash": 1000.0,
+        "total_value": 1000.0,
+        "invested": 0.0,
+        "positions": [],
+        "num_positions": 0,
+        "daily_pnl_pct": 0.0,
+        "total_return_pct": 0.0,
+        "alpha_pct": 0.0,
+    }
+    orchestrator._fetch_stocks_data = lambda *args, **kwargs: []
+    orchestrator.data_fetcher = SimpleNamespace(
+        get_macro_data=lambda: {"vix": 18, "market_regime": "SIDEWAYS"},
+        get_cached_news_sentiment=lambda *args, **kwargs: None,
+        cache_news_sentiment=lambda *args, **kwargs: None,
+        get_analyst_data_cached=lambda *args, **kwargs: {},
+        alpha_vantage=SimpleNamespace(get_broad_market_sentiment=lambda: {}),
+        get_market_news_sentiment=lambda **kwargs: {"articles": [], "total_articles": 0},
+        close=lambda: None,
+    )
+    orchestrator.strategy_engine = SimpleNamespace(
+        run_sub_strategies=lambda *args, **kwargs: {"momentum": [], "mean_reversion": [], "top_factor": [], "factor": []},
+        synthesize_with_claude=lambda **kwargs: {"market_assessment": "off-hours", "decisions": []},
+        apply_risk_parity_metadata=lambda *args, **kwargs: None,
+    )
 
     monkeypatch.setattr("src.orchestrator.main.get_degradation_level", lambda: DegradationLevel.FULL)
     monkeypatch.setattr("src.orchestrator.main.get_cost_summary", lambda days=1: {})
@@ -838,8 +974,8 @@ def test_scheduled_cycle_skips_live_execution_outside_regular_market_session(mon
 
     result = orchestrator.run_cycle(scheduled_cycle_id="scheduled_20260325_120001")
 
-    assert result["status"] == "skipped_market_closed"
-    assert result["skip_reason"] == "outside_regular_market_session"
+    assert result["status"] == "completed"
+    assert "market_session_warning" in result
     assert notifications.summary_payloads
 
 

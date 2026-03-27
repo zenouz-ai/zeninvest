@@ -16,7 +16,36 @@ router = APIRouter()
 settings = get_settings()
 
 
-def _current_stops_from_orders(session) -> list[StopLossCurrentSchema]:
+def _latest_snapshot_positions(session) -> dict[str, dict]:
+    snapshot = (
+        session.query(PortfolioSnapshot)
+        .order_by(desc(PortfolioSnapshot.timestamp))
+        .first()
+    )
+    if not snapshot or not snapshot.positions_json:
+        return {}
+    try:
+        positions = json.loads(snapshot.positions_json)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    result: dict[str, dict] = {}
+    for pos in positions:
+        ticker = pos.get("ticker") or pos.get("symbol", "")
+        if ticker:
+            result[str(ticker)] = pos
+    return result
+
+
+def _with_profit_lock_fields(item: StopLossCurrentSchema, position_map: dict[str, dict]) -> StopLossCurrentSchema:
+    pos = position_map.get(item.ticker, {})
+    item.profit_lock_status = pos.get("profit_lock_status")
+    item.profit_lock_required_price_gbp = pos.get("profit_lock_required_price_gbp")
+    item.profit_lock_stop_price_gbp = pos.get("profit_lock_stop_price_gbp")
+    item.profit_lock_protected_qty = pos.get("profit_lock_protected_qty")
+    return item
+
+
+def _current_stops_from_orders(session, position_map: dict[str, dict]) -> list[StopLossCurrentSchema]:
     """Current stop levels from open/pending stop orders (latest per ticker)."""
     orders = (
         session.query(Order.ticker, Order.stop_price, Order.status)
@@ -30,13 +59,14 @@ def _current_stops_from_orders(session) -> list[StopLossCurrentSchema]:
         if ticker not in seen:
             seen.add(ticker)
             source = "order (dry_run)" if status == "dry_run" else "order"
-            result.append(
-                StopLossCurrentSchema(ticker=ticker, stop_price=stop_price, source=source)
-            )
+            result.append(_with_profit_lock_fields(
+                StopLossCurrentSchema(ticker=ticker, stop_price=stop_price, source=source),
+                position_map,
+            ))
     return result
 
 
-def _current_stops_from_adjustments(session) -> list[StopLossCurrentSchema]:
+def _current_stops_from_adjustments(session, position_map: dict[str, dict]) -> list[StopLossCurrentSchema]:
     """Current stop levels from latest adjustment per ticker."""
     rows = (
         session.query(StopLossAdjustment)
@@ -48,36 +78,27 @@ def _current_stops_from_adjustments(session) -> list[StopLossCurrentSchema]:
     for r in rows:
         if r.ticker not in seen:
             seen.add(r.ticker)
-            result.append(
+            result.append(_with_profit_lock_fields(
                 StopLossCurrentSchema(
                     ticker=r.ticker,
                     stop_price=r.new_stop_price,
                     source="adjustment",
-                )
-            )
+                ),
+                position_map,
+            ))
     return result
 
 
-def _positions_without_stops(session, tickers_with_stops: set[str]) -> list[StopLossCurrentSchema]:
+def _positions_without_stops(position_map: dict[str, dict], tickers_with_stops: set[str]) -> list[StopLossCurrentSchema]:
     """Positions from latest portfolio snapshot that have no stop order or adjustment."""
-    snapshot = (
-        session.query(PortfolioSnapshot)
-        .order_by(desc(PortfolioSnapshot.timestamp))
-        .first()
-    )
-    if not snapshot or not snapshot.positions_json:
-        return []
-    try:
-        positions = json.loads(snapshot.positions_json)
-    except (TypeError, json.JSONDecodeError):
-        return []
     result: list[StopLossCurrentSchema] = []
-    for pos in positions:
+    for pos in position_map.values():
         ticker = pos.get("ticker") or pos.get("symbol", "")
         if ticker and ticker not in tickers_with_stops:
-            result.append(
-                StopLossCurrentSchema(ticker=ticker, stop_price=None, source="position (no stop)")
-            )
+            result.append(_with_profit_lock_fields(
+                StopLossCurrentSchema(ticker=ticker, stop_price=None, source="position (no stop)"),
+                position_map,
+            ))
     return result
 
 
@@ -89,12 +110,13 @@ async def get_current_stops():
 
     session = get_session()
     try:
-        from_orders = _current_stops_from_orders(session)
-        from_adjustments = _current_stops_from_adjustments(session)
+        position_map = _latest_snapshot_positions(session)
+        from_orders = _current_stops_from_orders(session, position_map)
+        from_adjustments = _current_stops_from_adjustments(session, position_map)
         tickers_with_stops = {c.ticker for c in from_orders} | {c.ticker for c in from_adjustments}
         result = from_orders if from_orders else from_adjustments
         # Add positions that have no stop order or adjustment
-        missing = _positions_without_stops(session, tickers_with_stops)
+        missing = _positions_without_stops(position_map, tickers_with_stops)
         return result + missing
     finally:
         session.close()

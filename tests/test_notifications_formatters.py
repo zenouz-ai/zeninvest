@@ -315,7 +315,7 @@ def test_trade_execution_slack_humanizes_take_profit_reason() -> None:
     text = messages[0].body
 
     assert "[ORDER-SUBMITTED]" in text
-    assert "take-profit threshold" in text
+    assert "profit threshold" in text
 
 
 # --- Slack Trade Command Reply Formatters (US-1.6) ---

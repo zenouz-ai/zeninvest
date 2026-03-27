@@ -467,6 +467,7 @@ class RiskManager:
         conviction: int = 0,
         is_losing_position: bool = False,
         skip_min_holding_period: bool = False,
+        skip_min_positions: bool = False,
     ) -> RiskVerdict:
         """Run all risk checks on a proposed trade.
 
@@ -502,15 +503,24 @@ class RiskManager:
         results.append(self.check_correlation(portfolio_returns))
 
         if action in ("SELL", "REDUCE"):
-            results.append(self.check_min_positions(
-                num_positions, action, conviction=conviction, is_losing_position=is_losing_position,
-            ))
+            if skip_min_positions:
+                results.append(
+                    RuleResult(
+                        rule_name="min_positions",
+                        passed=True,
+                        message="Bypassed minimum positions rule for profit-lock/profit-taking exit",
+                    )
+                )
+            else:
+                results.append(self.check_min_positions(
+                    num_positions, action, conviction=conviction, is_losing_position=is_losing_position,
+                ))
             if skip_min_holding_period:
                 results.append(
                     RuleResult(
                         rule_name="min_holding_period",
                         passed=True,
-                        message="Bypassed minimum holding period for deterministic take-profit exit",
+                        message="Bypassed minimum holding period for profit-lock/profit-taking exit",
                     )
                 )
             else:

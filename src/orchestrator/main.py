@@ -247,6 +247,40 @@ class Orchestrator:
                     conviction_floor=75,
                 )
 
+    def _profit_lock_reason_detail(
+        self,
+        *,
+        ticker: str,
+        status: str,
+        required_stop_price_gbp: float | None,
+        stop_price_gbp: float | None,
+    ) -> str:
+        threshold = self.settings.sell_min_profit_pct
+        required_display = (
+            f"GBP {required_stop_price_gbp:.2f}" if required_stop_price_gbp is not None else "the required lock level"
+        )
+        if status == "protected":
+            stop_display = f"GBP {stop_price_gbp:.2f}" if stop_price_gbp is not None else required_display
+            return (
+                f"HOLD allowed for {ticker}: the position has broker stop protection at {stop_display}, "
+                f"locking at least {threshold:.1f}% profit."
+            )
+        if status == "stop_placed":
+            stop_display = f"GBP {stop_price_gbp:.2f}" if stop_price_gbp is not None else required_display
+            return (
+                f"Profit lock established for {ticker}: broker stop placed at {stop_display}, "
+                f"locking at least {threshold:.1f}% profit."
+            )
+        if status == "remainder_unprotected":
+            return (
+                f"REDUCE converted to full SELL for {ticker}: the remaining shares could not be protected "
+                f"at the {threshold:.1f}% profit-lock threshold ({required_display})."
+            )
+        return (
+            f"Profit lock required for {ticker}: no qualifying broker stop was available at or above "
+            f"{required_display}, so the position must be sold instead of held."
+        )
+
     def _plan_pre_strategy_cleanup_candidates(
         self,
         *,
@@ -333,6 +367,83 @@ class Orchestrator:
             portfolio_data=portfolio_data,
             cycle_id=cycle_id,
         )
+        candidate_tickers = {str(candidate.get("ticker", "")).strip().upper() for candidate in cleanup_candidates}
+        current_positions = portfolio_data.get("positions", [])
+        position_context = self._build_position_context_map(portfolio_data)
+        pending_stops = self.stop_loss_manager._get_pending_stops()
+        profit_lock_context = self._build_profit_lock_context(
+            portfolio_data,
+            position_context=position_context,
+            pending_stops=pending_stops,
+        )
+
+        profit_lock_positions = [
+            pos
+            for pos in current_positions
+            if (
+                (ticker := self._ticker_from_position(pos))
+                and ticker not in candidate_tickers
+                and profit_lock_context.get(ticker, {}).get("threshold_crossed")
+            )
+        ]
+        if profit_lock_positions:
+            profit_lock_results = self.stop_loss_manager.enforce_profit_locks(
+                profit_lock_positions,
+                profit_lock_context=profit_lock_context,
+                cycle_id=cycle_id,
+            )
+            if profit_lock_results:
+                result.setdefault("order_adjustments", []).extend(profit_lock_results)
+            profit_lock_context = self._build_profit_lock_context(
+                portfolio_data,
+                position_context=position_context,
+            )
+
+        positions_by_ticker = {
+            ticker: pos
+            for pos in current_positions
+            if (ticker := self._ticker_from_position(pos))
+        }
+        for ticker, lock in profit_lock_context.items():
+            if ticker in candidate_tickers:
+                continue
+            if not lock.get("threshold_crossed") or lock.get("protected"):
+                continue
+            raw_position = positions_by_ticker.get(ticker, {})
+            current_price = float(raw_position.get("currentPrice", 0) or 0)
+            reason_detail = self._profit_lock_reason_detail(
+                ticker=ticker,
+                status="exit_required",
+                required_stop_price_gbp=lock.get("required_stop_price_gbp"),
+                stop_price_gbp=lock.get("stop_price_gbp"),
+            )
+            decision = {
+                "ticker": ticker,
+                "action": "HOLD",
+                "conviction": 0,
+                "reasoning": reason_detail,
+                "primary_strategy": "order_management",
+                "stop_loss_pct": 0,
+                "profit_lock_threshold_crossed": True,
+            }
+            self._apply_deterministic_sell_override(
+                decision=decision,
+                reason_code="profit_lock_unprotected_exit",
+                reason_detail=reason_detail,
+                conviction_floor=85,
+            )
+            cleanup_candidates.append({
+                "ticker": ticker,
+                "decision": decision,
+                "reason": reason_detail,
+                "stocks_data": [{
+                    "ticker": ticker,
+                    "indicators": {"current_price": current_price},
+                    "fundamentals": {},
+                }],
+            })
+            candidate_tickers.add(ticker)
+
         if not cleanup_candidates:
             return set()
 
@@ -478,7 +589,41 @@ class Orchestrator:
             decision["expected_holding_period"] = "5-30 trading days"
 
     def _should_skip_min_holding_for_decision(self, decision: dict[str, Any]) -> bool:
-        return False
+        reason_code = str(decision.get("deterministic_exit_reason_code", "") or "").strip().lower()
+        if reason_code in {
+            "profit_lock_unprotected_exit",
+            "profit_lock_hold_blocked",
+            "profit_lock_remainder_unprotected",
+        }:
+            return True
+        if str(decision.get("action", "")).strip().upper() not in {"SELL", "REDUCE"}:
+            return False
+        exit_trigger = self._normalize_exit_trigger_type(decision)
+        if exit_trigger not in {"gain_realization", "profit_trim"}:
+            return False
+        return bool(decision.get("profit_lock_threshold_crossed"))
+
+    @staticmethod
+    def _should_skip_min_positions_for_decision(decision: dict[str, Any]) -> bool:
+        reason_code = str(decision.get("deterministic_exit_reason_code", "") or "").strip().lower()
+        if reason_code in {
+            "profit_lock_unprotected_exit",
+            "profit_lock_hold_blocked",
+            "profit_lock_remainder_unprotected",
+        }:
+            return True
+        action = str(decision.get("action", "")).strip().upper()
+        exit_trigger = str(decision.get("exit_trigger_type", "") or "").strip().lower()
+        return action == "SELL" and exit_trigger == "gain_realization" and bool(decision.get("profit_lock_threshold_crossed"))
+
+    @staticmethod
+    def _profit_lock_bypass_codes() -> set[str]:
+        return {
+            "small_position_cleanup",
+            "profit_lock_unprotected_exit",
+            "profit_lock_hold_blocked",
+            "profit_lock_remainder_unprotected",
+        }
 
     def _evaluate_sell_guardrail(
         self,
@@ -1254,6 +1399,10 @@ class Orchestrator:
             portfolio_allocs = self._get_position_allocations(portfolio_data)
             sector_allocs = self._get_sector_allocations(portfolio_data)
             position_context = self._build_position_context_map(portfolio_data)
+            profit_lock_context = self._build_profit_lock_context(
+                portfolio_data,
+                position_context=position_context,
+            )
             self._apply_deterministic_exit_overrides(
                 decisions=decisions,
                 position_context=position_context,
@@ -1295,6 +1444,25 @@ class Orchestrator:
                 conviction = int(decision.get("conviction", 0) or 0)
                 target_alloc = float(decision.get("target_allocation_pct", 0.0) or 0.0)
                 sector = self._get_sector(ticker, stocks_data)
+                profit_lock = profit_lock_context.get(ticker, {})
+                if profit_lock.get("threshold_crossed"):
+                    decision["profit_lock_threshold_crossed"] = True
+
+                if action in ("HOLD", "QUEUED") and profit_lock.get("threshold_crossed") and not profit_lock.get("protected"):
+                    reason_detail = self._profit_lock_reason_detail(
+                        ticker=ticker,
+                        status="exit_required",
+                        required_stop_price_gbp=profit_lock.get("required_stop_price_gbp"),
+                        stop_price_gbp=profit_lock.get("stop_price_gbp"),
+                    )
+                    self._apply_deterministic_sell_override(
+                        decision=decision,
+                        reason_code="profit_lock_hold_blocked",
+                        reason_detail=reason_detail,
+                        conviction_floor=85,
+                    )
+                    action = "SELL"
+                    target_alloc = 0.0
 
                 if action == "SELL":
                     allow_sell, guardrail_code, guardrail_reason = self._evaluate_sell_guardrail(
@@ -1310,21 +1478,37 @@ class Orchestrator:
                         action = "HOLD"
 
                 if action == "REDUCE":
-                    allow_reduce, guardrail_code, guardrail_reason = self._evaluate_reduce_guardrail(
-                        ticker=ticker,
-                        decision=decision,
-                        sector=sector,
-                        position_context=position_context,
-                        current_allocations=portfolio_allocs,
-                        sector_allocations=sector_allocs,
-                        target_allocation_pct=target_alloc,
-                    )
-                    if not allow_reduce:
-                        decision["action"] = "HOLD"
-                        decision["guardrail_original_action"] = "REDUCE"
-                        decision["guardrail_reason_code"] = guardrail_code
-                        decision["guardrail_reason"] = guardrail_reason
-                        action = "HOLD"
+                    if profit_lock.get("threshold_crossed") and profit_lock.get("status") == "exit_required":
+                        reason_detail = self._profit_lock_reason_detail(
+                            ticker=ticker,
+                            status="remainder_unprotected",
+                            required_stop_price_gbp=profit_lock.get("required_stop_price_gbp"),
+                            stop_price_gbp=profit_lock.get("stop_price_gbp"),
+                        )
+                        self._apply_deterministic_sell_override(
+                            decision=decision,
+                            reason_code="profit_lock_remainder_unprotected",
+                            reason_detail=reason_detail,
+                            conviction_floor=85,
+                        )
+                        action = "SELL"
+                        target_alloc = 0.0
+                    else:
+                        allow_reduce, guardrail_code, guardrail_reason = self._evaluate_reduce_guardrail(
+                            ticker=ticker,
+                            decision=decision,
+                            sector=sector,
+                            position_context=position_context,
+                            current_allocations=portfolio_allocs,
+                            sector_allocations=sector_allocs,
+                            target_allocation_pct=target_alloc,
+                        )
+                        if not allow_reduce:
+                            decision["action"] = "HOLD"
+                            decision["guardrail_original_action"] = "REDUCE"
+                            decision["guardrail_reason_code"] = guardrail_code
+                            decision["guardrail_reason"] = guardrail_reason
+                            action = "HOLD"
 
                 if action in ("HOLD", "QUEUED"):
                     # A newer HOLD/QUEUED should retract any still-pending live market SELL
@@ -1385,16 +1569,16 @@ class Orchestrator:
 
                 deterministic_cleanup_sell = (
                     action == "SELL"
-                    and decision.get("deterministic_exit_reason_code") == "small_position_cleanup"
+                    and decision.get("deterministic_exit_reason_code") in self._profit_lock_bypass_codes()
                 )
                 if deterministic_cleanup_sell:
                     logger.info(
-                        "Deterministic cleanup SELL bypassing moderation/risk: %s",
+                        "Deterministic policy SELL bypassing moderation/risk: %s",
                         ticker,
                     )
                     bypass_reason = str(
                         decision.get("deterministic_exit_reason")
-                        or "Deterministic small-position cleanup SELL",
+                        or "Deterministic policy SELL",
                     )
                     direct_mod = SimpleNamespace(consensus="BYPASSED")
                     direct_risk = SimpleNamespace(
@@ -1576,6 +1760,7 @@ class Orchestrator:
                     conviction=conviction,
                     is_losing_position=self._is_losing_position(ticker, portfolio_data),
                     skip_min_holding_period=self._should_skip_min_holding_for_decision(decision),
+                    skip_min_positions=self._should_skip_min_positions_for_decision(decision),
                 )
 
                 # Log risk decision
@@ -2041,7 +2226,12 @@ class Orchestrator:
                         for pos in portfolio_data.get("positions", [])
                         if (ticker := self._ticker_from_position(pos)) and ticker not in pre_strategy_cleanup_tickers
                     ]
-                    all_adjustments: list[dict[str, Any]] = []
+                    all_adjustments: list[dict[str, Any]] = list(result.get("order_adjustments", []))
+                    position_context = self._build_position_context_map(portfolio_data)
+                    profit_lock_context = self._build_profit_lock_context(
+                        portfolio_data,
+                        position_context=position_context,
+                    )
 
                     # Place missing stops for positions without one
                     missing_results = self.stop_loss_manager.place_missing_stops(
@@ -2050,6 +2240,13 @@ class Orchestrator:
                         cycle_id=cycle_id,
                     )
                     all_adjustments.extend(missing_results)
+
+                    profit_lock_results = self.stop_loss_manager.enforce_profit_locks(
+                        current_positions,
+                        profit_lock_context=profit_lock_context,
+                        cycle_id=cycle_id,
+                    )
+                    all_adjustments.extend(profit_lock_results)
 
                     # Reassess stops using ATR-based volatility
                     if self.settings.reassess_stops_enabled:
@@ -2065,6 +2262,7 @@ class Orchestrator:
                         trailing_results = self.stop_loss_manager.apply_trailing_stops(
                             positions=current_positions,
                             cycle_id=cycle_id,
+                            profit_lock_context=profit_lock_context,
                         )
                         all_adjustments.extend(trailing_results)
 
@@ -2557,32 +2755,21 @@ class Orchestrator:
                     trade_value = reduction_amount
 
                 projected_residual = max(current_position_value - trade_value, 0.0)
-                if projected_residual < min_order:
+                if (
+                    self.settings.small_position_cleanup_enabled
+                    and projected_residual < self.settings.small_position_cleanup_value_gbp
+                ):
                     logger.info(
                         f"REDUCE converted to SELL for {ticker}: residual £{projected_residual:.2f} "
-                        f"below minimum £{min_order}"
+                        f"below cleanup threshold £{self.settings.small_position_cleanup_value_gbp:.2f}"
                     )
                     execution_note = (
-                        f"reduce_converted_to_sell_below_floor: residual £{projected_residual:.2f} < £{min_order:.2f}"
+                        "reduce_converted_to_sell_small_cleanup: residual "
+                        f"£{projected_residual:.2f} < £{self.settings.small_position_cleanup_value_gbp:.2f}"
                     )
                     action = "SELL"
                     trade_value = current_position_value
                 else:
-                    if trade_value < min_order:
-                        logger.info(
-                            f"REDUCE skipped: reduction £{trade_value:.2f} below minimum £{min_order}"
-                        )
-                        return _emit_and_build_entry(
-                            execution_status="skipped",
-                            reason_code="below_min_order_value",
-                            reason_detail=(
-                                f"Target trim value GBP {trade_value:.2f} is below minimum "
-                                f"GBP {min_order:.2f}"
-                            ),
-                            value_gbp=trade_value,
-                            quantity=0,
-                        )
-
                     min_reduce_pct = self.settings.min_reduce_pct_of_position
                     if reduction_pct < min_reduce_pct:
                         logger.info(
@@ -3610,6 +3797,12 @@ class Orchestrator:
             norm = cls._normalize_position_for_snapshot(pos, value_scale=value_scale)
             avg_price = float(pos.get("averagePrice", 0) or 0)
             entry_price_gbp = (avg_price * value_scale) if avg_price > 0 else None
+            current_price_native = float(pos.get("currentPrice", 0) or 0)
+            current_price_gbp = (
+                (float(norm.get("value_gbp", 0) or 0) / float(norm.get("quantity", 0) or 1))
+                if float(norm.get("quantity", 0) or 0) > 0 and float(norm.get("value_gbp", 0) or 0) > 0
+                else None
+            )
             last_buy = last_buy_rows.get(ticker)
             last_buy_ts = cls._normalize_utc_timestamp(last_buy.timestamp) if last_buy else None
             held_hours = (
@@ -3629,10 +3822,104 @@ class Orchestrator:
                 "pnl_gbp": float(norm.get("pnl_gbp", 0) or 0),
                 "pnl_pct": float(norm.get("pnl_pct", 0) or 0),
                 "entry_price_gbp": entry_price_gbp,
+                "current_price_native": current_price_native,
+                "current_price_gbp": current_price_gbp,
                 "last_buy_at": last_buy_ts,
                 "held_hours": held_hours,
             }
         return context
+
+    def _build_profit_lock_context(
+        self,
+        portfolio_data: dict,
+        *,
+        position_context: dict[str, dict[str, Any]] | None = None,
+        pending_stops: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        threshold = self.settings.sell_min_profit_pct
+        context = position_context or self._build_position_context_map(portfolio_data)
+        stops = pending_stops if pending_stops is not None else self.stop_loss_manager._get_pending_stops()
+        result: dict[str, dict[str, Any]] = {}
+
+        for ticker, position in context.items():
+            quantity = float(position.get("quantity", 0) or 0)
+            pnl_pct = float(position.get("pnl_pct", 0) or 0)
+            entry_price_gbp = float(position.get("entry_price_gbp", 0) or 0)
+            current_price_native = float(position.get("current_price_native", 0) or 0)
+            current_price_gbp = float(position.get("current_price_gbp", 0) or 0)
+            stop_info = stops.get(ticker) or {}
+            stop_price_native = float(stop_info.get("stopPrice", 0) or 0)
+            protected_qty = float(stop_info.get("quantity", 0) or 0)
+
+            base = {
+                "ticker": ticker,
+                "threshold_pct": threshold,
+                "threshold_crossed": False,
+                "status": "inactive",
+                "quantity": quantity,
+                "protected_qty": protected_qty,
+                "required_stop_price_gbp": None,
+                "required_stop_price": None,
+                "stop_price_gbp": None,
+                "stop_price": stop_price_native if stop_price_native > 0 else None,
+                "protected": False,
+            }
+
+            if (
+                quantity <= 0
+                or pnl_pct < threshold
+                or entry_price_gbp <= 0
+                or current_price_native <= 0
+                or current_price_gbp <= 0
+            ):
+                result[ticker] = base
+                continue
+
+            conversion = current_price_native / current_price_gbp if current_price_gbp > 0 else 0.0
+            required_stop_price_gbp = round(entry_price_gbp * (1 + threshold / 100), 2)
+            required_stop_price = round(required_stop_price_gbp * conversion, 2) if conversion > 0 else 0.0
+            stop_price_gbp = round(stop_price_native / conversion, 2) if stop_price_native > 0 and conversion > 0 else None
+            protected = (
+                protected_qty >= quantity
+                and stop_price_native > 0
+                and required_stop_price > 0
+                and stop_price_native >= required_stop_price
+            )
+            status = "protected" if protected else "eligible"
+            if required_stop_price <= 0 or required_stop_price >= current_price_native:
+                status = "exit_required"
+
+            result[ticker] = {
+                **base,
+                "threshold_crossed": True,
+                "status": status,
+                "required_stop_price_gbp": required_stop_price_gbp,
+                "required_stop_price": required_stop_price,
+                "stop_price_gbp": stop_price_gbp,
+                "stop_price": stop_price_native if stop_price_native > 0 else None,
+                "protected": protected,
+            }
+
+        return result
+
+    @staticmethod
+    def _annotate_normalized_positions_with_profit_lock(
+        normalised: list[dict[str, Any]],
+        *,
+        profit_lock_context: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        enriched: list[dict[str, Any]] = []
+        for pos in normalised:
+            ticker = str(pos.get("ticker", "")).strip().upper()
+            lock = profit_lock_context.get(ticker, {})
+            enriched.append({
+                **pos,
+                "profit_lock_status": lock.get("status", "inactive"),
+                "profit_lock_required_price_gbp": lock.get("required_stop_price_gbp"),
+                "profit_lock_stop_price_gbp": lock.get("stop_price_gbp"),
+                "profit_lock_protected_qty": lock.get("protected_qty"),
+            })
+        return enriched
 
     @staticmethod
     def _get_close_prices_by_ticker(stocks_data: list[dict[str, Any]]) -> dict[str, list[float]]:
@@ -3747,9 +4034,9 @@ class Orchestrator:
             target_allocation_pct = position_pct * 0.75
         reduction_pct = max(0.0, ((position_pct - target_allocation_pct) / position_pct) * 100)
         nearest = min(self.settings.reduce_tiers_pct, key=lambda t: abs(t - reduction_pct))
-        if nearest not in {25.0, 50.0}:
+        if nearest not in {50.0}:
             return False, "reduce_guardrail_invalid_tier", (
-                f"Held instead of reducing: only 25% or 50% trims are allowed, got {nearest:.0f}%"
+                f"Held instead of reducing: only 50% trims are allowed, got {nearest:.0f}%"
             )
         gain_threshold = (
             self.settings.reduce_50_min_profit_pct
@@ -3845,7 +4132,7 @@ class Orchestrator:
             if holding_days:
                 lines.append(f"- Median holding days: {median(holding_days):.1f}")
 
-            threshold = get_settings().take_profit_full_sell_pct
+            threshold = get_settings().sell_min_profit_pct
             take_profit_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
             take_profit_count = (
                 session.query(TradeOutcome)
@@ -3874,6 +4161,11 @@ class Orchestrator:
                 float(portfolio_data.get("invested", 0) or 0),
             )
             normalised = [self._normalize_position_for_snapshot(p, value_scale=value_scale) for p in raw_positions]
+            profit_lock_context = self._build_profit_lock_context(portfolio_data)
+            normalised = self._annotate_normalized_positions_with_profit_lock(
+                normalised,
+                profit_lock_context=profit_lock_context,
+            )
 
             benchmark_value, benchmark_pnl_pct, alpha_pct = None, None, None
             try:

@@ -163,6 +163,7 @@ class StopLossManager:
         self,
         positions: list[dict[str, Any]],
         cycle_id: str | None = None,
+        profit_lock_context: dict[str, dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
         """Apply trailing stop logic: ratchet stops up as price makes new highs.
 
@@ -205,6 +206,10 @@ class StopLossManager:
             new_stop = round(hwm * (1 - trail_pct / 100), 2)
             old_stop_info = pending_stops.get(ticker)
             old_stop_price = float(old_stop_info["stopPrice"]) if old_stop_info else None
+            profit_lock = (profit_lock_context or {}).get(ticker, {})
+            required_stop = float(profit_lock.get("required_stop_price", 0) or 0)
+            if required_stop > 0 and new_stop < required_stop:
+                new_stop = round(required_stop, 2)
 
             # Guard: trailing stop must remain below current price
             if new_stop >= current_price:
@@ -251,6 +256,79 @@ class StopLossManager:
                 adjustment_type="trailing",
                 trigger_reason="trailing_ratchet",
                 high_water_mark=hwm,
+                cycle_id=cycle_id,
+            )
+            results.append(result)
+
+        return results
+
+    def enforce_profit_locks(
+        self,
+        positions: list[dict[str, Any]],
+        *,
+        profit_lock_context: dict[str, dict[str, Any]],
+        cycle_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Ensure winners above the sell-profit threshold have a qualifying broker stop."""
+        if not profit_lock_context:
+            return []
+
+        pending_stops = self._get_pending_stops()
+        results: list[dict[str, Any]] = []
+        positions_by_ticker = {
+            ((pos.get("instrument") or {}).get("ticker") or pos.get("ticker", "")): pos
+            for pos in positions
+        }
+
+        for ticker, context in profit_lock_context.items():
+            pos = positions_by_ticker.get(ticker)
+            if not pos:
+                continue
+            quantity = float(pos.get("quantity", 0) or 0)
+            current_price = float(pos.get("currentPrice", 0) or 0)
+            if quantity <= 0 or current_price <= 0:
+                continue
+
+            required_stop_price = float(context.get("required_stop_price", 0) or 0)
+            if required_stop_price <= 0:
+                continue
+
+            protected_qty = float(context.get("protected_qty", 0) or 0)
+            old_stop_info = pending_stops.get(ticker)
+            old_stop_price = float(old_stop_info["stopPrice"]) if old_stop_info else None
+
+            if protected_qty >= quantity and old_stop_price is not None and old_stop_price >= required_stop_price:
+                results.append({
+                    "ticker": ticker,
+                    "adjustment_type": "profit_lock",
+                    "old_stop_price": old_stop_price,
+                    "new_stop_price": old_stop_price,
+                    "current_price": current_price,
+                    "high_water_mark": None,
+                    "atr": None,
+                    "trigger_reason": "profit_lock_stop_already_sufficient",
+                    "status": "ok",
+                })
+                self._record_adjustment(
+                    ticker=ticker,
+                    adjustment_type="profit_lock",
+                    old_stop_price=old_stop_price,
+                    new_stop_price=old_stop_price,
+                    current_price=current_price,
+                    trigger_reason="profit_lock_stop_already_sufficient",
+                    status="ok",
+                    cycle_id=cycle_id,
+                )
+                continue
+
+            result = self._replace_stop(
+                ticker=ticker,
+                quantity=quantity,
+                new_stop_price=required_stop_price,
+                current_price=current_price,
+                old_stop_info=old_stop_info,
+                adjustment_type="profit_lock",
+                trigger_reason="profit_lock_stop_placed",
                 cycle_id=cycle_id,
             )
             results.append(result)
@@ -556,7 +634,14 @@ class StopLossManager:
                 if order.get("type") == "STOP" or "stopPrice" in order:
                     t = order.get("ticker", "")
                     if t:
+                        quantity = order.get("quantity")
+                        try:
+                            protected_qty = abs(float(quantity)) if quantity is not None else None
+                        except (TypeError, ValueError):
+                            protected_qty = None
                         stops[t] = order
+                        if protected_qty is not None:
+                            stops[t]["quantity"] = protected_qty
             return stops
         except Exception as e:
             logger.warning(f"Failed to fetch pending orders from T212: {e}")

@@ -622,12 +622,11 @@ sequenceDiagram
 Execution floor guardrails:
 - `min_order_value_gbp` is enforced as a minimum BUY ticket size for MARKET BUY and limit BUY paths: requests below the floor are upgraded to the floor when enough cash is available after the cash-floor guard.
 - If there is not enough spendable cash to place the minimum BUY ticket, the BUY is skipped with a cash-floor reason.
-- REDUCE still treats `min_order_value_gbp` as a true floor.
-- Explicit market SELL decisions are exempt from the floor so small positions can be fully exited.
-- Protective stop-loss SELL orders are also exempt so small positions remain risk-protected.
-- If a REDUCE would leave a residual position below the floor, the orchestrator converts it to full SELL before execution.
+- SELL, REDUCE, and protective stop-loss SELL orders are exempt from the floor so small positions can still be exited or protected.
+- If a REDUCE would leave a residual position below `small_position_cleanup_value_gbp`, the orchestrator converts it to full SELL before execution.
 - Ordinary autonomous SELLs are profit-gated: they require `exit_trigger_type="gain_realization"` plus unrealized profit at or above `sell_min_profit_pct` (default `15%`), unless the exit is a `hard_exit`.
-- REDUCE is a rare profit-trim action only: the orchestrator only allows 25% or 50% trims once the configured unrealized gain thresholds are met.
+- Once a position crosses `sell_min_profit_pct`, HOLD is only allowed if a live broker stop protects the full remaining quantity at or above the profit-lock line; otherwise the orchestrator deterministically exits the position.
+- REDUCE is a rare profit-trim action only: the orchestrator only allows 50% trims once the configured unrealized gain threshold is met.
 - Small-position cleanup liquidates holdings below `small_position_cleanup_value_gbp` (default `£200`) immediately, before position-analysis/strategy for those tickers. These deterministic cleanup SELLs use the broker-reported live quantity and bypass moderation/risk so there is a single cleanup liquidation path with no LLM involvement for the cleanup ticker.
 - **FX-aware BUY quantity:** For `_US_EQ` instruments the orchestrator derives a GBP-equivalent price (`current_price × account-level GBP/USD scale`) before calling `calculate_quantity()`. The scale comes from `_compute_position_value_scale(positions, invested_gbp)` which divides T212's GBP `invested` value by the sum of native-currency positions. This prevents ~21% under-allocation caused by dividing a GBP target by a USD price. Controlled by `trading.fx_aware_quantity: true`; falls back to scale=1.0 when portfolio is empty. Stop prices sent to T212 always remain in native currency.
 - **Market orders:** `OrderManager` calls T212 `POST /equity/orders/market` once per decision (no retry wrapper). Mutating POSTs are never auto-retried; only safe GETs use tenacity retries in `T212Client`.

@@ -196,7 +196,7 @@ class TestOrderManager:
         # With target-based enforcement, logged value_gbp should match the target.
         assert orders[0].value_gbp == 500.0
 
-    def test_reduce_below_min_order_value_skipped_and_not_logged(self, db_session):
+    def test_reduce_below_buy_floor_still_executes_and_logs(self, db_session):
         mock_client = MagicMock()
         manager = OrderManager(client=mock_client, dry_run=True)
 
@@ -207,9 +207,11 @@ class TestOrderManager:
             current_price=100.0,
         )
 
-        assert result["status"] == "skipped"
-        assert result["reason"] == "below_min_order_value"
-        assert db_session.query(Order).count() == 0
+        assert result["status"] == "dry_run"
+        orders = db_session.query(Order).all()
+        assert len(orders) == 1
+        assert orders[0].action == "REDUCE"
+        assert orders[0].status == "dry_run"
 
     def test_duplicate_detection(self, db_session):
         mock_client = MagicMock()

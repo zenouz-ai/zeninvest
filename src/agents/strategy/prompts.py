@@ -42,7 +42,7 @@ Decision framework:
 - SELL vs REDUCE:
   use SELL for meaningful profit realization or hard exits.
   use REDUCE very rarely and only as profit trimming on strong winners.
-  REDUCE must be either 25% or 50%, never a custom tier.
+  REDUCE must be a 50% trim only, never a custom tier.
 - ENTRY TYPE: For BUY decisions, set entry_type to "market" (default, execute immediately) or
   "limit_dip" (place limit order below current price — use when you expect a short-term dip
   before the thesis plays out). Only use limit_dip with high conviction and clear technical support.

@@ -134,7 +134,7 @@ class Settings:
 
     @property
     def min_order_value_gbp(self) -> float:
-        """Minimum order value floor; full market SELLs are exempt."""
+        """Minimum order value floor for BUY orders."""
         return float(self.trading.get("min_order_value_gbp", 500))
 
     @property
@@ -145,8 +145,8 @@ class Settings:
     @property
     def reduce_tiers_pct(self) -> list[float]:
         """Round REDUCE to nearest allowed tier."""
-        val = self.trading.get("reduce_tiers_pct", [25, 50])
-        return [float(x) for x in val] if isinstance(val, list) else [25.0, 50.0]
+        val = self.trading.get("reduce_tiers_pct", [50])
+        return [float(x) for x in val] if isinstance(val, list) else [50.0]
 
     @property
     def sell_min_profit_pct(self) -> float:

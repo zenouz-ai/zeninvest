@@ -98,6 +98,10 @@ class PositionSchema(BaseModel):
     pnl_gbp: float
     pnl_pct: float
     sector: str | None = None
+    profit_lock_status: str | None = None
+    profit_lock_required_price_gbp: float | None = None
+    profit_lock_stop_price_gbp: float | None = None
+    profit_lock_protected_qty: float | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -349,6 +353,10 @@ class StopLossCurrentSchema(BaseModel):
     ticker: str
     stop_price: float | None
     source: str  # order, adjustment, or unknown
+    profit_lock_status: str | None = None
+    profit_lock_required_price_gbp: float | None = None
+    profit_lock_stop_price_gbp: float | None = None
+    profit_lock_protected_qty: float | None = None
 
 
 # --- Performance ---

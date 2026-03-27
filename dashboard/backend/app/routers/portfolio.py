@@ -37,6 +37,10 @@ def _parse_position(pos_data: dict, session: Session) -> PositionSchema:
         pnl_gbp=pnl_gbp,
         pnl_pct=pnl_pct,
         sector=sector,
+        profit_lock_status=pos_data.get("profit_lock_status"),
+        profit_lock_required_price_gbp=pos_data.get("profit_lock_required_price_gbp"),
+        profit_lock_stop_price_gbp=pos_data.get("profit_lock_stop_price_gbp"),
+        profit_lock_protected_qty=pos_data.get("profit_lock_protected_qty"),
     )
 
 
