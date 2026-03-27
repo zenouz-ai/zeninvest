@@ -808,6 +808,62 @@ class Settings:
     def conversation_max_session_list_size(self) -> int:
         return max(1, int(self._conversation.get("max_session_list_size", 50)))
 
+    @property
+    def conversation_agentic_planner_enabled(self) -> bool:
+        return bool(self._conversation.get("agentic_planner_enabled", False))
+
+    @property
+    def conversation_transparency_enabled(self) -> bool:
+        return bool(self._conversation.get("transparency_enabled", True))
+
+    @property
+    def conversation_default_mode(self) -> str:
+        value = str(self._conversation.get("default_mode", "research"))
+        return value if value in {"quick", "research", "committee", "trade"} else "research"
+
+    @property
+    def conversation_default_budget_tier(self) -> str:
+        value = str(self._conversation.get("default_budget_tier", "premium"))
+        return value if value in {"standard", "premium"} else "premium"
+
+    @property
+    def conversation_proactive_suggestions_enabled(self) -> bool:
+        return bool(self._conversation.get("proactive_suggestions_enabled", False))
+
+    @property
+    def conversation_planner_model(self) -> str:
+        return str(self._conversation.get("planner_model", self.moderator_1_model))
+
+    @property
+    def conversation_equity_specialist_model(self) -> str:
+        specialist_models = self._conversation.get("specialist_models", {})
+        if not isinstance(specialist_models, dict):
+            specialist_models = {}
+        return str(specialist_models.get("equity", self.strategy_model))
+
+    @property
+    def conversation_risk_specialist_model(self) -> str:
+        specialist_models = self._conversation.get("specialist_models", {})
+        if not isinstance(specialist_models, dict):
+            specialist_models = {}
+        return str(specialist_models.get("risk", self.moderator_2_model))
+
+    @property
+    def conversation_max_specialist_calls_per_turn(self) -> int:
+        return max(0, int(self._conversation.get("max_specialist_calls_per_turn", 3)))
+
+    @property
+    def conversation_max_research_calls_per_turn(self) -> int:
+        return max(0, int(self._conversation.get("max_research_calls_per_turn", 4)))
+
+    @property
+    def conversation_native_web_search_enabled(self) -> bool:
+        return bool(self._conversation.get("native_web_search_enabled", False))
+
+    @property
+    def conversation_beta_shadow_logging_enabled(self) -> bool:
+        return bool(self._conversation.get("beta_shadow_logging_enabled", True))
+
     # --- Environment variables ---
     @staticmethod
     def get_env(key: str) -> str:
@@ -838,12 +894,24 @@ class Settings:
         return self.get_env("ANTHROPIC_API_KEY")
 
     @property
+    def anthropic_api_key_optional(self) -> str | None:
+        return self.get_env_optional("ANTHROPIC_API_KEY")
+
+    @property
     def openai_api_key(self) -> str:
         return self.get_env("OPENAI_API_KEY")
 
     @property
+    def openai_api_key_optional(self) -> str | None:
+        return self.get_env_optional("OPENAI_API_KEY")
+
+    @property
     def google_ai_api_key(self) -> str:
         return self.get_env("GOOGLE_AI_API_KEY")
+
+    @property
+    def google_ai_api_key_optional(self) -> str | None:
+        return self.get_env_optional("GOOGLE_AI_API_KEY")
 
     @property
     def finnhub_api_key(self) -> str:

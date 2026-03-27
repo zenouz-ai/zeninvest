@@ -630,6 +630,35 @@ class ChatResearchLog(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
+class ChatWorkflowStep(Base):
+    """Operator-safe workflow trace for an individual conversational turn."""
+
+    __tablename__ = "chat_workflow_steps"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True)
+    turn_id = Column(Integer, ForeignKey("chat_turns.id", ondelete="SET NULL"), nullable=True, index=True)
+    step_key = Column(String(50), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="running", index=True)
+    label = Column(String(120), nullable=True)
+    detail = Column(Text, nullable=True)
+    provider = Column(String(50), nullable=True)
+    model = Column(String(100), nullable=True)
+    tool_name = Column(String(50), nullable=True)
+    cost_gbp = Column(Float, nullable=True)
+    latency_ms = Column(Float, nullable=True)
+    detail_json = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
 class EvolutionRequest(Base):
     """Operator-requested software evolution workflow (US-1.10)."""
 

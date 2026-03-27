@@ -271,6 +271,26 @@ export interface ChatTurn {
   created_at: string | null
 }
 
+export interface ChatWorkflowStep {
+  id: number
+  session_id: number
+  turn_id: number | null
+  step_key: string
+  status: string
+  label: string | null
+  detail: string | null
+  provider: string | null
+  model: string | null
+  tool_name: string | null
+  cost_gbp: number | null
+  latency_ms: number | null
+  detail_json?: Record<string, unknown> | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
 export interface ChatAction {
   id: number
   session_id: number
@@ -338,7 +358,15 @@ export interface ChatSessionDetail extends ChatSessionSummary {
   turns: ChatTurn[]
   actions: ChatAction[]
   research_logs: ChatResearchLog[]
+  workflow_steps: ChatWorkflowStep[]
   cost_summary?: ChatCostSummary | null
+  turn_mode?: string | null
+  evidence_blocks?: Record<string, unknown> | null
+  citations?: Array<Record<string, unknown>>
+  related_tickers?: Array<Record<string, unknown>>
+  committee_views?: Array<Record<string, unknown>>
+  confidence?: number | null
+  next_actions?: string[]
 }
 
 // --- Evolution Planner ---

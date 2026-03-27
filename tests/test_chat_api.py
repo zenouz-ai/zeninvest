@@ -78,6 +78,28 @@ def test_submit_turn_returns_refreshed_session(client):
     assert detail["turns"][0]["role"] == "user"
     assert detail["turns"][1]["role"] == "assistant"
     assert "I can help" in detail["turns"][1]["message_text"]
+    assert detail["turn_mode"] in {"research", "quick", "trade", "committee"}
+    assert "workflow_steps" in detail
+
+
+def test_submit_turn_accepts_mode_and_budget_tier(client):
+    created = client.post("/api/chat/sessions", json={"channel_type": "dashboard"})
+    session_id = created.json()["id"]
+
+    response = client.post(
+        f"/api/chat/sessions/{session_id}/turns",
+        json={
+            "message_text": "help me understand this workflow",
+            "channel_type": "dashboard",
+            "mode": "committee",
+            "budget_tier": "premium",
+        },
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["turns"][0]["intent_json"]["requested_mode"] == "committee"
+    assert detail["turns"][0]["intent_json"]["budget_tier"] == "premium"
 
 
 def test_submit_turn_missing_session_returns_404(client):

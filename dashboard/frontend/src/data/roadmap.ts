@@ -116,7 +116,7 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-23',
     effort: 'M-L',
     priority: 'P1',
-    description: 'Slack now supports review, direct BUY/SELL, strategy-triggered trades, and cancel commands with confirmation flow, audit trail, and dashboard command history.',
+    description: 'Slack now supports review, direct BUY/SELL, strategy-triggered trades, and cancel commands with confirmation flow, audit trail, and a shared conversational dashboard console with planner-led transparency.',
     architectureComponents: ['Notifications', 'Orchestrator', 'Dashboard'],
     track: 'Conversational Operator Workflow',
     legacyIds: ['US-1.6', 'US-1.9'],

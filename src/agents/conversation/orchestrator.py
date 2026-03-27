@@ -9,11 +9,14 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from src.agents.conversation.planner import ChatPlanner, ChatPlannerDecision
 from src.agents.execution.order_manager import OrderManager
 from src.agents.market_data.data_fetcher import DataFetcher
 from src.agents.notifications.cancel_command_runner import CancelCommandRunner
 from src.agents.notifications.formatters import format_trade_command_reply
 from src.agents.notifications.trade_command_parser import TradeCommandIntent, parse_trade_command
+from src.agents.research.executor import ResearchExecutor
+from src.agents.conversation.specialists import ChatSpecialistEngine
 from src.agents.conversation.session_manager import (
     ChatActionNotFoundError,
     ChatSessionNotFoundError,
@@ -113,6 +116,8 @@ class ConversationOrchestrator:
         self._data_fetcher = data_fetcher
         self._order_manager = order_manager
         self._slack_web_client: Any | None = None
+        self._planner = ChatPlanner()
+        self._specialists = ChatSpecialistEngine()
 
     @property
     def data_fetcher(self) -> DataFetcher:
@@ -165,6 +170,8 @@ class ConversationOrchestrator:
         message_text: str,
         channel_type: str,
         user_id: str | None = None,
+        mode: str | None = None,
+        budget_tier: str | None = None,
     ) -> dict[str, Any]:
         message_text = _clean_text(message_text)
         if not message_text:
@@ -175,8 +182,28 @@ class ConversationOrchestrator:
             session_id,
             role="user",
             message_text=message_text,
+            intent_json={
+                "requested_mode": mode or self.settings.conversation_default_mode,
+                "budget_tier": budget_tier or self.settings.conversation_default_budget_tier,
+            },
             channel_type=channel_type,
         )
+        if self.settings.conversation_transparency_enabled:
+            received_step = self.session_manager.add_workflow_step(
+                session_id=session_id,
+                turn_id=user_turn_id,
+                step_key="received",
+                status="completed",
+                label="Received request",
+                detail=f"Received {channel_type} message for agentic processing.",
+                completed_at=_utcnow(),
+                detail_json={
+                    "channel_type": channel_type,
+                    "requested_mode": mode or self.settings.conversation_default_mode,
+                    "budget_tier": budget_tier or self.settings.conversation_default_budget_tier,
+                },
+            )
+            self._emit_workflow_event("chat_step_completed", received_step)
         self._emit_event(
             "chat_turn_created",
             f"User turn received for session {session_id}",
@@ -201,17 +228,68 @@ class ConversationOrchestrator:
             if pending_action and normalized in REJECT_WORDS:
                 return self.reject_action(session_id=session_id, action_id=pending_action["id"], channel_type=channel_type)
 
-            intent = self._classify_intent(message_text, context)
-            with bind_chat_cost_context(session_id=session_id, turn_id=user_turn_id):
-                result = self._handle_intent(
+            planning_step_id: int | None = None
+            planner_decision: ChatPlannerDecision | None = None
+            if self.settings.conversation_transparency_enabled:
+                planning_step = self.session_manager.add_workflow_step(
                     session_id=session_id,
                     turn_id=user_turn_id,
-                    message_text=message_text,
-                    intent=intent,
-                    context=context,
-                    channel_type=channel_type,
-                    user_id=user_id,
+                    step_key="planning",
+                    status="running",
+                    label="Planning response",
+                    detail="Choosing the best route for this turn.",
+                    model=self.settings.conversation_planner_model,
                 )
+                planning_step_id = int(planning_step["id"])
+                self._emit_workflow_event("chat_step_started", planning_step)
+
+            planner_decision = self._planner.plan_turn(
+                message_text=message_text,
+                context=context,
+                requested_mode=mode or self.settings.conversation_default_mode,
+                budget_tier=budget_tier or self.settings.conversation_default_budget_tier,
+            )
+            if planning_step_id is not None:
+                planning_step = self.session_manager.update_workflow_step(
+                    planning_step_id,
+                    status="completed",
+                    detail=planner_decision.explanation,
+                    model=self.settings.conversation_planner_model,
+                    cost_gbp=self._cost_delta_for_step(session_id, 0.0),
+                    completed_at=_utcnow(),
+                    detail_json=planner_decision.as_dict(),
+                )
+                self._emit_workflow_event("chat_step_completed", planning_step)
+
+            with bind_chat_cost_context(session_id=session_id, turn_id=user_turn_id):
+                if planner_decision.use_fast_path:
+                    intent = self._classify_intent(message_text, context)
+                    result = self._handle_intent(
+                        session_id=session_id,
+                        turn_id=user_turn_id,
+                        message_text=message_text,
+                        intent=intent,
+                        context=context,
+                        channel_type=channel_type,
+                        user_id=user_id,
+                    )
+                    result = self._attach_agentic_metadata(
+                        session_id=session_id,
+                        turn_id=user_turn_id,
+                        result=result,
+                        planner_decision=planner_decision,
+                        context=context,
+                    )
+                else:
+                    result = self._handle_agentic_turn(
+                        session_id=session_id,
+                        turn_id=user_turn_id,
+                        message_text=message_text,
+                        context=context,
+                        planner_decision=planner_decision,
+                        channel_type=channel_type,
+                        user_id=user_id,
+                    )
 
             self.session_manager.add_turn(
                 session_id,
@@ -245,6 +323,17 @@ class ConversationOrchestrator:
             return self._require_session(session_id)
         except Exception as exc:
             logger.error("Conversation turn failed for session %s: %s", session_id, exc, exc_info=True)
+            if self.settings.conversation_transparency_enabled:
+                failed_step = self.session_manager.add_workflow_step(
+                    session_id=session_id,
+                    turn_id=user_turn_id,
+                    step_key="failed",
+                    status="failed",
+                    label="Turn failed",
+                    detail=str(exc),
+                    completed_at=_utcnow(),
+                )
+                self._emit_workflow_event("chat_step_completed", failed_step)
             error_text = f"I couldn't complete that request: {exc}"
             self.session_manager.add_turn(
                 session_id,
@@ -426,6 +515,359 @@ class ConversationOrchestrator:
             "context_update": context,
             "response_json": {"kind": "clarification"},
         }
+
+    def _handle_agentic_turn(
+        self,
+        *,
+        session_id: int,
+        turn_id: int,
+        message_text: str,
+        context: dict[str, Any],
+        planner_decision: ChatPlannerDecision,
+        channel_type: str,
+        user_id: str | None,
+    ) -> dict[str, Any]:
+        evidence_bundle: dict[str, Any] = {
+            "market_snapshot": [],
+            "news_findings": [],
+            "sec_findings": [],
+            "related_tickers": [],
+            "committee_views": [],
+            "citations": [],
+            "confidence": planner_decision.confidence,
+            "next_actions": list(planner_decision.next_actions),
+        }
+        context_update = dict(context)
+
+        resolved_tickers: list[str] = []
+        resolve_step_id: int | None = None
+        resolve_before_cost = self.session_manager.session_cost_total_gbp(session_id)
+        if self.settings.conversation_transparency_enabled:
+            resolve_step_id = self._begin_workflow_step(
+                session_id=session_id,
+                turn_id=turn_id,
+                step_key="resolving_tickers",
+                label="Resolving tickers",
+                detail="Mapping company names and references to tradeable symbols.",
+                tool_name="resolve_tickers",
+            )
+
+        subjects = self._extract_agentic_subjects(message_text, planner_decision, context)
+        for subject in subjects:
+            ticker = resolve_ticker_to_t212(subject)
+            if ticker and ticker not in resolved_tickers:
+                resolved_tickers.append(ticker)
+        if not resolved_tickers and context.get("last_subject_tickers"):
+            resolved_tickers = list(context.get("last_subject_tickers") or [])
+        if self.settings.conversation_transparency_enabled and resolve_step_id is not None:
+            self._complete_workflow_step(
+                step_id=resolve_step_id,
+                session_id=session_id,
+                before_cost_gbp=resolve_before_cost,
+                detail=(
+                    f"Resolved {', '.join(resolved_tickers)}."
+                    if resolved_tickers
+                    else "No explicit ticker resolved; using portfolio or clarification flow."
+                ),
+                detail_json={"subjects": subjects, "tickers": resolved_tickers},
+            )
+
+        if planner_decision.route == "portfolio_analysis":
+            evidence_bundle["market_snapshot"] = self._build_portfolio_snapshot()
+            context_update["last_selection_tickers"] = resolved_tickers
+        else:
+            fetch_step_id: int | None = None
+            fetch_before_cost = self.session_manager.session_cost_total_gbp(session_id)
+            if self.settings.conversation_transparency_enabled and resolved_tickers:
+                fetch_step_id = self._begin_workflow_step(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    step_key="fetching_market_data",
+                    label="Fetching market data",
+                    detail="Collecting current snapshot, indicators, and fundamentals.",
+                    tool_name="get_market_snapshot",
+                )
+            for ticker in resolved_tickers[:3]:
+                snapshot = self._build_market_snapshot_payload(ticker)
+                evidence_bundle["market_snapshot"].append(snapshot)
+                evidence_bundle["citations"].append(
+                    {
+                        "id": f"internal-market-{ticker.lower()}",
+                        "label": f"{ticker} internal market snapshot",
+                        "source_type": "internal_market_data",
+                        "provider": "internal",
+                        "ticker": ticker,
+                    }
+                )
+            if self.settings.conversation_transparency_enabled and fetch_step_id is not None:
+                self._complete_workflow_step(
+                    step_id=fetch_step_id,
+                    session_id=session_id,
+                    before_cost_gbp=fetch_before_cost,
+                    detail=f"Fetched structured market data for {', '.join(resolved_tickers[:3])}.",
+                    detail_json={"tickers": resolved_tickers[:3]},
+                )
+
+        if planner_decision.requires_web_research and resolved_tickers:
+            research_step_id: int | None = None
+            research_before_cost = self.session_manager.session_cost_total_gbp(session_id)
+            if self.settings.conversation_transparency_enabled:
+                research_step_id = self._begin_workflow_step(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    step_key="running_web_research",
+                    label="Running web research",
+                    detail="Gathering recent external evidence and citations.",
+                    tool_name="run_research_search",
+                )
+            research_executor = ResearchExecutor(cycle_id=f"chat-session-{session_id}-turn-{turn_id}")
+            evidence_bundle["news_findings"] = self._run_agentic_research(
+                session_id=session_id,
+                turn_id=turn_id,
+                message_text=message_text,
+                tickers=resolved_tickers,
+                research_executor=research_executor,
+                evidence_bundle=evidence_bundle,
+            )
+            if self.settings.conversation_transparency_enabled and research_step_id is not None:
+                self._complete_workflow_step(
+                    step_id=research_step_id,
+                    session_id=session_id,
+                    before_cost_gbp=research_before_cost,
+                    detail="Captured grounded external evidence for the turn.",
+                    provider="brave/tavily/sec",
+                    tool_name="run_research_search",
+                    detail_json={"tickers": resolved_tickers},
+                )
+
+        if planner_decision.requires_related_scan and resolved_tickers:
+            compare_step_id: int | None = None
+            compare_before_cost = self.session_manager.session_cost_total_gbp(session_id)
+            if self.settings.conversation_transparency_enabled:
+                compare_step_id = self._begin_workflow_step(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    step_key="comparing_options",
+                    label="Comparing nearby options",
+                    detail="Scanning related names in the same sector.",
+                    tool_name="scan_related_tickers",
+                )
+            evidence_bundle["related_tickers"] = self._scan_related_tickers(resolved_tickers)
+            if self.settings.conversation_transparency_enabled and compare_step_id is not None:
+                self._complete_workflow_step(
+                    step_id=compare_step_id,
+                    session_id=session_id,
+                    before_cost_gbp=compare_before_cost,
+                    detail="Completed adjacent-name scan for the current thesis.",
+                    tool_name="scan_related_tickers",
+                    detail_json={"related_tickers": evidence_bundle["related_tickers"]},
+                )
+
+        if planner_decision.requires_committee and resolved_tickers:
+            committee_step_id: int | None = None
+            committee_before_cost = self.session_manager.session_cost_total_gbp(session_id)
+            if self.settings.conversation_transparency_enabled:
+                committee_step_id = self._begin_workflow_step(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    step_key="asking_specialist",
+                    label="Asking specialists",
+                    detail="Generating bull, bear, and risk views from the gathered evidence.",
+                )
+            evidence_bundle["committee_views"] = self._specialists.build_committee_views(
+                tickers=resolved_tickers,
+                evidence_bundle=evidence_bundle,
+                turn_mode=planner_decision.turn_mode,
+            )
+            if self.settings.conversation_transparency_enabled and committee_step_id is not None:
+                committee_models = [
+                    view.get("model")
+                    for view in evidence_bundle["committee_views"]
+                    if isinstance(view, dict) and view.get("model")
+                ]
+                self._complete_workflow_step(
+                    step_id=committee_step_id,
+                    session_id=session_id,
+                    before_cost_gbp=committee_before_cost,
+                    detail="Specialist perspectives were folded into the final answer.",
+                    model=", ".join(committee_models[:3]) if committee_models else None,
+                    detail_json={"committee_views": evidence_bundle["committee_views"]},
+                )
+
+        proactive_result: dict[str, Any] | None = None
+        if (
+            planner_decision.should_suggest_opportunity
+            and self.settings.conversation_proactive_suggestions_enabled
+            and not planner_decision.requires_trade_preview
+        ):
+            proactive_result = self._build_proactive_suggestion(
+                session_id=session_id,
+                turn_id=turn_id,
+                message_text=message_text,
+                tickers=resolved_tickers,
+                related_tickers=evidence_bundle["related_tickers"],
+                channel_type=channel_type,
+                user_id=user_id,
+            )
+            if proactive_result:
+                evidence_bundle["next_actions"] = proactive_result.get("next_actions") or evidence_bundle["next_actions"]
+
+        if planner_decision.requires_trade_preview:
+            trade_step_id: int | None = None
+            trade_before_cost = self.session_manager.session_cost_total_gbp(session_id)
+            if self.settings.conversation_transparency_enabled:
+                trade_step_id = self._begin_workflow_step(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    step_key="drafting_trade_preview",
+                    label="Drafting trade preview",
+                    detail="Building a deterministic preview and safety checks.",
+                    tool_name="build_trade_preview",
+                )
+            intent = self._classify_intent(message_text, context)
+            trade_result = self._handle_intent(
+                session_id=session_id,
+                turn_id=turn_id,
+                message_text=message_text,
+                intent=intent,
+                context=context,
+                channel_type=channel_type,
+                user_id=user_id,
+            )
+            result = self._attach_agentic_metadata(
+                session_id=session_id,
+                turn_id=turn_id,
+                result=trade_result,
+                planner_decision=planner_decision,
+                context=context_update,
+                evidence_bundle=evidence_bundle,
+            )
+            if self.settings.conversation_transparency_enabled and trade_step_id is not None:
+                latest_action = (result.get("response_json") or {}).get("status")
+                self._complete_workflow_step(
+                    step_id=trade_step_id,
+                    session_id=session_id,
+                    before_cost_gbp=trade_before_cost,
+                    detail="Trade preview was created through the deterministic execution path.",
+                    tool_name="build_trade_preview",
+                    detail_json={"action_status": latest_action},
+                )
+                if latest_action == "awaiting_confirmation":
+                    awaiting = self.session_manager.add_workflow_step(
+                        session_id=session_id,
+                        turn_id=turn_id,
+                        step_key="awaiting_confirmation",
+                        status="completed",
+                        label="Awaiting confirmation",
+                        detail="Preview created. Waiting for operator confirmation before execution.",
+                        completed_at=_utcnow(),
+                    )
+                    self._emit_workflow_event("chat_step_completed", awaiting)
+            return result
+
+        build_step_id: int | None = None
+        build_before_cost = self.session_manager.session_cost_total_gbp(session_id)
+        if self.settings.conversation_transparency_enabled:
+            build_step_id = self._begin_workflow_step(
+                session_id=session_id,
+                turn_id=turn_id,
+                step_key="building_answer",
+                label="Building answer",
+                detail="Composing the final single-assistant response from the evidence bundle.",
+                model=self.settings.conversation_planner_model,
+            )
+        composed = self._planner.compose_response(
+            user_message=message_text,
+            plan=planner_decision,
+            evidence_bundle=evidence_bundle,
+        )
+        evidence_bundle["confidence"] = composed.get("confidence", evidence_bundle["confidence"])
+        evidence_bundle["next_actions"] = composed.get("next_actions") or evidence_bundle["next_actions"]
+        if proactive_result and proactive_result.get("assistant_suffix"):
+            assistant_text = f"{composed['assistant_text']}\n\n{proactive_result['assistant_suffix']}"
+        else:
+            assistant_text = composed["assistant_text"]
+        if self.settings.conversation_transparency_enabled and build_step_id is not None:
+            self._complete_workflow_step(
+                step_id=build_step_id,
+                session_id=session_id,
+                before_cost_gbp=build_before_cost,
+                detail="Built the final operator-facing answer with citations and next actions.",
+                model=self.settings.conversation_planner_model,
+            )
+            completed = self.session_manager.add_workflow_step(
+                session_id=session_id,
+                turn_id=turn_id,
+                step_key="completed",
+                status="completed",
+                label="Completed",
+                detail="Agentic turn completed successfully.",
+                completed_at=_utcnow(),
+            )
+            self._emit_workflow_event("chat_step_completed", completed)
+
+        context_update["last_subject_tickers"] = resolved_tickers or context.get("last_subject_tickers") or []
+        context_update["last_selection_tickers"] = (
+            [row.get("ticker") for row in evidence_bundle["related_tickers"] if row.get("ticker")]
+            or resolved_tickers
+        )
+        return {
+            "assistant_text": assistant_text,
+            "context_update": context_update,
+            "response_json": {
+                "kind": "agentic_response",
+                "route": planner_decision.route,
+                "turn_mode": planner_decision.turn_mode,
+                "planner": planner_decision.as_dict(),
+                "evidence_blocks": evidence_bundle,
+                "citations": evidence_bundle["citations"],
+                "related_tickers": evidence_bundle["related_tickers"],
+                "committee_views": evidence_bundle["committee_views"],
+                "confidence": evidence_bundle["confidence"],
+                "next_actions": evidence_bundle["next_actions"],
+                "proactive_suggestion": proactive_result.get("payload") if proactive_result else None,
+            },
+        }
+
+    def _attach_agentic_metadata(
+        self,
+        *,
+        session_id: int,
+        turn_id: int,
+        result: dict[str, Any],
+        planner_decision: ChatPlannerDecision,
+        context: dict[str, Any],
+        evidence_bundle: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        bundle = evidence_bundle or {
+            "market_snapshot": [],
+            "news_findings": [],
+            "sec_findings": [],
+            "related_tickers": [],
+            "committee_views": [],
+            "citations": [],
+            "confidence": planner_decision.confidence,
+            "next_actions": list(planner_decision.next_actions),
+        }
+        response_json = result.get("response_json")
+        if not isinstance(response_json, dict):
+            response_json = {"payload": response_json}
+        response_json.update(
+            {
+                "turn_mode": planner_decision.turn_mode,
+                "route": planner_decision.route,
+                "planner": planner_decision.as_dict(),
+                "evidence_blocks": bundle,
+                "citations": bundle.get("citations") or [],
+                "related_tickers": bundle.get("related_tickers") or [],
+                "committee_views": bundle.get("committee_views") or [],
+                "confidence": bundle.get("confidence", planner_decision.confidence),
+                "next_actions": bundle.get("next_actions") or planner_decision.next_actions,
+            }
+        )
+        result["response_json"] = response_json
+        result["context_update"] = result.get("context_update") or context
+        return result
 
     def _handle_trade_command(
         self,
@@ -850,6 +1292,351 @@ class ConversationOrchestrator:
                 "unresolved_subjects": unresolved,
             },
         }
+
+    def _extract_agentic_subjects(
+        self,
+        message_text: str,
+        planner_decision: ChatPlannerDecision,
+        context: dict[str, Any],
+    ) -> list[str]:
+        trade_intent = parse_trade_command(message_text, use_llm_fallback=False)
+        if trade_intent is not None and trade_intent.subject_phrases:
+            return self._resolve_subjects(trade_intent.subject_phrases, context)
+        subjects = self._extract_subjects_for_research(message_text, context)
+        if subjects:
+            return subjects
+        if planner_decision.route == "portfolio_analysis":
+            return []
+        cleaned = self._normalize_research_subject(message_text)
+        return [cleaned] if cleaned and len(cleaned.split()) <= 6 else []
+
+    def _build_market_snapshot_payload(self, ticker_t212: str) -> dict[str, Any]:
+        yf_ticker = t212_to_yf(ticker_t212)
+        started = time.monotonic()
+        analysis = self.data_fetcher.get_stock_analysis_lite(yf_ticker)
+        latency_ms = round((time.monotonic() - started) * 1000, 2)
+        indicators = analysis.get("indicators") or {}
+        fundamentals = analysis.get("fundamentals") or {}
+
+        session = get_session()
+        try:
+            instrument = session.query(Instrument).filter(Instrument.ticker == ticker_t212).first()
+        finally:
+            session.close()
+
+        return {
+            "ticker": ticker_t212,
+            "company_name": instrument.name if instrument else yf_ticker,
+            "sector": instrument.sector if instrument else None,
+            "industry": instrument.industry if instrument else None,
+            "business_summary": (instrument.business_summary or "")[:280] if instrument else "",
+            "current_price": _safe_float(indicators.get("current_price")) or _safe_float(analysis.get("current_price")),
+            "rsi_14": _safe_float(indicators.get("rsi_14")),
+            "relative_strength_6m": _safe_float(analysis.get("relative_strength_6m")),
+            "volume_sma_ratio_20": _safe_float(indicators.get("volume_sma_ratio_20")),
+            "trailing_pe": _safe_float(fundamentals.get("trailing_pe")),
+            "debt_equity": _safe_float(fundamentals.get("debt_equity")),
+            "analysis_latency_ms": latency_ms,
+        }
+
+    def _run_agentic_research(
+        self,
+        *,
+        session_id: int,
+        turn_id: int,
+        message_text: str,
+        tickers: list[str],
+        research_executor: ResearchExecutor,
+        evidence_bundle: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        findings: list[dict[str, Any]] = []
+        max_calls = max(1, self.settings.conversation_max_research_calls_per_turn)
+        calls_used = 0
+        for ticker in tickers[:3]:
+            if calls_used >= max_calls:
+                break
+            snapshot = next(
+                (row for row in evidence_bundle["market_snapshot"] if row.get("ticker") == ticker),
+                None,
+            ) or {}
+            sector = snapshot.get("sector") or ticker
+            query = message_text if len(message_text.split()) <= 14 else f"{ticker} recent catalysts and risks"
+            search_started = time.monotonic()
+            results = research_executor.news_search("strategy", ticker, query, num_results=3)
+            latency_ms = round((time.monotonic() - search_started) * 1000, 2)
+            calls_used += 1
+            summary = ", ".join(item.get("title") or "Untitled result" for item in results[:2]) or query
+            self.session_manager.add_research_log(
+                session_id=session_id,
+                turn_id=turn_id,
+                tool_name="run_research_search",
+                provider="brave",
+                query=query,
+                result_summary=summary[:500],
+                latency_ms=latency_ms,
+            )
+            for idx, item in enumerate(results[:3], start=1):
+                finding = {
+                    "ticker": ticker,
+                    "title": item.get("title"),
+                    "summary": item.get("snippet"),
+                    "url": item.get("url"),
+                    "provider": "brave",
+                    "tool_name": "news_search",
+                }
+                findings.append(finding)
+                evidence_bundle["citations"].append(
+                    {
+                        "id": f"search-{ticker.lower()}-{idx}",
+                        "label": item.get("title") or f"{ticker} result {idx}",
+                        "url": item.get("url"),
+                        "source_type": "web_search",
+                        "provider": "brave",
+                        "ticker": ticker,
+                    }
+                )
+            if calls_used >= max_calls:
+                break
+            sec_results = research_executor.sec_search_tool("strategy", ticker, doc_type="10-K", num_results=1)
+            if sec_results:
+                calls_used += 1
+                sec_item = sec_results[0]
+                sec_summary = f"{sec_item.get('filing_type')} filed {sec_item.get('filing_date')}"
+                evidence_bundle["sec_findings"].append(
+                    {
+                        "ticker": ticker,
+                        "title": sec_item.get("description") or sec_summary,
+                        "summary": sec_summary,
+                        "url": sec_item.get("url"),
+                        "provider": "sec",
+                    }
+                )
+                evidence_bundle["citations"].append(
+                    {
+                        "id": f"sec-{ticker.lower()}",
+                        "label": sec_item.get("description") or sec_summary,
+                        "url": sec_item.get("url"),
+                        "source_type": "sec_filing",
+                        "provider": "sec",
+                        "ticker": ticker,
+                    }
+                )
+                self.session_manager.add_research_log(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    tool_name="run_sec_research",
+                    provider="sec",
+                    query=f"{ticker} 10-K",
+                    result_summary=sec_summary[:500],
+                )
+            if sector and calls_used < max_calls and len(tickers) == 1 and ("related" in message_text.lower() or "space" in message_text.lower()):
+                peer_query = f"{sector} leaders relative strength"
+                peer_results = research_executor.sector_search("strategy", ticker, str(sector), peer_query, num_results=2)
+                calls_used += 1
+                for idx, item in enumerate(peer_results[:2], start=1):
+                    findings.append(
+                        {
+                            "ticker": ticker,
+                            "title": item.get("title"),
+                            "summary": item.get("snippet"),
+                            "url": item.get("url"),
+                            "provider": "brave",
+                            "tool_name": "sector_search",
+                        }
+                    )
+                    evidence_bundle["citations"].append(
+                        {
+                            "id": f"sector-{ticker.lower()}-{idx}",
+                            "label": item.get("title") or f"{ticker} sector result {idx}",
+                            "url": item.get("url"),
+                            "source_type": "sector_search",
+                            "provider": "brave",
+                            "ticker": ticker,
+                        }
+                    )
+        return findings
+
+    def _scan_related_tickers(self, base_tickers: list[str]) -> list[dict[str, Any]]:
+        if not base_tickers:
+            return []
+        session = get_session()
+        try:
+            base = session.query(Instrument).filter(Instrument.ticker == base_tickers[0]).first()
+            if base is None:
+                return []
+            peers = (
+                session.query(Instrument)
+                .filter(
+                    Instrument.sector == base.sector,
+                    Instrument.ticker != base.ticker,
+                    Instrument.data_available.isnot(False),
+                )
+                .order_by(Instrument.market_cap.desc().nullslast(), Instrument.ticker.asc())
+                .limit(6)
+                .all()
+            )
+        finally:
+            session.close()
+
+        ranked: list[dict[str, Any]] = []
+        for peer in peers[:4]:
+            snapshot = self._build_market_snapshot_payload(str(peer.ticker))
+            score = (
+                float(snapshot.get("relative_strength_6m") or 0.0)
+                - max(0.0, (float(snapshot.get("rsi_14") or 50.0) - 70.0) / 100.0)
+                - max(0.0, (float(snapshot.get("debt_equity") or 0.0) - 2.0) / 10.0)
+            )
+            ranked.append(
+                {
+                    "ticker": peer.ticker,
+                    "label": peer.name or peer.ticker,
+                    "sector": peer.sector,
+                    "industry": peer.industry,
+                    "score": round(score, 3),
+                    "current_price": snapshot.get("current_price"),
+                    "relative_strength_6m": snapshot.get("relative_strength_6m"),
+                    "rsi_14": snapshot.get("rsi_14"),
+                }
+            )
+        ranked.sort(key=lambda row: row["score"], reverse=True)
+        return ranked[:3]
+
+    def _build_portfolio_snapshot(self) -> list[dict[str, Any]]:
+        positions = self._get_portfolio_positions()
+        return [
+            {
+                "ticker": pos["ticker"],
+                "value_gbp": pos["value_gbp"],
+                "pnl_pct": pos["pnl_pct"],
+                "quantity": pos["quantity"],
+                "current_price": pos["current_price"],
+            }
+            for pos in positions[:8]
+        ]
+
+    def _build_proactive_suggestion(
+        self,
+        *,
+        session_id: int,
+        turn_id: int,
+        message_text: str,
+        tickers: list[str],
+        related_tickers: list[dict[str, Any]],
+        channel_type: str,
+        user_id: str | None,
+    ) -> dict[str, Any] | None:
+        lowered = message_text.lower()
+        if "buy" not in lowered and "interesting" not in lowered and "opportunit" not in lowered and "stronger" not in lowered:
+            return None
+        candidate = related_tickers[0]["ticker"] if related_tickers else (tickers[0] if tickers else None)
+        if not candidate:
+            return None
+        try:
+            intent = TradeCommandIntent(
+                action="BUY",
+                ticker=candidate,
+                raw_message=f"BUY {candidate}",
+                command_kind="trade",
+                execution_mode="strategy",
+                subject_phrases=[candidate],
+            )
+            result = self._handle_trade_command(
+                session_id=session_id,
+                turn_id=turn_id,
+                intent=intent,
+                channel_type=channel_type,
+                user_id=user_id,
+                context={"last_subject_tickers": tickers},
+            )
+            response_json = result.get("response_json") if isinstance(result.get("response_json"), dict) else {}
+            if response_json.get("status") != "awaiting_confirmation":
+                return None
+            suffix = (
+                f"Opportunity suggestion: based on the current evidence, {candidate} looks like the strongest adjacent setup. "
+                "I staged a preview so you can confirm or reject it explicitly."
+            )
+            return {
+                "assistant_suffix": suffix,
+                "payload": response_json,
+                "next_actions": ["confirm", "reject", "show committee views"],
+            }
+        except Exception:
+            logger.warning("Failed to build proactive suggestion preview", exc_info=True)
+            return None
+
+    def _begin_workflow_step(
+        self,
+        *,
+        session_id: int,
+        turn_id: int,
+        step_key: str,
+        label: str,
+        detail: str,
+        provider: str | None = None,
+        model: str | None = None,
+        tool_name: str | None = None,
+        detail_json: Any | None = None,
+    ) -> int:
+        step = self.session_manager.add_workflow_step(
+            session_id=session_id,
+            turn_id=turn_id,
+            step_key=step_key,
+            status="running",
+            label=label,
+            detail=detail,
+            provider=provider,
+            model=model,
+            tool_name=tool_name,
+            detail_json=detail_json,
+        )
+        self._emit_workflow_event("chat_step_started", step)
+        return int(step["id"])
+
+    def _complete_workflow_step(
+        self,
+        *,
+        step_id: int,
+        session_id: int,
+        before_cost_gbp: float,
+        detail: str,
+        provider: str | None = None,
+        model: str | None = None,
+        tool_name: str | None = None,
+        detail_json: Any | None = None,
+    ) -> dict[str, Any]:
+        step = self.session_manager.update_workflow_step(
+            step_id,
+            status="completed",
+            detail=detail,
+            provider=provider,
+            model=model,
+            tool_name=tool_name,
+            cost_gbp=self._cost_delta_for_step(session_id, before_cost_gbp),
+            completed_at=_utcnow(),
+            detail_json=detail_json,
+        )
+        self._emit_workflow_event("chat_step_completed", step)
+        return step
+
+    def _cost_delta_for_step(self, session_id: int, before_cost_gbp: float) -> float:
+        after_cost = self.session_manager.session_cost_total_gbp(session_id)
+        return round(max(0.0, after_cost - before_cost_gbp), 4)
+
+    def _emit_workflow_event(self, event_type: str, step: dict[str, Any]) -> None:
+        self._emit_event(
+            event_type,
+            step.get("detail") or step.get("label") or step.get("step_key") or "Workflow step updated",
+            session_id=step.get("session_id"),
+            turn_id=step.get("turn_id"),
+            step_id=step.get("id"),
+            step_key=step.get("step_key"),
+            status=step.get("status"),
+            provider=step.get("provider"),
+            model=step.get("model"),
+            tool_name=step.get("tool_name"),
+            cost_gbp=step.get("cost_gbp"),
+            latency_ms=step.get("latency_ms"),
+        )
 
     def _execute_action(self, action: dict[str, Any], *, channel_type: str) -> str:
         action_id = int(action["id"])

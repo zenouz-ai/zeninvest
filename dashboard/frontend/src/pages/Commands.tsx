@@ -14,6 +14,7 @@ import type {
   ChatSessionDetail,
   ChatSessionSummary,
   ChatTurn,
+  ChatWorkflowStep,
   CommandStats,
   Event,
   SlackCommand,
@@ -35,6 +36,8 @@ const STATUS_VARIANT: Record<string, PillVariant> = {
   review_only: 'live',
   active: 'live',
   closed: 'dim',
+  completed: 'live',
+  running: 'warning',
 }
 
 const ACTION_COLOUR: Record<string, string> = {
@@ -84,6 +87,15 @@ function latestAssistantTurn(detail: ChatSessionDetail | null): ChatTurn | null 
     if (turn.role === 'assistant') return turn
   }
   return null
+}
+
+function assistantPayload(turn: ChatTurn | null): Record<string, any> | null {
+  if (!turn || !turn.response_json || typeof turn.response_json !== 'object') return null
+  return turn.response_json as Record<string, any>
+}
+
+function asObjectArray(value: unknown): Record<string, any>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, any> => Boolean(item) && typeof item === 'object') : []
 }
 
 function renderActionStatus(action: ChatAction) {
@@ -186,12 +198,183 @@ function SessionList({
   )
 }
 
+function WorkflowRail({ steps }: { steps: ChatWorkflowStep[] }) {
+  const recentSteps = steps.slice(-12)
+
+  return (
+    <Panel className="space-y-4">
+      <SectionHeader
+        eyebrow="Transparency"
+        title="Agent Activity"
+        subtitle="Operator-safe workflow steps, tool usage, and spend deltas for this conversation."
+      />
+      {recentSteps.length === 0 ? (
+        <p className="text-sm text-terminal-text-dim">No workflow trace yet for this session.</p>
+      ) : (
+        <div className="space-y-3">
+          {recentSteps.map((step) => (
+            <div key={step.id} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-terminal-text">
+                    {step.label || step.step_key.replace(/_/g, ' ')}
+                  </p>
+                  <p className="mt-1 text-xs text-terminal-text-dim">{step.detail || 'In progress'}</p>
+                </div>
+                <StatusPill variant={STATUS_VARIANT[step.status] || 'dim'} label={step.status} />
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-terminal-text-dim">
+                <span>{safeFormat(step.started_at)}</span>
+                {step.tool_name && <span>Tool: {step.tool_name}</span>}
+                {step.provider && <span>Provider: {step.provider}</span>}
+                {step.model && <span>Model: {step.model}</span>}
+                {typeof step.cost_gbp === 'number' && step.cost_gbp > 0 && (
+                  <span>Cost: {formatCurrency(step.cost_gbp)}</span>
+                )}
+                {typeof step.latency_ms === 'number' && step.latency_ms > 0 && (
+                  <span>Latency: {Math.round(step.latency_ms)} ms</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  )
+}
+
+function EvidencePanels({ latestAssistant }: { latestAssistant: ChatTurn | null }) {
+  const payload = assistantPayload(latestAssistant)
+  const citations = asObjectArray(payload?.citations)
+  const relatedTickers = asObjectArray(payload?.related_tickers)
+  const committeeViews = asObjectArray(payload?.committee_views)
+  const evidenceBlocks = payload?.evidence_blocks && typeof payload.evidence_blocks === 'object'
+    ? payload.evidence_blocks as Record<string, any>
+    : null
+  const nextActions = Array.isArray(payload?.next_actions) ? payload?.next_actions as string[] : []
+
+  if (!payload) return null
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Panel className="space-y-3">
+        <SectionHeader
+          eyebrow="Evidence"
+          title="Sources"
+          subtitle="Grounded claims and internal market snapshots used in the latest reply."
+        />
+        {citations.length === 0 ? (
+          <p className="text-sm text-terminal-text-dim">No external citations on the latest turn.</p>
+        ) : (
+          <div className="space-y-2">
+            {citations.map((citation) => (
+              <div key={String(citation.id || citation.label)} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3 text-sm">
+                <p className="text-terminal-text">{String(citation.label || citation.id || 'Source')}</p>
+                <p className="mt-1 text-xs text-terminal-text-dim">
+                  {String(citation.provider || citation.source_type || 'source')}
+                </p>
+                {citation.url && (
+                  <a href={String(citation.url)} target="_blank" rel="noreferrer" className="mt-2 block break-all text-xs text-cyan hover:text-cyan/80">
+                    {String(citation.url)}
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="space-y-3">
+        <SectionHeader
+          eyebrow="Intelligence"
+          title="Related Tickers"
+          subtitle="Nearby names surfaced by the current thesis and comparison logic."
+        />
+        {relatedTickers.length === 0 ? (
+          <p className="text-sm text-terminal-text-dim">No related ticker scan on the latest turn.</p>
+        ) : (
+          <div className="space-y-2">
+            {relatedTickers.map((item) => (
+              <div key={String(item.ticker || item.label)} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-terminal-text">{String(item.label || item.ticker || 'Ticker')}</p>
+                  {typeof item.score === 'number' && <span className="text-xs text-terminal-text-dim">Score {item.score.toFixed(2)}</span>}
+                </div>
+                <p className="mt-1 text-xs text-terminal-text-dim">{String(item.ticker || '')}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="space-y-3">
+        <SectionHeader
+          eyebrow="Committee"
+          title="Bull / Bear / Risk Views"
+          subtitle="Hidden specialist outputs are folded into one assistant voice, but visible here."
+        />
+        {committeeViews.length === 0 ? (
+          <p className="text-sm text-terminal-text-dim">No committee views on the latest turn.</p>
+        ) : (
+          <div className="space-y-2">
+            {committeeViews.map((view) => (
+              <div key={String(`${view.role || 'analyst'}-${view.provider || 'provider'}-${view.model || 'model'}`)} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-terminal-text">{String(view.role || 'analyst')}</p>
+                  <p className="text-[11px] text-terminal-text-dim">{String(view.model || view.provider || 'internal')}</p>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-terminal-text-muted">{String(view.summary || 'No summary')}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="space-y-3">
+        <SectionHeader
+          eyebrow="Why This"
+          title="Answer Context"
+          subtitle="Structured evidence and suggested next actions from the latest reply."
+        />
+        {evidenceBlocks?.market_snapshot && asObjectArray(evidenceBlocks.market_snapshot).length > 0 && (
+          <div className="space-y-2">
+            {asObjectArray(evidenceBlocks.market_snapshot).slice(0, 3).map((snapshot) => (
+              <div key={String(snapshot.ticker || snapshot.company_name)} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3 text-sm">
+                <p className="font-semibold text-terminal-text">{String(snapshot.ticker || snapshot.company_name || 'Snapshot')}</p>
+                <p className="mt-1 text-xs text-terminal-text-dim">
+                  {typeof snapshot.current_price === 'number' ? `Price $${snapshot.current_price.toFixed(2)}` : 'No price'}
+                  {typeof snapshot.relative_strength_6m === 'number' ? ` · RS ${snapshot.relative_strength_6m.toFixed(2)}` : ''}
+                  {typeof snapshot.rsi_14 === 'number' ? ` · RSI ${snapshot.rsi_14.toFixed(1)}` : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {nextActions.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {nextActions.map((action) => (
+              <span key={action} className="rounded-full border border-cyan/30 bg-cyan/10 px-3 py-1 text-[11px] uppercase tracking-wide text-cyan">
+                {action}
+              </span>
+            ))}
+          </div>
+        )}
+        {typeof payload.confidence === 'number' && (
+          <p className="text-xs text-terminal-text-dim">Confidence: {(payload.confidence * 100).toFixed(0)}%</p>
+        )}
+      </Panel>
+    </div>
+  )
+}
+
 function ChatThread({
   sessionDetail,
   loading,
   submitting,
   composer,
+  composerMode,
   onComposerChange,
+  onComposerModeChange,
   onSubmit,
   onClose,
 }: {
@@ -199,7 +382,9 @@ function ChatThread({
   loading: boolean
   submitting: boolean
   composer: string
+  composerMode: 'quick' | 'research' | 'committee' | 'trade'
   onComposerChange: (value: string) => void
+  onComposerModeChange: (value: 'quick' | 'research' | 'committee' | 'trade') => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
   onClose: () => void
 }) {
@@ -283,7 +468,25 @@ function ChatThread({
             </div>
           )}
 
+          <EvidencePanels latestAssistant={latestAssistant} />
+
           <form className="space-y-3" onSubmit={onSubmit}>
+            <div className="flex flex-wrap gap-2">
+              {(['quick', 'research', 'committee', 'trade'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onComposerModeChange(value)}
+                  className={`rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wide transition-colors ${
+                    composerMode === value
+                      ? 'bg-cyan text-terminal-bg'
+                      : 'border border-terminal-border text-terminal-text-dim hover:border-cyan/40 hover:text-terminal-text'
+                  }`}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
             <textarea
               value={composer}
               onChange={(event) => onComposerChange(event.target.value)}
@@ -293,7 +496,7 @@ function ChatThread({
             />
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-terminal-text-dim">
-                Dashboard replies continue the same session even when the thread started in Slack.
+                Dashboard replies continue the same session even when the thread started in Slack. Current mode: {composerMode}.
               </p>
               <button
                 type="submit"
@@ -339,6 +542,8 @@ function ActionRail({
 
   return (
     <div className="space-y-4">
+      <WorkflowRail steps={sessionDetail?.workflow_steps || []} />
+
       <Panel className="space-y-4">
         <SectionHeader
           eyebrow="Cost Attribution"
@@ -775,6 +980,7 @@ export default function Commands() {
   const [chatLoading, setChatLoading] = useState(true)
   const [chatError, setChatError] = useState<string | null>(null)
   const [composer, setComposer] = useState('')
+  const [composerMode, setComposerMode] = useState<'quick' | 'research' | 'committee' | 'trade'>('research')
   const [submitting, setSubmitting] = useState(false)
 
   const [commands, setCommands] = useState<SlackCommand[]>([])
@@ -898,6 +1104,8 @@ export default function Commands() {
       const detail = await chatApi.submitTurn(activeSessionId, {
         message_text: message,
         channel_type: 'dashboard',
+        mode: composerMode,
+        budget_tier: 'premium',
       })
       setSessionDetail(detail)
       setComposer('')
@@ -907,7 +1115,7 @@ export default function Commands() {
     } finally {
       setSubmitting(false)
     }
-  }, [composer, fetchSessions, selectedSessionId])
+  }, [composer, composerMode, fetchSessions, selectedSessionId])
 
   const handleConfirmAction = useCallback(async (actionId: number) => {
     if (!sessionDetail) return
@@ -1000,7 +1208,9 @@ export default function Commands() {
             loading={chatLoading && !sessionDetail}
             submitting={submitting}
             composer={composer}
+            composerMode={composerMode}
             onComposerChange={setComposer}
+            onComposerModeChange={setComposerMode}
             onSubmit={(event) => void handleSendTurn(event)}
             onClose={() => void handleCloseSession()}
           />

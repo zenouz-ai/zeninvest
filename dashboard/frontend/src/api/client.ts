@@ -192,6 +192,8 @@ export const chatApi = {
       message_text: string
       channel_type?: 'dashboard' | 'slack'
       user_id?: string
+      mode?: 'quick' | 'research' | 'committee' | 'trade'
+      budget_tier?: 'standard' | 'premium'
     }
   ): Promise<ChatSessionDetail> => {
     const response = await api.post(`/api/chat/sessions/${sessionId}/turns`, body)

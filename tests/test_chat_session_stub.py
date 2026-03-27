@@ -101,6 +101,35 @@ class TestSessionManager:
         assert result["research_logs"][0]["id"] == log["id"]
         assert result["actions"][0]["status"] == "awaiting_confirmation"
 
+    def test_workflow_steps_persist_and_serialize(self):
+        mgr = SessionManager()
+        session_id = mgr.create_session(channel_type="dashboard", user_id="u1")
+        turn_id = mgr.add_turn(session_id, role="user", message_text="Compare AMD and NVDA", channel_type="dashboard")
+        step = mgr.add_workflow_step(
+            session_id=session_id,
+            turn_id=turn_id,
+            step_key="planning",
+            status="running",
+            label="Planning response",
+            detail="Choosing the best route.",
+            model="gpt-5.4",
+        )
+        updated = mgr.update_workflow_step(
+            step["id"],
+            status="completed",
+            detail="Planner selected grounded research.",
+            cost_gbp=0.0123,
+            completed_at=datetime.now(timezone.utc),
+            detail_json={"route": "grounded_research"},
+        )
+
+        result = mgr.get_session(session_id)
+        assert result is not None
+        assert result["workflow_steps"][0]["id"] == step["id"]
+        assert updated["status"] == "completed"
+        assert result["workflow_steps"][0]["detail_json"]["route"] == "grounded_research"
+        assert result["workflow_steps"][0]["cost_gbp"] == 0.0123
+
     def test_expire_old_pending_actions(self):
         mgr = SessionManager()
         session_id = mgr.create_session(channel_type="dashboard")

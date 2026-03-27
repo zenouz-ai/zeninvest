@@ -33,19 +33,21 @@ Only paths 1-4 matter for decision quality. Path 5 is for post-hoc analysis only
 
 ## Conversational Workflow Boundary (US-1.9)
 
-The conversational operator workflow is intentionally more deterministic than the scheduled multi-LLM pipeline.
+The conversational operator workflow now uses a **hybrid boundary**: a planner-led, evidence-driven research layer on top of deterministic execution controls.
 
 | Chat capability | Primary mechanism | Paid / LLM boundary |
 |-----------------|-------------------|---------------------|
 | Session lifecycle, confirm/reject/expiry, Slack/dashboard continuity | Deterministic session state machine | No paid model required |
-| `compare`, `what about`, ticker research summaries | Rule-based intent parsing + `get_stock_analysis_lite()` market-data fetch | No LLM; uses cached/free market data paths |
+| Planner-led routing, answer composition, committee-style research turns | OpenAI planner + hidden specialists with safe fallbacks | Paid LLM path when agentic beta is enabled |
+| `compare`, `what about`, ticker research summaries | Planner-led route selection + `get_stock_analysis_lite()` + grounded search wrappers | May stay free/cheap for market-data-only turns; paid only when LLM/search is invoked |
 | `cancel`, stop updates, bounded portfolio rules | Regex / deterministic handlers | No LLM; broker and local state only |
 | `review X`, `review X and buy`, `buy X and trigger strategy` | Chat router dispatches into the existing single-ticker committee pipeline | Uses Anthropic strategy + OpenAI/Google moderators as needed |
 | Optional agentic research during committee execution | Research tool router + `research_logs` | Paid Brave/Tavily only when tool-use is invoked |
+| Workflow transparency | `chat_workflow_steps` + dashboard SSE events | No extra model cost beyond the underlying step work |
 
-This split is deliberate. The chat layer should stay cheap, inspectable, and safe by default; the expensive dynamic reasoning path is reserved for strategy-backed review and strategy-triggered execution.
+This split is deliberate. The chat layer can now be more dynamic and explanatory, but execution remains cheap, inspectable, and safe by default; the expensive path is bounded by planner/routing flags, per-turn research caps, and the existing explicit confirmation and deterministic veto chain.
 
-**Cost attribution:** chat-triggered LLM calls and paid research calls now carry `chat_session_id` / `chat_turn_id` tags in `cost_logs` and `research_logs`, so operator conversations can be costed independently from scheduled-cycle runs.
+**Cost attribution:** chat-triggered LLM calls and paid research calls carry `chat_session_id` / `chat_turn_id` tags in `cost_logs` and `research_logs`, while `chat_workflow_steps.cost_gbp` captures per-step deltas for operator transparency. This lets `/commands` show both session-level spend and where in the workflow that spend occurred.
 
 ---
 

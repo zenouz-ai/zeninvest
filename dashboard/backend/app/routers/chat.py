@@ -31,6 +31,8 @@ class SubmitTurnRequest(BaseModel):
     message_text: str = Field(min_length=1)
     channel_type: Literal["dashboard", "slack"] = "dashboard"
     user_id: str | None = None
+    mode: Literal["quick", "research", "committee", "trade"] | None = None
+    budget_tier: Literal["standard", "premium"] | None = None
 
 
 class SessionActionRequest(BaseModel):
@@ -85,6 +87,8 @@ async def submit_turn(session_id: int, body: SubmitTurnRequest) -> dict[str, Any
             message_text=body.message_text,
             channel_type=body.channel_type,
             user_id=body.user_id,
+            mode=body.mode,
+            budget_tier=body.budget_tier,
         )
     except ChatSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -9,7 +9,15 @@ from typing import Any
 from sqlalchemy import func
 
 from src.data.database import get_session
-from src.data.models import ChatAction, ChatResearchLog, ChatSession, ChatTurn, CostLog, ResearchLog
+from src.data.models import (
+    ChatAction,
+    ChatResearchLog,
+    ChatSession,
+    ChatTurn,
+    ChatWorkflowStep,
+    CostLog,
+    ResearchLog,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger("session_manager")
@@ -282,6 +290,99 @@ class SessionManager:
         finally:
             session.close()
 
+    def add_workflow_step(
+        self,
+        *,
+        session_id: int,
+        turn_id: int | None,
+        step_key: str,
+        status: str = "running",
+        label: str | None = None,
+        detail: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        tool_name: str | None = None,
+        cost_gbp: float | None = None,
+        latency_ms: float | None = None,
+        detail_json: Any | None = None,
+        completed_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Persist a workflow step for a conversational turn."""
+        session = get_session()
+        try:
+            row = ChatWorkflowStep(
+                session_id=session_id,
+                turn_id=turn_id,
+                step_key=step_key,
+                status=status,
+                label=label,
+                detail=detail,
+                provider=provider,
+                model=model,
+                tool_name=tool_name,
+                cost_gbp=cost_gbp,
+                latency_ms=latency_ms,
+                detail_json=_json_dumps(detail_json),
+                completed_at=completed_at,
+            )
+            session.add(row)
+            chat_session = session.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if chat_session:
+                chat_session.last_activity_at = _utcnow()
+            session.commit()
+            return self._serialize_workflow_step(row)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def update_workflow_step(
+        self,
+        step_id: int,
+        *,
+        status: str | None = None,
+        detail: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        tool_name: str | None = None,
+        cost_gbp: float | None = None,
+        latency_ms: float | None = None,
+        detail_json: Any | None = None,
+        completed_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Update a persisted workflow step."""
+        session = get_session()
+        try:
+            row = session.query(ChatWorkflowStep).filter(ChatWorkflowStep.id == step_id).first()
+            if row is None:
+                raise ChatSessionNotFoundError(f"Workflow step {step_id} not found")
+            if status is not None:
+                row.status = status
+            if detail is not None:
+                row.detail = detail
+            if provider is not None:
+                row.provider = provider
+            if model is not None:
+                row.model = model
+            if tool_name is not None:
+                row.tool_name = tool_name
+            if cost_gbp is not None:
+                row.cost_gbp = cost_gbp
+            if latency_ms is not None:
+                row.latency_ms = latency_ms
+            if detail_json is not None:
+                row.detail_json = _json_dumps(detail_json)
+            if completed_at is not None:
+                row.completed_at = completed_at
+            session.commit()
+            return self._serialize_workflow_step(row)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def get_pending_action(self, session_id: int) -> dict[str, Any] | None:
         """Return the most recent unexpired action awaiting confirmation."""
         session = get_session()
@@ -521,6 +622,27 @@ class SessionManager:
             "created_at": row.created_at.isoformat() if row.created_at else None,
         }
 
+    def _serialize_workflow_step(self, row: ChatWorkflowStep) -> dict[str, Any]:
+        return {
+            "id": row.id,
+            "session_id": row.session_id,
+            "turn_id": row.turn_id,
+            "step_key": row.step_key,
+            "status": row.status,
+            "label": row.label,
+            "detail": row.detail,
+            "provider": row.provider,
+            "model": row.model,
+            "tool_name": row.tool_name,
+            "cost_gbp": row.cost_gbp,
+            "latency_ms": row.latency_ms,
+            "detail_json": _json_loads(row.detail_json),
+            "started_at": row.started_at.isoformat() if row.started_at else None,
+            "completed_at": row.completed_at.isoformat() if row.completed_at else None,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        }
+
     def _serialize_session_detail(self, row: ChatSession, session: Any) -> dict[str, Any]:
         turns = (
             session.query(ChatTurn)
@@ -540,13 +662,46 @@ class SessionManager:
             .order_by(ChatResearchLog.created_at.desc(), ChatResearchLog.id.desc())
             .all()
         )
+        workflow_steps = (
+            session.query(ChatWorkflowStep)
+            .filter(ChatWorkflowStep.session_id == row.id)
+            .order_by(ChatWorkflowStep.started_at.asc(), ChatWorkflowStep.id.asc())
+            .all()
+        )
         summary = self._serialize_session_summary(row, session)
         summary["context_json"] = _json_loads(row.context_json)
         summary["turns"] = [self._serialize_turn(turn) for turn in turns]
         summary["actions"] = [self._serialize_action(action) for action in actions]
         summary["research_logs"] = [self._serialize_research_log(log) for log in research_logs]
+        summary["workflow_steps"] = [self._serialize_workflow_step(step) for step in workflow_steps]
         summary["cost_summary"] = self._serialize_cost_summary(int(row.id), session)
+        latest_assistant = next(
+            (
+                turn
+                for turn in reversed(summary["turns"])
+                if turn.get("role") == "assistant"
+            ),
+            None,
+        )
+        latest_response = latest_assistant.get("response_json") if isinstance(latest_assistant, dict) else None
+        if not isinstance(latest_response, dict):
+            latest_response = {}
+        summary["turn_mode"] = latest_response.get("turn_mode")
+        summary["evidence_blocks"] = latest_response.get("evidence_blocks")
+        summary["citations"] = latest_response.get("citations") or []
+        summary["related_tickers"] = latest_response.get("related_tickers") or []
+        summary["committee_views"] = latest_response.get("committee_views") or []
+        summary["confidence"] = latest_response.get("confidence")
+        summary["next_actions"] = latest_response.get("next_actions") or []
         return summary
+
+    def session_cost_total_gbp(self, session_id: int) -> float:
+        """Return the current total chat-attributed cost for a session."""
+        session = get_session()
+        try:
+            return self._serialize_cost_summary(session_id, session)["total_cost_gbp"]
+        finally:
+            session.close()
 
     def _serialize_cost_summary(self, session_id: int, session: Any) -> dict[str, Any]:
         llm_rows = (

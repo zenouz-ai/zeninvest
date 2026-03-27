@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.agents.conversation.orchestrator import ConversationOrchestrator
+from src.agents.conversation.planner import ChatPlannerDecision
 from src.agents.conversation.session_manager import SessionManager
 from src.data.models import Base, Instrument
 from src.orchestrator.single_ticker_run import SingleTickerResult
@@ -219,3 +220,80 @@ def test_review_turn_accumulates_session_cost_summary(orchestrator):
     assert cost_summary["total_cost_gbp"] == pytest.approx(
         cost_summary["llm_cost_gbp"] + cost_summary["research_cost_gbp"]
     )
+
+
+def test_agentic_turn_persists_workflow_and_evidence(orchestrator):
+    session = orchestrator.start_session(channel_type="dashboard", title="Agentic compare")
+    planned = ChatPlannerDecision(
+        route="committee_review",
+        turn_mode="committee",
+        use_fast_path=False,
+        requires_web_research=True,
+        requires_related_scan=True,
+        requires_committee=True,
+        requires_trade_preview=False,
+        should_suggest_opportunity=False,
+        confidence=0.82,
+        next_actions=["preview trade", "show sources"],
+        explanation="Committee review requested.",
+    )
+
+    with patch.object(orchestrator._planner, "plan_turn", return_value=planned):
+        with patch.object(orchestrator, "_extract_agentic_subjects", return_value=["AMD"]):
+            with patch.object(
+                orchestrator,
+                "_run_agentic_research",
+                return_value=[
+                    {
+                        "ticker": "AMD_US_EQ",
+                        "title": "AMD AI demand remains strong",
+                        "summary": "New AI demand evidence",
+                        "url": "https://example.com/amd",
+                        "provider": "brave",
+                        "tool_name": "news_search",
+                    }
+                ],
+            ):
+                with patch.object(
+                    orchestrator,
+                    "_scan_related_tickers",
+                    return_value=[{"ticker": "NVDA_US_EQ", "label": "NVIDIA", "score": 1.2}],
+                ):
+                    with patch.object(
+                        orchestrator._specialists,
+                        "build_committee_views",
+                        return_value=[
+                            {"role": "bull", "summary": "AMD has the cleaner upside path.", "model": "claude"},
+                            {"role": "bear", "summary": "Valuation leaves less room for error.", "model": "gpt-5.4"},
+                            {"role": "risk", "summary": "Macro risk still matters.", "model": "gemini"},
+                        ],
+                    ):
+                        with patch.object(
+                            orchestrator._planner,
+                            "compose_response",
+                            return_value={
+                                "assistant_text": "AMD looks constructive, with NVIDIA as the strongest nearby peer.",
+                                "confidence": 0.78,
+                                "next_actions": ["preview trade", "show sources"],
+                            },
+                        ):
+                            detail = orchestrator.process_turn(
+                                session_id=session["id"],
+                                message_text="compare AMD and its best peers",
+                                channel_type="dashboard",
+                                mode="committee",
+                                budget_tier="premium",
+                            )
+
+    latest_turn = detail["turns"][-1]
+    payload = latest_turn["response_json"]
+    step_keys = [step["step_key"] for step in detail["workflow_steps"]]
+
+    assert latest_turn["message_text"] == "AMD looks constructive, with NVIDIA as the strongest nearby peer."
+    assert payload["turn_mode"] == "committee"
+    assert payload["committee_views"][0]["role"] == "bull"
+    assert payload["related_tickers"][0]["ticker"] == "NVDA_US_EQ"
+    assert "planning" in step_keys
+    assert "running_web_research" in step_keys
+    assert "asking_specialist" in step_keys
+    assert "building_answer" in step_keys

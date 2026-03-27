@@ -227,3 +227,16 @@ conversation:
   confirmation_timeout_minutes: 10
   inactivity_timeout_minutes: 480
   max_session_list_size: 50
+  agentic_planner_enabled: true
+  transparency_enabled: true
+  default_mode: research
+  default_budget_tier: premium
+  proactive_suggestions_enabled: true
+  planner_model: gpt-5.4
+  specialist_models:
+    equity: claude-sonnet-4-5-20250929
+    risk: gemini-2.5-flash
+  max_specialist_calls_per_turn: 3
+  max_research_calls_per_turn: 4
+  native_web_search_enabled: false
+  beta_shadow_logging_enabled: true
