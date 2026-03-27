@@ -248,6 +248,7 @@ function EvidencePanels({ latestAssistant }: { latestAssistant: ChatTurn | null 
   const citations = asObjectArray(payload?.citations)
   const relatedTickers = asObjectArray(payload?.related_tickers)
   const committeeViews = asObjectArray(payload?.committee_views)
+  const warnings = asObjectArray(payload?.warnings)
   const evidenceBlocks = payload?.evidence_blocks && typeof payload.evidence_blocks === 'object'
     ? payload.evidence_blocks as Record<string, any>
     : null
@@ -257,15 +258,30 @@ function EvidencePanels({ latestAssistant }: { latestAssistant: ChatTurn | null 
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <Panel className="space-y-3">
-        <SectionHeader
-          eyebrow="Evidence"
-          title="Sources"
-          subtitle="Grounded claims and internal market snapshots used in the latest reply."
-        />
-        {citations.length === 0 ? (
-          <p className="text-sm text-terminal-text-dim">No external citations on the latest turn.</p>
-        ) : (
+      {warnings.length > 0 && (
+        <Panel className="space-y-3 lg:col-span-2">
+          <SectionHeader
+            eyebrow="Warnings"
+            title="Degraded Turn"
+            subtitle="This reply used a safe fallback or needs a clearer subject."
+          />
+          <div className="space-y-2">
+            {warnings.map((warning, index) => (
+              <div key={String(warning.code || index)} className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm text-terminal-text">
+                {String(warning.message || 'This turn degraded to a safe fallback.')}
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {citations.length > 0 && (
+        <Panel className="space-y-3">
+          <SectionHeader
+            eyebrow="Evidence"
+            title="Sources"
+            subtitle="Grounded claims and internal market snapshots used in the latest reply."
+          />
           <div className="space-y-2">
             {citations.map((citation) => (
               <div key={String(citation.id || citation.label)} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3 text-sm">
@@ -281,18 +297,16 @@ function EvidencePanels({ latestAssistant }: { latestAssistant: ChatTurn | null 
               </div>
             ))}
           </div>
-        )}
-      </Panel>
+        </Panel>
+      )}
 
-      <Panel className="space-y-3">
-        <SectionHeader
-          eyebrow="Intelligence"
-          title="Related Tickers"
-          subtitle="Nearby names surfaced by the current thesis and comparison logic."
-        />
-        {relatedTickers.length === 0 ? (
-          <p className="text-sm text-terminal-text-dim">No related ticker scan on the latest turn.</p>
-        ) : (
+      {relatedTickers.length > 0 && (
+        <Panel className="space-y-3">
+          <SectionHeader
+            eyebrow="Intelligence"
+            title="Related Tickers"
+            subtitle="Nearby names surfaced by the current thesis and comparison logic."
+          />
           <div className="space-y-2">
             {relatedTickers.map((item) => (
               <div key={String(item.ticker || item.label)} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
@@ -304,18 +318,16 @@ function EvidencePanels({ latestAssistant }: { latestAssistant: ChatTurn | null 
               </div>
             ))}
           </div>
-        )}
-      </Panel>
+        </Panel>
+      )}
 
-      <Panel className="space-y-3">
-        <SectionHeader
-          eyebrow="Committee"
-          title="Bull / Bear / Risk Views"
-          subtitle="Hidden specialist outputs are folded into one assistant voice, but visible here."
-        />
-        {committeeViews.length === 0 ? (
-          <p className="text-sm text-terminal-text-dim">No committee views on the latest turn.</p>
-        ) : (
+      {committeeViews.length > 0 && (
+        <Panel className="space-y-3">
+          <SectionHeader
+            eyebrow="Committee"
+            title="Bull / Bear / Risk Views"
+            subtitle="Hidden specialist outputs are folded into one assistant voice, but visible here."
+          />
           <div className="space-y-2">
             {committeeViews.map((view) => (
               <div key={String(`${view.role || 'analyst'}-${view.provider || 'provider'}-${view.model || 'model'}`)} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
@@ -327,8 +339,8 @@ function EvidencePanels({ latestAssistant }: { latestAssistant: ChatTurn | null 
               </div>
             ))}
           </div>
-        )}
-      </Panel>
+        </Panel>
+      )}
 
       <Panel className="space-y-3">
         <SectionHeader

@@ -46,10 +46,54 @@ def db_session():
     session = Session()
     session.add_all(
         [
-            Instrument(ticker="TSLA_US_EQ", name="Tesla", sector="Consumer Cyclical", business_summary="Tesla summary"),
-            Instrument(ticker="GOOGL_US_EQ", name="Alphabet (Class A)", sector="Technology", business_summary="Google summary"),
-            Instrument(ticker="AMD_US_EQ", name="Advanced Micro Devices", sector="Technology", business_summary="AMD summary"),
-            Instrument(ticker="NVDA_US_EQ", name="NVIDIA", sector="Technology", business_summary="NVDA summary"),
+            Instrument(
+                ticker="TSLA_US_EQ",
+                name="Tesla",
+                sector="Consumer Cyclical",
+                industry="Auto Manufacturers",
+                market_cap=800_000_000_000,
+                business_summary="Tesla summary",
+            ),
+            Instrument(
+                ticker="GOOGL_US_EQ",
+                name="Alphabet (Class A)",
+                sector="Technology",
+                industry="Internet Content & Information",
+                market_cap=2_000_000_000_000,
+                business_summary="Google summary",
+            ),
+            Instrument(
+                ticker="AMD_US_EQ",
+                name="Advanced Micro Devices",
+                sector="Technology",
+                industry="Semiconductors",
+                market_cap=300_000_000_000,
+                business_summary="AMD summary",
+            ),
+            Instrument(
+                ticker="NVDA_US_EQ",
+                name="NVIDIA",
+                sector="Technology",
+                industry="Semiconductors",
+                market_cap=2_500_000_000_000,
+                business_summary="NVDA summary",
+            ),
+            Instrument(
+                ticker="TSM_US_EQ",
+                name="Taiwan Semiconductor",
+                sector="Technology",
+                industry="Semiconductors",
+                market_cap=850_000_000_000,
+                business_summary="TSM summary",
+            ),
+            Instrument(
+                ticker="TCEHY_OTC",
+                name="Tencent",
+                sector="Technology",
+                industry="Internet Content & Information",
+                market_cap=450_000_000_000,
+                business_summary="Tencent summary",
+            ),
         ]
     )
     session.commit()
@@ -159,6 +203,66 @@ def test_dashboard_reply_is_mirrored_back_to_slack_thread(orchestrator):
     assert mock_client.chat_postMessage.call_args.kwargs["text"] == assistant_text
 
 
+def test_extract_agentic_subjects_handles_compare_phrase(orchestrator):
+    plan = ChatPlannerDecision(
+        route="compare",
+        turn_mode="research",
+        use_fast_path=False,
+        requires_web_research=True,
+        requires_related_scan=False,
+        requires_committee=False,
+        requires_trade_preview=False,
+        should_suggest_opportunity=False,
+        confidence=0.8,
+        next_actions=[],
+        explanation="Compare route.",
+    )
+
+    subjects = orchestrator._extract_agentic_subjects("compare tesla and google", plan, {})
+
+    assert subjects == ["tesla", "google"]
+
+
+def test_extract_agentic_subjects_handles_committee_phrase(orchestrator):
+    plan = ChatPlannerDecision(
+        route="committee_review",
+        turn_mode="committee",
+        use_fast_path=False,
+        requires_web_research=True,
+        requires_related_scan=False,
+        requires_committee=True,
+        requires_trade_preview=False,
+        should_suggest_opportunity=False,
+        confidence=0.8,
+        next_actions=[],
+        explanation="Committee route.",
+    )
+
+    subjects = orchestrator._extract_agentic_subjects("give me bull and bear views on AMD", plan, {})
+
+    assert subjects == ["AMD"]
+
+
+def test_extract_agentic_subjects_skips_help_prompt(orchestrator):
+    plan = ChatPlannerDecision(
+        route="help_or_explain",
+        turn_mode="quick",
+        use_fast_path=True,
+        requires_web_research=False,
+        requires_related_scan=False,
+        requires_committee=False,
+        requires_trade_preview=False,
+        should_suggest_opportunity=False,
+        confidence=0.9,
+        next_actions=[],
+        explanation="Help route.",
+    )
+
+    subjects = orchestrator._extract_agentic_subjects("help me understand this workflow", plan, {})
+
+    assert subjects == []
+
+
 def test_review_turn_accumulates_session_cost_summary(orchestrator):
     session = orchestrator.start_session(channel_type="dashboard", title="Costed review")
 
@@ -222,6 +326,130 @@ def test_review_turn_accumulates_session_cost_summary(orchestrator):
     )
 
 
+def test_quick_mode_help_prompt_uses_explainer_not_placeholder(orchestrator):
+    session = orchestrator.start_session(channel_type="dashboard", title="Help")
+
+    detail = orchestrator.process_turn(
+        session_id=session["id"],
+        message_text="help me understand this workflow",
+        channel_type="dashboard",
+        mode="quick",
+    )
+
+    assistant_text = detail["turns"][-1]["message_text"]
+
+    assert "Nothing executes directly from chat" in assistant_text
+    assert "Research summary" not in assistant_text
+    assert detail["research_logs"] == []
+
+
+def test_agentic_compare_partial_resolution_returns_warning_without_peer_scan(orchestrator):
+    session = orchestrator.start_session(channel_type="dashboard", title="Agentic compare")
+    planned = ChatPlannerDecision(
+        route="compare",
+        turn_mode="research",
+        use_fast_path=False,
+        requires_web_research=True,
+        requires_related_scan=True,
+        requires_committee=False,
+        requires_trade_preview=False,
+        should_suggest_opportunity=False,
+        confidence=0.8,
+        next_actions=["show sources"],
+        explanation="Compare route requested.",
+    )
+
+    with patch.object(orchestrator._planner, "plan_turn", return_value=planned):
+        with patch.object(orchestrator, "_scan_related_tickers") as related_scan:
+            detail = orchestrator.process_turn(
+                session_id=session["id"],
+                message_text="compare tesla and madeupcorp",
+                channel_type="dashboard",
+            )
+
+    assistant_text = detail["turns"][-1]["message_text"]
+    payload = detail["turns"][-1]["response_json"]
+
+    related_scan.assert_not_called()
+    assert "could only resolve" in assistant_text.lower() or "need two ticker" in assistant_text.lower()
+    assert payload["related_tickers"] == []
+    assert payload["warnings"][0]["code"] == "compare_resolution_incomplete"
+    assert detail["research_logs"] == []
+
+
+def test_agentic_committee_prompt_returns_views_for_resolved_ticker(orchestrator):
+    session = orchestrator.start_session(channel_type="dashboard", title="Committee")
+    planned = ChatPlannerDecision(
+        route="committee_review",
+        turn_mode="committee",
+        use_fast_path=False,
+        requires_web_research=True,
+        requires_related_scan=False,
+        requires_committee=True,
+        requires_trade_preview=False,
+        should_suggest_opportunity=False,
+        confidence=0.8,
+        next_actions=["preview trade"],
+        explanation="Committee route requested.",
+    )
+
+    with patch.object(orchestrator._planner, "plan_turn", return_value=planned):
+        with patch.object(orchestrator, "_run_agentic_research", return_value=[]):
+            detail = orchestrator.process_turn(
+                session_id=session["id"],
+                message_text="give me bull and bear views on AMD",
+                channel_type="dashboard",
+            )
+
+    assistant_text = detail["turns"][-1]["message_text"]
+    payload = detail["turns"][-1]["response_json"]
+
+    assert "Committee view" in assistant_text
+    assert len(payload["committee_views"]) == 3
+    assert payload["committee_views"][0]["role"] == "bull"
+    assert payload["warnings"] == []
+
+
+def test_plain_compare_does_not_auto_show_related_tickers(orchestrator):
+    session = orchestrator.start_session(channel_type="dashboard", title="No peer scan")
+    planned = ChatPlannerDecision(
+        route="compare",
+        turn_mode="research",
+        use_fast_path=False,
+        requires_web_research=True,
+        requires_related_scan=False,
+        requires_committee=False,
+        requires_trade_preview=False,
+        should_suggest_opportunity=False,
+        confidence=0.8,
+        next_actions=["show sources"],
+        explanation="Compare route requested.",
+    )
+
+    with patch.object(orchestrator._planner, "plan_turn", return_value=planned):
+        with patch.object(orchestrator, "_run_agentic_research", return_value=[]):
+            detail = orchestrator.process_turn(
+                session_id=session["id"],
+                message_text="compare tesla and google",
+                channel_type="dashboard",
+            )
+
+    payload = detail["turns"][-1]["response_json"]
+
+    assert payload["related_tickers"] == []
+    assert "TSLA_US_EQ" in detail["turns"][-1]["message_text"]
+    assert "GOOGL_US_EQ" in detail["turns"][-1]["message_text"]
+
+
+def test_related_ticker_scan_prefers_same_suffix_and_semiconductor_peers(orchestrator):
+    related = orchestrator._scan_related_tickers(["AMD_US_EQ"])
+    tickers = [row["ticker"] for row in related]
+
+    assert "NVDA_US_EQ" in tickers
+    assert "TCEHY_OTC" not in tickers
+    assert all(ticker.endswith("_US_EQ") for ticker in tickers)
+
+
 def test_agentic_turn_persists_workflow_and_evidence(orchestrator):
     session = orchestrator.start_session(channel_type="dashboard", title="Agentic compare")
     planned = ChatPlannerDecision(
@@ -264,7 +492,7 @@ def test_agentic_turn_persists_workflow_and_evidence(orchestrator):
                         "build_committee_views",
                         return_value=[
                             {"role": "bull", "summary": "AMD has the cleaner upside path.", "model": "claude"},
-                            {"role": "bear", "summary": "Valuation leaves less room for error.", "model": "gpt-5.4"},
+                            {"role": "bear", "summary": "Valuation leaves less room for error.", "model": "gpt-4o"},
                             {"role": "risk", "summary": "Macro risk still matters.", "model": "gemini"},
                         ],
                     ):

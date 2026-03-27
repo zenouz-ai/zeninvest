@@ -18,7 +18,7 @@ Define a single implementation plan for a dialogue-driven trading workflow that 
 - Agentic research capabilities (US-4.4, delivered)
 
 This document is the canonical design for cross-channel conversational trade operations.
-Current implementation state: the core US-1.9 MVP is now deployed on the VPS and has been extended with an **agentic beta** path. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, chat SSE events, Slack thread continuity, dashboard-to-Slack reply mirroring for Slack-backed sessions, and the chat-first dashboard `Commands` console are implemented. The beta path adds a planner-led route selector, evidence-driven replies, related-ticker scans, hidden specialist opinions folded into one assistant voice, and a persisted `chat_workflow_steps` trace so the operator can see what the agent is doing step by step without exposing chain-of-thought. Chat-triggered LLM calls and paid research calls continue to carry `chat_session_id` / `chat_turn_id` attribution so session-level operator spend can be measured directly.
+Current implementation state: the core US-1.9 MVP is now deployed on the VPS and has been extended with an **agentic beta** path. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, chat SSE events, Slack thread continuity, dashboard-to-Slack reply mirroring for Slack-backed sessions, and the chat-first dashboard `Commands` console are implemented. The beta path adds a planner-led route selector, evidence-driven replies, related-ticker scans, hidden specialist opinions folded into one assistant voice, and a persisted `chat_workflow_steps` trace so the operator can see what the agent is doing step by step without exposing chain-of-thought. Recent hardening also added explicit degraded-turn warnings, deterministic `help_or_explain` fast-path handling, and stricter compare / committee subject resolution so empty placeholder replies are surfaced as warnings instead of being mistaken for complete research. Chat-triggered LLM calls and paid research calls continue to carry `chat_session_id` / `chat_turn_id` attribution so session-level operator spend can be measured directly.
 
 ---
 
@@ -98,11 +98,11 @@ flowchart LR
 - `src/agents/conversation/session_manager.py`
   - session lifecycle, action ledger, research trace persistence, workflow trace persistence, resume helpers
 - `src/agents/conversation/planner.py`
-  - planner-led route selection (`quick`, `research`, `committee`, `trade`) plus final assistant composition with safe fallbacks
+  - planner-led route selection (`quick`, `research`, `committee`, `trade`) plus final assistant composition with safe fallbacks; default OpenAI planner/composer path now uses `gpt-4o` on the Responses API for reliability
 - `src/agents/conversation/specialists.py`
   - hidden bull / bear / risk specialist wrappers that enrich the single assistant voice
 - `src/agents/conversation/orchestrator.py`
-  - planner integration, per-turn workflow steps, evidence bundle assembly, confirmation handling, execution dispatch
+  - planner integration, per-turn workflow steps, evidence bundle assembly, compare/help/committee subject handling, degraded-turn warnings, confirmation handling, execution dispatch
 - `src/agents/notifications/slack_listener.py`
   - existing Socket Mode listener extended so thread replies and broad natural-language requests route into shared conversational sessions
 - `dashboard/backend/app/routers/chat.py`

@@ -321,6 +321,8 @@ Strategy (Claude) → conviction 0.8, action BUY
 - Session spend card surfaces chat-triggered LLM and paid research cost so operator conversations can be measured independently from scheduled-cycle cost
 - New **Agent Activity** rail shows safe workflow steps in real time: planning, ticker resolution, market-data fetch, grounded research, specialist calls, answer building, trade-preview drafting, and confirmation wait states
 - Latest assistant turn exposes evidence panels for citations, related tickers, bull/bear/risk views, and suggested next actions instead of forcing operators to infer the system's work from a plain text block
+- Degraded or partially resolved turns now render explicit warning cards instead of empty placeholder replies; empty evidence panels are hidden when no underlying evidence exists
+- Plain `compare X and Y` prompts no longer auto-run peer scans; related tickers only appear when the operator explicitly asks for peers, adjacent names, or stronger alternatives
 
 **Secondary legacy audit:**
 - `Command History` tab remains backed by `GET /api/commands/` with ticker/action/status filters, stats cards, and expandable rows

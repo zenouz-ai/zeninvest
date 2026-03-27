@@ -61,9 +61,14 @@ PORTFOLIO_PNL_RE = re.compile(
 CONFIRM_WORDS = {"yes", "y", "confirm", "approved", "do it", "go ahead"}
 REJECT_WORDS = {"no", "n", "reject", "cancel", "stop"}
 RESEARCH_PREFIX_RE = re.compile(
-    r"^\s*(?:what about|how about|tell me about|research|look into|explain|dig deeper on|happening with)\s+",
+    r"^\s*(?:compare|contrast|what about|how about|tell me about|research|look into|explain|dig deeper on|happening with|show me|give me|views on|thoughts on|pros and cons of|bull and bear views on|committee view on)\s+",
     re.IGNORECASE,
 )
+COMMITTEE_SUBJECT_RE = re.compile(
+    r"\b(?:views?|bull and bear views?|committee view|pros and cons)\s+(?:on|for|about)\s+(?P<subject>.+?)\s*$",
+    re.IGNORECASE,
+)
+TARGET_SUFFIX_RE = re.compile(r"\b(?:on|for|about)\s+(?P<subject>.+?)\s*$", re.IGNORECASE)
 SLACK_REPLY_MAX_CHARS = 3500
 
 
@@ -263,16 +268,19 @@ class ConversationOrchestrator:
 
             with bind_chat_cost_context(session_id=session_id, turn_id=user_turn_id):
                 if planner_decision.use_fast_path:
-                    intent = self._classify_intent(message_text, context)
-                    result = self._handle_intent(
-                        session_id=session_id,
-                        turn_id=user_turn_id,
-                        message_text=message_text,
-                        intent=intent,
-                        context=context,
-                        channel_type=channel_type,
-                        user_id=user_id,
-                    )
+                    if planner_decision.route == "help_or_explain":
+                        result = self._handle_help_or_explain(message_text=message_text, context=context)
+                    else:
+                        intent = self._classify_intent(message_text, context)
+                        result = self._handle_intent(
+                            session_id=session_id,
+                            turn_id=user_turn_id,
+                            message_text=message_text,
+                            intent=intent,
+                            context=context,
+                            channel_type=channel_type,
+                            user_id=user_id,
+                        )
                     result = self._attach_agentic_metadata(
                         session_id=session_id,
                         turn_id=user_turn_id,
@@ -536,6 +544,9 @@ class ConversationOrchestrator:
             "citations": [],
             "confidence": planner_decision.confidence,
             "next_actions": list(planner_decision.next_actions),
+            "warnings": [],
+            "resolved_tickers": [],
+            "unresolved_subjects": [],
         }
         context_update = dict(context)
 
@@ -553,12 +564,17 @@ class ConversationOrchestrator:
             )
 
         subjects = self._extract_agentic_subjects(message_text, planner_decision, context)
+        unresolved_subjects: list[str] = []
         for subject in subjects:
             ticker = resolve_ticker_to_t212(subject)
             if ticker and ticker not in resolved_tickers:
                 resolved_tickers.append(ticker)
-        if not resolved_tickers and context.get("last_subject_tickers"):
+            elif not ticker and subject not in unresolved_subjects:
+                unresolved_subjects.append(subject)
+        if not resolved_tickers and not subjects and context.get("last_subject_tickers"):
             resolved_tickers = list(context.get("last_subject_tickers") or [])
+        evidence_bundle["resolved_tickers"] = list(resolved_tickers)
+        evidence_bundle["unresolved_subjects"] = list(unresolved_subjects)
         if self.settings.conversation_transparency_enabled and resolve_step_id is not None:
             self._complete_workflow_step(
                 step_id=resolve_step_id,
@@ -569,13 +585,59 @@ class ConversationOrchestrator:
                     if resolved_tickers
                     else "No explicit ticker resolved; using portfolio or clarification flow."
                 ),
-                detail_json={"subjects": subjects, "tickers": resolved_tickers},
+                detail_json={
+                    "subjects": subjects,
+                    "tickers": resolved_tickers,
+                    "unresolved_subjects": unresolved_subjects,
+                },
             )
+
+        if planner_decision.route == "compare" and len(resolved_tickers) < 2:
+            warning_message = (
+                f"I could only resolve {', '.join(resolved_tickers)}. "
+                f"I couldn't resolve {', '.join(unresolved_subjects)} from that phrasing."
+                if resolved_tickers and unresolved_subjects
+                else "I need two ticker symbols or company names to run a comparison."
+            )
+            evidence_bundle["warnings"].append(
+                {
+                    "code": "compare_resolution_incomplete",
+                    "message": warning_message,
+                    "severity": "warning",
+                }
+            )
+            self._emit_chat_warning(
+                session_id=session_id,
+                turn_id=turn_id,
+                message=warning_message,
+                detail_json={"subjects": subjects, "tickers": resolved_tickers, "unresolved_subjects": unresolved_subjects},
+            )
+
+        if planner_decision.route == "committee_review" and not resolved_tickers:
+            warning_message = (
+                f"I couldn't resolve {', '.join(unresolved_subjects)} to a tradeable ticker."
+                if unresolved_subjects
+                else "I need a ticker or company name to generate bull, bear, and risk views."
+            )
+            evidence_bundle["warnings"].append(
+                {
+                    "code": "committee_ticker_missing",
+                    "message": warning_message,
+                    "severity": "warning",
+                }
+            )
+            self._emit_chat_warning(
+                session_id=session_id,
+                turn_id=turn_id,
+                message=warning_message,
+                detail_json={"subjects": subjects, "unresolved_subjects": unresolved_subjects},
+            )
+        compare_incomplete = planner_decision.route == "compare" and len(resolved_tickers) < 2
 
         if planner_decision.route == "portfolio_analysis":
             evidence_bundle["market_snapshot"] = self._build_portfolio_snapshot()
             context_update["last_selection_tickers"] = resolved_tickers
-        else:
+        elif not compare_incomplete:
             fetch_step_id: int | None = None
             fetch_before_cost = self.session_manager.session_cost_total_gbp(session_id)
             if self.settings.conversation_transparency_enabled and resolved_tickers:
@@ -608,7 +670,7 @@ class ConversationOrchestrator:
                     detail_json={"tickers": resolved_tickers[:3]},
                 )
 
-        if planner_decision.requires_web_research and resolved_tickers:
+        if planner_decision.requires_web_research and resolved_tickers and not compare_incomplete:
             research_step_id: int | None = None
             research_before_cost = self.session_manager.session_cost_total_gbp(session_id)
             if self.settings.conversation_transparency_enabled:
@@ -640,7 +702,7 @@ class ConversationOrchestrator:
                     detail_json={"tickers": resolved_tickers},
                 )
 
-        if planner_decision.requires_related_scan and resolved_tickers:
+        if planner_decision.requires_related_scan and resolved_tickers and not compare_incomplete:
             compare_step_id: int | None = None
             compare_before_cost = self.session_manager.session_cost_total_gbp(session_id)
             if self.settings.conversation_transparency_enabled:
@@ -781,6 +843,16 @@ class ConversationOrchestrator:
             plan=planner_decision,
             evidence_bundle=evidence_bundle,
         )
+        composed_warnings = composed.get("warnings") if isinstance(composed.get("warnings"), list) else []
+        for warning in composed_warnings:
+            if warning not in evidence_bundle["warnings"]:
+                evidence_bundle["warnings"].append(warning)
+                self._emit_chat_warning(
+                    session_id=session_id,
+                    turn_id=turn_id,
+                    message=str(warning.get("message") if isinstance(warning, dict) else warning),
+                    detail_json=warning if isinstance(warning, dict) else {"message": warning},
+                )
         evidence_bundle["confidence"] = composed.get("confidence", evidence_bundle["confidence"])
         evidence_bundle["next_actions"] = composed.get("next_actions") or evidence_bundle["next_actions"]
         if proactive_result and proactive_result.get("assistant_suffix"):
@@ -825,6 +897,7 @@ class ConversationOrchestrator:
                 "committee_views": evidence_bundle["committee_views"],
                 "confidence": evidence_bundle["confidence"],
                 "next_actions": evidence_bundle["next_actions"],
+                "warnings": evidence_bundle["warnings"],
                 "proactive_suggestion": proactive_result.get("payload") if proactive_result else None,
             },
         }
@@ -863,11 +936,24 @@ class ConversationOrchestrator:
                 "committee_views": bundle.get("committee_views") or [],
                 "confidence": bundle.get("confidence", planner_decision.confidence),
                 "next_actions": bundle.get("next_actions") or planner_decision.next_actions,
+                "warnings": bundle.get("warnings") or [],
             }
         )
         result["response_json"] = response_json
         result["context_update"] = result.get("context_update") or context
         return result
+
+    def _handle_help_or_explain(self, message_text: str, context: dict[str, Any]) -> dict[str, Any]:
+        del message_text
+        return {
+            "assistant_text": (
+                "I can help with research, comparisons, reviews, bounded trade previews, stop updates, cancellations, "
+                "and portfolio rules. Nothing executes directly from chat. If you ask for an action, I will stage a "
+                "proposal first and wait for an explicit confirm or reject."
+            ),
+            "context_update": context,
+            "response_json": {"kind": "clarification", "route": "help_or_explain"},
+        }
 
     def _handle_trade_command(
         self,
@@ -1302,6 +1388,19 @@ class ConversationOrchestrator:
         trade_intent = parse_trade_command(message_text, use_llm_fallback=False)
         if trade_intent is not None and trade_intent.subject_phrases:
             return self._resolve_subjects(trade_intent.subject_phrases, context)
+        if planner_decision.route == "help_or_explain":
+            return []
+        if planner_decision.route == "compare":
+            compare_match = COMPARE_RE.match(message_text)
+            if compare_match:
+                return [
+                    self._normalize_research_subject(compare_match.group("left")),
+                    self._normalize_research_subject(compare_match.group("right")),
+                ]
+        if planner_decision.route == "committee_review":
+            committee_subjects = self._extract_committee_subject(message_text, context)
+            if committee_subjects:
+                return committee_subjects
         subjects = self._extract_subjects_for_research(message_text, context)
         if subjects:
             return subjects
@@ -1464,25 +1563,34 @@ class ConversationOrchestrator:
             base = session.query(Instrument).filter(Instrument.ticker == base_tickers[0]).first()
             if base is None:
                 return []
-            peers = (
-                session.query(Instrument)
-                .filter(
-                    Instrument.sector == base.sector,
-                    Instrument.ticker != base.ticker,
-                    Instrument.data_available.isnot(False),
-                )
-                .order_by(Instrument.market_cap.desc().nullslast(), Instrument.ticker.asc())
-                .limit(6)
-                .all()
+            peer_query = session.query(Instrument).filter(
+                Instrument.ticker != base.ticker,
+                Instrument.data_available.isnot(False),
             )
+            if base.industry:
+                peer_query = peer_query.filter(Instrument.industry == base.industry)
+            elif base.sector:
+                peer_query = peer_query.filter(Instrument.sector == base.sector)
+            peers = peer_query.order_by(Instrument.market_cap.desc().nullslast(), Instrument.ticker.asc()).limit(16).all()
         finally:
             session.close()
 
+        base_suffix = "_".join(str(base.ticker).split("_")[1:]) if "_" in str(base.ticker) else ""
+        base_market_cap = float(base.market_cap or 0) if getattr(base, "market_cap", None) else 0.0
         ranked: list[dict[str, Any]] = []
-        for peer in peers[:4]:
+        for peer in peers:
+            peer_suffix = "_".join(str(peer.ticker).split("_")[1:]) if "_" in str(peer.ticker) else ""
+            if base_suffix and peer_suffix and peer_suffix != base_suffix:
+                continue
+            if base_market_cap and peer.market_cap:
+                ratio = float(peer.market_cap) / base_market_cap if base_market_cap else 1.0
+                if ratio < 0.2 or ratio > 10.0:
+                    continue
             snapshot = self._build_market_snapshot_payload(str(peer.ticker))
+            similarity_bonus = 0.6 if peer.industry and peer.industry == base.industry else 0.25
             score = (
-                float(snapshot.get("relative_strength_6m") or 0.0)
+                similarity_bonus
+                + float(snapshot.get("relative_strength_6m") or 0.0)
                 - max(0.0, (float(snapshot.get("rsi_14") or 50.0) - 70.0) / 100.0)
                 - max(0.0, (float(snapshot.get("debt_equity") or 0.0) - 2.0) / 10.0)
             )
@@ -1496,6 +1604,7 @@ class ConversationOrchestrator:
                     "current_price": snapshot.get("current_price"),
                     "relative_strength_6m": snapshot.get("relative_strength_6m"),
                     "rsi_14": snapshot.get("rsi_14"),
+                    "similarity": "industry" if peer.industry and peer.industry == base.industry else "sector",
                 }
             )
         ranked.sort(key=lambda row: row["score"], reverse=True)
@@ -1636,6 +1745,22 @@ class ConversationOrchestrator:
             tool_name=step.get("tool_name"),
             cost_gbp=step.get("cost_gbp"),
             latency_ms=step.get("latency_ms"),
+        )
+
+    def _emit_chat_warning(
+        self,
+        *,
+        session_id: int,
+        turn_id: int,
+        message: str,
+        detail_json: Any | None = None,
+    ) -> None:
+        self._emit_event(
+            "chat_warning",
+            message,
+            session_id=session_id,
+            turn_id=turn_id,
+            detail_json=detail_json,
         )
 
     def _execute_action(self, action: dict[str, Any], *, channel_type: str) -> str:
@@ -1963,7 +2088,22 @@ class ConversationOrchestrator:
 
     def _extract_subjects_for_research(self, message_text: str, context: dict[str, Any]) -> list[str]:
         lowered = message_text.lower()
-        if any(token in lowered for token in ("what about", "dig deeper", "explain", "research", "look into", "compare", "happening with")):
+        if any(
+            token in lowered
+            for token in (
+                "what about",
+                "dig deeper",
+                "explain",
+                "research",
+                "look into",
+                "compare",
+                "happening with",
+                "views on",
+                "pros and cons",
+                "bull and bear",
+                "committee view",
+            )
+        ):
             if context.get("last_subject_tickers") and any(token in lowered for token in ("that", "those", "it", "them")):
                 return list(context["last_subject_tickers"])
             chunks = re.split(r"\band\b|,|vs\.?|versus", message_text, flags=re.IGNORECASE)
@@ -1977,7 +2117,22 @@ class ConversationOrchestrator:
     def _normalize_research_subject(self, subject: str) -> str:
         cleaned = _clean_text(subject).strip(".,?!:;")
         cleaned = RESEARCH_PREFIX_RE.sub("", cleaned).strip(".,?!:;")
+        target_match = TARGET_SUFFIX_RE.search(cleaned)
+        if target_match:
+            cleaned = _clean_text(target_match.group("subject")).strip(".,?!:;")
         return cleaned
+
+    def _extract_committee_subject(self, message_text: str, context: dict[str, Any]) -> list[str]:
+        match = COMMITTEE_SUBJECT_RE.search(message_text)
+        if match:
+            subject = self._normalize_research_subject(match.group("subject"))
+            resolved = self._resolve_subject(subject, context)
+            return [resolved] if resolved else []
+        fallback = self._normalize_research_subject(message_text)
+        if fallback and len(fallback.split()) <= 3:
+            resolved = self._resolve_subject(fallback, context)
+            return [resolved] if resolved else []
+        return []
 
     def _resolve_subjects(self, subjects: list[str], context: dict[str, Any]) -> list[str]:
         resolved: list[str] = []

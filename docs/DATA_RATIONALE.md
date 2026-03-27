@@ -38,14 +38,14 @@ The conversational operator workflow now uses a **hybrid boundary**: a planner-l
 | Chat capability | Primary mechanism | Paid / LLM boundary |
 |-----------------|-------------------|---------------------|
 | Session lifecycle, confirm/reject/expiry, Slack/dashboard continuity | Deterministic session state machine | No paid model required |
-| Planner-led routing, answer composition, committee-style research turns | OpenAI planner + hidden specialists with safe fallbacks | Paid LLM path when agentic beta is enabled |
+| Planner-led routing, answer composition, committee-style research turns | OpenAI planner/composer (`gpt-4o` default via Responses API) + hidden specialists with safe fallbacks | Paid LLM path when agentic beta is enabled |
 | `compare`, `what about`, ticker research summaries | Planner-led route selection + `get_stock_analysis_lite()` + grounded search wrappers | May stay free/cheap for market-data-only turns; paid only when LLM/search is invoked |
 | `cancel`, stop updates, bounded portfolio rules | Regex / deterministic handlers | No LLM; broker and local state only |
 | `review X`, `review X and buy`, `buy X and trigger strategy` | Chat router dispatches into the existing single-ticker committee pipeline | Uses Anthropic strategy + OpenAI/Google moderators as needed |
 | Optional agentic research during committee execution | Research tool router + `research_logs` | Paid Brave/Tavily only when tool-use is invoked |
 | Workflow transparency | `chat_workflow_steps` + dashboard SSE events | No extra model cost beyond the underlying step work |
 
-This split is deliberate. The chat layer can now be more dynamic and explanatory, but execution remains cheap, inspectable, and safe by default; the expensive path is bounded by planner/routing flags, per-turn research caps, and the existing explicit confirmation and deterministic veto chain.
+This split is deliberate. The chat layer can now be more dynamic and explanatory, but execution remains cheap, inspectable, and safe by default; the expensive path is bounded by planner/routing flags, per-turn research caps, and the existing explicit confirmation and deterministic veto chain. Plain compares no longer auto-run peer scans, non-market help prompts stay on a deterministic explainer path, and degraded planner/composer or subject-resolution cases are surfaced back to the operator as warnings instead of empty heading-only replies.
 
 **Cost attribution:** chat-triggered LLM calls and paid research calls carry `chat_session_id` / `chat_turn_id` tags in `cost_logs` and `research_logs`, while `chat_workflow_steps.cost_gbp` captures per-step deltas for operator transparency. This lets `/commands` show both session-level spend and where in the workflow that spend occurred.
 

@@ -112,7 +112,7 @@ class TestSessionManager:
             status="running",
             label="Planning response",
             detail="Choosing the best route.",
-            model="gpt-5.4",
+            model="gpt-4o",
         )
         updated = mgr.update_workflow_step(
             step["id"],

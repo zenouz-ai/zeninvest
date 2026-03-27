@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import openai
@@ -23,6 +23,14 @@ PORTFOLIO_HINT_RE = re.compile(r"\b(portfolio|holdings|exposure|allocation|posit
 OPPORTUNITY_HINT_RE = re.compile(r"\b(interesting|ideas|opportunities|what should i buy|stronger one|best in this space)\b", re.IGNORECASE)
 RESEARCH_HINT_RE = re.compile(r"\b(compare|research|analyze|analysis|what about|how about|tell me about|look into|dig deeper|explain)\b", re.IGNORECASE)
 GREETING_HINT_RE = re.compile(r"^\s*(hi|hello|hey|thanks|thank you)\b", re.IGNORECASE)
+HELP_HINT_RE = re.compile(
+    r"\b(help|how does this work|how this works|understand this workflow|what can you do|what does this do)\b",
+    re.IGNORECASE,
+)
+PEER_SCAN_HINT_RE = re.compile(
+    r"\b(related|peer|peers|adjacent|stronger|best in this space|what else|other names|nearby names)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -76,6 +84,17 @@ class ChatPlanner:
             context=context,
             requested_mode=requested_mode,
         )
+        if requested_mode == "quick" and not heuristic.requires_trade_preview:
+            heuristic = replace(
+                heuristic,
+                turn_mode="quick",
+                use_fast_path=True,
+                requires_web_research=False,
+                requires_related_scan=False,
+                requires_committee=False,
+                should_suggest_opportunity=False,
+                explanation="Operator selected quick mode; using the deterministic fast path.",
+            )
         if os.getenv("INVESTMENT_AGENT_USE_INMEMORY_DB") == "1":
             return ChatPlannerDecision(
                 route=heuristic.route,
@@ -93,14 +112,19 @@ class ChatPlanner:
         if (
             not self.settings.conversation_agentic_planner_enabled
             or heuristic.use_fast_path
-            or requested_mode == "quick"
         ):
             return heuristic
 
         if not self.settings.openai_api_key_optional:
-            return heuristic
+            return self._annotate_planner_fallback(
+                heuristic,
+                "Planner unavailable, using safe fallback because the OpenAI key is missing.",
+            )
         if not check_budget(Provider.OPENAI.value):
-            return heuristic
+            return self._annotate_planner_fallback(
+                heuristic,
+                "Planner unavailable, using safe fallback because the OpenAI budget is exhausted.",
+            )
 
         try:
             decision = self._plan_with_openai(
@@ -113,7 +137,10 @@ class ChatPlanner:
             return decision
         except Exception as exc:
             logger.warning("Planner fell back to heuristic routing: %s", exc, exc_info=True)
-            return heuristic
+            return self._annotate_planner_fallback(
+                heuristic,
+                "Planner unavailable, using safe fallback for this turn.",
+            )
 
     def compose_response(
         self,
@@ -123,55 +150,41 @@ class ChatPlanner:
         evidence_bundle: dict[str, Any],
     ) -> dict[str, Any]:
         fallback = self._compose_fallback(plan=plan, evidence_bundle=evidence_bundle)
-        if (
-            not self.settings.conversation_agentic_planner_enabled
-            or not self.settings.openai_api_key_optional
-            or not check_budget(Provider.OPENAI.value)
-            or os.getenv("INVESTMENT_AGENT_USE_INMEMORY_DB") == "1"
-        ):
+        if os.getenv("INVESTMENT_AGENT_USE_INMEMORY_DB") == "1":
             return fallback
+        if not self.settings.conversation_agentic_planner_enabled:
+            return fallback
+        if not self.settings.openai_api_key_optional:
+            return self._append_warning(
+                fallback,
+                "composer_unavailable",
+                "Composer unavailable, using a deterministic fallback because the OpenAI key is missing.",
+            )
+        if not check_budget(Provider.OPENAI.value):
+            return self._append_warning(
+                fallback,
+                "composer_unavailable",
+                "Composer unavailable, using a deterministic fallback because the OpenAI budget is exhausted.",
+            )
 
         try:
-            client = openai.OpenAI(api_key=self.settings.openai_api_key_optional)
-            response = client.chat.completions.create(
-                model=self.settings.conversation_planner_model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are the single operator-facing assistant for an investment system. "
-                            "Write concise, source-aware replies. Never reveal hidden reasoning. "
-                            "If evidence is incomplete, say so. Respond with JSON only."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": json.dumps(
-                            {
-                                "user_message": user_message,
-                                "route": plan.route,
-                                "turn_mode": plan.turn_mode,
-                                "evidence_bundle": evidence_bundle,
-                            }
-                        ),
-                    },
-                ],
-                response_format={"type": "json_object"},
+            parsed = self._openai_json_response(
+                purpose="conversation_composer",
+                cycle_id=f"chat-compose-{plan.route}",
+                instructions=(
+                    "You are the single operator-facing assistant for an investment system. "
+                    "Write concise, source-aware replies. Never reveal hidden reasoning. "
+                    "If evidence is incomplete, say so. Respond with JSON only."
+                ),
+                payload={
+                    "user_message": user_message,
+                    "route": plan.route,
+                    "turn_mode": plan.turn_mode,
+                    "evidence_bundle": evidence_bundle,
+                },
+                max_output_tokens=1400,
                 temperature=0.35,
-                max_tokens=1400,
             )
-            usage = response.usage
-            if usage:
-                log_cost(
-                    provider=Provider.OPENAI.value,
-                    model=self.settings.conversation_planner_model,
-                    input_tokens=usage.prompt_tokens,
-                    output_tokens=usage.completion_tokens,
-                    cycle_id=f"chat-compose-{plan.route}",
-                    purpose="conversation_composer",
-                )
-            content = response.choices[0].message.content or "{}"
-            parsed = json.loads(content)
             assistant_text = str(parsed.get("assistant_text") or "").strip()
             next_actions = parsed.get("next_actions")
             if not assistant_text:
@@ -180,10 +193,15 @@ class ChatPlanner:
                 "assistant_text": assistant_text,
                 "confidence": parsed.get("confidence", evidence_bundle.get("confidence")),
                 "next_actions": next_actions if isinstance(next_actions, list) else fallback["next_actions"],
+                "warnings": parsed.get("warnings") if isinstance(parsed.get("warnings"), list) else fallback["warnings"],
             }
         except Exception as exc:
             logger.warning("Composer fell back to deterministic rendering: %s", exc, exc_info=True)
-            return fallback
+            return self._append_warning(
+                fallback,
+                "composer_unavailable",
+                "Composer unavailable, using a deterministic fallback for this turn.",
+            )
 
     def _heuristic_plan(
         self,
@@ -196,13 +214,13 @@ class ChatPlanner:
         lowered = normalized.lower()
         trade_intent = parse_trade_command(normalized, use_llm_fallback=False)
 
-        if requested_mode == "committee":
+        if requested_mode == "committee" and not HELP_HINT_RE.search(normalized) and not COMPARE_HINT_RE.search(normalized):
             return ChatPlannerDecision(
                 route="committee_review",
                 turn_mode="committee",
                 use_fast_path=False,
                 requires_web_research=True,
-                requires_related_scan=COMPARE_HINT_RE.search(normalized) is not None,
+                requires_related_scan=PEER_SCAN_HINT_RE.search(normalized) is not None,
                 requires_committee=True,
                 requires_trade_preview=False,
                 should_suggest_opportunity=False,
@@ -252,6 +270,35 @@ class ChatPlanner:
                 next_actions=["compare two tickers", "review a ticker", "preview a trade"],
                 explanation="Greeting or low-risk conversational turn.",
             )
+        if HELP_HINT_RE.search(normalized):
+            return ChatPlannerDecision(
+                route="help_or_explain",
+                turn_mode="quick",
+                use_fast_path=True,
+                requires_web_research=False,
+                requires_related_scan=False,
+                requires_committee=False,
+                requires_trade_preview=False,
+                should_suggest_opportunity=False,
+                confidence=0.94,
+                next_actions=["compare two tickers", "review a ticker", "preview a trade"],
+                explanation="Operator asked for workflow help or system guidance.",
+            )
+        if COMPARE_HINT_RE.search(normalized):
+            requires_related_scan = PEER_SCAN_HINT_RE.search(normalized) is not None
+            return ChatPlannerDecision(
+                route="compare",
+                turn_mode="committee" if requested_mode == "committee" else (requested_mode or "research"),
+                use_fast_path=False,
+                requires_web_research=True,
+                requires_related_scan=requires_related_scan,
+                requires_committee=requested_mode == "committee",
+                requires_trade_preview=False,
+                should_suggest_opportunity=False,
+                confidence=0.78,
+                next_actions=["show sources", "compare peers", "preview trade"],
+                explanation="Operator asked for a side-by-side comparison.",
+            )
         if PORTFOLIO_HINT_RE.search(normalized):
             return ChatPlannerDecision(
                 route="portfolio_analysis",
@@ -286,7 +333,7 @@ class ChatPlanner:
                 turn_mode=requested_mode or "committee",
                 use_fast_path=False,
                 requires_web_research=True,
-                requires_related_scan=COMPARE_HINT_RE.search(normalized) is not None,
+                requires_related_scan=PEER_SCAN_HINT_RE.search(normalized) is not None,
                 requires_committee=True,
                 requires_trade_preview=False,
                 should_suggest_opportunity=False,
@@ -309,13 +356,13 @@ class ChatPlanner:
                 explanation="Operator requested trade mode.",
             )
         if RESEARCH_HINT_RE.search(normalized) or context.get("last_subject_tickers"):
-            route = "related_ticker_scan" if "related" in lowered or "stronger" in lowered else "grounded_research"
+            route = "related_ticker_scan" if PEER_SCAN_HINT_RE.search(normalized) is not None else "grounded_research"
             return ChatPlannerDecision(
                 route=route,
                 turn_mode=requested_mode or "research",
                 use_fast_path=False,
                 requires_web_research=True,
-                requires_related_scan=route == "related_ticker_scan" or COMPARE_HINT_RE.search(normalized) is not None,
+                requires_related_scan=route == "related_ticker_scan",
                 requires_committee=requested_mode == "committee",
                 requires_trade_preview=False,
                 should_suggest_opportunity=route == "related_ticker_scan" and "stronger" in lowered,
@@ -346,65 +393,54 @@ class ChatPlanner:
         budget_tier: str | None,
         heuristic: ChatPlannerDecision,
     ) -> ChatPlannerDecision:
-        client = openai.OpenAI(api_key=self.settings.openai_api_key_optional)
-        response = client.chat.completions.create(
-            model=self.settings.conversation_planner_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are the route planner for an audited investment-operations chat. "
-                        "Choose the minimum route that still answers the request well. "
-                        "Never permit direct trade execution. Respond with JSON only."
-                    ),
+        payload = self._openai_json_response(
+            purpose="conversation_planner",
+            cycle_id="chat-plan",
+            instructions=(
+                "You are the route planner for an audited investment-operations chat. "
+                "Choose the minimum route that still answers the request well. "
+                "Never permit direct trade execution. Respond with JSON only."
+            ),
+            payload={
+                "message_text": message_text,
+                "requested_mode": requested_mode,
+                "budget_tier": budget_tier,
+                "context": {
+                    "last_subject_tickers": context.get("last_subject_tickers") or [],
+                    "last_selection_tickers": context.get("last_selection_tickers") or [],
                 },
-                {
-                    "role": "user",
-                    "content": json.dumps(
-                        {
-                            "message_text": message_text,
-                            "requested_mode": requested_mode,
-                            "budget_tier": budget_tier,
-                            "context": {
-                                "last_subject_tickers": context.get("last_subject_tickers") or [],
-                                "last_selection_tickers": context.get("last_selection_tickers") or [],
-                            },
-                            "heuristic_default": heuristic.as_dict(),
-                            "allowed_routes": [
-                                "quick_answer",
-                                "grounded_research",
-                                "related_ticker_scan",
-                                "committee_review",
-                                "portfolio_analysis",
-                                "trade_preview",
-                                "opportunity_suggestion",
-                            ],
-                        }
-                    ),
-                },
-            ],
-            response_format={"type": "json_object"},
+                "heuristic_default": heuristic.as_dict(),
+                "allowed_routes": [
+                    "help_or_explain",
+                    "quick_answer",
+                    "compare",
+                    "grounded_research",
+                    "related_ticker_scan",
+                    "committee_review",
+                    "portfolio_analysis",
+                    "trade_preview",
+                    "opportunity_suggestion",
+                ],
+            },
+            max_output_tokens=900,
             temperature=0.2,
-            max_tokens=900,
         )
-        usage = response.usage
-        if usage:
-            log_cost(
-                provider=Provider.OPENAI.value,
-                model=self.settings.conversation_planner_model,
-                input_tokens=usage.prompt_tokens,
-                output_tokens=usage.completion_tokens,
-                cycle_id="chat-plan",
-                purpose="conversation_planner",
-            )
-
-        content = response.choices[0].message.content or "{}"
-        payload = json.loads(content)
         route = str(payload.get("route") or heuristic.route)
         turn_mode = str(payload.get("turn_mode") or requested_mode or heuristic.turn_mode)
         next_actions = payload.get("next_actions")
+        allowed_routes = {
+            "help_or_explain",
+            "quick_answer",
+            "compare",
+            "grounded_research",
+            "related_ticker_scan",
+            "committee_review",
+            "portfolio_analysis",
+            "trade_preview",
+            "opportunity_suggestion",
+        }
         return ChatPlannerDecision(
-            route=route,
+            route=route if route in allowed_routes else heuristic.route,
             turn_mode=turn_mode if turn_mode in {"quick", "research", "committee", "trade"} else heuristic.turn_mode,
             use_fast_path=bool(payload.get("use_fast_path", heuristic.use_fast_path)),
             requires_web_research=bool(payload.get("requires_web_research", heuristic.requires_web_research)),
@@ -424,8 +460,35 @@ class ChatPlanner:
         research = evidence_bundle.get("news_findings") or []
         related = evidence_bundle.get("related_tickers") or []
         committee = evidence_bundle.get("committee_views") or []
+        warnings = list(evidence_bundle.get("warnings") or [])
+        resolved_tickers = list(evidence_bundle.get("resolved_tickers") or [])
+        unresolved_subjects = list(evidence_bundle.get("unresolved_subjects") or [])
         lines = []
-        if plan.route == "portfolio_analysis":
+
+        if plan.route == "help_or_explain":
+            lines.extend(
+                [
+                    "I can help with research, comparisons, reviews, bounded trade previews, stop updates, cancellations, and simple portfolio rules.",
+                    "Nothing executes directly from chat. If you ask for execution, I will stage a proposal first and wait for an explicit confirm or reject.",
+                    "You can start with prompts like `compare tesla and google`, `give me bull and bear views on AMD`, or `buy £25 AMD`.",
+                ]
+            )
+        elif plan.route == "compare" and len(market_snapshots) < 2:
+            if resolved_tickers and unresolved_subjects:
+                lines.append(
+                    f"I could only resolve {', '.join(resolved_tickers)}. "
+                    f"I couldn't resolve {', '.join(unresolved_subjects)} from that phrasing."
+                )
+                lines.append("Use the ticker symbol or a more specific company name and I'll compare them side by side.")
+            else:
+                lines.append("I need two ticker symbols or company names to run a comparison.")
+        elif plan.route == "committee_review" and not resolved_tickers:
+            if unresolved_subjects:
+                lines.append(
+                    f"I couldn't resolve {', '.join(unresolved_subjects)} to a tradeable ticker."
+                )
+            lines.append("I need a ticker or company name to generate bull, bear, and risk views.")
+        elif plan.route == "portfolio_analysis":
             lines.append("Portfolio analysis")
         elif plan.route == "opportunity_suggestion":
             lines.append("Opportunity scan")
@@ -433,8 +496,13 @@ class ChatPlanner:
             lines.append("Committee view")
         elif plan.route == "trade_preview":
             lines.append("Trade context")
+        elif plan.route == "compare":
+            lines.append("Comparison")
         else:
-            lines.append("Research summary")
+            if not market_snapshots and not research:
+                lines.append("I can help with research or execution previews, but I need a ticker or company name to do something specific.")
+            else:
+                lines.append("Research summary")
 
         for snapshot in market_snapshots[:3]:
             ticker = snapshot.get("ticker") or "Unknown"
@@ -474,4 +542,54 @@ class ChatPlanner:
             "assistant_text": "\n".join(lines),
             "confidence": evidence_bundle.get("confidence", plan.confidence),
             "next_actions": next_actions,
+            "warnings": warnings,
         }
+
+    def _annotate_planner_fallback(self, decision: ChatPlannerDecision, reason: str) -> ChatPlannerDecision:
+        return replace(decision, explanation=f"{decision.explanation} {reason}".strip())
+
+    def _append_warning(self, payload: dict[str, Any], code: str, message: str) -> dict[str, Any]:
+        warnings = list(payload.get("warnings") or [])
+        warnings.append({"code": code, "message": message, "severity": "warning"})
+        payload["warnings"] = warnings
+        return payload
+
+    def _openai_json_response(
+        self,
+        *,
+        purpose: str,
+        cycle_id: str,
+        instructions: str,
+        payload: dict[str, Any],
+        max_output_tokens: int,
+        temperature: float,
+    ) -> dict[str, Any]:
+        client = openai.OpenAI(api_key=self.settings.openai_api_key_optional)
+        response = client.responses.create(
+            model=self.settings.conversation_planner_model,
+            instructions=instructions,
+            input=json.dumps(payload),
+            max_output_tokens=max_output_tokens,
+            temperature=temperature,
+        )
+        usage = response.usage
+        if usage:
+            log_cost(
+                provider=Provider.OPENAI.value,
+                model=self.settings.conversation_planner_model,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                cycle_id=cycle_id,
+                purpose=purpose,
+            )
+        content = self._extract_json_text(response)
+        return json.loads(content)
+
+    def _extract_json_text(self, response: Any) -> str:
+        content = str(getattr(response, "output_text", "") or "").strip()
+        if not content:
+            raise ValueError("Responses API returned no output text")
+        if content.startswith("```"):
+            content = re.sub(r"^```(?:json)?\s*", "", content)
+            content = re.sub(r"\s*```$", "", content)
+        return content.strip()

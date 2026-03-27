@@ -693,6 +693,7 @@ class SessionManager:
         summary["committee_views"] = latest_response.get("committee_views") or []
         summary["confidence"] = latest_response.get("confidence")
         summary["next_actions"] = latest_response.get("next_actions") or []
+        summary["warnings"] = latest_response.get("warnings") or []
         return summary
 
     def session_cost_total_gbp(self, session_id: int) -> float:

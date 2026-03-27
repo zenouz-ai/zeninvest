@@ -232,7 +232,7 @@ conversation:
   default_mode: research
   default_budget_tier: premium
   proactive_suggestions_enabled: true
-  planner_model: gpt-5.4
+  planner_model: gpt-4o
   specialist_models:
     equity: claude-sonnet-4-5-20250929
     risk: gemini-2.5-flash

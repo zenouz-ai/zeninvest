@@ -367,6 +367,7 @@ export interface ChatSessionDetail extends ChatSessionSummary {
   committee_views?: Array<Record<string, unknown>>
   confidence?: number | null
   next_actions?: string[]
+  warnings?: Array<Record<string, unknown>>
 }
 
 // --- Evolution Planner ---
