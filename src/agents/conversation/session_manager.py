@@ -18,6 +18,7 @@ from src.data.models import (
     CostLog,
     ResearchLog,
 )
+from src.utils.datetime_utils import ensure_utc_datetime
 from src.utils.logger import get_logger
 
 logger = get_logger("session_manager")
@@ -238,7 +239,7 @@ class SessionManager:
                 result_json=_json_dumps(result_json),
                 requires_confirmation=requires_confirmation,
                 rejection_reason=rejection_reason,
-                expires_at=expires_at,
+                expires_at=ensure_utc_datetime(expires_at),
             )
             session.add(action)
             chat_session.last_activity_at = _utcnow()
@@ -277,11 +278,11 @@ class SessionManager:
             if rejection_reason is not None:
                 action.rejection_reason = rejection_reason
             if confirmed_at is not None:
-                action.confirmed_at = confirmed_at
+                action.confirmed_at = ensure_utc_datetime(confirmed_at)
             if executed_at is not None:
-                action.executed_at = executed_at
+                action.executed_at = ensure_utc_datetime(executed_at)
             if expires_at is not None:
-                action.expires_at = expires_at
+                action.expires_at = ensure_utc_datetime(expires_at)
             session.commit()
             return self._serialize_action(action)
         except Exception:
@@ -399,7 +400,8 @@ class SessionManager:
             )
             if row is None:
                 return None
-            if row.expires_at and row.expires_at < now:
+            expires_at = ensure_utc_datetime(row.expires_at)
+            if expires_at and expires_at < now:
                 row.status = "expired"
                 row.rejection_reason = "Confirmation expired."
                 session.commit()
@@ -508,16 +510,17 @@ class SessionManager:
                 .filter(
                     ChatAction.status == "awaiting_confirmation",
                     ChatAction.expires_at.isnot(None),
-                    ChatAction.expires_at < now,
                 )
                 .all()
             )
             for row in rows:
-                row.status = "expired"
-                row.rejection_reason = "Confirmation expired."
+                expires_at = ensure_utc_datetime(row.expires_at)
+                if expires_at and expires_at < now:
+                    row.status = "expired"
+                    row.rejection_reason = "Confirmation expired."
             if rows:
                 session.commit()
-            return len(rows)
+            return len([row for row in rows if row.status == "expired"])
         except Exception:
             session.rollback()
             raise
@@ -588,6 +591,11 @@ class SessionManager:
         }
 
     def _serialize_action(self, row: ChatAction) -> dict[str, Any]:
+        expires_at = ensure_utc_datetime(row.expires_at)
+        confirmed_at = ensure_utc_datetime(row.confirmed_at)
+        executed_at = ensure_utc_datetime(row.executed_at)
+        created_at = ensure_utc_datetime(row.created_at)
+        updated_at = ensure_utc_datetime(row.updated_at)
         return {
             "id": row.id,
             "session_id": row.session_id,
@@ -601,11 +609,11 @@ class SessionManager:
             "result_json": _json_loads(row.result_json),
             "requires_confirmation": bool(row.requires_confirmation),
             "rejection_reason": row.rejection_reason,
-            "expires_at": row.expires_at.isoformat() if row.expires_at else None,
-            "confirmed_at": row.confirmed_at.isoformat() if row.confirmed_at else None,
-            "executed_at": row.executed_at.isoformat() if row.executed_at else None,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            "expires_at": expires_at.isoformat() if expires_at else None,
+            "confirmed_at": confirmed_at.isoformat() if confirmed_at else None,
+            "executed_at": executed_at.isoformat() if executed_at else None,
+            "created_at": created_at.isoformat() if created_at else None,
+            "updated_at": updated_at.isoformat() if updated_at else None,
         }
 
     def _serialize_research_log(self, row: ChatResearchLog) -> dict[str, Any]:

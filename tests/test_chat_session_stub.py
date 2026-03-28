@@ -12,7 +12,7 @@ from src.agents.conversation.session_manager import (
     ChatSessionNotFoundError,
     SessionManager,
 )
-from src.data.models import Base
+from src.data.models import Base, ChatAction
 
 
 @pytest.fixture
@@ -149,6 +149,32 @@ class TestSessionManager:
         assert expired == 1
         assert result is not None
         assert result["actions"][0]["status"] == "expired"
+
+    def test_get_pending_action_handles_naive_expires_at(self, db_session):
+        mgr = SessionManager()
+        session_id = mgr.create_session(channel_type="dashboard")
+        turn_id = mgr.add_turn(session_id, role="user", message_text="BUY AAPL", channel_type="dashboard")
+        action = mgr.create_action(
+            session_id=session_id,
+            turn_id=turn_id,
+            action_type="direct_trade",
+            status="awaiting_confirmation",
+            title="BUY AAPL",
+            ticker="AAPL_US_EQ",
+            requires_confirmation=True,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=5),
+        )
+
+        row = db_session.query(ChatAction).filter(ChatAction.id == action["id"]).first()
+        assert row is not None
+        row.expires_at = row.expires_at.replace(tzinfo=None)
+        db_session.commit()
+
+        pending = mgr.get_pending_action(session_id)
+
+        assert pending is not None
+        assert pending["status"] == "awaiting_confirmation"
+        assert pending["expires_at"].endswith("+00:00")
 
     def test_find_active_session_by_key_or_user(self):
         mgr = SessionManager()

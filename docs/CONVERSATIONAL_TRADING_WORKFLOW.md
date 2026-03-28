@@ -1,7 +1,7 @@
 ---
 tags: [chat, slack, dashboard, conversational, trading, workflow]
 status: current
-last_updated: 2026-03-27
+last_updated: 2026-03-28
 ---
 
 # Conversational Trading Workflow (Unified Spec)
@@ -18,7 +18,7 @@ Define a single implementation plan for a dialogue-driven trading workflow that 
 - Agentic research capabilities (US-4.4, delivered)
 
 This document is the canonical design for cross-channel conversational trade operations.
-Current implementation state: the core US-1.9 MVP is now deployed on the VPS and has been extended with an **agentic beta** path. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, chat SSE events, Slack thread continuity, dashboard-to-Slack reply mirroring for Slack-backed sessions, and the chat-first dashboard `Commands` console are implemented. The beta path adds a planner-led route selector, evidence-driven replies, related-ticker scans, hidden specialist opinions folded into one assistant voice, and a persisted `chat_workflow_steps` trace so the operator can see what the agent is doing step by step without exposing chain-of-thought. Recent hardening also added explicit degraded-turn warnings, deterministic `help_or_explain` fast-path handling, and stricter compare / committee subject resolution so empty placeholder replies are surfaced as warnings instead of being mistaken for complete research. Chat-triggered LLM calls and paid research calls continue to carry `chat_session_id` / `chat_turn_id` attribution so session-level operator spend can be measured directly.
+Current implementation state: the core US-1.9 MVP is now deployed on the VPS and has been extended with an **agentic beta** path. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, chat SSE events, Slack thread continuity, dashboard-to-Slack reply mirroring for Slack-backed sessions, and the chat-first dashboard `Research` console (`/commands`) are implemented. The beta path adds a planner-led route selector, evidence-driven replies, related-ticker scans, hidden specialist opinions folded into one assistant voice, and a persisted `chat_workflow_steps` trace so the operator can see what the agent is doing step by step without exposing chain-of-thought. Recent hardening also added explicit degraded-turn warnings, deterministic `help_or_explain` fast-path handling, stricter compare / committee subject resolution, Slack bullet/list normalization before routing, deterministic precedence for explicit threaded commands, timezone-safe pending-action expiry checks, and deterministic compare support for 2-3 explicit names plus confirm-gated follow-ons such as `compare Amazon and Alphabet, then buy £20 of the stronger one`. The secondary `Legacy Slack Audit` tab is intentionally not the full conversation archive; it remains the one-shot `SlackCommandLog` view and now auto-refreshes while open. Chat-triggered LLM calls and paid research calls continue to carry `chat_session_id` / `chat_turn_id` attribution so session-level operator spend can be measured directly.
 
 ---
 
@@ -33,6 +33,7 @@ Current implementation state: the core US-1.9 MVP is now deployed on the VPS and
 - Deterministic `RiskManager` veto remains final gate
 - Real-time updates via Slack thread replies and dashboard SSE
 - Full audit trail across turns, research, recommendations, confirmations, and executions
+- Slack thread normalization for bullet/list formatting before command or conversation routing
 
 ### Out of Scope (initial release)
 
@@ -55,6 +56,11 @@ Current implementation state: the core US-1.9 MVP is now deployed on the VPS and
 6. Agent returns executable action summary and asks explicit confirmation.
 7. On confirmation, pipeline executes through Moderation and deterministic Risk.
 8. Agent posts execution result and keeps session open until ended or timed out.
+
+Slack thread behavior now follows two explicit rules in production:
+
+- If a threaded message is an explicit bounded command after normalization, the system keeps it on the deterministic preview path even inside an existing conversational session.
+- Compare prompts can contain 2-3 explicit names and may optionally ask for the strongest setup; if the operator also asks to buy the winner, the system stages a preview and still waits for explicit confirmation.
 
 Representative future user stories to support in this phase:
 
@@ -102,9 +108,9 @@ flowchart LR
 - `src/agents/conversation/specialists.py`
   - hidden bull / bear / risk specialist wrappers that enrich the single assistant voice
 - `src/agents/conversation/orchestrator.py`
-  - planner integration, per-turn workflow steps, evidence bundle assembly, compare/help/committee subject handling, degraded-turn warnings, confirmation handling, execution dispatch
+  - planner integration, per-turn workflow steps, evidence bundle assembly, 2-3 name compare parsing, compare-winner selection, compare-then-preview staging, help/committee subject handling, degraded-turn warnings, deterministic threaded-command precedence, confirmation handling, execution dispatch
 - `src/agents/notifications/slack_listener.py`
-  - existing Socket Mode listener extended so thread replies and broad natural-language requests route into shared conversational sessions
+  - existing Socket Mode listener extended so thread replies and broad natural-language requests route into shared conversational sessions, while Slack-specific list/bullet formatting is normalized before command-vs-conversation routing
 - `dashboard/backend/app/routers/chat.py`
   - session list/detail/turn/confirm/reject/end endpoints for the operator console
 - `dashboard/frontend/src/pages/Commands.tsx`

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 from src.agents.notifications.slack_listener import PendingConfirmation, SlackTradeListener
 from src.agents.notifications.command_gateway import CommandGateway, CommandGatewayDisabledError
+from src.agents.notifications.trade_command_parser import parse_trade_command
 from src.orchestrator.single_ticker_run import SingleTickerResult
 
 
@@ -92,6 +93,45 @@ class TestSlackTradeListener:
             "123.45",
             "I couldn't parse that trade command.",
         )
+
+    @patch("src.agents.notifications.slack_listener.get_settings")
+    def test_normalize_inbound_text_strips_slack_bullets(self, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        listener = SlackTradeListener()
+
+        assert listener._normalize_inbound_text("• • BUY £550 AAPL") == "BUY £550 AAPL"
+        assert listener._normalize_inbound_text("• liquidate holdings below £100") == "liquidate holdings below £100"
+
+    @patch("src.agents.notifications.slack_listener.get_settings")
+    def test_normalized_trade_command_stays_on_command_path(self, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        listener = SlackTradeListener()
+        listener.session_manager.find_active_session = MagicMock(return_value=None)
+
+        should_route = listener._should_route_to_conversation(
+            text=listener._normalize_inbound_text("• • BUY £550 AAPL"),
+            user_id="U123",
+            conversation_key="123.45",
+            is_thread_reply=False,
+        )
+
+        assert should_route is False
+
+    def test_cancel_subject_first_phrase_parses(self):
+        intent = parse_trade_command("cancel AAPL buy", use_llm_fallback=False)
+
+        assert intent is not None
+        assert intent.command_kind == "cancel"
+        assert intent.cancel_order_class == "buy"
+        assert intent.subject_phrases == ["AAPL"]
+
+    def test_cancel_generic_order_phrase_parses(self):
+        intent = parse_trade_command("cancel AAPL order", use_llm_fallback=False)
+
+        assert intent is not None
+        assert intent.command_kind == "cancel"
+        assert intent.cancel_order_class == "any"
+        assert intent.subject_phrases == ["AAPL"]
 
     @patch("src.agents.notifications.slack_listener.get_settings")
     def test_large_order_prompts_confirmation_before_execution(self, mock_settings):
@@ -209,6 +249,31 @@ class TestSlackTradeListener:
         mock_update.assert_called_once()
         assert "123.45" not in listener._pending
         assert listener._post_reply.call_count == 2
+
+
+class TestCommandGatewayCancelPhrases:
+    @patch("src.agents.notifications.command_gateway.get_settings")
+    def test_cancel_order_phrase_with_unknown_ticker_returns_unknown_ticker(self, mock_settings):
+        mock_settings.return_value.slack_trade_commands_enabled = True
+        gateway = CommandGateway()
+
+        resolved = gateway.resolve_request(
+            request=type(
+                "Req",
+                (),
+                {
+                    "source": "slack",
+                    "user_id": "U1",
+                    "channel_id": "C1",
+                    "command": "cancel APPL order",
+                    "args": [],
+                    "raw_payload": {"text": "cancel APPL order"},
+                },
+            )()
+        )
+
+        assert resolved["status"] == "unknown_ticker"
+        assert resolved["ticker"] == "APPL"
 
     @patch("src.agents.notifications.slack_listener.get_settings")
     def test_post_reply_chunks_long_messages(self, mock_settings):

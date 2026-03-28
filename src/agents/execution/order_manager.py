@@ -503,7 +503,7 @@ class OrderManager:
                 order_id_str = str(order_id)
                 local_row = local_by_id.get(order_id_str)
                 classified = self._classify_pending_order(live_order, local_row)
-                if classified != order_class:
+                if order_class != "any" and classified != order_class:
                     continue
                 matches.append(
                     {

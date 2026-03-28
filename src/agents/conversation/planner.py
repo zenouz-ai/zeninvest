@@ -10,6 +10,7 @@ from typing import Any
 
 import openai
 
+from src.agents.conversation.compare_parser import parse_compare_request
 from src.agents.notifications.trade_command_parser import parse_trade_command
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, check_budget, log_cost
@@ -48,6 +49,10 @@ class ChatPlannerDecision:
     confidence: float
     next_actions: list[str]
     explanation: str
+    comparison_goal: str | None = None
+    comparison_subjects: list[str] | None = None
+    time_horizon: str | None = None
+    post_compare_trade_intent: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -62,6 +67,10 @@ class ChatPlannerDecision:
             "confidence": self.confidence,
             "next_actions": list(self.next_actions),
             "explanation": self.explanation,
+            "comparison_goal": self.comparison_goal,
+            "comparison_subjects": list(self.comparison_subjects or []),
+            "time_horizon": self.time_horizon,
+            "post_compare_trade_intent": self.post_compare_trade_intent,
         }
 
 
@@ -269,6 +278,7 @@ class ChatPlanner:
                 confidence=0.99,
                 next_actions=["compare two tickers", "review a ticker", "preview a trade"],
                 explanation="Greeting or low-risk conversational turn.",
+                comparison_subjects=[],
             )
         if HELP_HINT_RE.search(normalized):
             return ChatPlannerDecision(
@@ -283,9 +293,11 @@ class ChatPlanner:
                 confidence=0.94,
                 next_actions=["compare two tickers", "review a ticker", "preview a trade"],
                 explanation="Operator asked for workflow help or system guidance.",
+                comparison_subjects=[],
             )
         if COMPARE_HINT_RE.search(normalized):
-            requires_related_scan = PEER_SCAN_HINT_RE.search(normalized) is not None
+            compare_request = parse_compare_request(normalized)
+            requires_related_scan = bool(re.search(r"\b(related|peer|peers|adjacent|what else|other names|nearby names)\b", normalized, re.IGNORECASE))
             return ChatPlannerDecision(
                 route="compare",
                 turn_mode="committee" if requested_mode == "committee" else (requested_mode or "research"),
@@ -298,6 +310,14 @@ class ChatPlanner:
                 confidence=0.78,
                 next_actions=["show sources", "compare peers", "preview trade"],
                 explanation="Operator asked for a side-by-side comparison.",
+                comparison_goal=compare_request.comparison_goal if compare_request else "compare",
+                comparison_subjects=list(compare_request.subjects) if compare_request else [],
+                time_horizon=compare_request.time_horizon if compare_request else None,
+                post_compare_trade_intent=(
+                    compare_request.as_dict().get("post_compare_trade_intent")
+                    if compare_request and compare_request.post_compare_trade_intent is not None
+                    else None
+                ),
             )
         if PORTFOLIO_HINT_RE.search(normalized):
             return ChatPlannerDecision(
@@ -312,6 +332,7 @@ class ChatPlanner:
                 confidence=0.7,
                 next_actions=["show exposures", "show opportunities", "preview a rebalance"],
                 explanation="Portfolio-specific question.",
+                comparison_subjects=[],
             )
         if OPPORTUNITY_HINT_RE.search(normalized):
             return ChatPlannerDecision(
@@ -326,6 +347,7 @@ class ChatPlanner:
                 confidence=0.76,
                 next_actions=["show strongest related ticker", "preview trade", "show committee views"],
                 explanation="Open-ended opportunity request.",
+                comparison_subjects=[],
             )
         if COMMITTEE_HINT_RE.search(normalized):
             return ChatPlannerDecision(
@@ -340,6 +362,7 @@ class ChatPlanner:
                 confidence=0.74,
                 next_actions=["preview trade", "show related tickers", "compare peers"],
                 explanation="User asked for explicit analyst-style viewpoints.",
+                comparison_subjects=[],
             )
         if requested_mode == "trade":
             return ChatPlannerDecision(
@@ -354,6 +377,7 @@ class ChatPlanner:
                 confidence=0.68,
                 next_actions=["preview trade", "show committee views", "explain risk"],
                 explanation="Operator requested trade mode.",
+                comparison_subjects=[],
             )
         if RESEARCH_HINT_RE.search(normalized) or context.get("last_subject_tickers"):
             route = "related_ticker_scan" if PEER_SCAN_HINT_RE.search(normalized) is not None else "grounded_research"
@@ -369,6 +393,7 @@ class ChatPlanner:
                 confidence=0.71,
                 next_actions=["compare peers", "show sources", "preview trade"],
                 explanation="Substantive research-style question.",
+                comparison_subjects=[],
             )
         return ChatPlannerDecision(
             route="quick_answer",
@@ -382,6 +407,7 @@ class ChatPlanner:
             confidence=0.55,
             next_actions=["compare tickers", "review a ticker", "ask for opportunities"],
             explanation="Defaulted to lightweight agentic clarification mode.",
+            comparison_subjects=[],
         )
 
     def _plan_with_openai(
@@ -453,6 +479,18 @@ class ChatPlanner:
             confidence=float(payload.get("confidence", heuristic.confidence) or heuristic.confidence),
             next_actions=next_actions if isinstance(next_actions, list) and next_actions else heuristic.next_actions,
             explanation=str(payload.get("explanation") or heuristic.explanation),
+            comparison_goal=str(payload.get("comparison_goal") or heuristic.comparison_goal or "").strip() or None,
+            comparison_subjects=(
+                payload.get("comparison_subjects")
+                if isinstance(payload.get("comparison_subjects"), list)
+                else list(heuristic.comparison_subjects or [])
+            ),
+            time_horizon=str(payload.get("time_horizon") or heuristic.time_horizon or "") or None,
+            post_compare_trade_intent=(
+                payload.get("post_compare_trade_intent")
+                if isinstance(payload.get("post_compare_trade_intent"), dict)
+                else heuristic.post_compare_trade_intent
+            ),
         )
 
     def _compose_fallback(self, *, plan: ChatPlannerDecision, evidence_bundle: dict[str, Any]) -> dict[str, Any]:
@@ -464,6 +502,7 @@ class ChatPlanner:
         resolved_tickers = list(evidence_bundle.get("resolved_tickers") or [])
         unresolved_subjects = list(evidence_bundle.get("unresolved_subjects") or [])
         lines = []
+        selection_summary = evidence_bundle.get("selection_summary") or {}
 
         if plan.route == "help_or_explain":
             lines.extend(
@@ -503,6 +542,16 @@ class ChatPlanner:
                 lines.append("I can help with research or execution previews, but I need a ticker or company name to do something specific.")
             else:
                 lines.append("Research summary")
+
+        if isinstance(selection_summary, dict) and selection_summary.get("winner_ticker"):
+            reason = selection_summary.get("reason")
+            winner = selection_summary["winner_ticker"]
+            line = f"Strongest candidate: {winner}"
+            if plan.time_horizon:
+                line += f" over the next {plan.time_horizon}"
+            if reason:
+                line += f" ({reason})"
+            lines.append(line)
 
         for snapshot in market_snapshots[:3]:
             ticker = snapshot.get("ticker") or "Unknown"

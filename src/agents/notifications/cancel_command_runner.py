@@ -71,9 +71,9 @@ class CancelCommandRunner:
             result.rejection_reason = "Cancel commands require at least one ticker."
             update_slack_command_log(cmd_log, status="rejected", rejection_reason=result.rejection_reason)
             return result
-        if intent.cancel_order_class not in {"buy", "sell", "stop_sell"}:
+        if intent.cancel_order_class not in {"buy", "sell", "stop_sell", "any"}:
             result.status = "rejected"
-            result.rejection_reason = "Cancel commands must specify buy, sell, or stop sell."
+            result.rejection_reason = "Cancel commands must specify buy, sell, stop sell, or order."
             update_slack_command_log(cmd_log, status="rejected", rejection_reason=result.rejection_reason)
             return result
 

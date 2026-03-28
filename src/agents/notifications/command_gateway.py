@@ -51,7 +51,13 @@ class CommandGateway:
         cleaned, _ = _strip_force_prefix(text or "")
         cleaned = cleaned.strip()
         cleaned = re.sub(
-            r"^\s*(CANCEL\s+STOP\s+SELL|CANCEL\s+BUY|CANCEL\s+SELL|BUY|SELL|REVIEW)\s+",
+            r"^\s*(CANCEL\s+STOP\s+SELL|CANCEL\s+BUY|CANCEL\s+SELL|CANCEL|BUY|SELL|REVIEW)\s+",
+            "",
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = re.sub(
+            r"\s+(STOP\s+SELL|BUY|SELL|ORDERS?|ORDER)\s*$",
             "",
             cleaned,
             flags=re.IGNORECASE,
@@ -93,7 +99,7 @@ class CommandGateway:
             "Currently supported commands include "
             "`BUY AAPL`, `SELL 10 TSLA`, `REVIEW MSFT`, `BUY £500 NVDA`, "
             "`buy Apple and trigger strategy`, `review Apple and buy`, and "
-            "`cancel stop sell NVDA, Microsoft`."
+            "`cancel stop sell NVDA, Microsoft`, `cancel AAPL buy`, and `cancel AAPL order`."
         )
 
         portfolio_keywords = (

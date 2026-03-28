@@ -857,9 +857,9 @@ function CommandHistory({
       <Panel className="overflow-hidden p-0">
         <div className="border-b border-terminal-border px-5 py-4">
           <SectionHeader
-            eyebrow="Legacy Audit"
-            title="Command History"
-            subtitle="The original Slack one-shot command log is still preserved as a secondary surface."
+            eyebrow="Legacy Slack Audit"
+            title="Legacy Slack Audit"
+            subtitle="The original Slack one-shot command log is preserved here as a secondary surface. This is not the full conversation archive."
           />
         </div>
         {loading ? (
@@ -873,7 +873,7 @@ function CommandHistory({
           </div>
         ) : commands.length === 0 ? (
           <div className="p-8 text-center text-sm text-terminal-text-dim">
-            No legacy commands yet. Slack one-shot trades and cancels will continue to appear here.
+            No legacy Slack audit entries yet. Slack one-shot trades and cancels will continue to appear here.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1050,7 +1050,7 @@ export default function Commands() {
       setCommands(cmds)
       setStats(summary)
     } catch (error) {
-      setHistoryError(error instanceof Error ? error.message : 'Failed to load command history')
+      setHistoryError(error instanceof Error ? error.message : 'Failed to load legacy Slack audit')
     } finally {
       setHistoryLoading(false)
     }
@@ -1068,6 +1068,14 @@ export default function Commands() {
   useEffect(() => {
     void fetchCommandHistory()
   }, [fetchCommandHistory])
+
+  useEffect(() => {
+    if (activeTab !== 'history') return
+    const intervalId = window.setInterval(() => {
+      void fetchCommandHistory()
+    }, 30000)
+    return () => window.clearInterval(intervalId)
+  }, [activeTab, fetchCommandHistory])
 
   const handleSseEvent = useCallback((event: Event) => {
     if (!event.event_type.startsWith('chat_')) return
@@ -1174,8 +1182,8 @@ export default function Commands() {
     <div className="space-y-6">
       <PageBrandHeader
         eyebrow="Trade Console"
-        title="Commands"
-        description="Slack remains the primary live surface, but this dashboard now continues the same conversational trading sessions with proposal review, execution state, research trace, and legacy command history."
+        title="Research"
+        description="Slack remains the primary live surface, but this dashboard now continues the same conversational trading sessions with proposal review, execution state, research trace, and a legacy Slack audit."
       />
 
       <Panel className="flex flex-wrap items-center justify-between gap-3">
@@ -1198,7 +1206,7 @@ export default function Commands() {
                 : 'border border-terminal-border text-terminal-text-dim hover:border-cyan/40 hover:text-terminal-text'
             }`}
           >
-            Command History
+            Legacy Slack Audit
           </button>
         </div>
         {chatError && (

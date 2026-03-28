@@ -376,7 +376,7 @@ export default function Evolution() {
     <div className="space-y-6">
       <PageBrandHeader
         eyebrow="Zen Evolution Engine"
-        title="Evolution Planner"
+        title="Evolution"
         description="Policy-constrained software evolution for ZenInvest. Operators can describe a change in natural language, retrieve repo-grounded planning context, and receive a scoped implementation plan with risk classification and deterministic validation gates."
       />
 

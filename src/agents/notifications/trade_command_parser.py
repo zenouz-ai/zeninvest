@@ -24,6 +24,10 @@ _CANCEL_RE = re.compile(
     r"^\s*cancel\s+(?P<order_class>stop\s+sell|sell|buy)\s+(?P<subjects>.+?)\s*$",
     re.IGNORECASE,
 )
+_CANCEL_SUBJECT_FIRST_RE = re.compile(
+    r"^\s*cancel\s+(?P<subjects>.+?)\s+(?P<order_class>stop\s+sell|sell|buy|orders?|order)\s*$",
+    re.IGNORECASE,
+)
 _REVIEW_RE = re.compile(r"^\s*review\s+(?P<subject>.+?)\s*$", re.IGNORECASE)
 _TRADE_RE = re.compile(r"^\s*(?P<action>buy|sell)\s+(?P<body>.+?)\s*$", re.IGNORECASE)
 _LEADING_QTY_RE = re.compile(
@@ -178,6 +182,26 @@ def _try_regex(message: str) -> TradeCommandIntent | None:
         if not raw_subjects:
             return None
         order_class = cancel_match.group("order_class").strip().lower().replace(" ", "_")
+        if order_class in {"order", "orders"}:
+            order_class = "any"
+        return _make_intent(
+            action="CANCEL",
+            raw_message=message,
+            force=is_force,
+            subject_phrases=raw_subjects,
+            command_kind="cancel",
+            execution_mode="cancel_only",
+            cancel_order_class=order_class,
+        )
+
+    cancel_subject_first_match = _CANCEL_SUBJECT_FIRST_RE.match(stripped)
+    if cancel_subject_first_match:
+        raw_subjects = _split_subjects(cancel_subject_first_match.group("subjects"))
+        if not raw_subjects:
+            return None
+        order_class = cancel_subject_first_match.group("order_class").strip().lower().replace(" ", "_")
+        if order_class in {"order", "orders"}:
+            order_class = "any"
         return _make_intent(
             action="CANCEL",
             raw_message=message,
@@ -249,7 +273,7 @@ def _try_claude(message: str) -> TradeCommandIntent | None:
             '"execution_mode":"direct"|"strategy"|"cancel_only",'
             '"trade_action":"BUY"|"SELL"|"REVIEW"|"CANCEL",'
             '"trigger_strategy":true|false,'
-            '"cancel_order_class":"buy"|"sell"|"stop_sell"|null,'
+            '"cancel_order_class":"buy"|"sell"|"stop_sell"|"any"|null,'
             '"subject_phrases":["<ticker or company phrase>"],'
             '"quantity_shares":<number|null>,'
             '"amount_gbp":<number|null>'
@@ -258,7 +282,7 @@ def _try_claude(message: str) -> TradeCommandIntent | None:
             "- Plain buy/sell => direct mode.\n"
             "- 'review X' => review + strategy mode.\n"
             "- 'review X and buy/sell' or 'buy/sell X and trigger strategy' => trade + strategy mode.\n"
-            "- 'cancel buy/sell/stop sell X[, Y]' => cancel mode.\n"
+            "- 'cancel buy/sell/stop sell X[, Y]', 'cancel X buy', or 'cancel X order' => cancel mode.\n"
             "- If not a trade command, return null.\n\n"
             f"Message: {cleaned}"
         )
@@ -300,7 +324,7 @@ def _try_claude(message: str) -> TradeCommandIntent | None:
         cancel_order_class = data.get("cancel_order_class")
         if cancel_order_class is not None:
             cancel_order_class = str(cancel_order_class).lower()
-            if cancel_order_class not in ("buy", "sell", "stop_sell"):
+            if cancel_order_class not in ("buy", "sell", "stop_sell", "any"):
                 return None
 
         return TradeCommandIntent(

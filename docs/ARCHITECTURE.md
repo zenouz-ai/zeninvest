@@ -225,12 +225,12 @@ FastAPI dashboard backend (reads agent SQLite monitoring tables and hosts separa
     v
 React frontend (SPA, served by FastAPI when dist/ exists)
     |
-    +-- 11 pages: Dashboard Home (skeleton loading, alert banner, metric cards, positions with sparklines, activity feed, hardening warnings), Universe (deep-linkable /universe/:ticker), Run History, Portfolio (sparklines, public read-only mode + operator-only Force Sell), Opportunity Pipeline, Order Management (including off-hours warning notes), Commands (chat-first conversational operator console with shared Slack/dashboard sessions, planner-led agentic beta routing, live agent-activity rail, evidence panels, degraded-turn warning cards, pending proposal rail, research trace, session spend, and a secondary legacy Slack command-history tab), World News (public read-only macro archive), Costs, Roadmap & Architecture, Evolution Planner
+    +-- 11 pages: Dashboard Home (skeleton loading, alert banner, metric cards, positions with sparklines, activity feed, hardening warnings), Universe (deep-linkable /universe/:ticker), Run History, Portfolio (sparklines, public read-only mode + operator-only Force Sell), Opportunity Pipeline, Order Management (including off-hours warning notes), Research (`/commands`: chat-first conversational operator console with shared Slack/dashboard sessions, planner-led agentic beta routing, live agent-activity rail, evidence panels, degraded-turn warning cards, pending proposal rail, research trace, session spend, and a secondary Legacy Slack Audit tab that is not the full conversation archive), World News (public read-only macro archive), Costs, Roadmap & Architecture, Evolution
     +-- Public nav: Overview, Portfolio, World News, Roadmap; operator nav adds Dashboard, Universe, Runs, and More
     +-- Universe: sortable columns, expandable rows with pipeline waterfall + committee reasoning, responsive column hiding
     +-- Run History: timeline, run diff (new/closed/position changes)
     +-- Portfolio: positions with inline sparklines, P&L chart, sector allocation, mobile card layout
-    +-- Evolution Planner: authenticated operator-only change intake, clarification loop, repo context, validation matrix, and audit trail with planner-only gates
+    +-- Evolution: authenticated operator-only change intake, clarification loop, repo context, validation matrix, and audit trail with planner-only gates
     +-- Components: AlertBanner, Skeleton, Sparkline, PipelineWaterfall, PnlDisplay, FreshnessIndicator, useFocusTrap
 ```
 

@@ -5,6 +5,7 @@ cancel commands, dispatches them to the correct runner, and posts threaded
 replies.
 """
 
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,10 @@ from src.utils.logger import get_logger
 
 logger = get_logger("slack_listener")
 SLACK_REPLY_MAX_CHARS = 3500
+_LEADING_SLACK_FORMATTING_RE = re.compile(
+    r"^(?:(?:>\s*)+|(?:(?:[-*•·]\s*)+)|(?:(?:\d+[\.\)]\s*)+))+",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -134,7 +139,8 @@ class SlackTradeListener:
             if channel_id and event.get("channel") != channel_id:
                 return
 
-            text = event.get("text", "").strip()
+            raw_text = event.get("text", "")
+            text = self._normalize_inbound_text(raw_text)
             user_id = event.get("user", "")
             msg_channel = event.get("channel", "")
             ts = event.get("ts", "")
@@ -167,6 +173,7 @@ class SlackTradeListener:
                     conversation_key,
                     user_id,
                     text,
+                    raw_text,
                 )
                 return
 
@@ -178,6 +185,7 @@ class SlackTradeListener:
                 ts,
                 user_id,
                 text,
+                raw_text,
             )
 
         self._socket_client.socket_mode_request_listeners.append(handler)
@@ -212,6 +220,20 @@ class SlackTradeListener:
         except RuntimeError as e:
             logger.warning(f"Slack worker pool rejected task: {e}")
 
+    def _normalize_inbound_text(self, text: str) -> str:
+        """Normalize Slack formatting so commands parse consistently."""
+        normalized_lines: list[str] = []
+        for raw_line in (text or "").splitlines():
+            line = " ".join(raw_line.strip().split())
+            while line:
+                updated = _LEADING_SLACK_FORMATTING_RE.sub("", line).strip()
+                if updated == line:
+                    break
+                line = updated
+            if line:
+                normalized_lines.append(line)
+        return " ".join(normalized_lines).strip()
+
     def _should_route_to_conversation(
         self,
         *,
@@ -240,6 +262,7 @@ class SlackTradeListener:
         thread_ts: str,
         user_id: str,
         text: str,
+        raw_text: str | None = None,
     ) -> None:
         """Process a Slack message through the shared conversational workflow."""
         try:
@@ -252,6 +275,7 @@ class SlackTradeListener:
             session_detail = self.conversation.process_turn(
                 session_id=int(session["id"]),
                 message_text=text,
+                raw_message_text=raw_text,
                 channel_type="slack",
                 user_id=user_id,
             )
@@ -264,7 +288,12 @@ class SlackTradeListener:
             self._post_reply(channel, thread_ts, f"Error: {e}")
 
     def _process_command(
-        self, channel: str, ts: str, user_id: str, text: str
+        self,
+        channel: str,
+        ts: str,
+        user_id: str,
+        text: str,
+        raw_text: str | None = None,
     ) -> None:
         """Process a trade command message. Runs in background thread."""
         try:
@@ -274,7 +303,7 @@ class SlackTradeListener:
                 channel_id=channel,
                 command=text,
                 args=[],
-                raw_payload={"text": text, "ts": ts, "thread_ts": ts},
+                raw_payload={"text": text, "raw_text": raw_text or text, "ts": ts, "thread_ts": ts},
             )
 
             resolved = self.gateway.resolve_request(request)
@@ -283,6 +312,8 @@ class SlackTradeListener:
             ticker_t212s = resolved.get("ticker_t212s", [])
             requested_ticker = getattr(resolved.get("intent"), "ticker", None)
             intent = resolved.get("intent")
+            if intent is not None and raw_text:
+                intent.raw_message = raw_text
             command_kind = str(getattr(intent, "command_kind", "trade") or "trade").lower()
             execution_mode = str(getattr(intent, "execution_mode", "strategy") or "strategy").lower()
 

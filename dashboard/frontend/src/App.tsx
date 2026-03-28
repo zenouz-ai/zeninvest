@@ -108,7 +108,7 @@ function MoreDropdown({ authenticated }: { authenticated: boolean }) {
         >
           <NavLink to="/opportunity" className={dropdownLinkClass} onClick={() => setOpen(false)}>Opportunity</NavLink>
           <NavLink to="/orders" className={dropdownLinkClass} onClick={() => setOpen(false)}>Order Mgmt</NavLink>
-          <NavLink to="/commands" className={dropdownLinkClass} onClick={() => setOpen(false)}>Commands</NavLink>
+          <NavLink to="/commands" className={dropdownLinkClass} onClick={() => setOpen(false)}>Research</NavLink>
           <NavLink to="/evolution" className={dropdownLinkClass} onClick={() => setOpen(false)}>Evolution</NavLink>
           <NavLink to="/world-news" className={dropdownLinkClass} onClick={() => setOpen(false)}>World News</NavLink>
           <NavLink to="/costs" className={dropdownLinkClass} onClick={() => setOpen(false)}>Costs</NavLink>
@@ -265,7 +265,7 @@ function DashboardShell() {
               {authenticated && <NavLink to="/runs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Run History</NavLink>}
               {authenticated && <NavLink to="/opportunity" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Opportunity</NavLink>}
               {authenticated && <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>}
-              {authenticated && <NavLink to="/commands" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Commands</NavLink>}
+              {authenticated && <NavLink to="/commands" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Research</NavLink>}
               {authenticated && <NavLink to="/evolution" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Evolution</NavLink>}
               <NavLink to="/world-news" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>World News</NavLink>
               {authenticated && <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>}

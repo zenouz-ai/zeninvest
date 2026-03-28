@@ -959,7 +959,7 @@ def _format_partial_reply(result: "SingleTickerResult", ticker: str) -> str:
 
 
 def _format_cancel_reply(result: "SingleTickerResult") -> str:
-    order_class = (result.cancel_order_class or "order").replace("_", " ")
+    order_class = "order" if result.cancel_order_class == "any" else (result.cancel_order_class or "order").replace("_", " ")
     targets = ", ".join(result.target_tickers) if result.target_tickers else "requested tickers"
     details = result.result_details or {}
     cancelled = details.get("cancelled", [])

@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from src.agents.conversation.orchestrator import ConversationOrchestrator
+from src.agents.conversation.compare_parser import parse_compare_request
 from src.agents.conversation.specialists import ChatSpecialistEngine
 from src.agents.conversation.planner import ChatPlannerDecision
 from src.agents.conversation.session_manager import SessionManager
@@ -48,6 +49,14 @@ def db_session():
     session.add_all(
         [
             Instrument(
+                ticker="AAPL_US_EQ",
+                name="Apple",
+                sector="Technology",
+                industry="Consumer Electronics",
+                market_cap=3_000_000_000_000,
+                business_summary="Apple summary",
+            ),
+            Instrument(
                 ticker="TSLA_US_EQ",
                 name="Tesla",
                 sector="Consumer Cyclical",
@@ -64,12 +73,28 @@ def db_session():
                 business_summary="Google summary",
             ),
             Instrument(
+                ticker="MSFT_US_EQ",
+                name="Microsoft",
+                sector="Technology",
+                industry="Software - Infrastructure",
+                market_cap=3_100_000_000_000,
+                business_summary="Microsoft summary",
+            ),
+            Instrument(
                 ticker="AMD_US_EQ",
                 name="Advanced Micro Devices",
                 sector="Technology",
                 industry="Semiconductors",
                 market_cap=300_000_000_000,
                 business_summary="AMD summary",
+            ),
+            Instrument(
+                ticker="AMZN_US_EQ",
+                name="Amazon",
+                sector="Consumer Cyclical",
+                industry="Internet Retail",
+                market_cap=2_100_000_000_000,
+                business_summary="Amazon summary",
             ),
             Instrument(
                 ticker="NVDA_US_EQ",
@@ -222,6 +247,30 @@ def test_extract_agentic_subjects_handles_compare_phrase(orchestrator):
     subjects = orchestrator._extract_agentic_subjects("compare tesla and google", plan, {})
 
     assert subjects == ["tesla", "google"]
+
+
+def test_parse_compare_request_handles_three_tickers_and_time_horizon():
+    parsed = parse_compare_request(
+        "compare AAPL, MSFT, and NVDA, then tell me which looks strongest over the next 3-6 months"
+    )
+
+    assert parsed is not None
+    assert parsed.subjects == ["AAPL", "MSFT", "NVDA"]
+    assert parsed.comparison_goal == "pick_strongest"
+    assert parsed.time_horizon == "3-6 months"
+    assert parsed.post_compare_trade_intent is None
+
+
+def test_parse_compare_request_handles_compare_then_buy_stronger_one():
+    parsed = parse_compare_request("compare Amazon and Alphabet, then buy £20 of the stronger one")
+
+    assert parsed is not None
+    assert parsed.subjects == ["Amazon", "Alphabet"]
+    assert parsed.comparison_goal == "pick_strongest"
+    assert parsed.post_compare_trade_intent is not None
+    assert parsed.post_compare_trade_intent.action == "BUY"
+    assert parsed.post_compare_trade_intent.amount_gbp == 20.0
+    assert parsed.post_compare_trade_intent.subject_phrases == ["the stronger one"]
 
 
 def test_extract_agentic_subjects_handles_committee_phrase(orchestrator):
@@ -575,3 +624,154 @@ def test_agentic_turn_persists_workflow_and_evidence(orchestrator):
     assert "running_web_research" in step_keys
     assert "asking_specialist" in step_keys
     assert "building_answer" in step_keys
+
+
+def test_threaded_explicit_trade_command_uses_deterministic_preview_even_with_prior_context(orchestrator):
+    session = orchestrator.start_session(channel_type="slack", title="Slack thread", channel_session_key="thread-22")
+    orchestrator.session_manager.update_session_context(
+        session["id"],
+        context_json={"last_subject_tickers": ["NVDA_US_EQ"]},
+        last_channel_type="slack",
+    )
+
+    prepared = SingleTickerResult(
+        ticker_t212="AAPL_US_EQ",
+        ticker_yf="AAPL",
+        cycle_id="slack-20260328T140936",
+        user_action="BUY",
+        status="ready",
+        command_kind="trade",
+        execution_mode="direct",
+        price=248.8,
+        price_gbp=187.4,
+        quantity=2.93,
+        value_gbp=550.0,
+    )
+
+    with patch("src.agents.conversation.orchestrator.DirectTradeRunner") as mock_runner_cls:
+        mock_runner = mock_runner_cls.return_value
+        mock_runner.prepare.return_value = prepared
+        detail = orchestrator.process_turn(
+            session_id=session["id"],
+            message_text="BUY £550 AAPL",
+            channel_type="slack",
+        )
+
+    assistant_text = detail["turns"][-1]["message_text"]
+    action = detail["actions"][0]
+
+    assert "Proposed BUY AAPL" in assistant_text
+    assert action["ticker"] == "AAPL_US_EQ"
+    assert action["status"] == "awaiting_confirmation"
+
+
+def test_threaded_portfolio_rule_ignores_prior_research_context(orchestrator):
+    session = orchestrator.start_session(channel_type="slack", title="Slack thread", channel_session_key="thread-portfolio")
+    orchestrator.session_manager.update_session_context(
+        session["id"],
+        context_json={"last_subject_tickers": ["NVDA_US_EQ"]},
+        last_channel_type="slack",
+    )
+
+    with patch.object(
+        orchestrator,
+        "_get_portfolio_positions",
+        return_value=[
+            {"ticker": "SUZ_US_EQ", "value_gbp": 90.0, "pnl_pct": -2.0, "quantity": 3.0, "current_price": 30.0},
+            {"ticker": "JNJ_US_EQ", "value_gbp": 240.0, "pnl_pct": 1.0, "quantity": 1.0, "current_price": 240.0},
+        ],
+    ):
+        detail = orchestrator.process_turn(
+            session_id=session["id"],
+            message_text="liquidate holdings below £100",
+            channel_type="slack",
+        )
+
+    assistant_text = detail["turns"][-1]["message_text"]
+    action = detail["actions"][0]
+
+    assert assistant_text.startswith("Liquidate holdings below £100.00")
+    assert "SUZ_US_EQ" in assistant_text
+    assert "NVDA_US_EQ" not in assistant_text
+    assert action["action_type"] == "portfolio_batch_sell"
+    assert action["ticker"] == "SUZ_US_EQ"
+
+
+def test_compare_then_buy_stronger_one_stages_preview_for_selected_winner(orchestrator):
+    session = orchestrator.start_session(channel_type="slack", title="Slack compare", channel_session_key="thread-compare-buy")
+    compare_request = parse_compare_request("compare Amazon and Alphabet, then buy £20 of the stronger one")
+    planned = ChatPlannerDecision(
+        route="compare",
+        turn_mode="research",
+        use_fast_path=False,
+        requires_web_research=True,
+        requires_related_scan=False,
+        requires_committee=False,
+        requires_trade_preview=False,
+        should_suggest_opportunity=False,
+        confidence=0.82,
+        next_actions=["show sources", "preview trade"],
+        explanation="Operator asked for a side-by-side comparison.",
+        comparison_goal="pick_strongest",
+        comparison_subjects=compare_request.subjects if compare_request else ["Amazon", "Alphabet"],
+        time_horizon=compare_request.time_horizon if compare_request else None,
+        post_compare_trade_intent=(
+            compare_request.as_dict().get("post_compare_trade_intent") if compare_request else None
+        ),
+    )
+
+    prepared = SingleTickerResult(
+        ticker_t212="AMZN_US_EQ",
+        ticker_yf="AMZN",
+        cycle_id="chat-compare-buy",
+        user_action="BUY",
+        status="ready",
+        command_kind="trade",
+        execution_mode="direct",
+        price=180.0,
+        price_gbp=142.0,
+        quantity=0.14,
+        value_gbp=20.0,
+    )
+
+    snapshots = {
+        "AMZN_US_EQ": {
+            "ticker": "AMZN_US_EQ",
+            "company_name": "Amazon",
+            "current_price": 180.0,
+            "relative_strength_6m": 1.34,
+            "rsi_14": 56.0,
+            "debt_equity": 1.2,
+            "trailing_pe": 32.0,
+        },
+        "GOOGL_US_EQ": {
+            "ticker": "GOOGL_US_EQ",
+            "company_name": "Alphabet (Class A)",
+            "current_price": 280.0,
+            "relative_strength_6m": 1.08,
+            "rsi_14": 44.0,
+            "debt_equity": 0.3,
+            "trailing_pe": 24.0,
+        },
+    }
+
+    with patch.object(orchestrator._planner, "plan_turn", return_value=planned):
+        with patch.object(orchestrator, "_run_agentic_research", return_value=[]):
+            with patch.object(orchestrator, "_build_market_snapshot_payload", side_effect=lambda ticker: snapshots[ticker]):
+                with patch("src.agents.conversation.orchestrator.DirectTradeRunner") as mock_runner_cls:
+                    mock_runner = mock_runner_cls.return_value
+                    mock_runner.prepare.return_value = prepared
+                    detail = orchestrator.process_turn(
+                        session_id=session["id"],
+                        message_text="compare Amazon and Alphabet, then buy £20 of the stronger one",
+                        channel_type="slack",
+                    )
+
+    latest_turn = detail["turns"][-1]
+    payload = latest_turn["response_json"]
+
+    assert "Strongest setup: AMZN_US_EQ" in latest_turn["message_text"]
+    assert "Proposed BUY AMZN" in latest_turn["message_text"]
+    assert payload["selection_summary"]["winner_ticker"] == "AMZN_US_EQ"
+    assert payload["proposed_action"]["ticker"] == "AMZN_US_EQ"
+    assert payload["proposed_action"]["status"] == "awaiting_confirmation"
