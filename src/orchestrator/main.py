@@ -674,6 +674,43 @@ class Orchestrator:
 
             refresh_end_time = datetime.now(timezone.utc)
             duration_seconds = (refresh_end_time - refresh_start_time).total_seconds()
+            summary_order_sync = {
+                "pending_local_count": int(sync_summary.get("pending_local_count", 0) or 0),
+                "pending_live_count": int(sync_summary.get("pending_live_count", 0) or 0),
+                "stale_pending_count": int(sync_summary.get("stale_pending_count", 0) or 0),
+                "reconciled_pending_count": int(sync_summary.get("reconciled_pending_count", 0) or 0),
+                "filled_count": int(sync_summary.get("filled_count", 0) or 0),
+                "cancelled_count": int(sync_summary.get("cancelled_count", 0) or 0),
+                "failed_count": int(sync_summary.get("failed_count", 0) or 0),
+                "updated_total": int(sync_summary.get("updated_total", 0) or 0),
+                "history_fetch_error": sync_summary.get("history_fetch_error"),
+                "live_fetch_error": sync_summary.get("live_fetch_error"),
+                "last_broker_sync_at": (
+                    sync_summary.get("last_broker_sync_at").isoformat()
+                    if sync_summary.get("last_broker_sync_at") is not None
+                    else None
+                ),
+                "last_history_sync_at": (
+                    sync_summary.get("last_history_sync_at").isoformat()
+                    if sync_summary.get("last_history_sync_at") is not None
+                    else None
+                ),
+                "last_live_pending_sync_at": (
+                    sync_summary.get("last_live_pending_sync_at").isoformat()
+                    if sync_summary.get("last_live_pending_sync_at") is not None
+                    else None
+                ),
+                "history_fetch_error_at": (
+                    sync_summary.get("history_fetch_error_at").isoformat()
+                    if sync_summary.get("history_fetch_error_at") is not None
+                    else None
+                ),
+                "live_fetch_error_at": (
+                    sync_summary.get("live_fetch_error_at").isoformat()
+                    if sync_summary.get("live_fetch_error_at") is not None
+                    else None
+                ),
+            }
             audit_entries = self._build_refresh_audit_entries(
                 cycle_id=cycle_id,
                 refresh_start_time=refresh_start_time,
@@ -724,6 +761,7 @@ class Orchestrator:
                                 "stop_adjustments": result["stop_adjustments"],
                                 "deterministic_exits": result["deterministic_exits"],
                                 "duration_seconds": duration_seconds,
+                                "order_sync": summary_order_sync,
                                 "audit_summary": audit_summary,
                             }
                             if run:

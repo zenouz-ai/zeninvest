@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import desc
+from sqlalchemy import and_, desc, or_
 
 from src.agents.execution.order_manager import OrderManager
 from src.data.database import get_session
@@ -17,6 +17,7 @@ from ..schemas import FailedOrderHealthSchema, OrderSchema, OrdersHealthSchema
 logger = get_logger("dashboard.orders")
 router = APIRouter()
 settings = get_settings()
+_RECENT_REFRESH_REUSE_WINDOW_SECONDS = 120
 
 
 @router.get("/", response_model=list[OrderSchema])
@@ -73,24 +74,80 @@ def _classify_failed_order(
     session = get_session()
     try:
         # Do not treat a later dry_run as resolving a live broker failure.
-        later_success = (
+        later_resolution = (
             session.query(Order.id)
             .filter(
                 Order.ticker == failed_order.ticker,
                 Order.action == failed_order.action,
                 Order.order_type == failed_order.order_type,
                 Order.timestamp > failed_order.timestamp,
-                Order.status.in_(["filled", "cancelled"]),
+                or_(
+                    Order.status.in_(["filled", "cancelled"]),
+                    and_(
+                        Order.status.in_(["pending", "submitting"]),
+                        Order.t212_order_id.isnot(None),
+                    ),
+                ),
             )
             .first()
         )
-        if later_success is not None:
+        if later_resolution is not None:
             return "resolved"
         if failed_ts >= cutoff:
             return "active_unresolved"
         return "archived_unresolved"
     finally:
         session.close()
+
+
+def _coerce_datetime(value: object) -> datetime | None:
+    """Convert a stored ISO string or datetime into an aware datetime."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+    return None
+
+
+def _recent_refresh_sync_summary(latest_refresh: Run | None) -> dict[str, object] | None:
+    """Reuse a just-completed refresh sync summary instead of hammering T212 again."""
+    if latest_refresh is None or latest_refresh.completed_at is None:
+        return None
+    completed_at = _coerce_datetime(latest_refresh.completed_at)
+    if completed_at is None:
+        return None
+    age_seconds = (datetime.now(timezone.utc) - completed_at).total_seconds()
+    if age_seconds > _RECENT_REFRESH_REUSE_WINDOW_SECONDS:
+        return None
+
+    summary = latest_refresh.summary_json if isinstance(latest_refresh.summary_json, dict) else None
+    if not summary:
+        return None
+    sync_summary = summary.get("order_sync")
+    if not isinstance(sync_summary, dict):
+        return None
+
+    return {
+        "pending_local_count": int(sync_summary.get("pending_local_count", 0) or 0),
+        "pending_live_count": int(sync_summary.get("pending_live_count", 0) or 0),
+        "stale_pending_count": int(sync_summary.get("stale_pending_count", 0) or 0),
+        "reconciled_pending_count": int(sync_summary.get("reconciled_pending_count", 0) or 0),
+        "filled_count": int(sync_summary.get("filled_count", 0) or 0),
+        "cancelled_count": int(sync_summary.get("cancelled_count", 0) or 0),
+        "failed_count": int(sync_summary.get("failed_count", 0) or 0),
+        "updated_total": int(sync_summary.get("updated_total", 0) or 0),
+        "history_fetch_error": sync_summary.get("history_fetch_error"),
+        "live_fetch_error": sync_summary.get("live_fetch_error"),
+        "last_broker_sync_at": _coerce_datetime(sync_summary.get("last_broker_sync_at")) or completed_at,
+        "last_history_sync_at": _coerce_datetime(sync_summary.get("last_history_sync_at")) or completed_at,
+        "last_live_pending_sync_at": _coerce_datetime(sync_summary.get("last_live_pending_sync_at")) or completed_at,
+        "history_fetch_error_at": _coerce_datetime(sync_summary.get("history_fetch_error_at")),
+        "live_fetch_error_at": _coerce_datetime(sync_summary.get("live_fetch_error_at")),
+    }
 
 
 @router.get("/health", response_model=OrdersHealthSchema)
@@ -101,6 +158,20 @@ async def get_orders_health(
     """Summarize unresolved failed orders and stale pending order counts."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    session = get_session()
+    try:
+        try:
+            latest_refresh = (
+                session.query(Run)
+                .filter(Run.run_type == "refresh")
+                .order_by(desc(Run.completed_at), desc(Run.started_at))
+                .first()
+            )
+        except Exception:
+            latest_refresh = None
+    finally:
+        session.close()
 
     reconciled = {
         "pending_local_count": 0,
@@ -115,24 +186,33 @@ async def get_orders_health(
     history_fetch_error_at = None
     live_fetch_error_at = None
     if reconcile_pending:
-        try:
-            manager = OrderManager(dry_run=False)
-            reconciled_candidate = manager.sync_orders_with_t212()
-            if isinstance(reconciled_candidate, dict):
-                reconciled = reconciled_candidate
-            else:
-                reconciled = manager.reconcile_pending_stop_orders_with_t212()
+        recent_refresh_reconciled = _recent_refresh_sync_summary(latest_refresh)
+        if recent_refresh_reconciled is not None:
+            reconciled = recent_refresh_reconciled
             broker_sync_at = reconciled.get("last_broker_sync_at")
             history_sync_at = reconciled.get("last_history_sync_at")
             live_pending_sync_at = reconciled.get("last_live_pending_sync_at")
             history_fetch_error_at = reconciled.get("history_fetch_error_at")
             live_fetch_error_at = reconciled.get("live_fetch_error_at")
-        except Exception as e:
-            logger.error("Failed to reconcile pending stops: %s", e)
-            reconciled["live_fetch_error"] = str(e)
-            reconciled["history_fetch_error"] = str(e)
-            history_fetch_error_at = datetime.now(timezone.utc)
-            live_fetch_error_at = history_fetch_error_at
+        else:
+            try:
+                manager = OrderManager(dry_run=False)
+                reconciled_candidate = manager.sync_orders_with_t212()
+                if isinstance(reconciled_candidate, dict):
+                    reconciled = reconciled_candidate
+                else:
+                    reconciled = manager.reconcile_pending_stop_orders_with_t212()
+                broker_sync_at = reconciled.get("last_broker_sync_at")
+                history_sync_at = reconciled.get("last_history_sync_at")
+                live_pending_sync_at = reconciled.get("last_live_pending_sync_at")
+                history_fetch_error_at = reconciled.get("history_fetch_error_at")
+                live_fetch_error_at = reconciled.get("live_fetch_error_at")
+            except Exception as e:
+                logger.error("Failed to reconcile pending stops: %s", e)
+                reconciled["live_fetch_error"] = str(e)
+                reconciled["history_fetch_error"] = str(e)
+                history_fetch_error_at = datetime.now(timezone.utc)
+                live_fetch_error_at = history_fetch_error_at
     else:
         session = get_session()
         try:
@@ -153,15 +233,6 @@ async def get_orders_health(
             .order_by(desc(Order.timestamp))
             .all()
         )
-        try:
-            latest_refresh = (
-                session.query(Run)
-                .filter(Run.run_type == "refresh")
-                .order_by(desc(Run.completed_at), desc(Run.started_at))
-                .first()
-            )
-        except Exception:
-            latest_refresh = None
     finally:
         session.close()
 

@@ -10,6 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from dashboard.backend.app.database import Base as DashboardBase, Run
 from dashboard.backend.app.routers import orders as orders_router
 from dashboard.backend.app.routers.orders import get_orders_health
 from src.data.models import Base, Order
@@ -231,6 +232,112 @@ def test_orders_health_archives_old_unresolved_failures():
     assert result.archived_failed_count == 1
     assert result.failed_recent[0].ticker == "NEW_US_EQ"
     assert result.archived_failed_recent[0].ticker == "OLD_US_EQ"
+
+
+def test_orders_health_resolves_failed_when_later_live_pending_order_exists():
+    """A later live pending replacement order should clear the earlier failed alert."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    seed = Session()
+    now = datetime.now(timezone.utc)
+    seed.add_all([
+        Order(
+            ticker="CVE_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-5.0,
+            status="failed",
+            error_message="stop placement failed",
+            timestamp=now - timedelta(hours=2),
+        ),
+        Order(
+            ticker="CVE_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-5.0,
+            status="pending",
+            t212_order_id="broker-stop-123",
+            timestamp=now - timedelta(hours=1),
+        ),
+    ])
+    seed.commit()
+    seed.close()
+
+    with patch("dashboard.backend.app.routers.orders.get_session", side_effect=lambda: Session()), patch(
+        "dashboard.backend.app.routers.orders.settings"
+    ) as mock_settings, patch(
+        "dashboard.backend.app.routers.orders.OrderManager"
+    ) as mock_om_cls:
+        mock_settings.dashboard_enabled = True
+        mock_om_cls.return_value.reconcile_pending_stop_orders_with_t212.return_value = {
+            "pending_local_count": 1,
+            "pending_live_count": 1,
+            "stale_pending_count": 0,
+            "reconciled_pending_count": 0,
+            "live_fetch_error": None,
+            "history_fetch_error": None,
+        }
+        result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
+
+    assert result.failed_open_count == 0
+    assert result.active_failed_count == 0
+    assert result.archived_failed_count == 0
+
+
+def test_orders_health_reuses_recent_refresh_sync_summary_without_broker_call():
+    """A just-finished refresh should be reused instead of immediately re-syncing the broker again."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    DashboardBase.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    seed = Session()
+    completed_at = datetime.now(timezone.utc) - timedelta(seconds=20)
+    seed.add(
+        Run(
+            cycle_id="refresh_recent",
+            run_type="refresh",
+            started_at=completed_at - timedelta(minutes=1),
+            completed_at=completed_at,
+            status="completed",
+            summary_json={
+                "order_sync": {
+                    "pending_local_count": 4,
+                    "pending_live_count": 4,
+                    "stale_pending_count": 0,
+                    "reconciled_pending_count": 0,
+                    "filled_count": 0,
+                    "cancelled_count": 0,
+                    "failed_count": 0,
+                    "updated_total": 0,
+                    "history_fetch_error": None,
+                    "live_fetch_error": None,
+                    "last_broker_sync_at": completed_at.isoformat(),
+                    "last_history_sync_at": completed_at.isoformat(),
+                    "last_live_pending_sync_at": completed_at.isoformat(),
+                    "history_fetch_error_at": None,
+                    "live_fetch_error_at": None,
+                }
+            },
+        )
+    )
+    seed.commit()
+    seed.close()
+
+    with patch("dashboard.backend.app.routers.orders.get_session", side_effect=lambda: Session()), patch(
+        "dashboard.backend.app.routers.orders.settings"
+    ) as mock_settings, patch(
+        "dashboard.backend.app.routers.orders.OrderManager"
+    ) as mock_om_cls:
+        mock_settings.dashboard_enabled = True
+        result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
+
+    assert result.pending_local_count == 4
+    assert result.pending_live_count == 4
+    assert result.last_broker_sync_at is not None
+    mock_om_cls.assert_not_called()
 
 
 def test_orders_list_serializes_warning_note():

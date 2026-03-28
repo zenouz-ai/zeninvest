@@ -209,6 +209,22 @@ export default function OrderManagement() {
               Broker history sync warning{health.history_fetch_error_at ? ` (${safeFormat(health.history_fetch_error_at, 'MMM dd HH:mm:ss', '—')})` : ''}: {health.history_fetch_error}
             </p>
           )}
+          {health.failed_recent.length > 0 && (
+            <div className="mt-4 border border-terminal-border rounded-md p-3">
+              <div className="text-sm font-semibold">Active failed orders</div>
+              <div className="mt-2 space-y-1 text-xs text-terminal-text-dim">
+                {health.failed_recent.map((order) => (
+                  <div key={order.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-mono text-terminal-text">{cleanTicker(order.ticker)}</span>
+                    <span>{order.action}</span>
+                    <span>{order.order_type}</span>
+                    <span>{safeFormat(order.timestamp, 'MMM dd HH:mm', '—')}</span>
+                    {order.error_message && <span className="truncate">{order.error_message}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {health.archived_failed_recent.length > 0 && (
             <div className="mt-4 border border-terminal-border rounded-md p-3">
               <div className="text-sm font-semibold">Archived failed orders</div>
