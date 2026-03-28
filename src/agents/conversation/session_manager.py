@@ -55,6 +55,10 @@ class ChatActionNotFoundError(LookupError):
     """Raised when a requested chat action does not exist."""
 
 
+class StaleActionError(Exception):
+    """Raised when an action's version has changed (optimistic concurrency)."""
+
+
 class SessionManager:
     """Manages conversational trading session lifecycle and audit persistence."""
 
@@ -500,6 +504,54 @@ class SessionManager:
         finally:
             session.close()
 
+    def update_action_versioned(
+        self,
+        action_id: int,
+        expected_version: int,
+        *,
+        status: str | None = None,
+        result_json: Any | None = None,
+        rejection_reason: str | None = None,
+        confirmed_at: datetime | None = None,
+        executed_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Optimistic-concurrency update: only succeeds when version matches.
+
+        Raises ``StaleActionError`` if the action has been modified by a
+        concurrent writer since the caller last read it.
+        """
+        session = get_session()
+        try:
+            action = session.query(ChatAction).filter(ChatAction.id == action_id).first()
+            if not action:
+                raise ChatActionNotFoundError(f"Chat action {action_id} not found")
+            if action.version != expected_version:
+                raise StaleActionError(
+                    f"Action {action_id} version mismatch: expected {expected_version}, "
+                    f"found {action.version}"
+                )
+            if status is not None:
+                action.status = status
+            if result_json is not None:
+                action.result_json = _json_dumps(result_json)
+            if rejection_reason is not None:
+                action.rejection_reason = rejection_reason
+            if confirmed_at is not None:
+                action.confirmed_at = ensure_utc_datetime(confirmed_at)
+            if executed_at is not None:
+                action.executed_at = ensure_utc_datetime(executed_at)
+            action.version += 1
+            session.commit()
+            return self._serialize_action(action)
+        except (StaleActionError, ChatActionNotFoundError):
+            session.rollback()
+            raise
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def expire_old_pending_actions(self) -> int:
         """Expire all stale pending actions across sessions."""
         session = get_session()
@@ -521,6 +573,73 @@ class SessionManager:
             if rows:
                 session.commit()
             return len([row for row in rows if row.status == "expired"])
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def list_turns(
+        self,
+        session_id: int,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Return paginated turns for a session."""
+        session = get_session()
+        try:
+            turns = (
+                session.query(ChatTurn)
+                .filter(ChatTurn.session_id == session_id)
+                .order_by(ChatTurn.turn_index.asc(), ChatTurn.id.asc())
+                .offset(offset)
+                .limit(limit)
+                .all()
+            )
+            return [self._serialize_turn(t) for t in turns]
+        finally:
+            session.close()
+
+    def list_actions(
+        self,
+        session_id: int,
+        *,
+        status: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return actions for a session, optionally filtered by status."""
+        session = get_session()
+        try:
+            query = session.query(ChatAction).filter(ChatAction.session_id == session_id)
+            if status:
+                query = query.filter(ChatAction.status == status)
+            actions = query.order_by(ChatAction.created_at.desc(), ChatAction.id.desc()).all()
+            return [self._serialize_action(a) for a in actions]
+        finally:
+            session.close()
+
+    def get_session_spend(self, session_id: int) -> dict[str, Any]:
+        """Return cost summary for a session."""
+        session = get_session()
+        try:
+            row = session.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if not row:
+                raise ChatSessionNotFoundError(f"Chat session {session_id} not found")
+            return self._serialize_cost_summary(session_id, session)
+        finally:
+            session.close()
+
+    def archive_session(self, session_id: int) -> None:
+        """Soft-delete a session by setting status to 'archived'."""
+        session = get_session()
+        try:
+            chat_session = session.query(ChatSession).filter(ChatSession.id == session_id).first()
+            if not chat_session:
+                raise ChatSessionNotFoundError(f"Chat session {session_id} not found")
+            chat_session.status = "archived"
+            chat_session.ended_at = _utcnow()
+            chat_session.last_activity_at = _utcnow()
+            session.commit()
         except Exception:
             session.rollback()
             raise
@@ -614,6 +733,7 @@ class SessionManager:
             "executed_at": executed_at.isoformat() if executed_at else None,
             "created_at": created_at.isoformat() if created_at else None,
             "updated_at": updated_at.isoformat() if updated_at else None,
+            "version": getattr(row, "version", 1),
         }
 
     def _serialize_research_log(self, row: ChatResearchLog) -> dict[str, Any]:

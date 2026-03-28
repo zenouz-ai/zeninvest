@@ -11,6 +11,17 @@ from typing import Any
 import openai
 
 from src.agents.conversation.compare_parser import parse_compare_request
+from src.agents.conversation.intent_classifier import (
+    COMMITTEE_HINT_RE,
+    COMPARE_HINT_RE,
+    GREETING_HINT_RE,
+    HELP_HINT_RE,
+    OPPORTUNITY_HINT_RE,
+    PEER_SCAN_HINT_RE,
+    PORTFOLIO_HINT_RE,
+    RESEARCH_HINT_RE,
+    ClassifiedIntent,
+)
 from src.agents.notifications.trade_command_parser import parse_trade_command
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, check_budget, log_cost
@@ -18,20 +29,7 @@ from src.utils.logger import get_logger
 
 logger = get_logger("conversation_planner")
 
-COMPARE_HINT_RE = re.compile(r"\b(compare|contrast|versus|vs\.?)\b", re.IGNORECASE)
-COMMITTEE_HINT_RE = re.compile(r"\b(bull|bear|risk|committee|debate|pros and cons)\b", re.IGNORECASE)
-PORTFOLIO_HINT_RE = re.compile(r"\b(portfolio|holdings|exposure|allocation|positions)\b", re.IGNORECASE)
-OPPORTUNITY_HINT_RE = re.compile(r"\b(interesting|ideas|opportunities|what should i buy|stronger one|best in this space)\b", re.IGNORECASE)
-RESEARCH_HINT_RE = re.compile(r"\b(compare|research|analyze|analysis|what about|how about|tell me about|look into|dig deeper|explain)\b", re.IGNORECASE)
-GREETING_HINT_RE = re.compile(r"^\s*(hi|hello|hey|thanks|thank you)\b", re.IGNORECASE)
-HELP_HINT_RE = re.compile(
-    r"\b(help|how does this work|how this works|understand this workflow|what can you do|what does this do)\b",
-    re.IGNORECASE,
-)
-PEER_SCAN_HINT_RE = re.compile(
-    r"\b(related|peer|peers|adjacent|stronger|best in this space|what else|other names|nearby names)\b",
-    re.IGNORECASE,
-)
+# Regex constants are now consolidated in intent_classifier.py and imported above.
 
 
 @dataclass

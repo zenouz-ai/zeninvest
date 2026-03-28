@@ -17,6 +17,7 @@ const Costs = lazy(() => import('./pages/Costs'))
 const Roadmap = lazy(() => import('./pages/Roadmap'))
 const WorldNews = lazy(() => import('./pages/WorldNews'))
 const Commands = lazy(() => import('./pages/Commands'))
+const Chat = lazy(() => import('./pages/Chat'))
 const Evolution = lazy(() => import('./pages/Evolution'))
 const PublicOverview = lazy(() => import('./pages/PublicOverview'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
@@ -324,6 +325,7 @@ function DashboardShell() {
             <Route path="/orders" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><OrderManagement /></ProtectedRoute>} />
             <Route path="/costs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Costs /></ProtectedRoute>} />
             <Route path="/commands" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Commands /></ProtectedRoute>} />
+            <Route path="/chat" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Chat /></ProtectedRoute>} />
             <Route path="/evolution" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Evolution /></ProtectedRoute>} />
             <Route path="/world-news" element={<WorldNews publicView={!authenticated} />} />
             <Route path="*" element={<Navigate to={homePath} replace />} />
