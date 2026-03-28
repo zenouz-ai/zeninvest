@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from dashboard.backend.app.database import Base as DashboardBase, EventsLog, Run
+from dashboard.backend.app.database import Base as DashboardBase, EventsLog, Run, RunDatasetAudit
 from dashboard.backend.app.routers import runs as runs_router
 from src.data.models import Base, StrategyDecision
 
@@ -103,3 +103,53 @@ def test_runs_api_derives_reviewed_and_screened_counts(client, db_session):
     assert detail_payload["summary_json"]["stocks_reviewed"] == 35
     assert detail_payload["summary_json"]["decisions_made"] == 35
     assert detail_payload["summary_json"]["stocks_screened"] == 40
+
+
+def test_run_audits_endpoint_filters_by_cycle_and_dataset(client, db_session):
+    started_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+    run = Run(
+        cycle_id="cycle-audit-test",
+        run_type="refresh",
+        started_at=started_at,
+        completed_at=started_at + timedelta(minutes=2),
+        status="completed",
+        summary_json={"audit_summary": {"datasets_total": 2, "succeeded": 1, "partial": 1}},
+    )
+    db_session.add(run)
+    db_session.flush()
+    db_session.add_all([
+        RunDatasetAudit(
+            run_id=run.id,
+            cycle_id=run.cycle_id,
+            run_type=run.run_type,
+            dataset_key="portfolio_snapshot",
+            status="succeeded",
+            started_at=run.started_at,
+            completed_at=run.completed_at,
+            rows_before=10,
+            rows_after=11,
+            delta_rows=1,
+        ),
+        RunDatasetAudit(
+            run_id=run.id,
+            cycle_id=run.cycle_id,
+            run_type=run.run_type,
+            dataset_key="broker_order_history_sync",
+            status="partial",
+            started_at=run.started_at,
+            completed_at=run.completed_at,
+            error_message="history timeout",
+        ),
+    ])
+    db_session.commit()
+
+    response = client.get(
+        "/api/runs/audits",
+        params={"cycle_id": "cycle-audit-test", "dataset_key": "broker_order_history_sync"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["dataset_key"] == "broker_order_history_sync"
+    assert payload[0]["status"] == "partial"

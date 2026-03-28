@@ -167,7 +167,10 @@ class OrdersHealthSchema(BaseModel):
     """Orders health summary for dashboard alerts and troubleshooting."""
 
     failed_open_count: int
+    active_failed_count: int
+    archived_failed_count: int = 0
     failed_recent: list[FailedOrderHealthSchema]
+    archived_failed_recent: list[FailedOrderHealthSchema] = []
     pending_local_count: int
     pending_live_count: int
     stale_pending_count: int
@@ -177,9 +180,34 @@ class OrdersHealthSchema(BaseModel):
     live_fetch_error: str | None = None
     history_fetch_error: str | None = None
     last_broker_sync_at: datetime | None = None
+    last_history_sync_at: datetime | None = None
+    last_live_pending_sync_at: datetime | None = None
+    history_fetch_error_at: datetime | None = None
+    live_fetch_error_at: datetime | None = None
     last_refresh_completed_at: datetime | None = None
     last_refresh_status: str | None = None
     last_refresh_summary: dict[str, Any] | None = None
+
+
+class RunDatasetAuditSchema(BaseModel):
+    """Per-run dataset audit entry."""
+
+    id: int
+    run_id: int
+    cycle_id: str
+    run_type: str
+    dataset_key: str
+    status: str
+    started_at: datetime
+    completed_at: datetime | None = None
+    source_timestamp: datetime | None = None
+    rows_before: int | None = None
+    rows_after: int | None = None
+    delta_rows: int | None = None
+    metadata_json: dict[str, Any] | None = None
+    error_message: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # --- Decisions / Moderation / Risk ---

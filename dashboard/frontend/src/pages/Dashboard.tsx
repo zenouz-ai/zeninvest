@@ -360,23 +360,32 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const scheduleLabel = status?.schedule_mode === 'market_session'
     ? `${(status.cycle_times_local ?? []).join(' / ')} NY`
     : `${(status?.cycle_times_utc ?? []).join(' / ')} UTC`
+  const compactScheduleLabel = status?.schedule_mode === 'market_session'
+    ? `Cycles ${(status.cycle_times_local ?? []).join(' / ')}`
+    : `Cycles ${(status?.cycle_times_utc ?? []).join(' / ')} UTC`
   const refreshScheduleLabel = (status?.refresh_times_local ?? []).length > 0
     ? `${(status?.refresh_times_local ?? []).join(' / ')} NY`
     : null
-  const nextCycleMetricSubtitle = nextRunUtc
-    ? `${safeFormat(nextRunUtc, 'MMM dd, HH:mm', '—')} UTC${scheduleLabel ? ` · ${scheduleLabel}` : ''}`
-    : scheduleLabel || 'Scheduler has not published the next run yet.'
-  const nextRefreshMetricSubtitle = status?.next_refresh_utc
-    ? `${safeFormat(status.next_refresh_utc, 'MMM dd, HH:mm', '—')} UTC${refreshScheduleLabel ? ` · ${refreshScheduleLabel}` : ''}`
-    : refreshScheduleLabel || 'Refresh lane is not scheduled.'
+  const nextCycleMetricSubtitle = (
+    <>
+      <div>{nextRunUtc ? `${safeFormat(nextRunUtc, 'MMM dd, HH:mm', '—')} UTC` : 'Scheduler has not published the next cycle yet.'}</div>
+      {scheduleLabel && <div>{compactScheduleLabel}</div>}
+    </>
+  )
+  const nextRefreshMetricSubtitle = (
+    <>
+      <div>{status?.next_refresh_utc ? `${safeFormat(status.next_refresh_utc, 'MMM dd, HH:mm', '—')} UTC` : 'Refresh lane is not scheduled.'}</div>
+      {refreshScheduleLabel && <div>{`Refresh ${refreshScheduleLabel}`}</div>}
+    </>
+  )
   const lastRefreshMetricSubtitle = status?.last_refresh_completed_at
     ? `Last ${safeFormat(status.last_refresh_completed_at, 'MMM dd, HH:mm', '—')} UTC`
     : 'No refresh has completed yet.'
   const latestRunMetricSubtitle = latestRun
-    ? `Last ${safeFormat(latestRun.started_at, 'MMM dd, HH:mm', '—')} UTC${lastRunCost != null ? ` · £${lastRunCost.total_gbp.toFixed(4)}` : ''}`
+    ? `Last ${safeFormat(latestRun.started_at, 'MMM dd, HH:mm', '—')} UTC${lastRunCost != null ? ` · £${lastRunCost.total_gbp.toFixed(2)}` : ''}`
     : 'Awaiting first completed cycle.'
   const portfolioValueMetric = portfolio
-    ? `£${portfolio.total_value_gbp.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ? `£${Math.round(portfolio.total_value_gbp).toLocaleString()}`
     : 'N/A'
   const portfolioDelta = portfolio?.pnl_pct != null
     ? `${portfolio.pnl_pct >= 0 ? '+' : ''}${portfolio.pnl_pct.toFixed(2)}%`
@@ -398,6 +407,16 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const monthlySubtitle = monthlySummary
     ? `P&L ${monthlySummary.pnl_gbp != null ? `£${monthlySummary.pnl_gbp.toFixed(2)}` : '—'} · Investigated ${monthlySummary.new_investigated_this_month ?? 0}`
     : 'Monthly summary not available yet.'
+  const latestCycleAuditSummary = latestRun?.summary_json?.audit_summary
+  const latestRefreshAuditSummary = status?.last_refresh_summary?.audit_summary
+  const auditStatusLine = [
+    latestCycleAuditSummary
+      ? `Cycle audit ${latestCycleAuditSummary.succeeded ?? 0}/${latestCycleAuditSummary.datasets_total ?? 0}${latestCycleAuditSummary.degraded ? ' degraded' : ' healthy'}`
+      : null,
+    latestRefreshAuditSummary
+      ? `Refresh audit ${latestRefreshAuditSummary.succeeded ?? 0}/${latestRefreshAuditSummary.datasets_total ?? 0}${latestRefreshAuditSummary.degraded ? ' degraded' : ' healthy'}`
+      : null,
+  ].filter(Boolean).join(' · ')
 
   // Check if ALL critical sections are still loading
   const allLoading = statusResult.loading && portfolioResult.loading && latestRunResult.loading
@@ -415,28 +434,29 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
         titleMeta={<StatusPill label={stateBadgeText} variant={stateBadgeVariant} dot />}
       />
 
-      <Panel hero className="space-y-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="max-w-3xl space-y-3">
+      <Panel hero className="space-y-5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <StatusPill label={stateBadgeText} variant={stateBadgeVariant} dot />
               <StatusPill label={streamLabel} variant={streamVariant} dot />
               {scheduleLabel && (
-                <StatusPill label={`Schedule ${scheduleLabel}`} variant="dim" />
-              )}
-              {status?.next_run_utc && (
-                <StatusPill label={`Next ${safeFormat(status.next_run_utc, 'MMM dd, HH:mm', '—')} UTC`} variant="dim" />
-              )}
-              {status?.next_refresh_utc && (
-                <StatusPill label={`Refresh ${safeFormat(status.next_refresh_utc, 'MMM dd, HH:mm', '—')} UTC`} variant="dim" />
+                <StatusPill label={compactScheduleLabel} variant="dim" />
               )}
             </div>
-            <p className="text-sm leading-6 text-terminal-text-muted">
-              The operator dashboard now shares the same visual rhythm as the public overview: a branded hero surface, editorial metrics,
-              and calmer supporting panels for activity and detail.
-            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-terminal-text-dim">
+              {status?.next_run_utc && (
+                <span>{`Next cycle ${safeFormat(status.next_run_utc, 'MMM dd, HH:mm', '—')} UTC`}</span>
+              )}
+              {status?.next_refresh_utc && (
+                <span>{`Next refresh ${safeFormat(status.next_refresh_utc, 'MMM dd, HH:mm', '—')} UTC`}</span>
+              )}
+              {refreshScheduleLabel && (
+                <span>{`Refresh lane ${refreshScheduleLabel}`}</span>
+              )}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
             <button
               type="button"
               onClick={paused ? handlePauseResume : () => setShowPauseConfirm(true)}
@@ -482,7 +502,7 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             label="Next Cycle"
             value={countdownStr}
@@ -493,7 +513,12 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
           <MetricCard
             label="Next Refresh"
             value={status?.next_refresh_utc ? formatCountdown(status.next_refresh_utc) : '—'}
-            subtitle={`${nextRefreshMetricSubtitle} · ${lastRefreshMetricSubtitle}`}
+            subtitle={
+              <>
+                {nextRefreshMetricSubtitle}
+                <div>{lastRefreshMetricSubtitle}</div>
+              </>
+            }
             delta={status?.last_refresh_status ?? undefined}
             deltaColor={status?.last_refresh_status === 'failed' ? 'loss' : status?.last_refresh_status ? 'cyan' : 'dim'}
           />
@@ -520,10 +545,15 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
           />
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-terminal-border/70 pt-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-2 border-t border-terminal-border/70 pt-3 md:flex-row md:items-center md:justify-between">
           <div className="text-sm text-terminal-text-dim">
             {latestRunMetricSubtitle}
           </div>
+          {auditStatusLine && (
+            <div className="text-xs text-terminal-text-dim">
+              {auditStatusLine}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 text-xs text-terminal-text-dim">
             {portfolioResult.error && <SectionError error="Portfolio unavailable" onRetry={portfolioResult.refetch} />}
             {perfResult.error && <SectionError error="Performance unavailable" onRetry={perfResult.refetch} />}
@@ -538,9 +568,9 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
           {status?.last_refresh_completed_at && (
             <span className="block">Refresh {safeFormat(status.last_refresh_completed_at, 'MMM dd HH:mm:ss', '—')}</span>
           )}
-          <FreshnessIndicator lastUpdatedAt={portfolioResult.lastUpdatedAt} isStale={portfolioResult.isStale} className="block" />
-          <FreshnessIndicator lastUpdatedAt={perfResult.lastUpdatedAt} isStale={perfResult.isStale} className="block" />
-          <FreshnessIndicator lastUpdatedAt={monthlyResult.lastUpdatedAt} isStale={monthlyResult.isStale} className="block" />
+          <span className="block">Portfolio <FreshnessIndicator lastUpdatedAt={portfolioResult.lastUpdatedAt} isStale={portfolioResult.isStale} className="inline" /></span>
+          <span className="block">Performance <FreshnessIndicator lastUpdatedAt={perfResult.lastUpdatedAt} isStale={perfResult.isStale} className="inline" /></span>
+          <span className="block">Monthly <FreshnessIndicator lastUpdatedAt={monthlyResult.lastUpdatedAt} isStale={monthlyResult.isStale} className="inline" /></span>
         </div>
       </Panel>
 

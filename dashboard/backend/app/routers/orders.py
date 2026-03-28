@@ -58,15 +58,17 @@ async def get_orders(
         session.close()
 
 
-def _is_failed_order_unresolved(failed_order: Order, window_days: int) -> bool:
-    """Return True when a failed order should still appear as unresolved."""
+def _classify_failed_order(
+    *,
+    failed_order: Order,
+    window_days: int,
+) -> str:
+    """Classify a failed order as active_unresolved, archived_unresolved, or resolved."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
     failed_ts = failed_order.timestamp
     # SQLite commonly returns naive datetimes even when app logic uses UTC.
     if failed_ts.tzinfo is None:
         cutoff = cutoff.replace(tzinfo=None)
-    if failed_ts >= cutoff:
-        return True
 
     session = get_session()
     try:
@@ -82,7 +84,11 @@ def _is_failed_order_unresolved(failed_order: Order, window_days: int) -> bool:
             )
             .first()
         )
-        return later_success is None
+        if later_success is not None:
+            return "resolved"
+        if failed_ts >= cutoff:
+            return "active_unresolved"
+        return "archived_unresolved"
     finally:
         session.close()
 
@@ -104,6 +110,10 @@ async def get_orders_health(
         "live_fetch_error": None,
     }
     broker_sync_at = None
+    history_sync_at = None
+    live_pending_sync_at = None
+    history_fetch_error_at = None
+    live_fetch_error_at = None
     if reconcile_pending:
         try:
             manager = OrderManager(dry_run=False)
@@ -112,11 +122,17 @@ async def get_orders_health(
                 reconciled = reconciled_candidate
             else:
                 reconciled = manager.reconcile_pending_stop_orders_with_t212()
-            broker_sync_at = datetime.now(timezone.utc)
+            broker_sync_at = reconciled.get("last_broker_sync_at")
+            history_sync_at = reconciled.get("last_history_sync_at")
+            live_pending_sync_at = reconciled.get("last_live_pending_sync_at")
+            history_fetch_error_at = reconciled.get("history_fetch_error_at")
+            live_fetch_error_at = reconciled.get("live_fetch_error_at")
         except Exception as e:
             logger.error("Failed to reconcile pending stops: %s", e)
             reconciled["live_fetch_error"] = str(e)
             reconciled["history_fetch_error"] = str(e)
+            history_fetch_error_at = datetime.now(timezone.utc)
+            live_fetch_error_at = history_fetch_error_at
     else:
         session = get_session()
         try:
@@ -149,9 +165,18 @@ async def get_orders_health(
     finally:
         session.close()
 
-    unresolved = [
-        order for order in failed_orders if _is_failed_order_unresolved(order, unresolved_window_days)
-    ]
+    active_unresolved: list[Order] = []
+    archived_unresolved: list[Order] = []
+    for order in failed_orders:
+        classification = _classify_failed_order(
+            failed_order=order,
+            window_days=unresolved_window_days,
+        )
+        if classification == "active_unresolved":
+            active_unresolved.append(order)
+        elif classification == "archived_unresolved":
+            archived_unresolved.append(order)
+
     failed_recent = [
         FailedOrderHealthSchema(
             id=order.id,
@@ -161,12 +186,26 @@ async def get_orders_health(
             order_type=order.order_type,
             error_message=order.error_message,
         )
-        for order in unresolved[:10]
+        for order in active_unresolved[:10]
+    ]
+    archived_failed_recent = [
+        FailedOrderHealthSchema(
+            id=order.id,
+            timestamp=order.timestamp,
+            ticker=order.ticker,
+            action=order.action,
+            order_type=order.order_type,
+            error_message=order.error_message,
+        )
+        for order in archived_unresolved[:10]
     ]
 
     return OrdersHealthSchema(
-        failed_open_count=len(unresolved),
+        failed_open_count=len(active_unresolved),
+        active_failed_count=len(active_unresolved),
+        archived_failed_count=len(archived_unresolved),
         failed_recent=failed_recent,
+        archived_failed_recent=archived_failed_recent,
         pending_local_count=int(reconciled.get("pending_local_count", 0)),
         pending_live_count=int(reconciled.get("pending_live_count", 0)),
         stale_pending_count=int(reconciled.get("stale_pending_count", 0)),
@@ -176,6 +215,10 @@ async def get_orders_health(
         live_fetch_error=reconciled.get("live_fetch_error"),
         history_fetch_error=reconciled.get("history_fetch_error"),
         last_broker_sync_at=broker_sync_at,
+        last_history_sync_at=history_sync_at,
+        last_live_pending_sync_at=live_pending_sync_at,
+        history_fetch_error_at=history_fetch_error_at,
+        live_fetch_error_at=live_fetch_error_at,
         last_refresh_completed_at=latest_refresh.completed_at if latest_refresh else None,
         last_refresh_status=latest_refresh.status if latest_refresh else None,
         last_refresh_summary=latest_refresh.summary_json if latest_refresh else None,

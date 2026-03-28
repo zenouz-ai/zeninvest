@@ -49,6 +49,24 @@ export default function OrderManagement() {
   const [expandedErrorOrderId, setExpandedErrorOrderId] = useState<number | null>(null)
   const [health, setHealth] = useState<{
     failed_open_count: number
+    active_failed_count: number
+    archived_failed_count: number
+    failed_recent: Array<{
+      id: number
+      timestamp: string
+      ticker: string
+      action: string
+      order_type: string
+      error_message?: string | null
+    }>
+    archived_failed_recent: Array<{
+      id: number
+      timestamp: string
+      ticker: string
+      action: string
+      order_type: string
+      error_message?: string | null
+    }>
     pending_local_count: number
     pending_live_count: number
     stale_pending_count: number
@@ -58,6 +76,10 @@ export default function OrderManagement() {
     live_fetch_error?: string | null
     history_fetch_error?: string | null
     last_broker_sync_at?: string | null
+    last_history_sync_at?: string | null
+    last_live_pending_sync_at?: string | null
+    history_fetch_error_at?: string | null
+    live_fetch_error_at?: string | null
     last_refresh_completed_at?: string | null
     last_refresh_status?: string | null
     last_refresh_summary?: Record<string, any> | null
@@ -117,11 +139,23 @@ export default function OrderManagement() {
       {health && (
         <div className="card">
           <h2 className="text-lg font-semibold tracking-wide mb-3">Order Health</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
             <div className="border border-terminal-border rounded-md p-3">
-              <div className="text-terminal-text-dim">Unresolved failed</div>
-              <div className={`font-mono text-lg ${health.failed_open_count > 0 ? 'text-loss' : 'text-profit'}`}>
-                {health.failed_open_count}
+              <div className="text-terminal-text-dim">Active unresolved</div>
+              <div className={`font-mono text-lg ${health.active_failed_count > 0 ? 'text-loss' : 'text-profit'}`}>
+                {health.active_failed_count}
+              </div>
+              <div className="text-xs text-terminal-text-dim mt-1">
+                alerts window {health.unresolved_window_days}d
+              </div>
+            </div>
+            <div className="border border-terminal-border rounded-md p-3">
+              <div className="text-terminal-text-dim">Archived unresolved</div>
+              <div className={`font-mono text-lg ${health.archived_failed_count > 0 ? 'text-warning' : 'text-terminal-text-dim'}`}>
+                {health.archived_failed_count}
+              </div>
+              <div className="text-xs text-terminal-text-dim mt-1">
+                retained in history, removed from banner
               </div>
             </div>
             <div className="border border-terminal-border rounded-md p-3">
@@ -134,13 +168,14 @@ export default function OrderManagement() {
               </div>
             </div>
             <div className="border border-terminal-border rounded-md p-3">
-              <div className="text-terminal-text-dim">Last reconciled</div>
+              <div className="text-terminal-text-dim">Broker sync health</div>
               <div className="font-mono text-xs">{safeFormat(health.last_reconciled_at, 'MMM dd HH:mm:ss', '—')}</div>
-              {health.last_broker_sync_at && (
-                <div className="text-xs text-terminal-text-dim mt-1">
-                  broker sync {safeFormat(health.last_broker_sync_at, 'MMM dd HH:mm:ss', '—')}
-                </div>
-              )}
+              <div className="text-xs text-terminal-text-dim mt-1">
+                history {safeFormat(health.last_history_sync_at, 'MMM dd HH:mm:ss', '—')}
+              </div>
+              <div className="text-xs text-terminal-text-dim">
+                live pending {safeFormat(health.last_live_pending_sync_at, 'MMM dd HH:mm:ss', '—')}
+              </div>
             </div>
           </div>
           {health.last_refresh_completed_at && (
@@ -152,19 +187,43 @@ export default function OrderManagement() {
                   {` · fills ${health.last_refresh_summary.orders_updated_total ?? 0}`}
                   {` · stop actions ${health.last_refresh_summary.stop_adjustments ?? 0}`}
                   {` · exits ${health.last_refresh_summary.deterministic_exits ?? 0}`}
+                  {health.last_refresh_summary.audit_summary && (
+                    ` · audit ${health.last_refresh_summary.audit_summary.succeeded ?? 0}/${health.last_refresh_summary.audit_summary.datasets_total ?? 0}`
+                  )}
                 </>
               )}
             </div>
           )}
+          {health.last_broker_sync_at && (
+            <p className="text-xs text-terminal-text-dim mt-2">
+              Last successful broker sync: {safeFormat(health.last_broker_sync_at, 'MMM dd HH:mm:ss', '—')}
+            </p>
+          )}
           {health.live_fetch_error && (
             <p className="text-warning text-xs mt-2">
-              Live pending fetch warning: {health.live_fetch_error}
+              Live pending fetch warning{health.live_fetch_error_at ? ` (${safeFormat(health.live_fetch_error_at, 'MMM dd HH:mm:ss', '—')})` : ''}: {health.live_fetch_error}
             </p>
           )}
           {health.history_fetch_error && (
             <p className="text-warning text-xs mt-2">
-              Broker history sync warning: {health.history_fetch_error}
+              Broker history sync warning{health.history_fetch_error_at ? ` (${safeFormat(health.history_fetch_error_at, 'MMM dd HH:mm:ss', '—')})` : ''}: {health.history_fetch_error}
             </p>
+          )}
+          {health.archived_failed_recent.length > 0 && (
+            <div className="mt-4 border border-terminal-border rounded-md p-3">
+              <div className="text-sm font-semibold">Archived failed orders</div>
+              <div className="mt-2 space-y-1 text-xs text-terminal-text-dim">
+                {health.archived_failed_recent.map((order) => (
+                  <div key={order.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-mono text-terminal-text">{cleanTicker(order.ticker)}</span>
+                    <span>{order.action}</span>
+                    <span>{order.order_type}</span>
+                    <span>{safeFormat(order.timestamp, 'MMM dd HH:mm', '—')}</span>
+                    {order.error_message && <span className="truncate">{order.error_message}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

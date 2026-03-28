@@ -38,6 +38,7 @@ async def get_status():
         "schedule_timezone": settings.schedule_timezone if settings.schedule_mode == "market_session" else None,
         "last_refresh_completed_at": None,
         "last_refresh_status": None,
+        "last_refresh_summary": None,
     }
     try:
         from src.data.models import SystemState
@@ -68,6 +69,7 @@ async def get_status():
                     latest_refresh.completed_at.isoformat() if latest_refresh.completed_at else None
                 )
                 result["last_refresh_status"] = latest_refresh.status
+                result["last_refresh_summary"] = latest_refresh.summary_json
         finally:
             session.close()
     except Exception:

@@ -1121,6 +1121,11 @@ class OrderManager:
                 "updated_total": 0,
                 "history_fetch_error": None,
                 "live_fetch_error": None,
+                "last_broker_sync_at": None,
+                "last_history_sync_at": None,
+                "last_live_pending_sync_at": None,
+                "history_fetch_error_at": None,
+                "live_fetch_error_at": None,
             }
 
         session = get_session()
@@ -1148,6 +1153,11 @@ class OrderManager:
                     "updated_total": 0,
                     "history_fetch_error": None,
                     "live_fetch_error": None,
+                    "last_broker_sync_at": None,
+                    "last_history_sync_at": None,
+                    "last_live_pending_sync_at": None,
+                    "history_fetch_error_at": None,
+                    "live_fetch_error_at": None,
                 }
 
             local_by_id = {
@@ -1157,13 +1167,16 @@ class OrderManager:
             cancelled_count = 0
             failed_count = 0
             history_fetch_error = None
+            history_fetch_error_at = None
             cursor: str | None = None
             t212_ids_seen: set[str] = set()
             terminal_ids_seen: set[str] = set()
+            last_history_sync_at = None
 
             try:
                 while True:
                     resp = self.client.get_order_history(cursor=cursor, limit=50)
+                    last_history_sync_at = datetime.now(timezone.utc)
                     items = resp.get("items") or []
                     next_page = resp.get("nextPagePath")
 
@@ -1203,14 +1216,18 @@ class OrderManager:
                     cursor = next_page
             except Exception as e:
                 history_fetch_error = str(e)
+                history_fetch_error_at = datetime.now(timezone.utc)
                 logger.warning(f"Order status sync failed: {e}")
 
             live_fetch_error = None
+            live_fetch_error_at = None
             pending_live_count = 0
             reconciled_pending_count = 0
             stale_pending_count = 0
+            last_live_pending_sync_at = None
             try:
                 live_pending = self.client.get_pending_orders()
+                last_live_pending_sync_at = datetime.now(timezone.utc)
                 live_pending_ids = {
                     str(item.get("id") or item.get("orderId"))
                     for item in live_pending
@@ -1231,10 +1248,15 @@ class OrderManager:
                 cancelled_count += reconciled_pending_count
             except Exception as e:
                 live_fetch_error = str(e)
+                live_fetch_error_at = datetime.now(timezone.utc)
                 logger.warning(f"Pending order reconciliation skipped: failed to fetch live pending orders: {e}")
 
             session.commit()
             updated_total = filled_count + cancelled_count + failed_count
+            last_broker_sync_at = max(
+                [ts for ts in (last_history_sync_at, last_live_pending_sync_at) if ts is not None],
+                default=None,
+            )
             if updated_total:
                 logger.info(
                     "Order sync updated %s orders (filled=%s cancelled=%s failed=%s)",
@@ -1254,6 +1276,11 @@ class OrderManager:
                 "updated_total": updated_total,
                 "history_fetch_error": history_fetch_error,
                 "live_fetch_error": live_fetch_error,
+                "last_broker_sync_at": last_broker_sync_at,
+                "last_history_sync_at": last_history_sync_at,
+                "last_live_pending_sync_at": last_live_pending_sync_at,
+                "history_fetch_error_at": history_fetch_error_at,
+                "live_fetch_error_at": live_fetch_error_at,
             }
         except Exception as e:
             session.rollback()
@@ -1270,6 +1297,11 @@ class OrderManager:
                 "updated_total": 0,
                 "history_fetch_error": err,
                 "live_fetch_error": None,
+                "last_broker_sync_at": None,
+                "last_history_sync_at": None,
+                "last_live_pending_sync_at": None,
+                "history_fetch_error_at": datetime.now(timezone.utc),
+                "live_fetch_error_at": None,
             }
         finally:
             session.close()

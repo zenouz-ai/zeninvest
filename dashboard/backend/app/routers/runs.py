@@ -13,8 +13,8 @@ from src.data.database import get_session
 from src.data.models import PortfolioSnapshot, StrategyDecision
 from src.utils.config import get_settings
 
-from ..database import EventsLog, Run
-from ..schemas import RunCreateSchema, RunSchema
+from ..database import EventsLog, Run, RunDatasetAudit
+from ..schemas import RunCreateSchema, RunDatasetAuditSchema, RunSchema
 from ..services.run_dispatcher import submit_cycle
 
 logger = logging.getLogger(__name__)
@@ -222,6 +222,38 @@ async def get_run_diff(
             "closed_positions": closed_positions,
             "size_changes": size_changes,
         }
+    finally:
+        session.close()
+
+
+@router.get("/audits", response_model=list[RunDatasetAuditSchema])
+async def get_run_audits(
+    run_id: int | None = Query(default=None),
+    cycle_id: str | None = Query(default=None),
+    run_type: str | None = Query(default=None),
+    dataset_key: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+):
+    """Get dataset audit rows for runs."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    session = get_session()
+    try:
+        query = session.query(RunDatasetAudit)
+        if run_id is not None:
+            query = query.filter(RunDatasetAudit.run_id == run_id)
+        if cycle_id:
+            query = query.filter(RunDatasetAudit.cycle_id == cycle_id)
+        if run_type:
+            query = query.filter(RunDatasetAudit.run_type == run_type)
+        if dataset_key:
+            query = query.filter(RunDatasetAudit.dataset_key == dataset_key)
+        return (
+            query.order_by(desc(RunDatasetAudit.started_at), desc(RunDatasetAudit.id))
+            .limit(limit)
+            .all()
+        )
     finally:
         session.close()
 

@@ -246,6 +246,22 @@ export const statusApi = {
     peak_inflation_warning_note?: string | null
     last_refresh_completed_at?: string | null
     last_refresh_status?: string | null
+    last_refresh_summary?: {
+      orders_updated_total?: number
+      positions_refreshed?: number
+      market_data_tickers_warmed?: number
+      stop_adjustments?: number
+      deterministic_exits?: number
+      duration_seconds?: number
+      audit_summary?: {
+        datasets_total?: number
+        succeeded?: number
+        failed?: number
+        partial?: number
+        skipped?: number
+        degraded?: boolean
+      } | null
+    } | null
   }> => {
     const response = await api.get('/api/status/')
     return response.data
@@ -269,6 +285,31 @@ export const runsApi = {
     status?: string
   }): Promise<Run[]> => {
     const response = await api.get('/api/runs/', { params })
+    return response.data
+  },
+  listAudits: async (params?: {
+    run_id?: number
+    cycle_id?: string
+    run_type?: string
+    dataset_key?: string
+    limit?: number
+  }): Promise<Array<{
+    id: number
+    run_id: number
+    cycle_id: string
+    run_type: string
+    dataset_key: string
+    status: string
+    started_at: string
+    completed_at?: string | null
+    source_timestamp?: string | null
+    rows_before?: number | null
+    rows_after?: number | null
+    delta_rows?: number | null
+    metadata_json?: Record<string, any> | null
+    error_message?: string | null
+  }>> => {
+    const response = await api.get('/api/runs/audits', { params })
     return response.data
   },
   
@@ -534,7 +575,17 @@ export const ordersApi = {
     reconcile_pending?: boolean
   }): Promise<{
     failed_open_count: number
+    active_failed_count: number
+    archived_failed_count: number
     failed_recent: Array<{
+      id: number
+      timestamp: string
+      ticker: string
+      action: string
+      order_type: string
+      error_message?: string | null
+    }>
+    archived_failed_recent: Array<{
       id: number
       timestamp: string
       ticker: string
@@ -551,6 +602,10 @@ export const ordersApi = {
     live_fetch_error?: string | null
     history_fetch_error?: string | null
     last_broker_sync_at?: string | null
+    last_history_sync_at?: string | null
+    last_live_pending_sync_at?: string | null
+    history_fetch_error_at?: string | null
+    live_fetch_error_at?: string | null
     last_refresh_completed_at?: string | null
     last_refresh_status?: string | null
     last_refresh_summary?: Record<string, any> | null

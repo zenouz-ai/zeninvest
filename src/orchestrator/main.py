@@ -38,7 +38,26 @@ from src.agents.risk.risk_parity import RiskParitySizer
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
-from src.data.models import Base, Instrument, OpportunityQueue, Order, PerformanceMetric, PortfolioSnapshot, TradeOutcome
+from src.data.models import (
+    Base,
+    CostLog,
+    Instrument,
+    MacroHeadline,
+    MacroState,
+    MarketDataCache,
+    ModerationLog,
+    NewsSentimentCache,
+    OpportunityQueue,
+    OpportunityScoreSnapshot,
+    Order,
+    PerformanceMetric,
+    PortfolioSnapshot,
+    ResearchLog,
+    RiskDecision,
+    StopLossAdjustment,
+    StrategyDecision,
+    TradeOutcome,
+)
 from src.orchestrator.state_machine import StateMachine
 from src.runtime import RuntimeLockHeldError, acquire_runtime_lock
 from src.utils.config import get_settings
@@ -51,17 +70,66 @@ logger = get_logger("orchestrator")
 
 # Dashboard event logger (fail-open import)
 log_event: Callable[..., None] | None
+dataset_snapshot: Callable[..., Any] | None
+ensure_run_record: Callable[..., Any] | None
+summarize_audit_entries: Callable[..., Any] | None
+write_run_dataset_audits: Callable[..., Any] | None
 try:
     from dashboard.backend.app.services.event_logger import log_event as _log_event
+    from dashboard.backend.app.services.run_audit import (
+        dataset_snapshot as _dataset_snapshot,
+        ensure_run_record as _ensure_run_record,
+        summarize_audit_entries as _summarize_audit_entries,
+        write_run_dataset_audits as _write_run_dataset_audits,
+    )
     log_event = _log_event
+    dataset_snapshot = _dataset_snapshot
+    ensure_run_record = _ensure_run_record
+    summarize_audit_entries = _summarize_audit_entries
+    write_run_dataset_audits = _write_run_dataset_audits
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False
     log_event = None
+    dataset_snapshot = None
+    ensure_run_record = None
+    summarize_audit_entries = None
+    write_run_dataset_audits = None
 
 
 class Orchestrator:
     """Main orchestrator that wires all agents together."""
+
+    _REFRESH_AUDIT_DATASETS = [
+        "broker_order_history_sync",
+        "broker_pending_reconciliation",
+        "portfolio_snapshot",
+        "market_data_cache",
+        "news_sentiment_cache",
+        "opportunity_queue_warm",
+        "stop_loss_maintenance",
+        "trade_outcomes",
+        "performance_metrics",
+    ]
+    _CYCLE_AUDIT_DATASETS = [
+        "instrument_screening",
+        "strategy_decisions",
+        "moderation_logs",
+        "risk_decisions",
+        "orders",
+        "opportunity_score_snapshots",
+        "opportunity_queue",
+        "portfolio_snapshot",
+        "market_data_cache",
+        "news_sentiment_cache",
+        "stop_loss_maintenance",
+        "trade_outcomes",
+        "performance_metrics",
+        "macro_state",
+        "macro_headlines",
+        "research_logs",
+        "cost_logs",
+    ]
 
     def __init__(self, dry_run: bool = False, uov_diagnostic: bool = False) -> None:
         self.settings = get_settings()
@@ -105,6 +173,410 @@ class Orchestrator:
             )
         return self._stop_loss_manager
 
+    def _capture_audit_baselines(self, dataset_keys: list[str]) -> dict[str, dict[str, Any]]:
+        """Capture row-count baselines for dataset audit deltas."""
+        if not DASHBOARD_AVAILABLE or dataset_snapshot is None:
+            return {}
+
+        baselines: dict[str, dict[str, Any]] = {}
+        for dataset_key in dataset_keys:
+            try:
+                snap = dataset_snapshot(dataset_key)
+                baselines[dataset_key] = {
+                    "rows": snap.rows,
+                    "latest_timestamp": snap.latest_timestamp,
+                }
+            except Exception as exc:
+                logger.debug("Failed to capture audit baseline for %s: %s", dataset_key, exc)
+                baselines[dataset_key] = {
+                    "rows": None,
+                    "latest_timestamp": None,
+                }
+        return baselines
+
+    def _current_audit_snapshot(self, dataset_key: str) -> dict[str, Any]:
+        """Read the current row-count snapshot for a dataset."""
+        if not DASHBOARD_AVAILABLE or dataset_snapshot is None:
+            return {"rows": None, "latest_timestamp": None}
+        try:
+            snap = dataset_snapshot(dataset_key)
+            return {
+                "rows": snap.rows,
+                "latest_timestamp": snap.latest_timestamp,
+            }
+        except Exception as exc:
+            logger.debug("Failed to capture current audit snapshot for %s: %s", dataset_key, exc)
+            return {"rows": None, "latest_timestamp": None}
+
+    @staticmethod
+    def _audit_status_from_delta(
+        *,
+        delta_rows: int | None,
+        run_status: str,
+        default_on_zero: str = "skipped",
+    ) -> str:
+        """Resolve a dataset audit status from a row delta and run outcome."""
+        if delta_rows is None:
+            return "failed" if run_status == "failed" else default_on_zero
+        if delta_rows > 0:
+            return "succeeded"
+        if run_status == "failed":
+            return "failed"
+        return default_on_zero
+
+    def _persist_run_dataset_audits(
+        self,
+        *,
+        cycle_id: str,
+        run_type: str,
+        entries: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Persist dataset audits and return an aggregate summary."""
+        if not DASHBOARD_AVAILABLE or write_run_dataset_audits is None or summarize_audit_entries is None:
+            return None
+
+        try:
+            write_run_dataset_audits(
+                cycle_id=cycle_id,
+                run_type=run_type,
+                entries=entries,
+            )
+            return summarize_audit_entries(entries)
+        except Exception as exc:
+            logger.warning("Failed to persist run dataset audits for %s: %s", cycle_id, exc, exc_info=True)
+            return None
+
+    def _emit_degraded_run_event(
+        self,
+        *,
+        cycle_id: str,
+        run_type: str,
+        audit_summary: dict[str, Any] | None,
+    ) -> None:
+        """Emit a dashboard event when a run finishes with failed or partial dataset audits."""
+        if (
+            not DASHBOARD_AVAILABLE
+            or log_event is None
+            or not audit_summary
+            or not audit_summary.get("degraded")
+        ):
+            return
+
+        try:
+            log_event(
+                event_type="run_degraded",
+                source="orchestrator",
+                message=(
+                    f"{run_type.title()} {cycle_id} finished with degraded dataset updates: "
+                    f"{audit_summary.get('failed', 0)} failed, {audit_summary.get('partial', 0)} partial"
+                ),
+                metadata={
+                    "cycle_id": cycle_id,
+                    "run_type": run_type,
+                    "audit_summary": audit_summary,
+                },
+            )
+        except Exception:
+            pass
+
+    def _build_refresh_audit_entries(
+        self,
+        *,
+        cycle_id: str,
+        refresh_start_time: datetime,
+        refresh_end_time: datetime,
+        result: dict[str, Any],
+        baselines: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Build dataset audit rows for a refresh run."""
+        sync_summary = result.get("order_sync") or {}
+        positions_refreshed = int(result.get("positions_refreshed", 0) or 0)
+        warm_tickers = list(result.get("market_data_warm_tickers") or [])
+        adjustments = list(result.get("order_adjustments") or [])
+        trades = list(result.get("trades") or [])
+        errors = [str(err) for err in result.get("errors") or []]
+        metrics_error = next((err for err in errors if err.startswith("metrics_update:")), None)
+        status = str(result.get("status") or "failed")
+
+        entries: list[dict[str, Any]] = []
+        for dataset_key in self._REFRESH_AUDIT_DATASETS:
+            baseline = baselines.get(dataset_key, {})
+            current = self._current_audit_snapshot(dataset_key)
+            rows_before = baseline.get("rows")
+            rows_after = current.get("rows")
+            delta_rows = (
+                rows_after - rows_before
+                if rows_before is not None and rows_after is not None
+                else None
+            )
+            entry_status = "skipped"
+            metadata_json: dict[str, Any] | None = None
+            error_message: str | None = None
+            source_timestamp = current.get("latest_timestamp")
+
+            if dataset_key == "broker_order_history_sync":
+                pending_local = int(sync_summary.get("pending_local_count", 0) or 0)
+                history_error = sync_summary.get("history_fetch_error")
+                remaining_pending = max(
+                    pending_local
+                    - int(sync_summary.get("filled_count", 0) or 0)
+                    - int(sync_summary.get("cancelled_count", 0) or 0)
+                    - int(sync_summary.get("failed_count", 0) or 0),
+                    0,
+                )
+                rows_before = pending_local
+                rows_after = remaining_pending
+                delta_rows = rows_after - rows_before
+                metadata_json = {
+                    "updated_total": int(sync_summary.get("updated_total", 0) or 0),
+                    "filled_count": int(sync_summary.get("filled_count", 0) or 0),
+                    "cancelled_count": int(sync_summary.get("cancelled_count", 0) or 0),
+                    "failed_count": int(sync_summary.get("failed_count", 0) or 0),
+                }
+                source_timestamp = sync_summary.get("last_history_sync_at")
+                if history_error:
+                    error_message = str(history_error)
+                    entry_status = "partial" if metadata_json["updated_total"] > 0 else "failed"
+                elif pending_local == 0 and metadata_json["updated_total"] == 0:
+                    entry_status = "skipped"
+                else:
+                    entry_status = "succeeded"
+            elif dataset_key == "broker_pending_reconciliation":
+                pending_local = int(sync_summary.get("pending_local_count", 0) or 0)
+                pending_live = int(sync_summary.get("pending_live_count", 0) or 0)
+                rows_before = pending_local
+                rows_after = pending_live
+                delta_rows = rows_after - rows_before
+                metadata_json = {
+                    "stale_pending_count": int(sync_summary.get("stale_pending_count", 0) or 0),
+                    "reconciled_pending_count": int(sync_summary.get("reconciled_pending_count", 0) or 0),
+                }
+                source_timestamp = sync_summary.get("last_live_pending_sync_at")
+                live_error = sync_summary.get("live_fetch_error")
+                if live_error:
+                    error_message = str(live_error)
+                    entry_status = "partial" if metadata_json["reconciled_pending_count"] > 0 else "failed"
+                elif pending_local == 0 and pending_live == 0:
+                    entry_status = "skipped"
+                else:
+                    entry_status = "succeeded"
+            elif dataset_key == "portfolio_snapshot":
+                metadata_json = {
+                    "positions_refreshed": positions_refreshed,
+                }
+                entry_status = self._audit_status_from_delta(
+                    delta_rows=delta_rows,
+                    run_status=status,
+                    default_on_zero="failed",
+                )
+            elif dataset_key == "market_data_cache":
+                metadata_json = {
+                    "warmed_tickers": warm_tickers,
+                }
+                entry_status = "skipped" if not warm_tickers else self._audit_status_from_delta(
+                    delta_rows=delta_rows,
+                    run_status=status,
+                    default_on_zero="succeeded",
+                )
+            elif dataset_key == "news_sentiment_cache":
+                metadata_json = {
+                    "warmed_tickers": warm_tickers,
+                }
+                entry_status = "skipped" if not warm_tickers else self._audit_status_from_delta(
+                    delta_rows=delta_rows,
+                    run_status=status,
+                    default_on_zero="succeeded",
+                )
+            elif dataset_key == "opportunity_queue_warm":
+                metadata_json = {
+                    "warmed_tickers": warm_tickers,
+                }
+                entry_status = "skipped" if not warm_tickers else "succeeded"
+            elif dataset_key == "stop_loss_maintenance":
+                metadata_json = {
+                    "adjustments": len(adjustments),
+                    "deterministic_exits": len(trades),
+                }
+                if positions_refreshed <= 0:
+                    entry_status = "skipped"
+                else:
+                    entry_status = self._audit_status_from_delta(
+                        delta_rows=delta_rows,
+                        run_status=status,
+                        default_on_zero="succeeded",
+                    )
+            elif dataset_key == "trade_outcomes":
+                metadata_json = {
+                    "trades": len(trades),
+                    "orders_updated_total": int(sync_summary.get("updated_total", 0) or 0),
+                }
+                if metrics_error:
+                    error_message = metrics_error
+                    entry_status = "failed"
+                elif not trades and not sync_summary.get("updated_total"):
+                    entry_status = "skipped"
+                else:
+                    entry_status = self._audit_status_from_delta(
+                        delta_rows=delta_rows,
+                        run_status=status,
+                        default_on_zero="succeeded",
+                    )
+            elif dataset_key == "performance_metrics":
+                metadata_json = {
+                    "trades": len(trades),
+                    "orders_updated_total": int(sync_summary.get("updated_total", 0) or 0),
+                }
+                if metrics_error:
+                    error_message = metrics_error
+                    entry_status = "failed"
+                elif not trades and not sync_summary.get("updated_total"):
+                    entry_status = "skipped"
+                else:
+                    entry_status = self._audit_status_from_delta(
+                        delta_rows=delta_rows,
+                        run_status=status,
+                        default_on_zero="succeeded",
+                    )
+
+            entries.append(
+                {
+                    "dataset_key": dataset_key,
+                    "status": entry_status,
+                    "started_at": refresh_start_time,
+                    "completed_at": refresh_end_time,
+                    "source_timestamp": source_timestamp,
+                    "rows_before": rows_before,
+                    "rows_after": rows_after,
+                    "delta_rows": delta_rows,
+                    "metadata_json": metadata_json,
+                    "error_message": error_message,
+                }
+            )
+
+        return entries
+
+    def _build_cycle_audit_entries(
+        self,
+        *,
+        cycle_id: str,
+        cycle_start_time: datetime,
+        cycle_end_time: datetime,
+        result: dict[str, Any],
+        baselines: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Build dataset audit rows for a full cycle."""
+        status = str(result.get("status") or "failed")
+        errors = [str(err) for err in result.get("errors") or []]
+        stocks_screened = int(result.get("stocks_screened", 0) or 0)
+        stocks_reviewed = int(result.get("stocks_reviewed", 0) or 0)
+        trades = list(result.get("trades") or [])
+        rejected = list(result.get("rejected_stocks") or [])
+        queued_candidates = list(result.get("queued_candidates") or [])
+        order_adjustments = list(result.get("order_adjustments") or [])
+
+        entries: list[dict[str, Any]] = []
+        for dataset_key in self._CYCLE_AUDIT_DATASETS:
+            baseline = baselines.get(dataset_key, {})
+            current = self._current_audit_snapshot(dataset_key)
+            rows_before = baseline.get("rows")
+            rows_after = current.get("rows")
+            delta_rows = (
+                rows_after - rows_before
+                if rows_before is not None and rows_after is not None
+                else None
+            )
+            entry_status = "skipped"
+            metadata_json: dict[str, Any] | None = None
+            error_message: str | None = None
+
+            if dataset_key == "instrument_screening":
+                metadata_json = {"stocks_screened": stocks_screened}
+                entry_status = "succeeded" if stocks_screened > 0 else ("failed" if status == "failed" else "skipped")
+            elif dataset_key == "strategy_decisions":
+                metadata_json = {"stocks_reviewed": stocks_reviewed}
+                entry_status = "succeeded" if stocks_reviewed > 0 else ("failed" if status == "failed" else "skipped")
+            elif dataset_key == "moderation_logs":
+                metadata_json = {"stocks_reviewed": stocks_reviewed}
+                entry_status = self._audit_status_from_delta(
+                    delta_rows=delta_rows,
+                    run_status=status,
+                    default_on_zero="skipped" if stocks_reviewed > 0 else "skipped",
+                )
+            elif dataset_key == "risk_decisions":
+                metadata_json = {"stocks_reviewed": stocks_reviewed}
+                entry_status = self._audit_status_from_delta(
+                    delta_rows=delta_rows,
+                    run_status=status,
+                    default_on_zero="skipped" if stocks_reviewed > 0 else "skipped",
+                )
+            elif dataset_key == "orders":
+                rows_before = 0
+                rows_after = len(trades)
+                delta_rows = rows_after
+                metadata_json = {"num_trades": len(trades), "num_rejected": len(rejected)}
+                entry_status = "succeeded" if trades else ("failed" if status == "failed" else "skipped")
+            elif dataset_key == "opportunity_score_snapshots":
+                metadata_json = {"stocks_reviewed": stocks_reviewed}
+                entry_status = self._audit_status_from_delta(
+                    delta_rows=delta_rows,
+                    run_status=status,
+                    default_on_zero="skipped",
+                )
+            elif dataset_key == "opportunity_queue":
+                metadata_json = {"queued_candidates": len(queued_candidates)}
+                entry_status = "succeeded" if queued_candidates or (delta_rows or 0) > 0 else "skipped"
+            elif dataset_key == "portfolio_snapshot":
+                metadata_json = {"trades": len(trades)}
+                entry_status = self._audit_status_from_delta(
+                    delta_rows=delta_rows,
+                    run_status=status,
+                    default_on_zero="failed",
+                )
+            elif dataset_key == "market_data_cache":
+                metadata_json = {"stocks_screened": stocks_screened}
+                entry_status = "succeeded" if stocks_screened > 0 or (delta_rows or 0) > 0 else ("failed" if status == "failed" else "skipped")
+            elif dataset_key == "news_sentiment_cache":
+                metadata_json = {"stocks_screened": stocks_screened}
+                entry_status = "succeeded" if stocks_screened > 0 or (delta_rows or 0) > 0 else ("failed" if status == "failed" else "skipped")
+            elif dataset_key == "stop_loss_maintenance":
+                metadata_json = {"adjustments": len(order_adjustments)}
+                if any(err.startswith("order_management:") for err in errors):
+                    error_message = next(err for err in errors if err.startswith("order_management:"))
+                    entry_status = "failed"
+                else:
+                    entry_status = "succeeded" if order_adjustments or (delta_rows or 0) > 0 else "skipped"
+            elif dataset_key == "trade_outcomes":
+                metadata_json = {"trades": len(trades)}
+                entry_status = "succeeded" if trades or (delta_rows or 0) > 0 else "skipped"
+            elif dataset_key == "performance_metrics":
+                metadata_json = {"trades": len(trades)}
+                entry_status = "succeeded" if (delta_rows or 0) > 0 or status == "completed" else ("failed" if status == "failed" else "skipped")
+            elif dataset_key == "macro_state":
+                entry_status = self._audit_status_from_delta(delta_rows=delta_rows, run_status=status, default_on_zero="skipped")
+            elif dataset_key == "macro_headlines":
+                entry_status = self._audit_status_from_delta(delta_rows=delta_rows, run_status=status, default_on_zero="skipped")
+            elif dataset_key == "research_logs":
+                entry_status = self._audit_status_from_delta(delta_rows=delta_rows, run_status=status, default_on_zero="skipped")
+            elif dataset_key == "cost_logs":
+                entry_status = self._audit_status_from_delta(delta_rows=delta_rows, run_status=status, default_on_zero="skipped")
+
+            entries.append(
+                {
+                    "dataset_key": dataset_key,
+                    "status": entry_status,
+                    "started_at": cycle_start_time,
+                    "completed_at": cycle_end_time,
+                    "source_timestamp": current.get("latest_timestamp"),
+                    "rows_before": rows_before,
+                    "rows_after": rows_after,
+                    "delta_rows": delta_rows,
+                    "metadata_json": metadata_json,
+                    "error_message": error_message,
+                }
+            )
+
+        return entries
+
     def run_intraday_refresh(self, scheduled_refresh_id: str | None = None) -> dict[str, Any]:
         """Run the lightweight broker/data refresh lane between full cycles."""
         cycle_id = (
@@ -121,6 +593,8 @@ class Orchestrator:
         }
         cycle_lock = None
         refresh_start_time = datetime.now(timezone.utc)
+        refresh_run_type = "refresh"
+        refresh_audit_baselines = self._capture_audit_baselines(self._REFRESH_AUDIT_DATASETS)
 
         try:
             cycle_lock = acquire_runtime_lock(
@@ -153,6 +627,17 @@ class Orchestrator:
             except Exception as e:
                 logger.debug(f"Dashboard table init skipped for refresh: {e}")
 
+        if DASHBOARD_AVAILABLE and ensure_run_record is not None:
+            try:
+                ensure_run_record(
+                    cycle_id=cycle_id,
+                    run_type=refresh_run_type,
+                    started_at=refresh_start_time,
+                    status="running",
+                )
+            except Exception:
+                pass
+
         if DASHBOARD_AVAILABLE and log_event is not None and not scheduled_refresh_id:
             try:
                 log_event(
@@ -165,26 +650,16 @@ class Orchestrator:
                         "started_at": refresh_start_time.isoformat(),
                     },
                 )
-                try:
-                    from dashboard.backend.app.database import Run
-
-                    session = get_session()
+                if ensure_run_record is not None:
                     try:
-                        run = Run(
+                        ensure_run_record(
                             cycle_id=cycle_id,
-                            run_type="refresh",
+                            run_type=refresh_run_type,
                             started_at=refresh_start_time,
                             status="running",
                         )
-                        session.add(run)
-                        session.commit()
-                    except Exception:
-                        session.rollback()
-                        raise
-                    finally:
-                        session.close()
-                except Exception as e:
-                    logger.debug(f"Failed to create refresh Run record (fail-open): {e}", exc_info=True)
+                    except Exception as e:
+                        logger.debug(f"Failed to create refresh Run record (fail-open): {e}", exc_info=True)
             except Exception:
                 pass
 
@@ -199,6 +674,21 @@ class Orchestrator:
 
             refresh_end_time = datetime.now(timezone.utc)
             duration_seconds = (refresh_end_time - refresh_start_time).total_seconds()
+            audit_entries = self._build_refresh_audit_entries(
+                cycle_id=cycle_id,
+                refresh_start_time=refresh_start_time,
+                refresh_end_time=refresh_end_time,
+                result=result,
+                baselines=refresh_audit_baselines,
+            )
+            audit_summary = self._persist_run_dataset_audits(
+                cycle_id=cycle_id,
+                run_type=refresh_run_type,
+                entries=audit_entries,
+            )
+            if audit_summary:
+                result["audit_summary"] = audit_summary
+
             if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     log_event(
@@ -234,6 +724,7 @@ class Orchestrator:
                                 "stop_adjustments": result["stop_adjustments"],
                                 "deterministic_exits": result["deterministic_exits"],
                                 "duration_seconds": duration_seconds,
+                                "audit_summary": audit_summary,
                             }
                             if run:
                                 run.completed_at = refresh_end_time
@@ -260,6 +751,11 @@ class Orchestrator:
                         logger.warning(f"Failed to update refresh Run record (fail-open): {e}", exc_info=True)
                 except Exception:
                     pass
+            self._emit_degraded_run_event(
+                cycle_id=cycle_id,
+                run_type=refresh_run_type,
+                audit_summary=audit_summary,
+            )
 
             if DASHBOARD_AVAILABLE:
                 try:
@@ -997,6 +1493,18 @@ class Orchestrator:
         # Log run_started and create Run record only when NOT invoked by scheduler
         # (scheduler creates its own Run and passes scheduled_cycle_id)
         cycle_start_time = datetime.now(timezone.utc)
+        cycle_run_type = "scheduled" if scheduled_cycle_id else ("manual" if not self.dry_run else "dry_run")
+        cycle_audit_baselines = self._capture_audit_baselines(self._CYCLE_AUDIT_DATASETS)
+        if DASHBOARD_AVAILABLE and ensure_run_record is not None:
+            try:
+                ensure_run_record(
+                    cycle_id=cycle_id,
+                    run_type=cycle_run_type,
+                    started_at=cycle_start_time,
+                    status="running",
+                )
+            except Exception:
+                pass
         if DASHBOARD_AVAILABLE and log_event is not None and not scheduled_cycle_id:
             try:
                 log_event(
@@ -1005,31 +1513,22 @@ class Orchestrator:
                     message=f"Cycle {cycle_id} starting (dry_run={self.dry_run})",
                     metadata={
                         "cycle_id": cycle_id,
-                        "run_type": "manual" if not self.dry_run else "dry_run",
+                        "run_type": cycle_run_type,
                         "started_at": cycle_start_time.isoformat(),
                     },
                 )
                 # Create run record (manual/dashboard trigger only)
-                try:
-                    from dashboard.backend.app.database import Run
-                    session = get_session()
+                if ensure_run_record is not None:
                     try:
-                        run = Run(
+                        ensure_run_record(
                             cycle_id=cycle_id,
-                            run_type="manual" if not self.dry_run else "dry_run",
+                            run_type=cycle_run_type,
                             started_at=cycle_start_time,
                             status="running",
                         )
-                        session.add(run)
-                        session.commit()
                         logger.debug(f"Created Run record for cycle {cycle_id}")
-                    except Exception:
-                        session.rollback()
-                        raise
-                    finally:
-                        session.close()
-                except Exception as e:
-                    logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
+                    except Exception as e:
+                        logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
             except Exception:
                 pass  # Fail-open
 
@@ -1084,6 +1583,20 @@ class Orchestrator:
             
             # Log run_completed event (when called directly, not via scheduler)
             cycle_end_time = datetime.now(timezone.utc)
+            audit_entries = self._build_cycle_audit_entries(
+                cycle_id=cycle_id,
+                cycle_start_time=cycle_start_time,
+                cycle_end_time=cycle_end_time,
+                result=result,
+                baselines=cycle_audit_baselines,
+            )
+            audit_summary = self._persist_run_dataset_audits(
+                cycle_id=cycle_id,
+                run_type=cycle_run_type,
+                entries=audit_entries,
+            )
+            if audit_summary:
+                result["audit_summary"] = audit_summary
             if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
@@ -1093,7 +1606,7 @@ class Orchestrator:
                         message=f"Cycle {cycle_id} completed: {status} — {result['num_trades']} trades, {result['num_rejected']} rejected",
                         metadata={
                             "cycle_id": cycle_id,
-                            "run_type": "manual" if not self.dry_run else "dry_run",
+                            "run_type": cycle_run_type,
                             "status": status,
                             "duration_seconds": duration_seconds,
                             "stocks_screened": result["stocks_screened"],
@@ -1118,6 +1631,7 @@ class Orchestrator:
                                     "num_trades": result["num_trades"],
                                     "num_rejected": result["num_rejected"],
                                     "duration_seconds": duration_seconds,
+                                    "audit_summary": audit_summary,
                                 }
                                 session.commit()
                                 logger.debug(f"Updated Run record for cycle {cycle_id}")
@@ -1125,7 +1639,7 @@ class Orchestrator:
                                 logger.debug(f"Run record not found for cycle {cycle_id}, creating new one")
                                 run = Run(
                                     cycle_id=cycle_id,
-                                    run_type="scheduled" if scheduled_cycle_id else ("manual" if not self.dry_run else "dry_run"),
+                                    run_type=cycle_run_type,
                                     started_at=cycle_start_time,
                                     completed_at=cycle_end_time,
                                     status=status,
@@ -1136,6 +1650,7 @@ class Orchestrator:
                                         "num_trades": result["num_trades"],
                                         "num_rejected": result["num_rejected"],
                                         "duration_seconds": duration_seconds,
+                                        "audit_summary": audit_summary,
                                     },
                                 )
                                 session.add(run)
@@ -1149,6 +1664,11 @@ class Orchestrator:
                         logger.warning(f"Failed to update Run record (fail-open): {e}", exc_info=True)
                 except Exception:
                     pass  # Fail-open
+            self._emit_degraded_run_event(
+                cycle_id=cycle_id,
+                run_type=cycle_run_type,
+                audit_summary=audit_summary,
+            )
             
             # Flush events before returning (ensure they're processed)
             if DASHBOARD_AVAILABLE:

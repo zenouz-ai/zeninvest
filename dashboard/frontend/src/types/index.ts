@@ -23,6 +23,16 @@ export interface Run {
     stocks_reviewed?: number
     decisions_made?: number
     orders_placed?: number
+    audit_summary?: {
+      datasets_total?: number
+      succeeded?: number
+      failed?: number
+      partial?: number
+      skipped?: number
+      degraded?: boolean
+      failed_keys?: string[]
+      partial_keys?: string[]
+    } | null
     counts?: {
       broker_orders_submitted?: number
       stop_adjustments?: number

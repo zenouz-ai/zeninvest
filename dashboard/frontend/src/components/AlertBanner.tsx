@@ -76,11 +76,11 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
     // 5. Unresolved failed orders
     try {
       const health = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: true })
-      if (health.failed_open_count > 0) {
+      if (health.active_failed_count > 0) {
         newAlerts.push({
           id: 'failed-orders',
           severity: 'critical',
-          message: `${health.failed_open_count} unresolved failed order${health.failed_open_count > 1 ? 's' : ''} — check Order Management`,
+          message: `${health.active_failed_count} unresolved failed order${health.active_failed_count > 1 ? 's' : ''} — check Order Management`,
         })
       }
     } catch { /* silent */ }

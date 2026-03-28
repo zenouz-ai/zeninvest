@@ -5,7 +5,7 @@ Reuses the existing agent database connection and adds dashboard-specific models
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Column, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase
 
 # Import the existing database engine and session factory
@@ -47,6 +47,27 @@ class Run(Base):
     completed_at = Column(DateTime, nullable=True)
     status = Column(String(20), nullable=False, default="running")  # running, completed, failed
     summary_json = Column(JSON, nullable=True)  # Summary stats: stocks_reviewed, decisions_made, orders_placed, etc.
+
+
+class RunDatasetAudit(Base):
+    """Per-run dataset audit trail for refresh and cycle writes/syncs."""
+
+    __tablename__ = "run_dataset_audits"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    cycle_id = Column(String(100), nullable=False, index=True)
+    run_type = Column(String(20), nullable=False, index=True)
+    dataset_key = Column(String(100), nullable=False, index=True)
+    status = Column(String(20), nullable=False, index=True)  # succeeded, failed, skipped, partial
+    started_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    completed_at = Column(DateTime, nullable=True)
+    source_timestamp = Column(DateTime, nullable=True)
+    rows_before = Column(Integer, nullable=True)
+    rows_after = Column(Integer, nullable=True)
+    delta_rows = Column(Integer, nullable=True)
+    metadata_json = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
 
 
 def init_dashboard_tables():

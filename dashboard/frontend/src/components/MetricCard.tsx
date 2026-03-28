@@ -9,7 +9,7 @@ interface MetricCardProps {
   /** Large hero value — rendered in Syne bold */
   value: ReactNode
   /** Optional supporting sentence below value */
-  subtitle?: string
+  subtitle?: ReactNode
   /** Optional delta chip (e.g. "+2.4%") */
   delta?: string
   /** Colour of the delta chip */
@@ -33,11 +33,11 @@ const deltaClasses: Record<DeltaColor, string> = {
  */
 export function MetricCard({ label, value, subtitle, delta, deltaColor = 'dim', className }: MetricCardProps) {
   return (
-    <div className={clsx('flex flex-col gap-1.5', className)}>
+    <div className={clsx('flex min-h-[9rem] flex-col gap-1.5', className)}>
       <span className="label-mono">{label}</span>
       <div className="flex items-end gap-2 flex-wrap">
         <span
-          className="text-[clamp(1.9rem,3vw,3rem)] font-bold tracking-[-0.03em] leading-none text-terminal-text"
+          className="text-[clamp(1.6rem,2.6vw,2.5rem)] font-bold tracking-[-0.03em] leading-none text-terminal-text"
           style={{ fontFamily: 'var(--font-heading)' }}
         >
           {value}
@@ -47,7 +47,7 @@ export function MetricCard({ label, value, subtitle, delta, deltaColor = 'dim', 
         )}
       </div>
       {subtitle && (
-        <p className="max-w-xs text-xs leading-relaxed text-terminal-text-dim">{subtitle}</p>
+        <div className="max-w-xs text-xs leading-relaxed text-terminal-text-dim">{subtitle}</div>
       )}
     </div>
   )

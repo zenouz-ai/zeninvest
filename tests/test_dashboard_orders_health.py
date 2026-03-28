@@ -70,10 +70,13 @@ def test_orders_health_excludes_resolved_old_failures():
             "stale_pending_count": 2,
             "reconciled_pending_count": 2,
             "live_fetch_error": None,
+            "history_fetch_error": None,
         }
         result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
 
     assert result.failed_open_count == 1
+    assert result.active_failed_count == 1
+    assert result.archived_failed_count == 0
     assert len(result.failed_recent) == 1
     assert result.failed_recent[0].ticker == "MU_US_EQ"
     assert result.pending_local_count == 3
@@ -115,10 +118,12 @@ def test_orders_health_fail_open_when_live_fetch_fails():
             "stale_pending_count": 0,
             "reconciled_pending_count": 0,
             "live_fetch_error": "rate limited",
+            "history_fetch_error": None,
         }
         result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
 
     assert result.failed_open_count == 1
+    assert result.active_failed_count == 1
     assert result.live_fetch_error == "rate limited"
     assert result.pending_local_count == 5
 
@@ -165,11 +170,67 @@ def test_orders_health_dry_run_does_not_resolve_failed():
             "stale_pending_count": 0,
             "reconciled_pending_count": 0,
             "live_fetch_error": None,
+            "history_fetch_error": None,
         }
         result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
 
     assert result.failed_open_count == 1
+    assert result.active_failed_count == 1
     assert result.failed_recent[0].ticker == "X_US_EQ"
+
+
+def test_orders_health_archives_old_unresolved_failures():
+    """Failed orders older than the alert window should remain auditable but leave the active alert count."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    seed = Session()
+    now = datetime.now(timezone.utc)
+    seed.add_all([
+        Order(
+            ticker="OLD_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-1.0,
+            status="failed",
+            error_message="stale broker error",
+            timestamp=now - timedelta(days=9),
+        ),
+        Order(
+            ticker="NEW_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-1.0,
+            status="failed",
+            error_message="fresh broker error",
+            timestamp=now - timedelta(days=2),
+        ),
+    ])
+    seed.commit()
+    seed.close()
+
+    with patch("dashboard.backend.app.routers.orders.get_session", side_effect=lambda: Session()), patch(
+        "dashboard.backend.app.routers.orders.settings"
+    ) as mock_settings, patch(
+        "dashboard.backend.app.routers.orders.OrderManager"
+    ) as mock_om_cls:
+        mock_settings.dashboard_enabled = True
+        mock_om_cls.return_value.reconcile_pending_stop_orders_with_t212.return_value = {
+            "pending_local_count": 0,
+            "pending_live_count": 0,
+            "stale_pending_count": 0,
+            "reconciled_pending_count": 0,
+            "live_fetch_error": None,
+            "history_fetch_error": None,
+        }
+        result = asyncio.run(get_orders_health(unresolved_window_days=7, reconcile_pending=True))
+
+    assert result.failed_open_count == 1
+    assert result.active_failed_count == 1
+    assert result.archived_failed_count == 1
+    assert result.failed_recent[0].ticker == "NEW_US_EQ"
+    assert result.archived_failed_recent[0].ticker == "OLD_US_EQ"
 
 
 def test_orders_list_serializes_warning_note():
