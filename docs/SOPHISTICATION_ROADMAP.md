@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **27** · Pipeline **20**
+**At a glance:** Delivered **27** · Pipeline **22**
 
 ### Priority rules
 
@@ -44,8 +44,9 @@ This document tracks every planned and delivered enhancement to the investment a
 | **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
 | **Execution Quality & Fill Recovery** | `US-7.3` then `US-7.2` | **Next after current week** | Required before any move from practice posture toward live-account readiness |
 | **Entry Quality Guards** | `US-4.2` + `US-3.3` | **Next after current week** | Small, material improvements that reduce bad entries faster than model experimentation |
+| **Learning Loop & Attribution** | `US-2.5` + `US-2.6` | **Soon after the current execution and entry-quality bundle** | Turns existing macro/micro/git history into reusable guidance and measured strategy-change evidence instead of ad hoc interpretation |
 | **Calibration & Adaptation** | `US-2.1`, `US-2.2`, `US-2.3` | **Data-gated** | Useful only once trade-outcome volume is high enough to justify the math |
-| **Research / Advanced optional work** | `US-2.4`, `US-3.2`, `US-4.3`, `US-5.2`, `US-6.1`, `US-6.2`, `US-6.3` | **Later / optional** | Valid ideas, but not materially more urgent than current posture, workflow, and launch work |
+| **Research / Advanced optional work** | `US-2.4`, `US-3.2`, `US-4.3`, `US-5.2`, `US-6.1`, `US-6.2`, `US-6.3` | **Later / optional** | Valid ideas, but not materially more urgent than current posture, workflow, launch, and learning-loop work |
 
 ---
 
@@ -74,6 +75,8 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that are not working once the trade sample is large enough | **Data-gated** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Useful spend governance once trade-outcome volume supports the analysis | **Data-gated** |
 | **US-2.4** | Nemotron Integration Investigation | Investigate NVIDIA Nemotron 3 Super as candidate risk scorer using shadow-mode evaluation, provider/cost comparison, and promotion gates | Potential cost/latency gains, but not on the critical path while posture and workflow work remain open | **Later / optional** |
+| **US-2.5** | Market Guidance Layer | Point-in-time guidance snapshots from macro, micro, and outcome data that tilt screening and enrich committee context, with explicit per-cycle influence audit. See `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`. | Converts accumulated run data into reusable forward guidance without adding hidden execution authority | **Planned / soon** |
+| **US-2.6** | Strategy Episode Attribution | Git-backed, human-reviewed strategy-change episodes mapped onto cycle/version fingerprints so repo changes can be evaluated against later outcomes. See `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`. | Measures whether prompt/config/logic changes actually improved the system instead of relying on memory | **Planned / soon** |
 | **US-3.1** | Risk-Parity Position Sizing | Size positions inversely to trailing volatility; equal risk contribution | Reduces volatility without reducing returns; strong academic evidence | **Delivered** |
 | **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Useful later, but not more urgent than current posture, execution, and entry-quality work | **Later / optional** |
 | **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; one of the next small, useful entry-quality upgrades | **Next after current week** |
@@ -121,7 +124,7 @@ The POC is a fully functional autonomous trading agent running on Trading 212 Pr
 **What the POC still lacks:**
 - Calibration of strategy weights and conviction using enough live + backtest evidence
 - Production access hardening and execution-quality follow-through for the live-control path
-- Learning/adaptation beyond the currently delivered deterministic sizing and signal stack
+- Learning/adaptation beyond the currently delivered deterministic sizing and signal stack, including point-in-time market guidance and repo-linked strategy attribution
 
 ---
 
@@ -157,6 +160,8 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 | 1.7 | Dashboard & Visualisation (Phase 1) | High | Medium | L | Existing DB + events_log | **P1** |
 | 1.8 | Dashboard VPS Deployment | High | Easy | S | US-1.7 complete | **P1** |
 | 2.3 | Moderator effectiveness | Medium | Easy | S | ~100 trades | **P2** |
+| 2.5 | Market guidance layer | High | Medium | M-L | Existing macro/micro tables + cycle history | **P2** |
+| 2.6 | Strategy episode attribution | High | Medium | M | Git history + cycle/version metadata + outcomes | **P2** |
 | 3.3 | Correlation-aware screening | Medium | Easy | S | Historical prices | **P2** |
 | 4.1 | Volume-weighted signals | Medium | Easy | S | Already fetched | **P2** |
 | 4.2 | Earnings calendar | Medium | Easy | M | yfinance (free) | **P2** |
@@ -237,6 +242,46 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 - [x] `trade_outcomes` table with Alembic migration
 
 **Integration:** Updated on each SELL/REDUCE and after cycle snapshot.
+
+---
+
+### P2 - Medium (Learning loop and calibration)
+
+**US-2.5: Market Guidance Layer**
+**Value:** Turns accumulated macro, micro, and outcome data into reusable forward guidance for future cycles  
+**Effort:** Medium-Large (5-8 days)  
+**Data Sources:** `macro_state`, `macro_signal_logs`, `macro_headlines`, `research_logs`, `strategy_decisions`, `opportunity_score_snapshots`, `trade_outcomes`, `portfolio_snapshots`, `instruments`  
+**Stage:** Planned / soon after the current execution and entry-quality bundle  
+
+**Detailed plan:** `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`.
+
+**Acceptance Criteria:**
+- [ ] Point-in-time `guidance_snapshots` persisted daily or per-cycle with regime, confidence, freshness, rationale, and supporting evidence
+- [ ] Per-sector `guidance_sector_scores` persisted with `favored` / `neutral` / `avoid` labels and tilt values
+- [ ] Market guidance can operate in `shadow` or `active` mode, with v1 limited to screening tilt plus committee context only
+- [ ] Each cycle records which guidance snapshot was active, what screening bias was applied, and how candidate selection changed
+- [ ] Dashboard surfaces guidance history, sector rationale, and cycle influence audit so future analysis can reuse the evidence trail
+
+**Integration:** Extends screening and prompt context, but does not add new execution vetoes in v1. The critical requirement is that guidance influence is persisted per cycle so later analysis can answer what changed, when, and with what effect.
+
+---
+
+**US-2.6: Strategy Episode Attribution**
+**Value:** Measures whether repo, prompt, and config changes improved behaviour instead of relying on memory or commit-message guesswork  
+**Effort:** Medium (4-6 days)  
+**Data Sources:** Git history on `main`, cycle IDs, `trade_outcomes`, `performance_metrics`, `strategy_decisions`, `orders`, config and prompt fingerprints  
+**Stage:** Planned / soon after the current execution and entry-quality bundle  
+
+**Detailed plan:** `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`.
+
+**Acceptance Criteria:**
+- [ ] Reviewed `strategy_change_episodes` persist title, summary, type, commit range, effective timestamp, confidence, and review status
+- [ ] `cycle_context_snapshots` persist repo SHA, config hash, prompt hash, strategy/risk/execution fingerprints, and active strategy episode IDs
+- [ ] First pass performs a best-effort backfill across recent `main` commits to reconstruct the last month of strategy-affecting changes
+- [ ] Dashboard shows episode history and pre/post impact windows with low-sample and overlap warnings
+- [ ] Attribution is explicitly observational and requires human confirmation before an episode becomes canonical
+
+**Integration:** Adds the repo-linked audit layer that lets future improvements be judged against real outcomes. It should be built alongside the Market Guidance Layer so guidance influence and strategy-change attribution share the same cycle-level metadata.
 
 ---
 

@@ -2,7 +2,7 @@
 tags: [sprint, planning, week-1, delivery, zeninvest]
 status: active
 created: 2026-03-21
-last_updated: 2026-03-27
+last_updated: 2026-03-28
 ---
 
 # Sprint Plan — Week 1 (ZenInvest)
@@ -65,12 +65,19 @@ last_updated: 2026-03-27
 - `US-8.1` stays in the current week, but after the production posture and operator-workflow work above.
 - `US-7.7` is already delivered and now acts as a practical prerequisite for a clean community/operator posture.
 
+### Learning Loop & Attribution
+
+- `US-2.5` and `US-2.6` are now defined as the next learning-loop track after the current execution-quality and entry-quality bundle.
+- `US-2.5` must persist which guidance snapshot influenced each cycle so future analysis can reuse the evidence trail instead of inferring it later.
+- `US-2.6` must map repo/config/prompt changes onto cycle-level fingerprints so strategy shifts can be reviewed against later outcomes.
+
 ---
 
 ## Next After 8.1
 
 - `US-7.3` then `US-7.2` as one execution-quality and fill-recovery track.
 - `US-4.2` + `US-3.3` as the next small, high-value entry-quality bundle.
+- `US-2.5` + `US-2.6` as the next learning-loop and attribution bundle once the execution-quality and entry-quality work above is complete.
 - `US-2.1` + `US-2.2` + `US-2.3` only after trade-outcome volume is high enough to justify calibration work.
 
 ---
