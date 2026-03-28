@@ -50,15 +50,15 @@ export function ChatInput({ onSubmit, disabled = false, placeholder }: ChatInput
           </button>
         ))}
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-end">
         <textarea
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder={placeholder || 'Type a message... (Enter to send, Shift+Enter for newline)'}
-          rows={2}
-          className="flex-1 resize-none rounded-lg border border-terminal-border bg-terminal-bg px-3 py-2 text-sm text-terminal-text placeholder:text-terminal-text-dim focus:border-cyan focus:outline-none disabled:opacity-50"
+          rows={4}
+          className="min-h-[6.5rem] flex-1 resize-y rounded-lg border border-terminal-border bg-terminal-bg px-3 py-3 text-sm leading-6 text-terminal-text placeholder:text-terminal-text-dim focus:border-cyan focus:outline-none disabled:opacity-50"
         />
         <button
           type="submit"
