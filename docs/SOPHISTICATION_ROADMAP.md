@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **27** · Pipeline **22**
+**At a glance:** Delivered **29** · Pipeline **21**
 
 ### Priority rules
 
@@ -25,21 +25,21 @@ This document tracks every planned and delivered enhancement to the investment a
 3. **Data-gated learning stories only after enough `trade_outcomes` exist**  
 4. **Lower-leverage investigations stay later unless tied to an immediate business need**  
 
-### Current delivery order (as of March 27, 2026)
+### Current delivery order (as of March 28, 2026)
 
 | Order | Story | Why it matters now | Success criteria |
 |------|-------|--------------------|------------------|
-| 1 | **US-1.9** Conversational Trading Workflow MVP | Turns the delivered skeleton into a real operator workflow | Real operator workflow MVP, not just CRUD skeleton |
-| 2 | **US-8.1** Open-Source Launch Preparation | Repo must be public-ready once posture and workflow work land | Repo can be made public without legal, CI, or contributor-experience gaps |
-| 3 | **US-7.3** Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow work | Slippage becomes measurable before any live-account posture change |
-| 4 | **US-7.2** Partial Fill Resubmission | Immediate follow-on once execution telemetry exists | Unfilled remainder can be recovered safely when the thesis still holds |
+| 1 | **US-8.1** Open-Source Launch Preparation | Repo is now the highest-leverage unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
+| 2 | **US-7.3** Execution Quality & Slippage Monitoring | First execution-quality gate after posture and workflow closure | Slippage becomes measurable before any live-account posture change |
+| 3 | **US-7.2** Partial Fill Resubmission | Immediate follow-on once execution telemetry exists | Unfilled remainder can be recovered safely when the thesis still holds |
+| 4 | **US-4.2** Earnings Calendar | Small, high-value entry-quality guard once execution telemetry work is queued | Avoid buying into imminent earnings risk and expose post-earnings context |
 
 ### Near-term umbrella tracks
 
 | Track | Included stories | Status | Why now |
 |-------|------------------|--------|---------|
 | **Production Access & Safety** | delivered `US-7.7`, delivered `US-7.5`, next `US-7.3`, then `US-7.2` | **Execution-quality follow-on active** | Canonical ingress and the quick hardening slice are shipped; the next leverage point is execution reliability |
-| **Conversational Operator Workflow** | delivered foundation `US-1.6`, active MVP `US-1.9` | **Active now** | Existing Slack + chat plumbing is already in place; the next step adds real operator value |
+| **Conversational Operator Workflow** | delivered foundation `US-1.6`, delivered MVP `US-1.9` | **Delivered** | Shared Slack/dashboard operator workflow, confirmation gating, and audited session flow are now live |
 | **Zen Evolution Engine** | delivered planner foundation `US-1.10`, later gated phases `US-1.11`–`US-1.14` | **Later / gated rollout** | Valuable north-star capability, but authority should expand only after posture, workflow, and CI foundations are stable |
 | **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
 | **Execution Quality & Fill Recovery** | `US-7.3` then `US-7.2` | **Next after current week** | Required before any move from practice posture toward live-account readiness |
@@ -65,7 +65,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-1.7.2** | Dashboard UX Phase 2 | Force Sell from Portfolio, data freshness indicators, keyboard-accessible tables, focus trap on modals, colour accessibility (▲/▼ arrows + aria-labels), chart colour alignment. See `docs/UX_AUDIT.md`. | 19/28 audit findings resolved; full keyboard + screen reader accessibility | **Delivered** |
 | **US-1.7.3** | Dashboard Visual Design System | Formalised ZENOUZ.ai visual language from `dashboard-style-guide.md`: Syne heading font, full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`), violet soft-fill accents, glass-dark card treatment (radial-gradient + panel shadow + 1.5rem radius), brand gradient updated to violet→cyan→emerald, 72px violet atmospheric grid, blurred sticky nav bar, pill active state. Tailwind: `font-heading`, `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`. Four new shared primitives: `Panel` (glass-dark surface), `MetricCard` (Syne KPI), `StatusPill` (brand pill/badge), `SectionHeader` (Syne heading + mono eyebrow). | Unified, polished visual identity across the entire dashboard; primitives unblock consistent page migration | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Original Dockerized VPS deployment path for the dashboard; the raw VPS/IP route is now superseded in production by US-7.7 canonical HTTPS ingress. See `docs/DASHBOARD_DEPLOYMENT.md`. | Operational visibility on live VPS | **Delivered** |
-| **US-1.9** | Conversational Trading Workflow | Core MVP implementation has landed in repo; final validation and deployment verification remain before closure | Highest-leverage next operator workflow improvement after US-1.6 | **In validation** |
+| **US-1.9** | Conversational Trading Workflow | Shared Slack/dashboard sessions, explicit confirmation gate, audited action/research/workflow ledgers, and agentic beta transparency are implemented, validated, and signed off on VPS | Highest-leverage operator workflow improvement after US-1.6 | **Delivered** |
 | **US-1.10** | Evolution Planner | Authenticated dashboard-first evolution planner with natural-language intake, intent normalization, repo context retrieval, risk classification, validation matrix, clarifying-question loop, and full audit trail | Starts the policy-constrained software evolution track without granting code or deploy authority | **Delivered (planner-only)** |
 | **US-1.11** | Branch-Based Evolution Runner | Isolated branch workspace, scoped code edits, semantic change summary, validation artifact pack, and review-ready PR generation | True v1 autonomy target after CI and branch governance foundations exist | **Later / gated** |
 | **US-1.12** | Policy-Gated Promotion | Manual build/deploy approvals, environment protections, deployment records, and rollback metadata for approved evolution artifacts | Introduces controlled promotion without relaxing financial guardrails | **Later / gated** |
@@ -469,7 +469,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Value:** Multi-turn collaborative trading across Slack and dashboard with persistent context and explicit action confirmation
 **Effort:** Large (8–12 days, phased delivery)
 **Data Sources:** Existing pipeline + new chat session/turn/action tables + optional agentic research tools
-**Stage:** Implementation landed in repo; final validation pending
+**Stage:** Delivered on 2026-03-28 after local automated validation, schema verification, and VPS signoff
 
 **Detailed plan:** `docs/CONVERSATIONAL_TRADING_WORKFLOW.md`.
 
@@ -480,14 +480,17 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - [x] Missing-session `404`s, `channel_type` / `role` validation, and FK + unique turn-order protections
 - [x] Focused US-1.6/US-1.9 regression suite covers the parser, strategy/direct/cancel runners, listener/gateway, commands API, and chat workflow plumbing
 
-**Repo implementation now present (pending final validation):**
+**Delivered implementation:**
 - [x] Session management supports start/resume/end with persistent multi-turn context and action/research ledgers
 - [x] Shared backend supports Slack thread and dashboard chat continuity
 - [x] Every trade action requires explicit confirmation; no execution on ambiguous intent
 - [x] Existing deterministic safety/risk flow is preserved and surfaced back into the conversation
 - [x] Full audit trail exists for turns, recommendations, confirmations, and executions
 - [x] Dashboard chat APIs and SSE events support real-time conversational updates
-- [ ] Final end-to-end validation, migration rollout, and deployment verification
+- [x] Final VPS schema verification, end-to-end walkthrough, and deployment signoff (`docs/US19_VALIDATION_SIGNOFF.md`)
+- [x] Focused local US-1.9 signoff gate passed: `236 passed`
+- [x] Full local suite passed after closeout changes: `1008 passed`
+- [x] Frontend production build passed and schema verifier matched Alembic head `v8w9x0y1z2a3`
 
 **Deferred beyond MVP:**
 - [ ] Agent provides structured research summaries and follow-up refinements by turn
@@ -1043,19 +1046,20 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 ## Current delivery focus
 
-**Canonical order as of 2026-03-27:**
-1. **US-1.9** — Conversational Trading Workflow MVP
-2. **US-8.1** — Open-Source Launch Preparation
-3. **US-7.3** — Execution Quality & Slippage Monitoring
-4. **US-7.2** — Partial Fill Resubmission
+**Canonical order as of 2026-03-28:**
+1. **US-8.1** — Open-Source Launch Preparation
+2. **US-7.3** — Execution Quality & Slippage Monitoring
+3. **US-7.2** — Partial Fill Resubmission
+4. **US-4.2** — Earnings Calendar
 
 **Success criteria:**
-- **US-1.9** — real operator workflow MVP, not just CRUD skeleton
 - **US-8.1** — repo can be made public without legal, CI, or contributor-experience gaps
 - **US-7.3** — decision-time price and slippage metrics exist before live trading posture changes
 - **US-7.2** — unfilled remainder can be resubmitted safely when the thesis still holds
+- **US-4.2** — earnings imminence and post-earnings context prevent low-quality entries
 
 **Recently delivered:**
+- **US-1.9** — shared Slack/dashboard conversational workflow, confirmation gate, audit trail, and VPS signoff complete
 - **US-7.7** — no public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy
 - **US-7.5** — quick hardening slice shipped with tests and no broader backlog creep
 
@@ -1096,7 +1100,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 **Detailed plan:** `docs/OPEN_SOURCE_LAUNCH.md`.
 
-**Why now:** This story becomes valuable once the current production posture and operator workflow work are in place. It is still a current-week item, but it comes after `US-7.7`, `US-7.5`, and `US-1.9`.
+**Why now:** This story is now the active lead item because the current production posture and operator workflow work are already in place, including delivered `US-7.7`, `US-7.5`, and `US-1.9`.
 
 **Phase A — Repo hygiene:** Remove nested `Investment-agent/` subdirectory; remove `old-origin` remote (KayvanNejabati); confirm `origin → https://github.com/zenouz-ai/zeninvest.git`. All tests must still pass.
 

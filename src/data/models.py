@@ -661,6 +661,23 @@ class ChatWorkflowStep(Base):
     )
 
 
+class IntentDetectionCache(Base):
+    """Persistent cache of successful LLM intent detections."""
+
+    __tablename__ = "intent_detection_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cache_key = Column(String(64), nullable=False, unique=True, index=True)
+    normalized_message = Column(Text, nullable=False)
+    example_message = Column(Text, nullable=True)
+    source = Column(String(20), nullable=False, default="claude")
+    intent_kind = Column(String(20), nullable=False, index=True)
+    intent_json = Column(Text, nullable=False)
+    hit_count = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    last_used_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class EvolutionRequest(Base):
     """Operator-requested software evolution workflow (US-1.10)."""
 

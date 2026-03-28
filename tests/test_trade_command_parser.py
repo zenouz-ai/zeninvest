@@ -8,6 +8,7 @@ from src.agents.notifications.trade_command_parser import (
     _try_regex,
     parse_trade_command,
 )
+from src.data.models import IntentDetectionCache
 
 
 class TestRegexParser:
@@ -215,6 +216,35 @@ class TestRegexParser:
         assert result.cancel_order_class == "stop_sell"
         assert result.subject_phrases == ["Nvidia", "Microsoft", "Apple"]
 
+    def test_cancel_without_order_class(self):
+        result = _try_regex("cancel apple")
+        assert result is not None
+        assert result.action == "CANCEL"
+        assert result.cancel_order_class == "any"
+        assert result.subject_phrases == ["apple"]
+
+    def test_greeting_prefix_buy(self):
+        result = _try_regex("hello buy 3 shares of apple")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.quantity_shares == 3.0
+        assert result.subject_phrases == ["apple"]
+
+    def test_greeting_prefix_cancel_subject_first(self):
+        result = _try_regex("hello cancel Microsoft order")
+        assert result is not None
+        assert result.action == "CANCEL"
+        assert result.cancel_order_class == "any"
+        assert result.subject_phrases == ["Microsoft"]
+
+    def test_markdown_prefix_strategy_trade(self):
+        result = _try_regex("* buy £2000 MSFT and trigger strategy")
+        assert result is not None
+        assert result.action == "BUY"
+        assert result.amount_gbp == 2000.0
+        assert result.execution_mode == "strategy"
+        assert result.trigger_strategy is True
+
 
 class TestStripForcePrefix:
     """Test force/override/! prefix detection."""
@@ -267,6 +297,75 @@ class TestParseTradeCommand:
 
     def test_non_command_returns_none(self):
         assert parse_trade_command("Good morning", use_llm_fallback=False) is None
+
+    def test_llm_fallback_result_is_cached(
+        self,
+        orchestrator_db_session,
+        orchestrator_session_factory,
+        monkeypatch,
+    ):
+        calls: list[str] = []
+
+        def fake_try_claude(message: str) -> TradeCommandIntent:
+            calls.append(message)
+            return TradeCommandIntent(
+                action="BUY",
+                ticker="APPLE",
+                raw_message=message,
+                command_kind="trade",
+                execution_mode="direct",
+                subject_phrases=["apple"],
+            )
+
+        monkeypatch.setattr(
+            "src.agents.notifications.trade_command_parser._try_claude",
+            fake_try_claude,
+        )
+        monkeypatch.setattr(
+            "src.agents.notifications.trade_command_parser.get_session",
+            orchestrator_session_factory,
+        )
+
+        first = parse_trade_command("please purchase apple", use_llm_fallback=True)
+        second = parse_trade_command("please purchase apple", use_llm_fallback=True)
+
+        assert first is not None
+        assert second is not None
+        assert len(calls) == 1
+
+        row = orchestrator_db_session.query(IntentDetectionCache).one()
+        assert row.normalized_message == "purchase apple"
+        assert row.intent_kind == "trade"
+        assert row.hit_count == 2
+
+    def test_cached_llm_result_respects_no_fallback_flag(
+        self,
+        orchestrator_db_session,
+        orchestrator_session_factory,
+        monkeypatch,
+    ):
+        monkeypatch.setattr(
+            "src.agents.notifications.trade_command_parser._try_claude",
+            lambda message: TradeCommandIntent(
+                action="CANCEL",
+                ticker="MICROSOFT",
+                raw_message=message,
+                command_kind="cancel",
+                execution_mode="cancel_only",
+                cancel_order_class="any",
+                subject_phrases=["Microsoft"],
+            ),
+        )
+        monkeypatch.setattr(
+            "src.agents.notifications.trade_command_parser.get_session",
+            orchestrator_session_factory,
+        )
+
+        assert parse_trade_command("please remove microsoft order", use_llm_fallback=True) is not None
+
+        cached = orchestrator_db_session.query(IntentDetectionCache).one()
+        assert cached.intent_kind == "cancel"
+        assert parse_trade_command("please remove microsoft order", use_llm_fallback=False) is None
 
     def test_to_json(self):
         intent = TradeCommandIntent(

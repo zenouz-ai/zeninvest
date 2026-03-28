@@ -98,12 +98,15 @@ describe('timeline section grouping', () => {
     const hardening = sections.find((section) => section.topic === 'Hardening')
     const foundation = sections.find((section) => section.topic === 'Foundation')
 
-    expect(foundation?.columns.Next.map((milestone) => milestone.id)).toContain('US-1.9')
+    expect(foundation?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-1.9')
+    expect(foundation?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-1.7.1')
+    expect(foundation?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-1.7.2')
     expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.4')
     expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.2')
     expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.1')
     expect(hardening?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-7.5')
-    expect(hardening?.columns.Soon.map((milestone) => milestone.id)).toContain('US-7.3')
+    expect(hardening?.columns.Next.map((milestone) => milestone.id)).toContain('US-7.3')
+    expect(hardening?.columns.Soon.map((milestone) => milestone.id)).toContain('US-7.2')
   })
 
   it('preserves roadmap counts after the redesign', () => {

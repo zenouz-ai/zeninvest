@@ -164,6 +164,22 @@ def test_compare_with_google_alias_returns_both_research_logs(orchestrator):
     assert set(queries) == {"TSLA_US_EQ", "GOOGL_US_EQ"}
 
 
+def test_review_with_two_subjects_resolves_each_name_independently(orchestrator):
+    session = orchestrator.start_session(channel_type="dashboard", title="Review two names")
+
+    detail = orchestrator.process_turn(
+        session_id=session["id"],
+        message_text="review AMD and tesla",
+        channel_type="dashboard",
+    )
+
+    assistant_text = detail["turns"][-1]["message_text"]
+
+    assert "couldn't resolve these names" not in assistant_text.lower()
+    assert "AMD_US_EQ" in assistant_text
+    assert "TSLA_US_EQ" in assistant_text
+
+
 def test_compare_partial_unresolved_reports_missing_name_instead_of_dropping_it(orchestrator):
     session = orchestrator.start_session(channel_type="dashboard", title="Compare")
 

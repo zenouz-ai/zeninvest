@@ -386,7 +386,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 **Roadmap tab:**
 - Project evolution from day 0 (2026-02-22) to now; days-in-development counter
-- Summary cards: 25 delivered · 22 pipeline · ~53% complete
+- Summary cards: 29 delivered · 21 pipeline · ~58% complete
 - Topic filter: All, Foundation, Calibration, Portfolio & Risk, Signals, Validation, Hardening, ML / Advanced, Open-Source / Community
 - Larger milestone cards grouped by topic with clearer badges for status, priority, effort, and delivery/planning window
 - Architecture components surfaced as chips for each story

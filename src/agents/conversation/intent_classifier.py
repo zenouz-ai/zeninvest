@@ -292,6 +292,20 @@ class IntentClassifier:
                 payload={"compare_request": compare_request},
             )
 
+        if re.search(r"\b(buy|sell|review|cancel)\b", text, re.IGNORECASE) and not COMPARE_HINT_RE.search(text):
+            trade_intent = parse_trade_command(text, use_llm_fallback=True)
+            if trade_intent is not None:
+                intent_type = {
+                    "cancel": "cancel",
+                    "review": "review",
+                }.get(trade_intent.command_kind, "trade_command")
+                return ClassifiedIntent(
+                    intent_type=intent_type,
+                    confidence=0.78,
+                    method="llm",
+                    payload={"trade_intent": trade_intent},
+                )
+
         return None
 
     # ------------------------------------------------------------------

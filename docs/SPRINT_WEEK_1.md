@@ -8,7 +8,7 @@ last_updated: 2026-03-28
 # Sprint Plan — Week 1 (ZenInvest)
 
 > This sprint doc is a synchronized view of `docs/SOPHISTICATION_ROADMAP.md`, which is now the planning source of truth.
-> Current delivery order below reflects the agreed sequence as of 2026-03-27.
+> Current delivery order below reflects the agreed sequence as of 2026-03-28.
 
 ---
 
@@ -22,7 +22,7 @@ last_updated: 2026-03-28
 | US-1.7.3 | Dashboard Visual Design System | Delivered | Shared design tokens, primitives, and navigation refresh |
 | US-4.5 | Proactive Macro News Intelligence | Delivered | Scheduled macro scan, persisted state, and action-plan context |
 | US-1.6 | Slack NL Trade Commands | Delivered | Slack review/buy/sell workflow with confirmations and audit trail |
-| US-1.9 | Conversational Trading Workflow MVP implementation | In validation | Shared Slack/dashboard conversational flow is implemented in repo; final test/deploy checklist still open |
+| US-1.9 | Conversational Trading Workflow MVP implementation | Delivered | Shared Slack/dashboard conversational flow, explicit confirm/reject APIs, audited session flow, and agentic beta transparency are shipped; local validation and VPS signoff completed |
 | US-7.7 | Dashboard HTTPS Domain & Canonical Access | Delivered | Canonical `https://zeninvest.zenouz.ai`, internal-only dashboard app, public raw `:8000` removed |
 | US-7.5 | Quick Hardening Slice | Delivered | Off-hours order annotations, HALTED auto-recovery, peak inflation detection, DB constraints, dashboard visibility |
 
@@ -32,9 +32,10 @@ last_updated: 2026-03-28
 
 | Order | ID | Story | Why now | Success criteria |
 |-------|----|-------|---------|------------------|
-| 1 | US-1.9 | Conversational Trading Workflow MVP | Builds directly on the delivered Slack/chat foundation and adds real operator value | Real operator workflow MVP, not just CRUD skeleton |
-| 2 | US-8.1 | Open-Source Launch Preparation | Repo must be public-ready once posture and workflow priorities are in place | Repo can be made public without legal, CI, or contributor-experience gaps |
-| 3 | US-7.3 | Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow work | Slippage becomes measurable before any live-account posture change |
+| 1 | US-8.1 | Open-Source Launch Preparation | Repo is now the highest-leverage next unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
+| 2 | US-7.3 | Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow closure | Slippage becomes measurable before any live-account posture change |
+| 3 | US-7.2 | Partial Fill Resubmission | Immediate follow-on once execution telemetry exists | Unfilled remainder can be recovered safely when the thesis still holds |
+| 4 | US-4.2 | Earnings Calendar | Small, high-value entry-quality guard once the current execution track is underway | Avoid buying into imminent earnings risk |
 
 ---
 
@@ -53,8 +54,8 @@ last_updated: 2026-03-28
 ### Conversational Operator Workflow
 
 - `US-1.6` is the delivered foundation.
-- `US-1.9` implementation has landed in repo this week, but it should not be treated as fully closed until the final validation and deployment checklist is complete.
-- This sprint’s `US-1.9` scope is:
+- `US-1.9` is now delivered after the local signoff gate, schema verification, and VPS walkthrough completed on 2026-03-28.
+- Delivered `US-1.9` scope:
   - multi-turn continuity
   - explicit confirmation before execution
   - preserved deterministic risk veto
@@ -62,7 +63,7 @@ last_updated: 2026-03-28
 
 ### Open-Source Launch Readiness
 
-- `US-8.1` stays in the current week, but after the production posture and operator-workflow work above.
+- `US-8.1` is now the lead current-week item after the production posture and operator-workflow work above.
 - `US-7.7` is already delivered and now acts as a practical prerequisite for a clean community/operator posture.
 
 ### Learning Loop & Attribution

@@ -7,10 +7,14 @@ Supports four Slack command modes:
 - cancel: cancel pending broker orders without strategy
 """
 
+import hashlib
 import json
 import re
+from datetime import datetime, timezone
 from dataclasses import asdict, dataclass, field
 
+from src.data.database import get_session
+from src.data.models import IntentDetectionCache
 from src.utils.logger import get_logger
 
 logger = get_logger("trade_command_parser")
@@ -28,6 +32,7 @@ _CANCEL_SUBJECT_FIRST_RE = re.compile(
     r"^\s*cancel\s+(?P<subjects>.+?)\s+(?P<order_class>stop\s+sell|sell|buy|orders?|order)\s*$",
     re.IGNORECASE,
 )
+_CANCEL_ANY_RE = re.compile(r"^\s*cancel\s+(?P<subjects>.+?)\s*$", re.IGNORECASE)
 _REVIEW_RE = re.compile(r"^\s*review\s+(?P<subject>.+?)\s*$", re.IGNORECASE)
 _TRADE_RE = re.compile(r"^\s*(?P<action>buy|sell)\s+(?P<body>.+?)\s*$", re.IGNORECASE)
 _LEADING_QTY_RE = re.compile(
@@ -40,6 +45,9 @@ _LEADING_AMT_RE = re.compile(
 )
 _TRAILING_QTY_RE = re.compile(r"^(?P<subject>.+?)\s+(?P<qty>\d+(?:\.\d+)?)$", re.IGNORECASE)
 _TRAILING_AMT_RE = re.compile(r"^(?P<subject>.+?)\s+[£$](?P<amt>\d+(?:\.\d+)?)$", re.IGNORECASE)
+_LEADING_FORMATTING_RE = re.compile(r"^(?:<@[^>]+>\s*|[\-\*\u2022]+\s*|\d+[.)]\s*)+", re.IGNORECASE)
+_LEADING_GREETING_RE = re.compile(r"^(?:hi|hello|hey|yo|ok|okay|please)\b[\s,!:;\-]+", re.IGNORECASE)
+_EMPHASIZED_COMMAND_RE = re.compile(r"^\*(buy|sell|review|cancel)\*\s+", re.IGNORECASE)
 
 
 @dataclass(slots=True)
@@ -78,6 +86,50 @@ def _normalize_subject(subject: str) -> str:
     return " ".join(subject.split()).strip()
 
 
+def _normalize_message(message: str) -> str:
+    """Remove harmless decoration that should not block command parsing."""
+    if not message:
+        return ""
+
+    text = (
+        str(message)
+        .replace("\u00a0", " ")
+        .replace("\u200b", "")
+        .replace("\u2018", "'")
+        .replace("\u2019", "'")
+        .replace("\u201c", '"')
+        .replace("\u201d", '"')
+    )
+    text = " ".join(text.split())
+
+    while text:
+        updated = _LEADING_FORMATTING_RE.sub("", text).strip()
+        updated = _EMPHASIZED_COMMAND_RE.sub(r"\1 ", updated).strip()
+        updated = _LEADING_GREETING_RE.sub("", updated).strip()
+        if updated == text:
+            break
+        text = updated
+
+    return text
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _cache_identity(message: str) -> str:
+    normalized_message = _normalize_message(message)
+    cleaned, _ = _strip_force_prefix(normalized_message)
+    return cleaned.strip().lower()
+
+
+def _cache_key(message: str) -> str | None:
+    canonical = _cache_identity(message)
+    if not canonical:
+        return None
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def _split_subjects(text: str) -> list[str]:
     """Split comma-separated ticker/company phrases, allowing a final 'and'."""
     cleaned = _normalize_subject(text)
@@ -102,6 +154,135 @@ def _split_subjects(text: str) -> list[str]:
         return parts
     parts.append(last)
     return parts
+
+
+def _intent_to_cache_payload(intent: TradeCommandIntent) -> dict[str, object]:
+    payload = asdict(intent)
+    payload.pop("raw_message", None)
+    payload.pop("force", None)
+    return payload
+
+
+def _intent_from_payload(payload: dict[str, object], *, raw_message: str, force: bool) -> TradeCommandIntent | None:
+    action = str(payload.get("action", "")).upper()
+    if action not in ("BUY", "SELL", "REVIEW", "CANCEL"):
+        return None
+
+    command_kind = str(payload.get("command_kind", "")).lower()
+    execution_mode = str(payload.get("execution_mode", "")).lower()
+    if command_kind not in ("trade", "review", "cancel"):
+        return None
+    if execution_mode not in ("direct", "strategy", "cancel_only"):
+        return None
+
+    subject_phrases = [
+        _normalize_subject(str(item))
+        for item in (payload.get("subject_phrases") or [])
+        if _normalize_subject(str(item))
+    ]
+    if not subject_phrases:
+        return None
+
+    cancel_order_class = payload.get("cancel_order_class")
+    if cancel_order_class is not None:
+        cancel_order_class = str(cancel_order_class).lower()
+        if cancel_order_class not in ("buy", "sell", "stop_sell", "any"):
+            return None
+
+    try:
+        quantity_shares = float(payload["quantity_shares"]) if payload.get("quantity_shares") is not None else None
+        amount_gbp = float(payload["amount_gbp"]) if payload.get("amount_gbp") is not None else None
+    except (TypeError, ValueError):
+        return None
+
+    return TradeCommandIntent(
+        action=action,
+        ticker=(subject_phrases[0].upper() if subject_phrases else ""),
+        quantity_shares=quantity_shares,
+        amount_gbp=amount_gbp,
+        raw_message=raw_message,
+        force=force,
+        command_kind=command_kind,
+        execution_mode=execution_mode,
+        trigger_strategy=bool(payload.get("trigger_strategy")),
+        cancel_order_class=cancel_order_class,
+        subject_phrases=subject_phrases,
+    )
+
+
+def _load_cached_intent(message: str) -> TradeCommandIntent | None:
+    key = _cache_key(message)
+    if key is None:
+        return None
+
+    normalized_message = _normalize_message(message)
+    _, is_force = _strip_force_prefix(normalized_message)
+    session = get_session()
+    try:
+        row = session.query(IntentDetectionCache).filter(IntentDetectionCache.cache_key == key).first()
+        if row is None:
+            return None
+        payload = json.loads(row.intent_json)
+        intent = _intent_from_payload(payload, raw_message=message, force=is_force)
+        if intent is None:
+            logger.warning("Intent cache payload invalid for key=%s", key)
+            return None
+        row.hit_count = int(row.hit_count or 0) + 1
+        row.last_used_at = _utcnow()
+        session.commit()
+        logger.info(
+            "Parsed trade command via cache: %s %s mode=%s kind=%s",
+            intent.action,
+            intent.ticker,
+            intent.execution_mode,
+            intent.command_kind,
+        )
+        return intent
+    except Exception as exc:
+        session.rollback()
+        logger.warning("Intent cache lookup failed: %s", exc)
+        return None
+    finally:
+        session.close()
+
+
+def _store_cached_intent(message: str, intent: TradeCommandIntent, *, source: str = "claude") -> None:
+    key = _cache_key(message)
+    canonical = _cache_identity(message)
+    if key is None or not canonical:
+        return
+
+    session = get_session()
+    try:
+        row = session.query(IntentDetectionCache).filter(IntentDetectionCache.cache_key == key).first()
+        payload_json = json.dumps(_intent_to_cache_payload(intent))
+        now = _utcnow()
+        if row is None:
+            row = IntentDetectionCache(
+                cache_key=key,
+                normalized_message=canonical,
+                example_message=message,
+                source=source,
+                intent_kind=intent.command_kind,
+                intent_json=payload_json,
+                hit_count=1,
+                created_at=now,
+                last_used_at=now,
+            )
+            session.add(row)
+        else:
+            row.normalized_message = canonical
+            row.example_message = message
+            row.source = source
+            row.intent_kind = intent.command_kind
+            row.intent_json = payload_json
+            row.last_used_at = now
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.warning("Intent cache write failed: %s", exc)
+    finally:
+        session.close()
 
 
 def _make_intent(
@@ -159,7 +340,8 @@ def _parse_trade_body(body: str) -> tuple[list[str], float | None, float | None]
 
 def _try_regex(message: str) -> TradeCommandIntent | None:
     """Attempt to parse via regex patterns (zero-cost path)."""
-    cleaned, is_force = _strip_force_prefix(message)
+    normalized_message = _normalize_message(message)
+    cleaned, is_force = _strip_force_prefix(normalized_message)
     stripped = cleaned.strip()
 
     review_and_trade = _REVIEW_AND_TRADE_RE.match(stripped)
@@ -210,6 +392,24 @@ def _try_regex(message: str) -> TradeCommandIntent | None:
             command_kind="cancel",
             execution_mode="cancel_only",
             cancel_order_class=order_class,
+        )
+
+    cancel_any_match = _CANCEL_ANY_RE.match(stripped)
+    if cancel_any_match:
+        raw_subjects = _split_subjects(cancel_any_match.group("subjects"))
+        if not raw_subjects:
+            return None
+        lower_subjects = {subject.lower() for subject in raw_subjects}
+        if lower_subjects <= {"buy", "sell", "stop sell", "stop_sell", "order", "orders"}:
+            return None
+        return _make_intent(
+            action="CANCEL",
+            raw_message=message,
+            force=is_force,
+            subject_phrases=raw_subjects,
+            command_kind="cancel",
+            execution_mode="cancel_only",
+            cancel_order_class="any",
         )
 
     trigger_strategy = False
@@ -303,43 +503,17 @@ def _try_claude(message: str) -> TradeCommandIntent | None:
             return None
 
         data = json.loads(json_match.group())
-        action = data.get("trade_action", "").upper()
-        if action not in ("BUY", "SELL", "REVIEW", "CANCEL"):
-            return None
-        command_kind = data.get("command_kind", "").lower()
-        execution_mode = data.get("execution_mode", "").lower()
-        subject_phrases = [
-            _normalize_subject(str(item))
-            for item in (data.get("subject_phrases") or [])
-            if _normalize_subject(str(item))
-        ]
-        if command_kind not in ("trade", "review", "cancel"):
-            return None
-        if execution_mode not in ("direct", "strategy", "cancel_only"):
-            return None
-        if not subject_phrases and action != "CANCEL":
-            return None
-        if action == "CANCEL" and not subject_phrases:
-            return None
-        cancel_order_class = data.get("cancel_order_class")
-        if cancel_order_class is not None:
-            cancel_order_class = str(cancel_order_class).lower()
-            if cancel_order_class not in ("buy", "sell", "stop_sell", "any"):
-                return None
-
-        return TradeCommandIntent(
-            action=action,
-            ticker=(subject_phrases[0].upper() if subject_phrases else ""),
-            quantity_shares=data.get("quantity_shares"),
-            amount_gbp=data.get("amount_gbp"),
-            raw_message=message,
-            force=is_force,
-            command_kind=command_kind,
-            execution_mode=execution_mode,
-            trigger_strategy=bool(data.get("trigger_strategy")),
-            cancel_order_class=cancel_order_class,
-            subject_phrases=subject_phrases,
-        )
+        payload = {
+            "action": data.get("trade_action"),
+            "command_kind": data.get("command_kind"),
+            "execution_mode": data.get("execution_mode"),
+            "trigger_strategy": data.get("trigger_strategy"),
+            "cancel_order_class": data.get("cancel_order_class"),
+            "subject_phrases": data.get("subject_phrases"),
+            "quantity_shares": data.get("quantity_shares"),
+            "amount_gbp": data.get("amount_gbp"),
+        }
+        return _intent_from_payload(payload, raw_message=message, force=is_force)
     except Exception as e:
         logger.warning(f"Claude NL parse failed: {e}")
         return None
@@ -374,10 +548,16 @@ def parse_trade_command(message: str, use_llm_fallback: bool = True) -> TradeCom
         )
         return result
 
+    if use_llm_fallback:
+        result = _load_cached_intent(message)
+        if result:
+            return result
+
     # Fall back to Claude for ambiguous NL
     if use_llm_fallback:
         result = _try_claude(message)
         if result:
+            _store_cached_intent(message, result, source="claude")
             force_tag = " [FORCE]" if result.force else ""
             logger.info(
                 "Parsed trade command via Claude: %s %s mode=%s kind=%s%s",

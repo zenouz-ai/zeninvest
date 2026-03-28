@@ -563,6 +563,12 @@ class ConversationOrchestrator:
             trade_intent = classified.payload.get("trade_intent")
             if trade_intent is not None:
                 resolved_subjects = self._resolve_subjects(trade_intent.subject_phrases, context)
+                if trade_intent.command_kind == "review" and len(resolved_subjects) > 1:
+                    return {
+                        "kind": "research",
+                        "subjects": resolved_subjects,
+                        "mode": "compare",
+                    }
                 trade_intent.subject_phrases = resolved_subjects
                 trade_intent.ticker = (resolved_subjects[0].upper() if resolved_subjects else trade_intent.ticker)
                 return {"kind": "trade_command", "intent": trade_intent}
@@ -2482,8 +2488,27 @@ class ConversationOrchestrator:
                 continue
             value = self._resolve_subject(subject, context)
             if value and value not in resolved:
+                if value == _clean_text(subject):
+                    compound_parts = self._split_compound_subject(subject)
+                    if len(compound_parts) > 1:
+                        for part in compound_parts:
+                            part_value = self._resolve_subject(part, context)
+                            if part_value and part_value not in resolved:
+                                resolved.append(part_value)
+                        continue
                 resolved.append(value)
         return resolved
+
+    def _split_compound_subject(self, subject: str) -> list[str]:
+        cleaned = _clean_text(subject)
+        if not cleaned:
+            return []
+        parts = [
+            _clean_text(chunk)
+            for chunk in re.split(r"\s*,\s*|\s+\band\b\s+", cleaned, flags=re.IGNORECASE)
+            if _clean_text(chunk)
+        ]
+        return parts or [cleaned]
 
     def _resolve_subject(self, subject: str, context: dict[str, Any]) -> str:
         cleaned = _clean_text(subject)

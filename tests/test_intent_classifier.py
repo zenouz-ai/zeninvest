@@ -138,6 +138,21 @@ class TestTradeCommands:
         assert intent.trigger_strategy is True
         assert intent.execution_mode == "strategy"
 
+    def test_greeting_prefixed_buy_still_classifies_as_trade(self, classifier):
+        result = classifier.classify("hello buy 3 shares of apple")
+        assert result.intent_type == "trade_command"
+        assert result.payload["trade_intent"].action == "BUY"
+
+    def test_greeting_prefixed_cancel_still_classifies_as_cancel(self, classifier):
+        result = classifier.classify("hello cancel Microsoft order")
+        assert result.intent_type == "cancel"
+        assert result.payload["trade_intent"].command_kind == "cancel"
+
+    def test_markdown_prefixed_strategy_trade_still_classifies(self, classifier):
+        result = classifier.classify("* buy £2000 MSFT and trigger strategy")
+        assert result.intent_type == "trade_command"
+        assert result.payload["trade_intent"].trigger_strategy is True
+
 
 # ---------------------------------------------------------------------------
 # Layer 1 — Regex: Stop-loss updates
