@@ -105,6 +105,287 @@ class Orchestrator:
             )
         return self._stop_loss_manager
 
+    def run_intraday_refresh(self, scheduled_refresh_id: str | None = None) -> dict[str, Any]:
+        """Run the lightweight broker/data refresh lane between full cycles."""
+        cycle_id = (
+            scheduled_refresh_id
+            or f"refresh_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}_{uuid.uuid4().hex[:6]}"
+        )
+        result: dict[str, Any] = {
+            "cycle_id": cycle_id,
+            "trades": [],
+            "errors": [],
+            "order_sync": {},
+            "order_adjustments": [],
+            "market_data_warm_tickers": [],
+        }
+        cycle_lock = None
+        refresh_start_time = datetime.now(timezone.utc)
+
+        try:
+            cycle_lock = acquire_runtime_lock(
+                "orchestrator-cycle",
+                metadata={
+                    "cycle_id": cycle_id,
+                    "refresh": True,
+                    "scheduled_refresh_id": scheduled_refresh_id,
+                },
+            )
+        except RuntimeLockHeldError as exc:
+            logger.warning(
+                "Skipping refresh %s because another cycle is already running (lock=%s owner=%s)",
+                cycle_id,
+                exc.lock_path,
+                exc.details.get("pid"),
+            )
+            result["status"] = "skipped_locked"
+            result["lock_path"] = str(exc.lock_path)
+            if exc.details:
+                result["lock_details"] = exc.details
+            return result
+
+        logger.info("Starting intraday refresh %s", cycle_id)
+
+        if DASHBOARD_AVAILABLE and self.settings.dashboard_enabled and self.settings.dashboard_events_enabled:
+            try:
+                from dashboard.backend.app.database import init_dashboard_tables
+                init_dashboard_tables()
+            except Exception as e:
+                logger.debug(f"Dashboard table init skipped for refresh: {e}")
+
+        if DASHBOARD_AVAILABLE and log_event is not None and not scheduled_refresh_id:
+            try:
+                log_event(
+                    event_type="run_started",
+                    source="orchestrator",
+                    message=f"Intraday refresh {cycle_id} starting",
+                    metadata={
+                        "cycle_id": cycle_id,
+                        "run_type": "refresh",
+                        "started_at": refresh_start_time.isoformat(),
+                    },
+                )
+                try:
+                    from dashboard.backend.app.database import Run
+
+                    session = get_session()
+                    try:
+                        run = Run(
+                            cycle_id=cycle_id,
+                            run_type="refresh",
+                            started_at=refresh_start_time,
+                            status="running",
+                        )
+                        session.add(run)
+                        session.commit()
+                    except Exception:
+                        session.rollback()
+                        raise
+                    finally:
+                        session.close()
+                except Exception as e:
+                    logger.debug(f"Failed to create refresh Run record (fail-open): {e}", exc_info=True)
+            except Exception:
+                pass
+
+        def _finalize_refresh(status: str) -> dict[str, Any]:
+            result["status"] = status
+            sync_summary = result.get("order_sync") or {}
+            result["orders_updated_total"] = int(sync_summary.get("updated_total", 0) or 0)
+            result["positions_refreshed"] = int(result.get("positions_refreshed", 0) or 0)
+            result["market_data_tickers_warmed"] = len(result.get("market_data_warm_tickers", []))
+            result["stop_adjustments"] = len(result.get("order_adjustments", []))
+            result["deterministic_exits"] = len(result.get("trades", []))
+
+            refresh_end_time = datetime.now(timezone.utc)
+            duration_seconds = (refresh_end_time - refresh_start_time).total_seconds()
+            if DASHBOARD_AVAILABLE and log_event is not None:
+                try:
+                    log_event(
+                        event_type="run_completed",
+                        source="orchestrator",
+                        message=(
+                            f"Intraday refresh {cycle_id} completed: {status} — "
+                            f"orders_updated={result['orders_updated_total']}, "
+                            f"positions={result['positions_refreshed']}"
+                        ),
+                        metadata={
+                            "cycle_id": cycle_id,
+                            "run_type": "refresh",
+                            "status": status,
+                            "duration_seconds": duration_seconds,
+                            "orders_updated_total": result["orders_updated_total"],
+                            "positions_refreshed": result["positions_refreshed"],
+                            "market_data_tickers_warmed": result["market_data_tickers_warmed"],
+                            "stop_adjustments": result["stop_adjustments"],
+                            "deterministic_exits": result["deterministic_exits"],
+                        },
+                    )
+                    try:
+                        from dashboard.backend.app.database import Run
+
+                        session = get_session()
+                        try:
+                            run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
+                            summary_json = {
+                                "orders_updated_total": result["orders_updated_total"],
+                                "positions_refreshed": result["positions_refreshed"],
+                                "market_data_tickers_warmed": result["market_data_tickers_warmed"],
+                                "stop_adjustments": result["stop_adjustments"],
+                                "deterministic_exits": result["deterministic_exits"],
+                                "duration_seconds": duration_seconds,
+                            }
+                            if run:
+                                run.completed_at = refresh_end_time
+                                run.status = status
+                                run.summary_json = summary_json
+                            else:
+                                session.add(
+                                    Run(
+                                        cycle_id=cycle_id,
+                                        run_type="refresh",
+                                        started_at=refresh_start_time,
+                                        completed_at=refresh_end_time,
+                                        status=status,
+                                        summary_json=summary_json,
+                                    )
+                                )
+                            session.commit()
+                        except Exception:
+                            session.rollback()
+                            raise
+                        finally:
+                            session.close()
+                    except Exception as e:
+                        logger.warning(f"Failed to update refresh Run record (fail-open): {e}", exc_info=True)
+                except Exception:
+                    pass
+
+            if DASHBOARD_AVAILABLE:
+                try:
+                    from dashboard.backend.app.services.event_logger import flush_events
+
+                    flush_events(timeout_seconds=2.0)
+                except Exception:
+                    pass
+            return result
+
+        try:
+            sync_summary = self.order_manager.sync_orders_with_t212()
+            result["order_sync"] = sync_summary
+            result["orders_updated_total"] = int(sync_summary.get("updated_total", 0) or 0)
+
+            portfolio_data = self._get_portfolio_state()
+            current_state = str(self.state_machine.get_state().get("state") or "ACTIVE")
+            self._save_snapshot(portfolio_data, current_state)
+            result["positions_refreshed"] = portfolio_data.get("num_positions", 0)
+
+            warm_tickers = self._get_intraday_refresh_tickers(portfolio_data)
+            result["market_data_warm_tickers"] = warm_tickers
+            stocks_data = self._warm_intraday_refresh_market_data(warm_tickers)
+
+            positions = portfolio_data.get("positions", [])
+            adjustments: list[dict[str, Any]] = []
+            if positions:
+                adjustments.extend(
+                    self.stop_loss_manager.place_missing_stops(positions, stocks_data, cycle_id=cycle_id)
+                )
+                adjustments.extend(
+                    self.stop_loss_manager.reassess_stops(positions, stocks_data, cycle_id=cycle_id)
+                )
+                profit_lock_context = self._build_profit_lock_context(portfolio_data)
+                adjustments.extend(
+                    self.stop_loss_manager.apply_trailing_stops(
+                        positions,
+                        cycle_id=cycle_id,
+                        profit_lock_context=profit_lock_context,
+                    )
+                )
+                profit_lock_context = self._build_profit_lock_context(portfolio_data)
+                adjustments.extend(
+                    self.stop_loss_manager.enforce_profit_locks(
+                        positions,
+                        profit_lock_context=profit_lock_context,
+                        cycle_id=cycle_id,
+                    )
+                )
+                result["order_adjustments"] = adjustments
+
+                if self.settings.intraday_refresh_auto_actions_mode == "deterministic_exits":
+                    profit_lock_context = self._build_profit_lock_context(portfolio_data)
+                    existing_tickers = {
+                        self._ticker_from_position(pos)
+                        for pos in positions
+                        if self._ticker_from_position(pos)
+                    }
+                    refresh_mod = SimpleNamespace(consensus="REFRESH")
+                    refresh_risk = SimpleNamespace(verdict="REFRESH")
+                    for pos in positions:
+                        ticker = self._ticker_from_position(pos)
+                        lock = profit_lock_context.get(ticker, {})
+                        if not lock or lock.get("status") != "exit_required":
+                            continue
+                        reason_detail = self._profit_lock_reason_detail(
+                            ticker=ticker,
+                            status=str(lock.get("status") or "inactive"),
+                            required_stop_price_gbp=lock.get("required_stop_price_gbp"),
+                            stop_price_gbp=lock.get("stop_price_gbp"),
+                        )
+                        trade = self._execute_trade(
+                            cycle_id=cycle_id,
+                            decision={
+                                "ticker": ticker,
+                                "action": "SELL",
+                                "conviction": 100,
+                                "primary_strategy": "intraday_refresh",
+                                "reasoning": reason_detail,
+                                "exit_trigger_type": "gain_realization",
+                                "profit_lock_threshold_crossed": True,
+                                "deterministic_exit_reason_code": "profit_lock_unprotected_exit",
+                                "deterministic_exit_reason": reason_detail,
+                            },
+                            action="SELL",
+                            ticker=ticker,
+                            final_alloc=0.0,
+                            current_value=float(portfolio_data.get("total_value", 0) or 0),
+                            cash_gbp=float(portfolio_data.get("cash", 0) or 0),
+                            total_return_pct=float(portfolio_data.get("total_return_pct", 0) or 0),
+                            alpha_pct=float(portfolio_data.get("alpha_pct", 0) or 0),
+                            existing_tickers=existing_tickers,
+                            market_regime="SIDEWAYS",
+                            vix=None,
+                            macro={},
+                            stocks_data=stocks_data,
+                            analyst_data_map={},
+                            av_broad_sentiment={},
+                            mod_result=refresh_mod,
+                            risk_verdict=refresh_risk,
+                            portfolio_data=portfolio_data,
+                            quantity_override=float(pos.get("quantity", 0) or 0),
+                        )
+                        if trade is not None:
+                            result["trades"].append(trade)
+
+            if result["trades"] or adjustments or result["orders_updated_total"]:
+                portfolio_data = self._get_portfolio_state()
+                self._save_snapshot(portfolio_data, current_state)
+                result["positions_refreshed"] = portfolio_data.get("num_positions", 0)
+                try:
+                    update_trade_outcomes()
+                    update_performance_metrics()
+                except Exception as metrics_err:
+                    logger.warning(f"Post-refresh metrics update skipped: {metrics_err}")
+                    result["errors"].append(f"metrics_update: {metrics_err}")
+
+            return _finalize_refresh("completed")
+        except Exception as e:
+            logger.error(f"Intraday refresh {cycle_id} failed: {e}", exc_info=True)
+            result["errors"].append(str(e))
+            return _finalize_refresh("failed")
+        finally:
+            if cycle_lock is not None:
+                cycle_lock.release()
+
     def _account_label(self) -> str:
         return "practice/demo" if self.settings.account_type == "practice" else "live"
 
@@ -2441,6 +2722,57 @@ class Orchestrator:
             "total_return_pct": ((total_value / 10000) - 1) * 100 if total_value > 0 else 0,
             "alpha_pct": 0.0,
         }
+
+    def _get_intraday_refresh_tickers(self, portfolio_data: dict[str, Any]) -> list[str]:
+        """Return the broker/data refresh ticker set for held, pending, and queued names."""
+        scope = self.settings.intraday_refresh_market_data_scope
+        tickers: set[str] = set()
+
+        for pos in portfolio_data.get("positions", []):
+            ticker = self._ticker_from_position(pos)
+            if ticker:
+                tickers.add(ticker)
+
+        if scope != "held_pending_queued":
+            return sorted(tickers)
+
+        session = get_session()
+        try:
+            pending_rows = (
+                session.query(Order.ticker)
+                .filter(Order.status.in_(["pending", "submitting"]))
+                .all()
+            )
+            queued_rows = session.query(OpportunityQueue.ticker).all()
+            for row in pending_rows:
+                ticker = str(row[0] or "").strip().upper()
+                if ticker:
+                    tickers.add(ticker)
+            for row in queued_rows:
+                ticker = str(row[0] or "").strip().upper()
+                if ticker:
+                    tickers.add(ticker)
+        finally:
+            session.close()
+
+        return sorted(tickers)
+
+    def _warm_intraday_refresh_market_data(self, tickers: list[str]) -> list[dict[str, Any]]:
+        """Refresh the next-cycle data set for the configured intraday refresh scope."""
+        warmed: list[dict[str, Any]] = []
+        for ticker in tickers:
+            yf_ticker = t212_to_yf(ticker)
+            try:
+                data = self.data_fetcher.get_stock_analysis(yf_ticker)
+                data["ticker"] = ticker
+                warmed.append(data)
+                self.data_fetcher.enrich_instrument_metadata(
+                    ticker,
+                    data.get("fundamentals", {}),
+                )
+            except Exception as e:
+                logger.warning(f"Intraday refresh market-data warm failed for {ticker}: {e}")
+        return warmed
 
     def _fetch_stocks_data(
         self,

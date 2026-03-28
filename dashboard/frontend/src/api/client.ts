@@ -232,8 +232,10 @@ export const chatApi = {
 export const statusApi = {
   get: async (): Promise<{
     next_run_utc: string | null
+    next_refresh_utc: string | null
     cycle_times_utc: string[]
     cycle_times_local: string[]
+    refresh_times_local: string[]
     cycle_frequency: string
     schedule_mode: string
     schedule_timezone: string | null
@@ -242,6 +244,8 @@ export const statusApi = {
     halted_recovery_streak?: number
     halted_auto_recovery_target?: number | null
     peak_inflation_warning_note?: string | null
+    last_refresh_completed_at?: string | null
+    last_refresh_status?: string | null
   }> => {
     const response = await api.get('/api/status/')
     return response.data
@@ -545,6 +549,11 @@ export const ordersApi = {
     unresolved_window_days: number
     last_reconciled_at: string
     live_fetch_error?: string | null
+    history_fetch_error?: string | null
+    last_broker_sync_at?: string | null
+    last_refresh_completed_at?: string | null
+    last_refresh_status?: string | null
+    last_refresh_summary?: Record<string, any> | null
   }> => {
     const response = await api.get('/api/orders/health', { params })
     return response.data
@@ -553,6 +562,10 @@ export const ordersApi = {
 
 // System API (state, pause, resume, reset-peak)
 export const systemApi = {
+  triggerRefresh: async (): Promise<{ message: string; status: string }> => {
+    const response = await api.post('/api/system/trigger-refresh')
+    return response.data
+  },
   pause: async (): Promise<{ message: string; paused: boolean }> => {
     const response = await api.post('/api/system/pause')
     return response.data

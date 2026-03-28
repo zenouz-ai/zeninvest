@@ -647,6 +647,45 @@ class Settings:
         return self._config.get("order_management", {})
 
     @property
+    def intraday_refresh(self) -> dict[str, Any]:
+        return self._config.get("intraday_refresh", {})
+
+    @property
+    def intraday_refresh_enabled(self) -> bool:
+        return bool(self.intraday_refresh.get("enabled", False))
+
+    @property
+    def intraday_refresh_pre_cycle_offset_minutes(self) -> int:
+        return int(self.intraday_refresh.get("pre_cycle_offset_minutes", 10))
+
+    @property
+    def intraday_refresh_post_cycle_offset_minutes(self) -> int:
+        return int(self.intraday_refresh.get("post_cycle_offset_minutes", 10))
+
+    @property
+    def intraday_refresh_weekend_enabled(self) -> bool:
+        return bool(self.intraday_refresh.get("weekend_enabled", False))
+
+    @property
+    def intraday_refresh_weekend_time_local(self) -> str:
+        return str(self.intraday_refresh.get("weekend_time_local", "17:00"))
+
+    @property
+    def intraday_refresh_weekend_days(self) -> list[int]:
+        raw = self.intraday_refresh.get("weekend_days", [5, 6])
+        if not isinstance(raw, list):
+            return [5, 6]
+        return [int(day) for day in raw if 0 <= int(day) <= 6]
+
+    @property
+    def intraday_refresh_market_data_scope(self) -> str:
+        return str(self.intraday_refresh.get("market_data_scope", "held_pending_queued"))
+
+    @property
+    def intraday_refresh_auto_actions_mode(self) -> str:
+        return str(self.intraday_refresh.get("auto_actions_mode", "deterministic_exits"))
+
+    @property
     def order_management_enabled(self) -> bool:
         return bool(self.order_management.get("enabled", False))
 

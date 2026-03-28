@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react'
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { runsApi, portfolioApi, eventsApi, statusApi, costsApi, dashboardApi, ordersApi, universeApi, systemApi, performanceApi, macroApi } from '../api/client'
 import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail, MacroSummary } from '../types'
@@ -95,6 +95,7 @@ interface DashboardProps {
 
 export default function Dashboard({ sseEvents, sseConnectionState }: DashboardProps) {
   const recentActivityLimit = 100
+  const followUpRefreshTimersRef = useRef<number[]>([])
 
   // --- Independent data sections ---
   const fetchStatus = useCallback(() => statusApi.get(), [])
@@ -104,8 +105,8 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const portfolioResult = useAsyncData<PortfolioSnapshot | null>(fetchPortfolio)
 
   const fetchLatestRun = useCallback(async () => {
-    const runs = await runsApi.list({ limit: 1 })
-    return runs[0] || null
+    const runs = await runsApi.list({ limit: 10 })
+    return runs.find((run) => run.run_type !== 'refresh') || null
   }, [])
   const latestRunResult = useAsyncData<Run | null>(fetchLatestRun)
 
@@ -208,7 +209,7 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const [latestTradesExpanded, setLatestTradesExpanded] = useState(false)
   const [runSummariesExpanded, setRunSummariesExpanded] = useState(false)
   const [latestTradesFilters, setLatestTradesFilters] = useState({ ticker: '', action: '', status: '' })
-  const [triggerLoading, setTriggerLoading] = useState<'dry' | 'live' | null>(null)
+  const [triggerLoading, setTriggerLoading] = useState<'dry' | 'live' | 'refresh' | null>(null)
   const [resetPeakLoading, setResetPeakLoading] = useState(false)
   const [showResetPeakConfirm, setShowResetPeakConfirm] = useState(false)
   const [showLiveConfirm, setShowLiveConfirm] = useState(false)
@@ -236,6 +237,47 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
     return [...positions].sort((a, b) => Math.abs(b.pnl_gbp) - Math.abs(a.pnl_gbp)).slice(0, 5)
   }, [portfolio])
 
+  const refetchDashboardSections = useCallback(() => {
+    statusResult.refetch()
+    portfolioResult.refetch()
+    latestRunResult.refetch()
+    perfResult.refetch()
+    monthlyResult.refetch()
+    historicalEventsResult.refetch()
+    ordersResult.refetch()
+    runFeedResult.refetch()
+    macroResult.refetch()
+    dailyCostsResult.refetch()
+  }, [
+    dailyCostsResult,
+    historicalEventsResult,
+    latestRunResult,
+    macroResult,
+    monthlyResult,
+    ordersResult,
+    perfResult,
+    portfolioResult,
+    runFeedResult,
+    statusResult,
+  ])
+
+  const scheduleFollowUpRefreshes = useCallback(() => {
+    followUpRefreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId))
+    followUpRefreshTimersRef.current = []
+    refetchDashboardSections()
+    ;[5000, 15000].forEach((delayMs) => {
+      const timerId = window.setTimeout(refetchDashboardSections, delayMs)
+      followUpRefreshTimersRef.current.push(timerId)
+    })
+  }, [refetchDashboardSections])
+
+  useEffect(() => {
+    return () => {
+      followUpRefreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId))
+      followUpRefreshTimersRef.current = []
+    }
+  }, [])
+
   // --- Action handlers ---
   const handleDryRun = async () => {
     setTriggerLoading('dry')
@@ -248,6 +290,18 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
     setTriggerLoading('live')
     try { await runsApi.triggerLiveRun() } catch (e) { console.error('Live run trigger failed:', e) }
     finally { setTriggerLoading(null) }
+  }
+
+  const handleRefresh = async () => {
+    setTriggerLoading('refresh')
+    try {
+      await systemApi.triggerRefresh()
+      scheduleFollowUpRefreshes()
+    } catch (e) {
+      console.error('Refresh trigger failed:', e)
+    } finally {
+      setTriggerLoading(null)
+    }
   }
 
   const handleResetPeak = async () => {
@@ -306,9 +360,18 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const scheduleLabel = status?.schedule_mode === 'market_session'
     ? `${(status.cycle_times_local ?? []).join(' / ')} NY`
     : `${(status?.cycle_times_utc ?? []).join(' / ')} UTC`
+  const refreshScheduleLabel = (status?.refresh_times_local ?? []).length > 0
+    ? `${(status?.refresh_times_local ?? []).join(' / ')} NY`
+    : null
   const nextCycleMetricSubtitle = nextRunUtc
     ? `${safeFormat(nextRunUtc, 'MMM dd, HH:mm', '—')} UTC${scheduleLabel ? ` · ${scheduleLabel}` : ''}`
     : scheduleLabel || 'Scheduler has not published the next run yet.'
+  const nextRefreshMetricSubtitle = status?.next_refresh_utc
+    ? `${safeFormat(status.next_refresh_utc, 'MMM dd, HH:mm', '—')} UTC${refreshScheduleLabel ? ` · ${refreshScheduleLabel}` : ''}`
+    : refreshScheduleLabel || 'Refresh lane is not scheduled.'
+  const lastRefreshMetricSubtitle = status?.last_refresh_completed_at
+    ? `Last ${safeFormat(status.last_refresh_completed_at, 'MMM dd, HH:mm', '—')} UTC`
+    : 'No refresh has completed yet.'
   const latestRunMetricSubtitle = latestRun
     ? `Last ${safeFormat(latestRun.started_at, 'MMM dd, HH:mm', '—')} UTC${lastRunCost != null ? ` · £${lastRunCost.total_gbp.toFixed(4)}` : ''}`
     : 'Awaiting first completed cycle.'
@@ -364,6 +427,9 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
               {status?.next_run_utc && (
                 <StatusPill label={`Next ${safeFormat(status.next_run_utc, 'MMM dd, HH:mm', '—')} UTC`} variant="dim" />
               )}
+              {status?.next_refresh_utc && (
+                <StatusPill label={`Refresh ${safeFormat(status.next_refresh_utc, 'MMM dd, HH:mm', '—')} UTC`} variant="dim" />
+              )}
             </div>
             <p className="text-sm leading-6 text-terminal-text-muted">
               The operator dashboard now shares the same visual rhythm as the public overview: a branded hero surface, editorial metrics,
@@ -391,6 +457,14 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
             )}
             <button
               type="button"
+              onClick={handleRefresh}
+              disabled={triggerLoading != null}
+              className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {triggerLoading === 'refresh' ? 'Starting...' : 'Refresh'}
+            </button>
+            <button
+              type="button"
               onClick={handleDryRun}
               disabled={triggerLoading != null}
               className="btn-secondary text-sm py-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -408,13 +482,20 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard
             label="Next Cycle"
             value={countdownStr}
             subtitle={nextCycleMetricSubtitle}
             delta={latestRun ? latestRun.status : undefined}
             deltaColor={latestRun ? getRunDeltaColor(latestRun.status) : 'dim'}
+          />
+          <MetricCard
+            label="Next Refresh"
+            value={status?.next_refresh_utc ? formatCountdown(status.next_refresh_utc) : '—'}
+            subtitle={`${nextRefreshMetricSubtitle} · ${lastRefreshMetricSubtitle}`}
+            delta={status?.last_refresh_status ?? undefined}
+            deltaColor={status?.last_refresh_status === 'failed' ? 'loss' : status?.last_refresh_status ? 'cyan' : 'dim'}
           />
           <MetricCard
             label="Portfolio Value"
@@ -451,6 +532,12 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
         </div>
 
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-terminal-text-dim">
+          {portfolio?.timestamp && (
+            <span className="block">Snapshot {safeFormat(portfolio.timestamp, 'MMM dd HH:mm:ss', '—')}</span>
+          )}
+          {status?.last_refresh_completed_at && (
+            <span className="block">Refresh {safeFormat(status.last_refresh_completed_at, 'MMM dd HH:mm:ss', '—')}</span>
+          )}
           <FreshnessIndicator lastUpdatedAt={portfolioResult.lastUpdatedAt} isStale={portfolioResult.isStale} className="block" />
           <FreshnessIndicator lastUpdatedAt={perfResult.lastUpdatedAt} isStale={perfResult.isStale} className="block" />
           <FreshnessIndicator lastUpdatedAt={monthlyResult.lastUpdatedAt} isStale={monthlyResult.isStale} className="block" />

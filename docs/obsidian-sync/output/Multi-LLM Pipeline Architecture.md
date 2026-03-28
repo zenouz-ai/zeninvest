@@ -1,7 +1,7 @@
 ---
 tags: [investment-agent, architecture, pipeline, multi-llm]
 status: active
-last_updated: 2026-03-18
+last_updated: 2026-03-28
 ---
 
 # Multi-LLM Pipeline Architecture
@@ -24,7 +24,9 @@ The core insight: no single LLM should have unchecked authority over real money.
 
 7. **Execution** — market orders, stop-loss (GTC), trailing stops, limit dip-buy. 5-min dedup window. Order status reconciled from T212 each cycle. Cancel conflicting stops before SELL/REDUCE.
 
-8. **Journal & Reporting** — per-trade markdown journals, daily snapshots (21:30 UTC), weekly reports (Fri 22:00).
+8. **Intraday Refresh Lane** — lightweight broker/data refreshes around regular cycles and on weekends. Syncs Trading 212 order truth into local `orders`, writes fresh `portfolio_snapshots`, warms held/pending/queued market data, and runs deterministic stop/profit-lock maintenance without opening new positions or screening new names.
+
+9. **Journal & Reporting** — per-trade markdown journals, daily snapshots (21:30 UTC), weekly reports (Fri 22:00).
 
 ## State Machine
 
@@ -44,7 +46,7 @@ FULL → NO_GEMINI (Google over budget) → NO_GPT4O (both moderators over budge
 
 ## Dashboard
 
-FastAPI REST API + SSE stream (Phase 1 + Phase 1.5). 8 frontend pages: Home (state badge, dry/live run buttons, P&L, activity feed), Universe (sortable, expandable with full committee reasoning), Run History, Portfolio, Opportunity Pipeline, Order Management, Costs, Roadmap. ZENOUZ.ai brand. Reads agent SQLite directly — no duplicate tables.
+FastAPI REST API + SSE stream. 11 frontend pages: Home (state badge, dry/live/refresh controls, next refresh card, P&L, activity feed), Universe, Run History, Portfolio, Opportunity Pipeline, Order Management, Commands, World News, Costs, Roadmap, Evolution. Dashboard status exposes next/last refresh metadata, Run History includes `refresh` runs, and Order Management surfaces broker-sync health alongside recent orders. ZENOUZ.ai brand. Reads agent SQLite directly — no duplicate tables.
 
 ## Architectural Decisions
 

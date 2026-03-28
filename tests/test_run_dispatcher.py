@@ -26,3 +26,17 @@ def test_submit_cycle_starts_background_job(monkeypatch) -> None:
 
     assert run_dispatcher.submit_cycle(dry_run=False) is True
     fake_executor.submit.assert_called_once()
+
+
+def test_submit_refresh_starts_background_job(monkeypatch) -> None:
+    """Dashboard trigger should submit refresh work when no cycle is active."""
+    submitted_future: Future[None] = Future()
+    fake_executor = MagicMock()
+    fake_executor.submit.return_value = submitted_future
+
+    monkeypatch.setattr(run_dispatcher, "_active_future", None)
+    monkeypatch.setattr(run_dispatcher, "_executor", fake_executor)
+    monkeypatch.setattr(run_dispatcher, "is_runtime_lock_held", lambda _: False)
+
+    assert run_dispatcher.submit_refresh() is True
+    fake_executor.submit.assert_called_once()

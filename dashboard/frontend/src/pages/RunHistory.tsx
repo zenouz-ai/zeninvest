@@ -77,6 +77,8 @@ export default function RunHistory() {
         return 'text-accent'
       case 'dry_run':
         return 'text-terminal-text-dim'
+      case 'refresh':
+        return 'text-cyan-300'
       default:
         return 'text-terminal-text'
     }
@@ -101,7 +103,7 @@ export default function RunHistory() {
     <div className="space-y-6">
       <PageBrandHeader
         title="Run History"
-        description="Timeline of past analysis cycles (scheduled, manual, or dry-run). Use Compare Runs to diff two cycles and see position changes. Expand a run to view full decisions and orders. Data refreshes every 30s."
+        description="Timeline of past analysis cycles and intraday refresh runs. Use Compare Runs to diff two completed cycles and see position changes. Expand a run to view full summary metadata. Data refreshes every 30s."
       />
 
       {/* Run diff */}

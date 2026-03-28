@@ -131,6 +131,8 @@ export default function Universe() {
 
   useEffect(() => {
     fetchUniverse()
+    const interval = setInterval(fetchUniverse, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   useEffect(() => {

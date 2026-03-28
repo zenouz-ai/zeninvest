@@ -434,8 +434,13 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
         }
         description={publicView
           ? 'Read-only portfolio view: current positions, cash, value history, and protection state from the latest snapshot. Charts show portfolio value over time and sector allocation; operator actions remain private.'
-          : 'Current positions, cash, value history, and profit-lock protection state from the latest snapshot (updated each run). Positions table lists ticker, quantity, value, P&L, and whether winners above the sell threshold are fully protected.'}
+          : 'Current positions, cash, value history, and profit-lock protection state from the latest snapshot. Positions table lists ticker, quantity, value, P&L, and whether winners above the sell threshold are fully protected.'}
       />
+      <div className="text-xs text-terminal-text-dim">
+        {currentPortfolio?.timestamp
+          ? `Snapshot captured ${safeFormat(currentPortfolio.timestamp, 'MMM dd, yyyy HH:mm:ss', '—')}. Intraday refresh runs keep this page aligned with the latest broker state between full cycles.`
+          : 'Waiting for the first portfolio snapshot.'}
+      </div>
 
       {/* Force Sell confirmation modal */}
       {!publicView && forceSellTicker && (

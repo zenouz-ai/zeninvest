@@ -25,6 +25,7 @@ class AnalysisCycleSpec:
     hour: int
     minute: int
     timezone: tzinfo
+    weekday: int | None = None
 
 
 def parse_clock_time(value: str) -> tuple[int, int]:
@@ -79,6 +80,99 @@ def analysis_cycle_specs(settings: Settings) -> list[AnalysisCycleSpec]:
 def analysis_cycle_job_ids(settings: Settings) -> set[str]:
     """Return desired persisted analysis-cycle job IDs."""
     return {spec.job_id for spec in analysis_cycle_specs(settings)}
+
+
+def _is_within_regular_market_session_clock(hour: int, minute: int) -> bool:
+    """True when a local clock time falls within the 09:30-16:00 NYSE core session."""
+    candidate = time(hour, minute)
+    return time(9, 30) <= candidate < time(16, 0)
+
+
+def intraday_refresh_specs(settings: Settings) -> list[AnalysisCycleSpec]:
+    """Return derived intraday refresh jobs around configured cycle times."""
+    enabled_raw = getattr(settings, "intraday_refresh_enabled", False)
+    enabled = enabled_raw if isinstance(enabled_raw, bool) else False
+    if not enabled or not uses_market_session_schedule(settings):
+        return []
+
+    zone = ZoneInfo(settings.schedule_timezone)
+    refresh_minutes: set[int] = set()
+    pre_raw = getattr(settings, "intraday_refresh_pre_cycle_offset_minutes", 10)
+    post_raw = getattr(settings, "intraday_refresh_post_cycle_offset_minutes", 10)
+    pre = abs(int(pre_raw)) if isinstance(pre_raw, (int, float)) else 10
+    post = abs(int(post_raw)) if isinstance(post_raw, (int, float)) else 10
+
+    for raw_time in settings.cycle_times_local:
+        hour, minute = parse_clock_time(raw_time)
+        base_minutes = hour * 60 + minute
+        for candidate_minutes in (base_minutes - pre, base_minutes + post):
+            if candidate_minutes < 0 or candidate_minutes >= 24 * 60:
+                continue
+            refresh_hour, refresh_minute = divmod(candidate_minutes, 60)
+            if not _is_within_regular_market_session_clock(refresh_hour, refresh_minute):
+                continue
+            refresh_minutes.add(candidate_minutes)
+
+    specs: list[AnalysisCycleSpec] = []
+    for candidate_minutes in sorted(refresh_minutes):
+        refresh_hour, refresh_minute = divmod(candidate_minutes, 60)
+        specs.append(
+            AnalysisCycleSpec(
+                job_id=f"intraday_refresh_{refresh_hour:02d}{refresh_minute:02d}",
+                clock_time=format_clock_time(refresh_hour, refresh_minute),
+                hour=refresh_hour,
+                minute=refresh_minute,
+                timezone=zone,
+            )
+        )
+
+    weekend_enabled_raw = getattr(settings, "intraday_refresh_weekend_enabled", False)
+    weekend_enabled = weekend_enabled_raw if isinstance(weekend_enabled_raw, bool) else False
+    if weekend_enabled:
+        weekend_time_raw = getattr(settings, "intraday_refresh_weekend_time_local", "17:00")
+        weekend_hour, weekend_minute = parse_clock_time(str(weekend_time_raw))
+        weekend_days_raw = getattr(settings, "intraday_refresh_weekend_days", [5, 6])
+        weekend_days = (
+            sorted({int(day) for day in weekend_days_raw if 0 <= int(day) <= 6})
+            if isinstance(weekend_days_raw, list)
+            else [5, 6]
+        )
+        for weekday in weekend_days:
+            specs.append(
+                AnalysisCycleSpec(
+                    job_id=f"intraday_refresh_{_WEEKDAY_NAMES[weekday]}_{weekend_hour:02d}{weekend_minute:02d}",
+                    clock_time=format_clock_time(weekend_hour, weekend_minute),
+                    hour=weekend_hour,
+                    minute=weekend_minute,
+                    timezone=zone,
+                    weekday=weekday,
+                )
+            )
+
+    return specs
+
+
+def intraday_refresh_job_ids(settings: Settings) -> set[str]:
+    """Return desired persisted intraday refresh job IDs."""
+    return {spec.job_id for spec in intraday_refresh_specs(settings)}
+
+
+def resolved_refresh_times_local(settings: Settings) -> list[str]:
+    """Return configured local refresh clock labels."""
+    labels: list[str] = []
+    for spec in intraday_refresh_specs(settings):
+        if spec.weekday is None:
+            labels.append(spec.clock_time)
+        else:
+            labels.append(f"{spec.clock_time} {_WEEKDAY_NAMES[spec.weekday].title()}")
+    return labels
+
+
+def _is_refresh_schedule_date(settings: Settings, spec: AnalysisCycleSpec, candidate_day: date) -> bool:
+    """True when a refresh spec is eligible to run on the candidate local date."""
+    if spec.weekday is not None:
+        return candidate_day.weekday() == spec.weekday
+    return _is_eligible_schedule_date(settings, candidate_day)
 
 
 def _is_eligible_schedule_date(settings: Settings, candidate_day: date) -> bool:
@@ -149,6 +243,38 @@ def resolved_cycle_times_utc(settings: Settings, now_utc: datetime | None = None
     return resolved
 
 
+def resolved_refresh_times_utc(settings: Settings, now_utc: datetime | None = None) -> list[str]:
+    """Return UTC clock labels for the next eligible refresh day."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    specs = intraday_refresh_specs(settings)
+    if not specs:
+        return []
+
+    zone = ZoneInfo(settings.schedule_timezone)
+    now_local = now_utc.astimezone(zone)
+    for day_offset in range(0, 8):
+        candidate_day = now_local.date() + timedelta(days=day_offset)
+        resolved: list[str] = []
+        for spec in specs:
+            if not _is_refresh_schedule_date(settings, spec, candidate_day):
+                continue
+            candidate_local = datetime(
+                candidate_day.year,
+                candidate_day.month,
+                candidate_day.day,
+                spec.hour,
+                spec.minute,
+                tzinfo=zone,
+            )
+            candidate_utc = candidate_local.astimezone(timezone.utc)
+            if candidate_utc <= now_utc:
+                continue
+            resolved.append(candidate_utc.strftime("%H:%M"))
+        if resolved:
+            return resolved
+    return []
+
+
 def next_scheduled_run_utc(settings: Settings, now_utc: datetime | None = None) -> datetime | None:
     """Return the next scheduled analysis cycle in UTC."""
     now_utc = now_utc or datetime.now(timezone.utc)
@@ -199,6 +325,34 @@ def next_scheduled_run_utc(settings: Settings, now_utc: datetime | None = None) 
             tzinfo=timezone.utc,
         )
 
+    return None
+
+
+def next_intraday_refresh_utc(settings: Settings, now_utc: datetime | None = None) -> datetime | None:
+    """Return the next derived intraday refresh trigger in UTC."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    specs = intraday_refresh_specs(settings)
+    if not specs:
+        return None
+
+    zone = ZoneInfo(settings.schedule_timezone)
+    now_local = now_utc.astimezone(zone)
+    for day_offset in range(0, 8):
+        candidate_day = now_local.date() + timedelta(days=day_offset)
+        for spec in specs:
+            if not _is_refresh_schedule_date(settings, spec, candidate_day):
+                continue
+            candidate_local = datetime(
+                candidate_day.year,
+                candidate_day.month,
+                candidate_day.day,
+                spec.hour,
+                spec.minute,
+                tzinfo=zone,
+            )
+            candidate_utc = candidate_local.astimezone(timezone.utc)
+            if candidate_utc > now_utc:
+                return candidate_utc
     return None
 
 

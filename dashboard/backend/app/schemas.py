@@ -37,7 +37,7 @@ class RunCreateSchema(BaseModel):
     """Schema for creating a new run."""
 
     cycle_id: str
-    run_type: str = Field(default="scheduled", pattern="^(scheduled|manual|dry_run|slack_command)$")
+    run_type: str = Field(default="scheduled", pattern="^(scheduled|manual|dry_run|slack_command|refresh)$")
     summary_json: dict[str, Any] | None = None
 
 
@@ -175,6 +175,11 @@ class OrdersHealthSchema(BaseModel):
     unresolved_window_days: int = 7
     last_reconciled_at: datetime
     live_fetch_error: str | None = None
+    history_fetch_error: str | None = None
+    last_broker_sync_at: datetime | None = None
+    last_refresh_completed_at: datetime | None = None
+    last_refresh_status: str | None = None
+    last_refresh_summary: dict[str, Any] | None = None
 
 
 # --- Decisions / Moderation / Risk ---

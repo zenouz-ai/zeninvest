@@ -164,6 +164,16 @@ opportunity:
     risk_resize: -0.35
     unrated: -0.6
 
+intraday_refresh:
+  enabled: true
+  pre_cycle_offset_minutes: 10
+  post_cycle_offset_minutes: 10
+  weekend_enabled: true
+  weekend_time_local: "17:00"
+  weekend_days: [5, 6]  # Sat, Sun
+  market_data_scope: held_pending_queued
+  auto_actions_mode: deterministic_exits
+
 order_management:
   enabled: true
   default_stop_loss_pct: -15       # Default stop-loss % when placing missing stops (no ATR or no decision)

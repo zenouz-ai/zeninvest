@@ -1098,6 +1098,68 @@ class TestPendingStopReconciliation:
         assert "rate limited" in (result["live_fetch_error"] or "")
 
 
+class TestOrderHistorySync:
+    """Sync local pending rows against T212 history terminal statuses."""
+
+    @pytest.fixture(autouse=True)
+    def mock_get_session(self, db_session):
+        with patch("src.agents.execution.order_manager.get_session", return_value=db_session):
+            yield
+
+    def test_sync_orders_maps_terminal_t212_statuses(self, db_session):
+        db_session.add_all([
+            Order(
+                ticker="AAPL_US_EQ",
+                action="BUY",
+                order_type="market",
+                quantity=1.0,
+                t212_order_id="fill-1",
+                status="pending",
+            ),
+            Order(
+                ticker="MSFT_US_EQ",
+                action="SELL",
+                order_type="market",
+                quantity=-1.0,
+                t212_order_id="cancel-1",
+                status="pending",
+            ),
+            Order(
+                ticker="NVDA_US_EQ",
+                action="BUY",
+                order_type="limit",
+                quantity=1.0,
+                t212_order_id="reject-1",
+                status="pending",
+            ),
+        ])
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_order_history.return_value = {
+            "items": [
+                {"order": {"id": "fill-1", "status": "FILLED", "filledQuantity": 1.0, "filledValue": 150.0}},
+                {"order": {"id": "cancel-1", "status": "CANCELLED"}},
+                {"order": {"id": "reject-1", "status": "REJECTED"}},
+            ],
+            "nextPagePath": None,
+        }
+        mock_client.get_pending_orders.return_value = []
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.sync_orders_with_t212()
+
+        assert result["filled_count"] == 1
+        assert result["cancelled_count"] == 1
+        assert result["failed_count"] == 1
+        assert result["updated_total"] == 3
+
+        db_session.expire_all()
+        assert db_session.query(Order).filter(Order.t212_order_id == "fill-1").first().status == "filled"
+        assert db_session.query(Order).filter(Order.t212_order_id == "cancel-1").first().status == "cancelled"
+        assert db_session.query(Order).filter(Order.t212_order_id == "reject-1").first().status == "failed"
+
+
 class TestPendingMarketSellCancellation:
     """Cancel stale pending market SELL rows when a newer cycle decides HOLD/QUEUED."""
 

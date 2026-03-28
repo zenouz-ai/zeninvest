@@ -95,6 +95,8 @@ export default function WorldNews({ publicView = false }: { publicView?: boolean
 
   useEffect(() => {
     fetchData()
+    const interval = setInterval(fetchData, 30000)
+    return () => clearInterval(interval)
   }, [fetchData])
 
   const grouped = useMemo(() => groupHeadlinesByDate(headlines), [headlines])

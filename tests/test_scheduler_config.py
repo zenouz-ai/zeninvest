@@ -6,7 +6,15 @@ from unittest.mock import patch, MagicMock
 
 from src.scheduler.scheduler import create_scheduler
 from src.utils.config import Settings
-from src.utils.scheduling import current_cycle_clock_time, next_scheduled_run_utc, resolved_cycle_times_utc
+from src.utils.scheduling import (
+    current_cycle_clock_time,
+    intraday_refresh_specs,
+    next_intraday_refresh_utc,
+    next_scheduled_run_utc,
+    resolved_cycle_times_utc,
+    resolved_refresh_times_local,
+    resolved_refresh_times_utc,
+)
 
 
 def test_scheduler_creates_jobs_from_market_session_cycle_times() -> None:
@@ -259,10 +267,168 @@ def test_market_session_schedule_skips_us_market_holidays() -> None:
         }
     )
 
+
+def test_intraday_refresh_specs_derive_pre_post_cycle_market_times() -> None:
+    settings = Settings(
+        {
+            "trading": {
+                "cycle_frequency": "intraday",
+                "schedule_mode": "market_session",
+                "schedule_timezone": "America/New_York",
+                "cycle_times_local": ["10:00", "12:30", "15:15"],
+                "market_days": [0, 1, 2, 3, 4],
+            },
+            "intraday_refresh": {
+                "enabled": True,
+                "pre_cycle_offset_minutes": 10,
+                "post_cycle_offset_minutes": 10,
+            },
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    specs = intraday_refresh_specs(settings)
+
+    assert [spec.job_id for spec in specs] == [
+        "intraday_refresh_0950",
+        "intraday_refresh_1010",
+        "intraday_refresh_1220",
+        "intraday_refresh_1240",
+        "intraday_refresh_1505",
+        "intraday_refresh_1525",
+    ]
+    assert resolved_refresh_times_local(settings) == ["09:50", "10:10", "12:20", "12:40", "15:05", "15:25"]
+
+
+def test_intraday_refresh_schedule_resolves_dst_aware_utc_times() -> None:
+    settings = Settings(
+        {
+            "trading": {
+                "cycle_frequency": "intraday",
+                "schedule_mode": "market_session",
+                "schedule_timezone": "America/New_York",
+                "cycle_times_local": ["10:00", "12:30", "15:15"],
+                "market_days": [0, 1, 2, 3, 4],
+            },
+            "intraday_refresh": {
+                "enabled": True,
+                "pre_cycle_offset_minutes": 10,
+                "post_cycle_offset_minutes": 10,
+            },
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    now_utc = datetime(2026, 3, 26, 13, 0, tzinfo=timezone.utc)
+
+    assert resolved_refresh_times_utc(settings, now_utc=now_utc) == [
+        "13:50",
+        "14:10",
+        "16:20",
+        "16:40",
+        "19:05",
+        "19:25",
+    ]
+    assert next_intraday_refresh_utc(settings, now_utc=now_utc) == datetime(2026, 3, 26, 13, 50, tzinfo=timezone.utc)
+
     now_utc = datetime(2026, 4, 3, 12, 0, tzinfo=timezone.utc)  # Good Friday
 
     assert resolved_cycle_times_utc(settings, now_utc=now_utc) == ["14:00", "16:30", "19:15"]
     assert next_scheduled_run_utc(settings, now_utc=now_utc) == datetime(2026, 4, 6, 14, 0, tzinfo=timezone.utc)
+
+
+def test_intraday_refresh_specs_include_weekend_refresh_jobs() -> None:
+    settings = Settings(
+        {
+            "trading": {
+                "cycle_frequency": "intraday",
+                "schedule_mode": "market_session",
+                "schedule_timezone": "America/New_York",
+                "cycle_times_local": ["10:00", "12:30", "15:15"],
+                "market_days": [0, 1, 2, 3, 4],
+            },
+            "intraday_refresh": {
+                "enabled": True,
+                "pre_cycle_offset_minutes": 10,
+                "post_cycle_offset_minutes": 10,
+                "weekend_enabled": True,
+                "weekend_time_local": "17:00",
+                "weekend_days": [5, 6],
+            },
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    specs = intraday_refresh_specs(settings)
+
+    assert [spec.job_id for spec in specs] == [
+        "intraday_refresh_0950",
+        "intraday_refresh_1010",
+        "intraday_refresh_1220",
+        "intraday_refresh_1240",
+        "intraday_refresh_1505",
+        "intraday_refresh_1525",
+        "intraday_refresh_sat_1700",
+        "intraday_refresh_sun_1700",
+    ]
+    assert resolved_refresh_times_local(settings) == [
+        "09:50",
+        "10:10",
+        "12:20",
+        "12:40",
+        "15:05",
+        "15:25",
+        "17:00 Sat",
+        "17:00 Sun",
+    ]
+
+
+def test_next_intraday_refresh_utc_rolls_into_weekend_refreshes() -> None:
+    settings = Settings(
+        {
+            "trading": {
+                "cycle_frequency": "intraday",
+                "schedule_mode": "market_session",
+                "schedule_timezone": "America/New_York",
+                "cycle_times_local": ["10:00", "12:30", "15:15"],
+                "market_days": [0, 1, 2, 3, 4],
+                "skip_market_holidays": True,
+            },
+            "intraday_refresh": {
+                "enabled": True,
+                "pre_cycle_offset_minutes": 10,
+                "post_cycle_offset_minutes": 10,
+                "weekend_enabled": True,
+                "weekend_time_local": "17:00",
+                "weekend_days": [5, 6],
+            },
+            "risk": {},
+            "strategy": {},
+            "moderation": {},
+            "models": {},
+            "data_providers": {},
+        }
+    )
+
+    friday_after_market = datetime(2026, 3, 27, 20, 0, tzinfo=timezone.utc)
+    saturday_evening_after_refresh = datetime(2026, 3, 28, 21, 30, tzinfo=timezone.utc)
+
+    assert resolved_refresh_times_utc(settings, now_utc=friday_after_market) == ["21:00"]
+    assert next_intraday_refresh_utc(settings, now_utc=friday_after_market) == datetime(2026, 3, 28, 21, 0, tzinfo=timezone.utc)
+    assert resolved_refresh_times_utc(settings, now_utc=saturday_evening_after_refresh) == ["21:00"]
+    assert next_intraday_refresh_utc(settings, now_utc=saturday_evening_after_refresh) == datetime(2026, 3, 29, 21, 0, tzinfo=timezone.utc)
 
 
 def test_fixed_utc_schedule_skips_us_market_holidays() -> None:

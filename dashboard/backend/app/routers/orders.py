@@ -11,6 +11,7 @@ from src.data.models import Order
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
+from ..database import Run
 from ..schemas import FailedOrderHealthSchema, OrderSchema, OrdersHealthSchema
 
 logger = get_logger("dashboard.orders")
@@ -102,18 +103,26 @@ async def get_orders_health(
         "reconciled_pending_count": 0,
         "live_fetch_error": None,
     }
+    broker_sync_at = None
     if reconcile_pending:
         try:
-            reconciled = OrderManager(dry_run=False).reconcile_pending_stop_orders_with_t212()
+            manager = OrderManager(dry_run=False)
+            reconciled_candidate = manager.sync_orders_with_t212()
+            if isinstance(reconciled_candidate, dict):
+                reconciled = reconciled_candidate
+            else:
+                reconciled = manager.reconcile_pending_stop_orders_with_t212()
+            broker_sync_at = datetime.now(timezone.utc)
         except Exception as e:
             logger.error("Failed to reconcile pending stops: %s", e)
             reconciled["live_fetch_error"] = str(e)
+            reconciled["history_fetch_error"] = str(e)
     else:
         session = get_session()
         try:
             pending_local = (
                 session.query(Order.id)
-                .filter(Order.status == "pending", Order.order_type == "stop")
+                .filter(Order.status.in_(["pending", "submitting"]))
                 .count()
             )
         finally:
@@ -128,6 +137,15 @@ async def get_orders_health(
             .order_by(desc(Order.timestamp))
             .all()
         )
+        try:
+            latest_refresh = (
+                session.query(Run)
+                .filter(Run.run_type == "refresh")
+                .order_by(desc(Run.completed_at), desc(Run.started_at))
+                .first()
+            )
+        except Exception:
+            latest_refresh = None
     finally:
         session.close()
 
@@ -156,6 +174,11 @@ async def get_orders_health(
         unresolved_window_days=unresolved_window_days,
         last_reconciled_at=datetime.now(timezone.utc),
         live_fetch_error=reconciled.get("live_fetch_error"),
+        history_fetch_error=reconciled.get("history_fetch_error"),
+        last_broker_sync_at=broker_sync_at,
+        last_refresh_completed_at=latest_refresh.completed_at if latest_refresh else None,
+        last_refresh_status=latest_refresh.status if latest_refresh else None,
+        last_refresh_summary=latest_refresh.summary_json if latest_refresh else None,
     )
 
 

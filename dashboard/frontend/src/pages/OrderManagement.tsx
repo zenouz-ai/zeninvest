@@ -56,6 +56,11 @@ export default function OrderManagement() {
     unresolved_window_days: number
     last_reconciled_at: string
     live_fetch_error?: string | null
+    history_fetch_error?: string | null
+    last_broker_sync_at?: string | null
+    last_refresh_completed_at?: string | null
+    last_refresh_status?: string | null
+    last_refresh_summary?: Record<string, any> | null
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -63,12 +68,12 @@ export default function OrderManagement() {
   const fetchData = async () => {
     setError(null)
     try {
+      const healthData = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: true })
       const [currentData, adjData, ordersData] = await Promise.all([
         stopLossApi.getCurrent(),
         stopLossApi.getAdjustments({ limit: 50 }),
         ordersApi.list({ limit: 30 }),
       ])
-      const healthData = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: true })
       setCurrent(currentData)
       setAdjustments(adjData)
       setRecentOrders(ordersData)
@@ -83,6 +88,8 @@ export default function OrderManagement() {
 
   useEffect(() => {
     fetchData()
+    const interval = setInterval(fetchData, 30000)
+    return () => clearInterval(interval)
   }, [])
 
   if (loading) {
@@ -129,11 +136,34 @@ export default function OrderManagement() {
             <div className="border border-terminal-border rounded-md p-3">
               <div className="text-terminal-text-dim">Last reconciled</div>
               <div className="font-mono text-xs">{safeFormat(health.last_reconciled_at, 'MMM dd HH:mm:ss', '—')}</div>
+              {health.last_broker_sync_at && (
+                <div className="text-xs text-terminal-text-dim mt-1">
+                  broker sync {safeFormat(health.last_broker_sync_at, 'MMM dd HH:mm:ss', '—')}
+                </div>
+              )}
             </div>
           </div>
+          {health.last_refresh_completed_at && (
+            <div className="mt-3 text-xs text-terminal-text-dim">
+              Last scheduled refresh: {safeFormat(health.last_refresh_completed_at, 'MMM dd HH:mm:ss', '—')}
+              {health.last_refresh_status ? ` (${health.last_refresh_status})` : ''}
+              {health.last_refresh_summary && (
+                <>
+                  {` · fills ${health.last_refresh_summary.orders_updated_total ?? 0}`}
+                  {` · stop actions ${health.last_refresh_summary.stop_adjustments ?? 0}`}
+                  {` · exits ${health.last_refresh_summary.deterministic_exits ?? 0}`}
+                </>
+              )}
+            </div>
+          )}
           {health.live_fetch_error && (
             <p className="text-warning text-xs mt-2">
               Live pending fetch warning: {health.live_fetch_error}
+            </p>
+          )}
+          {health.history_fetch_error && (
+            <p className="text-warning text-xs mt-2">
+              Broker history sync warning: {health.history_fetch_error}
             </p>
           )}
         </div>

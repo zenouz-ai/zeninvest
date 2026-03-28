@@ -11,7 +11,7 @@ export interface Event {
 export interface Run {
   id: number
   cycle_id: string
-  run_type: 'scheduled' | 'manual' | 'dry_run' | 'slack_command'
+  run_type: 'scheduled' | 'manual' | 'dry_run' | 'slack_command' | 'refresh'
   started_at: string
   completed_at: string | null
   status: 'running' | 'completed' | 'failed'

@@ -7,7 +7,7 @@ from src.data.models import SystemState
 from src.utils.config import get_settings
 
 from ..schemas import SystemStateSchema
-from ..services.run_dispatcher import submit_cycle
+from ..services.run_dispatcher import submit_cycle, submit_refresh
 
 router = APIRouter()
 settings = get_settings()
@@ -52,6 +52,17 @@ async def trigger_cycle():
     if not submit_cycle(dry_run=True):
         raise HTTPException(status_code=409, detail="Another cycle is already running")
     return {"message": "Dry-run cycle triggered in background", "status": "started"}
+
+
+@router.post("/trigger-refresh")
+async def trigger_refresh():
+    """Trigger a manual intraday refresh."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    if not submit_refresh():
+        raise HTTPException(status_code=409, detail="Another cycle is already running")
+    return {"message": "Intraday refresh triggered in background", "status": "started"}
 
 
 @router.post("/pause")

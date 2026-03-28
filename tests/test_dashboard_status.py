@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from dashboard.backend.app.database import Base as DashboardBase, Run
 from dashboard.backend.app.routers import status as status_router
 from dashboard.backend.app.routers import system as system_router
 from src.data.models import Base, SystemState
@@ -27,7 +30,9 @@ def test_status_api_exposes_market_session_schedule_metadata(monkeypatch) -> Non
 
     monkeypatch.setattr(status_router, "get_settings", lambda: FakeSettings())
     monkeypatch.setattr(status_router, "_next_scheduled_run_utc", lambda: None)
+    monkeypatch.setattr(status_router, "compute_next_intraday_refresh_utc", lambda settings: None)
     monkeypatch.setattr(status_router, "resolved_cycle_times_utc", lambda settings: ["14:00", "16:30", "19:15"])
+    monkeypatch.setattr(status_router, "resolved_refresh_times_local", lambda settings: ["09:50", "10:10"])
 
     client = TestClient(app)
     response = client.get("/api/status/")
@@ -38,6 +43,7 @@ def test_status_api_exposes_market_session_schedule_metadata(monkeypatch) -> Non
     assert payload["schedule_timezone"] == "America/New_York"
     assert payload["cycle_times_local"] == ["10:00", "12:30", "15:15"]
     assert payload["cycle_times_utc"] == ["14:00", "16:30", "19:15"]
+    assert payload["refresh_times_local"] == ["09:50", "10:10"]
     assert payload["halted_recovery_streak"] == 0
     assert payload["halted_auto_recovery_target"] == 3
     assert payload["peak_inflation_warning_note"] is None
@@ -84,3 +90,69 @@ def test_system_state_api_exposes_hardening_fields(monkeypatch) -> None:
     assert payload["halted_recovery_streak"] == 2
     assert payload["halted_auto_recovery_target"] == 3
     assert payload["peak_inflation_warning_note"] == "Peak inflation warning: review --reset-peak"
+
+
+def test_system_trigger_refresh_route(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(system_router.router, prefix="/api/system")
+
+    class FakeSettings:
+        dashboard_enabled = True
+
+    monkeypatch.setattr(system_router, "settings", FakeSettings())
+    monkeypatch.setattr(system_router, "submit_refresh", lambda: True)
+
+    client = TestClient(app)
+    response = client.post("/api/system/trigger-refresh")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "started"
+
+
+def test_status_api_exposes_last_refresh_metadata(monkeypatch) -> None:
+    app = FastAPI()
+    app.include_router(status_router.router, prefix="/api/status")
+
+    class FakeSettings:
+        dashboard_enabled = True
+        cycle_frequency = "intraday"
+        cycle_times_local = ["10:00", "12:30", "15:15"]
+        schedule_mode = "market_session"
+        schedule_timezone = "America/New_York"
+        halted_auto_recovery_consecutive_cycles = 3
+
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    DashboardBase.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+
+    session = Session()
+    session.add(
+        Run(
+            cycle_id="refresh_1",
+            run_type="refresh",
+            started_at=datetime(2026, 3, 26, 13, 50, tzinfo=timezone.utc),
+            completed_at=datetime(2026, 3, 26, 14, 10, tzinfo=timezone.utc),
+            status="completed",
+        )
+    )
+    session.commit()
+    session.close()
+
+    monkeypatch.setattr(status_router, "get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(status_router, "get_session", lambda: Session())
+    monkeypatch.setattr(status_router, "_next_scheduled_run_utc", lambda: None)
+    monkeypatch.setattr(status_router, "compute_next_intraday_refresh_utc", lambda settings: None)
+    monkeypatch.setattr(status_router, "resolved_cycle_times_utc", lambda settings: ["14:00", "16:30", "19:15"])
+    monkeypatch.setattr(status_router, "resolved_refresh_times_local", lambda settings: ["09:50", "10:10"])
+
+    client = TestClient(app)
+    response = client.get("/api/status/")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["last_refresh_status"] == "completed"

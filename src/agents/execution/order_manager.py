@@ -1088,90 +1088,53 @@ class OrderManager:
         Returns:
             Number of orders updated.
         """
-        if self.dry_run:
-            return 0
-        try:
-            updated = 0
-            cursor: str | None = None
-            t212_ids_seen: set[str] = set()
+        summary = self.sync_orders_with_t212()
+        return int(summary.get("filled_count", 0))
 
-            while True:
-                resp = self.client.get_order_history(cursor=cursor, limit=50)
-                items = resp.get("items") or []
-                next_page = resp.get("nextPagePath")
+    @staticmethod
+    def _map_t212_status_to_order_status(t212_status: str) -> str:
+        """Map T212 order status values to local DB status values."""
+        upper = (t212_status or "").upper()
+        if upper in ("FILLED", "PARTIALLY_FILLED"):
+            return "filled"
+        if upper in ("REJECTED",):
+            return "failed"
+        if upper in ("CANCELLED", "CANCELLING"):
+            return "cancelled"
+        return "pending"
 
-                for item in items:
-                    order_obj = item.get("order") if isinstance(item, dict) else None
-                    if not order_obj:
-                        continue
-                    t212_id = str(order_obj.get("id") or order_obj.get("orderId") or "")
-                    if not t212_id or t212_id in t212_ids_seen:
-                        continue
-                    t212_ids_seen.add(t212_id)
-                    t212_status = (order_obj.get("status") or "").upper()
-
-                    if t212_status not in ("FILLED", "PARTIALLY_FILLED"):
-                        continue
-
-                    session = get_session()
-                    try:
-                        row = (
-                            session.query(Order)
-                            .filter(Order.t212_order_id == t212_id, Order.status.in_(["pending", "submitting"]))
-                            .first()
-                        )
-                        if row:
-                            row.status = "filled"
-                            filled_qty = order_obj.get("filledQuantity")
-                            filled_val = order_obj.get("filledValue")
-                            if filled_qty is not None and filled_qty > 0 and row.price is None:
-                                row.price = (filled_val or 0) / filled_qty if filled_val else None
-                            session.commit()
-                            updated += 1
-                            logger.info(f"Order {t212_id} synced to filled")
-                    except Exception as e:
-                        logger.warning(f"Failed to sync order {t212_id}: {e}")
-                        session.rollback()
-                    finally:
-                        session.close()
-
-                if not next_page or len(items) < 50:
-                    break
-                cursor = next_page
-
-            if updated:
-                logger.info(f"Order sync: {updated} pending orders updated to filled")
-            return updated
-        except Exception as e:
-            logger.warning(f"Order status sync failed: {e}")
-            return 0
-
-    def reconcile_pending_stop_orders_with_t212(self) -> dict[str, Any]:
-        """Reconcile local pending stop orders against live T212 pending orders.
-
-        Local rows that are pending in DB but missing from live T212 pending orders
-        are stale and are updated to cancelled.
-        """
+    def sync_orders_with_t212(
+        self,
+        *,
+        order_type_filter: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """Sync local pending orders against T212 history and live pending orders."""
         if self.dry_run:
             return {
                 "pending_local_count": 0,
                 "pending_live_count": 0,
                 "stale_pending_count": 0,
                 "reconciled_pending_count": 0,
+                "filled_count": 0,
+                "cancelled_count": 0,
+                "failed_count": 0,
+                "updated_total": 0,
+                "history_fetch_error": None,
                 "live_fetch_error": None,
             }
 
         session = get_session()
         try:
-            local_pending = (
+            query = (
                 session.query(Order)
                 .filter(
                     Order.status.in_(["pending", "submitting"]),
-                    Order.order_type == "stop",
                     Order.t212_order_id.isnot(None),
                 )
-                .all()
             )
+            if order_type_filter:
+                query = query.filter(Order.order_type.in_(sorted(order_type_filter)))
+            local_pending = query.all()
             pending_local_count = len(local_pending)
             if pending_local_count == 0:
                 return {
@@ -1179,57 +1142,145 @@ class OrderManager:
                     "pending_live_count": 0,
                     "stale_pending_count": 0,
                     "reconciled_pending_count": 0,
+                    "filled_count": 0,
+                    "cancelled_count": 0,
+                    "failed_count": 0,
+                    "updated_total": 0,
+                    "history_fetch_error": None,
                     "live_fetch_error": None,
                 }
 
+            local_by_id = {
+                str(row.t212_order_id): row for row in local_pending if row.t212_order_id is not None
+            }
+            filled_count = 0
+            cancelled_count = 0
+            failed_count = 0
+            history_fetch_error = None
+            cursor: str | None = None
+            t212_ids_seen: set[str] = set()
+            terminal_ids_seen: set[str] = set()
+
+            try:
+                while True:
+                    resp = self.client.get_order_history(cursor=cursor, limit=50)
+                    items = resp.get("items") or []
+                    next_page = resp.get("nextPagePath")
+
+                    for item in items:
+                        order_obj = item.get("order") if isinstance(item, dict) else None
+                        if not order_obj:
+                            continue
+                        t212_id = str(order_obj.get("id") or order_obj.get("orderId") or "")
+                        if not t212_id or t212_id in t212_ids_seen or t212_id not in local_by_id:
+                            continue
+                        t212_ids_seen.add(t212_id)
+                        row = local_by_id[t212_id]
+                        db_status = self._map_t212_status_to_order_status(str(order_obj.get("status") or ""))
+                        if db_status == "pending":
+                            continue
+
+                        row.status = db_status
+                        if db_status == "cancelled":
+                            row.error_message = "Synced from T212 order history"
+                        elif db_status == "failed":
+                            row.error_message = "Rejected by T212"
+                        filled_qty = order_obj.get("filledQuantity")
+                        filled_val = order_obj.get("filledValue")
+                        if db_status == "filled" and filled_qty is not None and filled_qty > 0 and row.price is None:
+                            row.price = (filled_val or 0) / filled_qty if filled_val else None
+
+                        terminal_ids_seen.add(t212_id)
+                        if db_status == "filled":
+                            filled_count += 1
+                        elif db_status == "cancelled":
+                            cancelled_count += 1
+                        elif db_status == "failed":
+                            failed_count += 1
+
+                    if not next_page or len(items) < 50 or terminal_ids_seen == set(local_by_id):
+                        break
+                    cursor = next_page
+            except Exception as e:
+                history_fetch_error = str(e)
+                logger.warning(f"Order status sync failed: {e}")
+
+            live_fetch_error = None
+            pending_live_count = 0
+            reconciled_pending_count = 0
+            stale_pending_count = 0
             try:
                 live_pending = self.client.get_pending_orders()
-            except Exception as e:
-                err = str(e)
-                logger.warning(f"Pending stop reconciliation skipped: failed to fetch live pending orders: {err}")
-                return {
-                    "pending_local_count": pending_local_count,
-                    "pending_live_count": 0,
-                    "stale_pending_count": 0,
-                    "reconciled_pending_count": 0,
-                    "live_fetch_error": err,
+                live_pending_ids = {
+                    str(item.get("id") or item.get("orderId"))
+                    for item in live_pending
+                    if (item.get("id") or item.get("orderId")) is not None
                 }
+                pending_live_count = len(live_pending_ids)
 
-            live_pending_ids = {
-                str(item.get("id") or item.get("orderId"))
-                for item in live_pending
-                if (item.get("id") or item.get("orderId")) is not None
-            }
-            pending_live_count = len(live_pending_ids)
+                stale_rows = [
+                    row
+                    for order_id, row in local_by_id.items()
+                    if row.status in ("pending", "submitting") and order_id not in live_pending_ids
+                ]
+                stale_pending_count = len(stale_rows)
+                for row in stale_rows:
+                    row.status = "cancelled"
+                    row.error_message = "Reconciled: missing from live T212 pending orders"
+                reconciled_pending_count = len(stale_rows)
+                cancelled_count += reconciled_pending_count
+            except Exception as e:
+                live_fetch_error = str(e)
+                logger.warning(f"Pending order reconciliation skipped: failed to fetch live pending orders: {e}")
 
-            stale_rows = [row for row in local_pending if str(row.t212_order_id) not in live_pending_ids]
-            for row in stale_rows:
-                row.status = "cancelled"
-                row.error_message = "Reconciled: missing from live T212 pending orders"
-            if stale_rows:
-                session.commit()
-                logger.info(f"Reconciled {len(stale_rows)} stale pending stop orders")
-
+            session.commit()
+            updated_total = filled_count + cancelled_count + failed_count
+            if updated_total:
+                logger.info(
+                    "Order sync updated %s orders (filled=%s cancelled=%s failed=%s)",
+                    updated_total,
+                    filled_count,
+                    cancelled_count,
+                    failed_count,
+                )
             return {
                 "pending_local_count": pending_local_count,
                 "pending_live_count": pending_live_count,
-                "stale_pending_count": len(stale_rows),
-                "reconciled_pending_count": len(stale_rows),
-                "live_fetch_error": None,
+                "stale_pending_count": stale_pending_count,
+                "reconciled_pending_count": reconciled_pending_count,
+                "filled_count": filled_count,
+                "cancelled_count": cancelled_count,
+                "failed_count": failed_count,
+                "updated_total": updated_total,
+                "history_fetch_error": history_fetch_error,
+                "live_fetch_error": live_fetch_error,
             }
         except Exception as e:
             session.rollback()
             err = str(e)
-            logger.warning(f"Pending stop reconciliation failed: {err}")
+            logger.warning(f"Order sync failed: {err}")
             return {
                 "pending_local_count": 0,
                 "pending_live_count": 0,
                 "stale_pending_count": 0,
                 "reconciled_pending_count": 0,
-                "live_fetch_error": err,
+                "filled_count": 0,
+                "cancelled_count": 0,
+                "failed_count": 0,
+                "updated_total": 0,
+                "history_fetch_error": err,
+                "live_fetch_error": None,
             }
         finally:
             session.close()
+
+    def reconcile_pending_stop_orders_with_t212(self) -> dict[str, Any]:
+        """Reconcile local pending stop orders against live T212 pending orders.
+
+        Local rows that are pending in DB but missing from live T212 pending orders
+        are stale and are updated to cancelled.
+        """
+        return self.sync_orders_with_t212(order_type_filter={"stop"})
 
     def get_portfolio_state(self) -> dict[str, Any]:
         """Get current portfolio positions and cash.

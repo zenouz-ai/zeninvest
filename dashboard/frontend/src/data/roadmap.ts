@@ -131,8 +131,8 @@ export const MILESTONES: Milestone[] = [
     end: '2026-03-10',
     effort: 'L',
     priority: 'P1',
-    description: 'Ten-page dashboard with full operator API surface and live SSE activity feed.',
-    architectureComponents: ['Dashboard', 'FastAPI', 'React'],
+    description: 'Eleven-page dashboard with full operator API surface, live SSE activity feed, refresh-aware status, broker-sync order health, and intraday refresh visibility between full cycles.',
+    architectureComponents: ['Dashboard', 'FastAPI', 'React', 'Scheduler'],
   },
   {
     id: 'US-1.7.3',

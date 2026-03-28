@@ -21,6 +21,8 @@ from src.utils.scheduling import (
     analysis_cycle_day_of_week,
     analysis_cycle_job_ids,
     analysis_cycle_specs,
+    intraday_refresh_job_ids,
+    intraday_refresh_specs,
 )
 
 logger = get_logger("scheduler")
@@ -38,8 +40,8 @@ except ImportError:
     log_event = None
 
 
-def _sync_analysis_cycle_jobs(database_url: str, desired_ids: set[str]) -> set[str]:
-    """Remove stale persisted analysis-cycle jobs and return desired job IDs."""
+def _sync_prefixed_jobs(database_url: str, prefix: str, desired_ids: set[str]) -> set[str]:
+    """Remove stale persisted scheduler jobs for a given prefix and return desired IDs."""
     # APScheduler persists cron jobs in apscheduler_jobs. When cadence changes
     # (for example fixed UTC 08:00/12:00/16:00 -> market-session 10:00/12:30/15:15 ET),
     # replace_existing only updates matching IDs and leaves obsolete rows behind.
@@ -52,12 +54,13 @@ def _sync_analysis_cycle_jobs(database_url: str, desired_ids: set[str]) -> set[s
             stale_ids = [
                 row[0]
                 for row in conn.execute(
-                    text("SELECT id FROM apscheduler_jobs WHERE id LIKE 'analysis_cycle_%'")
+                    text("SELECT id FROM apscheduler_jobs WHERE id LIKE :pattern"),
+                    {"pattern": f"{prefix}_%"},
                 )
                 if row[0] not in desired_ids
             ]
             for job_id in stale_ids:
-                logger.info(f"Removing stale analysis cycle job: {job_id}")
+                logger.info(f"Removing stale scheduler job: {job_id}")
                 conn.execute(
                     text("DELETE FROM apscheduler_jobs WHERE id = :job_id"),
                     {"job_id": job_id},
@@ -66,6 +69,151 @@ def _sync_analysis_cycle_jobs(database_url: str, desired_ids: set[str]) -> set[s
         engine.dispose()
 
     return desired_ids
+
+
+def _run_intraday_refresh() -> None:
+    """Run the lightweight broker/data refresh workflow."""
+    from src.orchestrator.main import Orchestrator
+
+    refresh_start_time = datetime.now(timezone.utc)
+    refresh_id = None
+
+    if DASHBOARD_AVAILABLE and log_event is not None:
+        try:
+            refresh_id = f"refresh_{refresh_start_time.strftime('%Y%m%d_%H%M%S')}"
+            log_event(
+                event_type="run_started",
+                source="scheduler",
+                message="Scheduled intraday refresh starting",
+                metadata={
+                    "cycle_id": refresh_id,
+                    "run_type": "refresh",
+                    "started_at": refresh_start_time.isoformat(),
+                },
+            )
+            try:
+                session = get_db_session()
+                try:
+                    run = Run(
+                        cycle_id=refresh_id,
+                        run_type="refresh",
+                        started_at=refresh_start_time,
+                        status="running",
+                    )
+                    session.add(run)
+                    session.commit()
+                except Exception:
+                    session.rollback()
+                    raise
+                finally:
+                    session.close()
+            except Exception as e:
+                logger.debug(f"Failed to create refresh Run record (fail-open): {e}", exc_info=True)
+        except Exception:
+            pass
+
+    logger.info("Scheduled intraday refresh starting...")
+    orchestrator = Orchestrator(dry_run=False)
+    try:
+        result = orchestrator.run_intraday_refresh(scheduled_refresh_id=refresh_id)
+        refresh_id = result.get("cycle_id", refresh_id)
+        logger.info(
+            "Intraday refresh completed: %s — orders_updated=%s positions=%s",
+            result.get("status"),
+            result.get("orders_updated_total", 0),
+            result.get("positions_refreshed", 0),
+        )
+        if DASHBOARD_AVAILABLE and log_event is not None:
+            try:
+                refresh_end_time = datetime.now(timezone.utc)
+                duration_seconds = (refresh_end_time - refresh_start_time).total_seconds()
+                log_event(
+                    event_type="run_completed",
+                    source="scheduler",
+                    message=(
+                        "Scheduled intraday refresh completed: "
+                        f"{result.get('status')} — orders_updated={result.get('orders_updated_total', 0)}"
+                    ),
+                    metadata={
+                        "cycle_id": refresh_id,
+                        "run_type": "refresh",
+                        "status": result.get("status", "completed"),
+                        "duration_seconds": duration_seconds,
+                        "orders_updated_total": result.get("orders_updated_total", 0),
+                        "positions_refreshed": result.get("positions_refreshed", 0),
+                        "market_data_tickers_warmed": result.get("market_data_tickers_warmed", 0),
+                        "stop_adjustments": result.get("stop_adjustments", 0),
+                        "deterministic_exits": result.get("deterministic_exits", 0),
+                    },
+                )
+                try:
+                    session = get_db_session()
+                    try:
+                        run = session.query(Run).filter(Run.cycle_id == refresh_id).first()
+                        if run:
+                            run.completed_at = refresh_end_time
+                            run.status = result.get("status", "completed")
+                            run.summary_json = {
+                                "orders_updated_total": result.get("orders_updated_total", 0),
+                                "positions_refreshed": result.get("positions_refreshed", 0),
+                                "market_data_tickers_warmed": result.get("market_data_tickers_warmed", 0),
+                                "stop_adjustments": result.get("stop_adjustments", 0),
+                                "deterministic_exits": result.get("deterministic_exits", 0),
+                                "duration_seconds": duration_seconds,
+                            }
+                            session.commit()
+                    except Exception:
+                        session.rollback()
+                        raise
+                    finally:
+                        session.close()
+                except Exception as e:
+                    logger.warning(f"Failed to update refresh Run record (fail-open): {e}", exc_info=True)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error(f"Scheduled intraday refresh failed: {e}")
+        if DASHBOARD_AVAILABLE and log_event is not None:
+            try:
+                refresh_end_time = datetime.now(timezone.utc)
+                duration_seconds = (refresh_end_time - refresh_start_time).total_seconds()
+                log_event(
+                    event_type="run_completed",
+                    source="scheduler",
+                    message=f"Scheduled intraday refresh failed: {str(e)}",
+                    metadata={
+                        "cycle_id": refresh_id,
+                        "run_type": "refresh",
+                        "status": "failed",
+                        "duration_seconds": duration_seconds,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                    },
+                )
+                try:
+                    session = get_db_session()
+                    try:
+                        run = session.query(Run).filter(Run.cycle_id == refresh_id).first()
+                        if run:
+                            run.completed_at = refresh_end_time
+                            run.status = "failed"
+                            run.summary_json = {
+                                "error_type": type(e).__name__,
+                                "error_message": str(e),
+                                "duration_seconds": duration_seconds,
+                            }
+                            session.commit()
+                    except Exception:
+                        session.rollback()
+                        raise
+                    finally:
+                        session.close()
+                except Exception as ex:
+                    logger.warning(f"Failed to update refresh Run record to failed (fail-open): {ex}", exc_info=True)
+            except Exception:
+                pass
+    finally:
+        orchestrator.close()
 
 
 def _run_analysis_cycle() -> None:
@@ -335,7 +483,8 @@ def create_scheduler() -> BlockingScheduler:
         "default": SQLAlchemyJobStore(url=DATABASE_URL),
     }
 
-    desired_cycle_job_ids = _sync_analysis_cycle_jobs(DATABASE_URL, analysis_cycle_job_ids(settings))
+    desired_cycle_job_ids = _sync_prefixed_jobs(DATABASE_URL, "analysis_cycle", analysis_cycle_job_ids(settings))
+    desired_refresh_job_ids = _sync_prefixed_jobs(DATABASE_URL, "intraday_refresh", intraday_refresh_job_ids(settings))
 
     scheduler = BlockingScheduler(jobstores=jobstores)
 
@@ -355,6 +504,22 @@ def create_scheduler() -> BlockingScheduler:
         )
 
     logger.debug(f"Active analysis cycle jobs: {sorted(desired_cycle_job_ids)}")
+
+    for spec in intraday_refresh_specs(settings):
+        scheduler.add_job(
+            _run_intraday_refresh,
+            "cron",
+            hour=spec.hour,
+            minute=spec.minute,
+            day_of_week=spec.weekday if spec.weekday is not None else analysis_cycle_day_of_week(settings),
+            timezone=spec.timezone,
+            id=spec.job_id,
+            replace_existing=True,
+            misfire_grace_time=3600,
+            max_instances=1,
+        )
+
+    logger.debug(f"Active intraday refresh jobs: {sorted(desired_refresh_job_ids)}")
 
     # Daily snapshot: 21:30 UTC
     scheduler.add_job(
