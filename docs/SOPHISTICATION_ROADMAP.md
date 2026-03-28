@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **29** · Pipeline **21**
+**At a glance:** Delivered **28** · Partial **1** · Pipeline **21**
 
 ### Priority rules
 
@@ -40,7 +40,7 @@ This document tracks every planned and delivered enhancement to the investment a
 |-------|------------------|--------|---------|
 | **Production Access & Safety** | delivered `US-7.7`, delivered `US-7.5`, next `US-7.3`, then `US-7.2` | **Execution-quality follow-on active** | Canonical ingress and the quick hardening slice are shipped; the next leverage point is execution reliability |
 | **Conversational Operator Workflow** | delivered foundation `US-1.6`, delivered MVP `US-1.9` | **Delivered** | Shared Slack/dashboard operator workflow, confirmation gating, and audited session flow are now live |
-| **Zen Evolution Engine** | delivered planner foundation `US-1.10`, later gated phases `US-1.11`–`US-1.14` | **Later / gated rollout** | Valuable north-star capability, but authority should expand only after posture, workflow, and CI foundations are stable |
+| **Zen Evolution Engine** | partially delivered planner foundation `US-1.10`, later gated phases `US-1.11`–`US-1.14` | **Later / gated rollout** | Valuable north-star capability, but authority should expand only after posture, workflow, and CI foundations are stable |
 | **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
 | **Execution Quality & Fill Recovery** | `US-7.3` then `US-7.2` | **Next after current week** | Required before any move from practice posture toward live-account readiness |
 | **Entry Quality Guards** | `US-4.2` + `US-3.3` | **Next after current week** | Small, material improvements that reduce bad entries faster than model experimentation |
@@ -66,7 +66,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-1.7.3** | Dashboard Visual Design System | Formalised ZENOUZ.ai visual language from `dashboard-style-guide.md`: Syne heading font, full CSS token system (`--color-*`, `--shadow-*`, `--radius-*`, `--transition-*`), violet soft-fill accents, glass-dark card treatment (radial-gradient + panel shadow + 1.5rem radius), brand gradient updated to violet→cyan→emerald, 72px violet atmospheric grid, blurred sticky nav bar, pill active state. Tailwind: `font-heading`, `borderRadius.panel/hero`, `boxShadow.panel/glow/glow-strong/card-hover`. Four new shared primitives: `Panel` (glass-dark surface), `MetricCard` (Syne KPI), `StatusPill` (brand pill/badge), `SectionHeader` (Syne heading + mono eyebrow). | Unified, polished visual identity across the entire dashboard; primitives unblock consistent page migration | **Delivered** |
 | **US-1.8** | Dashboard VPS Deployment | Original Dockerized VPS deployment path for the dashboard; the raw VPS/IP route is now superseded in production by US-7.7 canonical HTTPS ingress. See `docs/DASHBOARD_DEPLOYMENT.md`. | Operational visibility on live VPS | **Delivered** |
 | **US-1.9** | Conversational Trading Workflow | Shared Slack/dashboard sessions, explicit confirmation gate, audited action/research/workflow ledgers, and agentic beta transparency are implemented, validated, and signed off on VPS | Highest-leverage operator workflow improvement after US-1.6 | **Delivered** |
-| **US-1.10** | Evolution Planner | Authenticated dashboard-first evolution planner with natural-language intake, intent normalization, repo context retrieval, risk classification, validation matrix, clarifying-question loop, and full audit trail | Starts the policy-constrained software evolution track without granting code or deploy authority | **Delivered (planner-only)** |
+| **US-1.10** | Evolution Planner | Authenticated dashboard-first evolution planner with natural-language intake, intent normalization, static repo-context mapping, risk classification, validation matrix, clarifying-question loop, and full audit trail | Starts the policy-constrained software evolution track without granting code or deploy authority | **Partially delivered (Phase 1 planner-only)** |
 | **US-1.11** | Branch-Based Evolution Runner | Isolated branch workspace, scoped code edits, semantic change summary, validation artifact pack, and review-ready PR generation | True v1 autonomy target after CI and branch governance foundations exist | **Later / gated** |
 | **US-1.12** | Policy-Gated Promotion | Manual build/deploy approvals, environment protections, deployment records, and rollback metadata for approved evolution artifacts | Introduces controlled promotion without relaxing financial guardrails | **Later / gated** |
 | **US-1.13** | Low-Risk Auto-Promotion | Policy-approved auto-promotion for low-risk docs and dashboard polish only after manual promotion proves reliable | Adds selective autonomy without opening sensitive runtime surfaces | **Later / optional** |
@@ -509,7 +509,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Value:** Policy-constrained, operator-requested software evolution planning with a full audit trail
 **Effort:** Medium (planner-only slice)
 **Data Sources:** Roadmap, architecture, governance, deployment docs + dashboard/auth context + new evolution workflow tables
-**Stage:** Delivered (planner-only)
+**Stage:** Partially delivered (Phase 1 planner-only)
 
 **Detailed plan:** `docs/ZEN_EVOLUTION_ENGINE.md`.
 
@@ -517,17 +517,23 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - [x] Authenticated dashboard-first evolution interface
 - [x] Natural-language request intake with separate evolution domain tables
 - [x] Deterministic intent normalization into objective, scope, exclusions, assumptions, and risk class
-- [x] Repo-context retrieval grounded in roadmap, architecture, governance, deployment, and likely code areas
+- [x] Repo-context retrieval grounded in roadmap, architecture, governance, deployment, and likely code areas via deterministic static mappings
 - [x] Structured plan output with implementation steps and validation matrix
 - [x] Clarifying-question loop with plan versioning and audit trail
 - [x] Build and deploy gates remain hard-locked in Phase 1 with blocked attempts recorded
+
+**Audit note (2026-03-28):**
+- Targeted backend tests pass (`poetry run pytest tests/test_evolution_api.py -v`) and the dashboard frontend production build passes (`cd dashboard/frontend && npm run build`)
+- Current Phase 1 implementation is useful and real, but it remains a planner scaffold rather than a deeper code-aware evolution runner
+- Repo-context retrieval is static rather than live semantic repo analysis
+- The current automated coverage does not exercise the full auth middleware path or a browser-level Evolution page flow end-to-end
 
 **Why now:** This establishes the lowest-risk slice of the software evolution track while keeping authority tightly constrained. It is useful immediately for operator planning, but it does not bypass the current production-safety and CI prerequisites required for later branch execution and promotion phases.
 
 **Dependencies:**
 - Uses the existing dashboard authentication and operator workflow surface
 - Keeps Slack out of scope for the initial phase
-- Future phases (`US-1.11` onward) still depend on the current posture/workflow/CI sequence
+- Future phases (`US-1.11` onward) still depend on the current posture/workflow/CI sequence and are required before this track should be considered fully delivered
 
 ---
 

@@ -6,6 +6,7 @@ import {
   TOPICS,
   PROJECT_START,
   DELIVERED_COUNT,
+  PARTIAL_COUNT,
   PIPELINE_COUNT,
   PROGRESS_PCT,
   type Horizon,
@@ -242,7 +243,7 @@ export function getTimelineSections(milestones: Milestone[] = MILESTONES): Timel
       topic,
       columns: {
         Delivered: items
-          .filter((milestone) => milestone.status === 'delivered')
+          .filter((milestone) => milestone.status === 'delivered' || milestone.status === 'partial')
           .sort(sortDelivered),
         Next: items
           .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Next')
@@ -267,7 +268,7 @@ function formatDeliveredDateRange(milestone: Milestone): string {
 }
 
 function formatMilestoneWindow(milestone: Milestone): string {
-  if (milestone.status === 'delivered') return formatDeliveredDateRange(milestone)
+  if (milestone.status === 'delivered' || milestone.status === 'partial') return formatDeliveredDateRange(milestone)
   if (milestone.timeboxDays) return `${milestone.timeboxDays} day${milestone.timeboxDays === 1 ? '' : 's'}`
   return 'TBD'
 }
@@ -284,6 +285,18 @@ function priorityPillVariant(priority: Milestone['priority']): PillVariant {
   if (priority === 'P1') return 'active'
   if (priority === 'P2') return 'warning'
   return 'dim'
+}
+
+function milestoneStatusLabel(milestone: Milestone): string {
+  if (milestone.status === 'delivered') return 'Delivered'
+  if (milestone.status === 'partial') return 'Partial'
+  return milestone.horizon ?? 'Planned'
+}
+
+function milestoneStatusVariant(milestone: Milestone): PillVariant {
+  if (milestone.status === 'delivered') return 'active'
+  if (milestone.status === 'partial') return 'warning'
+  return timelinePillVariant(milestone.horizon ?? 'Later')
 }
 
 function timelineCardClass(column: TimelineColumnId): string {
@@ -427,7 +440,6 @@ function TimelineTabContent() {
       </Panel>
 
       {sections.map((section) => {
-        const deliveredCount = section.columns.Delivered.length
         const plannedCount = section.columns.Next.length + section.columns.Soon.length + section.columns.Later.length
 
         return (
@@ -436,7 +448,7 @@ function TimelineTabContent() {
               <SectionHeader
                 eyebrow="Work Stream"
                 title={section.topic}
-                subtitle={`${deliveredCount} delivered • ${plannedCount} planned in compact 1-2 day increments.`}
+                subtitle={`${section.columns.Delivered.filter((milestone) => milestone.status === 'delivered').length} delivered • ${section.columns.Delivered.filter((milestone) => milestone.status === 'partial').length} partial • ${plannedCount} planned in compact 1-2 day increments.`}
               />
               <div className="text-xs uppercase tracking-[0.18em] text-terminal-text-dim">
                 Sequence cues show the order inside each planning bucket.
@@ -479,8 +491,8 @@ function TimelineTabContent() {
 }
 
 function MilestoneDetailCard({ milestone }: { milestone: Milestone }) {
-  const statusLabel = milestone.status === 'delivered' ? 'Delivered' : milestone.horizon ?? 'Planned'
-  const windowLabel = milestone.status === 'delivered'
+  const statusLabel = milestoneStatusLabel(milestone)
+  const windowLabel = milestone.status === 'delivered' || milestone.status === 'partial'
     ? formatDeliveredDateRange(milestone)
     : `${formatMilestoneWindow(milestone)} · ${milestone.horizon ?? 'Planned'}`
 
@@ -490,7 +502,7 @@ function MilestoneDetailCard({ milestone }: { milestone: Milestone }) {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs uppercase tracking-[0.18em] text-accent">{milestone.id}</span>
-            <StatusPill label={statusLabel} variant={timelinePillVariant(statusLabel === 'Planned' ? 'Later' : statusLabel as TimelineColumnId)} dot />
+            <StatusPill label={statusLabel} variant={milestoneStatusVariant(milestone)} dot />
             <StatusPill label={milestone.priority} variant={priorityPillVariant(milestone.priority)} />
             <StatusPill label={milestone.effort} variant="dim" />
             {milestone.materiality && (
@@ -619,7 +631,15 @@ function RoadmapTabContent({
       {topicsToShow.map((topic) => {
         const items = filtered
           .filter((milestone) => milestone.topic === topic)
-          .sort((a, b) => (a.status === 'delivered' && b.status === 'pipeline' ? -1 : a.status === 'pipeline' && b.status === 'delivered' ? 1 : a.status === 'delivered' ? sortDelivered(a, b) : sortPipeline(a, b)))
+          .sort((a, b) => (
+            (a.status === 'delivered' || a.status === 'partial') && b.status === 'pipeline'
+              ? -1
+              : a.status === 'pipeline' && (b.status === 'delivered' || b.status === 'partial')
+                ? 1
+                : a.status === 'pipeline' && b.status === 'pipeline'
+                  ? sortPipeline(a, b)
+                  : sortDelivered(a, b)
+          ))
 
         if (items.length === 0) return null
 
@@ -629,7 +649,7 @@ function RoadmapTabContent({
               <SectionHeader
                 eyebrow="Topic"
                 title={topic}
-                subtitle={`${items.filter((milestone) => milestone.status === 'delivered').length} delivered • ${items.filter((milestone) => milestone.status === 'pipeline').length} planned`}
+                subtitle={`${items.filter((milestone) => milestone.status === 'delivered').length} delivered • ${items.filter((milestone) => milestone.status === 'partial').length} partial • ${items.filter((milestone) => milestone.status === 'pipeline').length} planned`}
               />
             </div>
 
@@ -921,17 +941,21 @@ export default function Roadmap() {
         description={`Project evolution from day 0 (${safeFormat(PROJECT_START, 'd MMM yyyy')}) to now. ${daysDev} days in development.`}
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <div className="card">
           <div className="text-sm text-terminal-text-dim">Delivered</div>
           <div className="text-2xl font-bold text-gain">{DELIVERED_COUNT}</div>
+        </div>
+        <div className="card">
+          <div className="text-sm text-terminal-text-dim">Partial</div>
+          <div className="text-2xl font-bold text-warning">{PARTIAL_COUNT}</div>
         </div>
         <div className="card">
           <div className="text-sm text-terminal-text-dim">Pipeline</div>
           <div className="text-2xl font-bold">{PIPELINE_COUNT}</div>
         </div>
         <div className="card">
-          <div className="text-sm text-terminal-text-dim">Progress</div>
+          <div className="text-sm text-terminal-text-dim">Delivered Progress</div>
           <div className="text-2xl font-bold text-accent">{PROGRESS_PCT}%</div>
         </div>
       </div>

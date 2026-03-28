@@ -1,7 +1,7 @@
 ---
 tags: [evolution, dashboard, planning, governance]
 status: current
-last_updated: 2026-03-25
+last_updated: 2026-03-28
 ---
 
 # Zen Evolution Engine
@@ -18,7 +18,7 @@ The design goal is **semi-autonomous software evolution with hard control gates*
 - The system can preserve an audit trail across requests, clarifications, plans, approvals, and later promotion records.
 - High-risk financial changes remain gated by policy.
 
-## Phase 1 Scope (Delivered)
+## Phase 1 Scope (Partially Delivered)
 
 The first delivered slice is **planner-only**:
 
@@ -30,6 +30,14 @@ The first delivered slice is **planner-only**:
 - validation matrix generation based on touched area
 - clarifying-question loop
 - full request/message/plan/run/artifact audit trail
+
+Delivery audit on 2026-03-28 confirmed that the shipped slice is real and working, but still narrower than the broader "software evolution" label suggests:
+
+- targeted backend planner tests pass
+- dashboard frontend production build passes
+- auth and router gating exist in the real app
+- repo-context retrieval is currently static mapping, not deep live repo analysis
+- no branch execution, code edits, build workers, or deployment authority exist yet
 
 Phase 1 intentionally **does not**:
 

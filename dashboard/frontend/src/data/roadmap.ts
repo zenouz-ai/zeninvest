@@ -18,7 +18,7 @@ export const TOPICS = [
 
 export type Topic = (typeof TOPICS)[number]
 
-export type MilestoneStatus = 'delivered' | 'pipeline'
+export type MilestoneStatus = 'delivered' | 'partial' | 'pipeline'
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
 export type Effort = 'S' | 'M' | 'L' | 'M-L'
 export type Horizon = 'Next' | 'Soon' | 'Later'
@@ -202,17 +202,17 @@ export const MILESTONES: Milestone[] = [
     id: 'US-1.10',
     name: 'Evolution Planner',
     topic: 'Foundation',
-    status: 'delivered',
+    status: 'partial',
     start: '2026-03-25',
     end: '2026-03-25',
     effort: 'M',
     priority: 'P1',
-    description: 'Authenticated dashboard-first evolution planner with natural-language intake, intent normalization, repo context retrieval, risk classification, validation matrix, clarifying-question loop, and full audit trail.',
+    description: 'Phase 1 planner-only slice is shipped: authenticated request intake, deterministic intent normalization, static repo-context mapping, risk classification, validation matrix, clarification loop, and audit trail. Branch execution, code changes, build workers, and deploy authority remain future work.',
     architectureComponents: ['Dashboard', 'FastAPI', 'Evolution Engine'],
     track: 'Zen Evolution Engine',
     legacyIds: ['US-1.10', 'US-1.11', 'US-1.12', 'US-1.13', 'US-1.14'],
     materiality: 'crucial',
-    successCriteria: 'Operators can create a scoped, auditable plan without granting code or deploy authority.',
+    successCriteria: 'Operators can create a scoped, auditable Phase 1 plan without granting code or deploy authority; deeper repo analysis, branch execution, and promotion stay for follow-on phases.',
   },
   {
     id: 'US-1.11',
@@ -730,6 +730,7 @@ export const MILESTONES: Milestone[] = [
 ]
 
 export const DELIVERED_COUNT = MILESTONES.filter((milestone) => milestone.status === 'delivered').length
+export const PARTIAL_COUNT = MILESTONES.filter((milestone) => milestone.status === 'partial').length
 export const PIPELINE_COUNT = MILESTONES.filter((milestone) => milestone.status === 'pipeline').length
 export const TOTAL_COUNT = MILESTONES.length
 export const PROGRESS_PCT = Math.round((DELIVERED_COUNT / TOTAL_COUNT) * 100)
