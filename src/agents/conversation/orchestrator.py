@@ -7,13 +7,14 @@ import re
 import time
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 from src.agents.conversation.compare_parser import (
     CompareRequest,
     parse_compare_request,
     retarget_trade_intent_to_winner,
 )
+from src.agents.conversation.context import SessionContext
 from src.agents.conversation.intent_classifier import (
     ClassifiedIntent,
     IntentClassifier,
@@ -30,6 +31,7 @@ from src.agents.conversation.intent_classifier import (
 )
 from src.agents.conversation.composer_safety import apply_safety_check
 from src.agents.conversation.planner import ChatPlanner, ChatPlannerDecision
+from src.agents.conversation.resolver import EntityResolver
 from src.agents.execution.order_manager import OrderManager
 from src.agents.market_data.data_fetcher import DataFetcher
 from src.agents.notifications.cancel_command_runner import CancelCommandRunner
@@ -41,6 +43,7 @@ from src.agents.conversation.session_manager import (
     ChatActionNotFoundError,
     ChatSessionNotFoundError,
     SessionManager,
+    StaleActionError,
 )
 from src.data.database import get_session
 from src.data.models import ChatAction, Instrument, PortfolioSnapshot
@@ -53,10 +56,13 @@ from src.utils.ticker_utils import resolve_ticker_to_t212, t212_to_yf
 
 logger = get_logger("conversation_orchestrator")
 
+EventLogger = Callable[[str, str, str, dict[str, Any] | None, datetime | None], None]
+
 try:
-    from dashboard.backend.app.services.event_logger import log_event
+    from dashboard.backend.app.services.event_logger import log_event as _dashboard_log_event
+    log_event: EventLogger | None = _dashboard_log_event
 except ImportError:  # pragma: no cover - dashboard import is optional in some environments
-    log_event = None
+    log_event: EventLogger | None = None
 
 
 # Regex constants are now consolidated in intent_classifier.py and imported above.
@@ -115,6 +121,7 @@ class ConversationOrchestrator:
         self._planner = ChatPlanner()
         self._specialists = ChatSpecialistEngine()
         self._intent_classifier = IntentClassifier()
+        self._entity_resolver = EntityResolver()
 
     @property
     def data_fetcher(self) -> DataFetcher:
@@ -216,18 +223,42 @@ class ConversationOrchestrator:
             session_detail = self.session_manager.get_session(session_id)
             if session_detail is None:
                 raise ChatSessionNotFoundError(f"Chat session {session_id} not found")
-            context = session_detail.get("context_json") or {}
-            if not isinstance(context, dict):
-                context = {}
+            context_state = SessionContext.from_json(session_detail.get("context_json"))
+            context_state.increment_turn()
+            context = context_state.to_dict()
 
             pending_action = self.session_manager.get_pending_action(session_id)
             normalized = message_text.lower().strip()
             if pending_action and normalized in CONFIRM_WORDS:
-                return self.confirm_action(session_id=session_id, action_id=pending_action["id"], channel_type=channel_type)
+                self._persist_session_context(
+                    session_id=session_id,
+                    context_state=context_state,
+                    channel_type=channel_type,
+                )
+                return self.confirm_action(
+                    session_id=session_id,
+                    action_id=pending_action["id"],
+                    channel_type=channel_type,
+                    expected_version=pending_action.get("version"),
+                )
             if pending_action and normalized in REJECT_WORDS:
-                return self.reject_action(session_id=session_id, action_id=pending_action["id"], channel_type=channel_type)
+                self._persist_session_context(
+                    session_id=session_id,
+                    context_state=context_state,
+                    channel_type=channel_type,
+                )
+                return self.reject_action(
+                    session_id=session_id,
+                    action_id=pending_action["id"],
+                    channel_type=channel_type,
+                    expected_version=pending_action.get("version"),
+                )
 
-            deterministic_intent = self._classify_intent(message_text, context)
+            deterministic_intent = self._classify_intent(
+                message_text,
+                context,
+                requested_mode=mode or self.settings.conversation_default_mode,
+            )
             if deterministic_intent["kind"] in {"trade_command", "update_stop", "portfolio_rule"}:
                 with bind_chat_cost_context(session_id=session_id, turn_id=user_turn_id):
                     result = self._handle_intent(
@@ -275,14 +306,12 @@ class ConversationOrchestrator:
                 )
                 next_context = result.get("context_update")
                 if isinstance(next_context, dict):
-                    merged = dict(context)
-                    merged.update(next_context)
-                    self.session_manager.update_session_context(
-                        session_id,
-                        context_json=merged,
-                        title=merged.get("title"),
-                        last_channel_type=channel_type,
-                    )
+                    context_state.merge(next_context)
+                self._persist_session_context(
+                    session_id=session_id,
+                    context_state=context_state,
+                    channel_type=channel_type,
+                )
                 self._emit_event(
                     "chat_turn_created",
                     f"Assistant turn created for session {session_id}",
@@ -372,14 +401,12 @@ class ConversationOrchestrator:
             )
             next_context = result.get("context_update")
             if isinstance(next_context, dict):
-                merged = dict(context)
-                merged.update(next_context)
-                self.session_manager.update_session_context(
-                    session_id,
-                    context_json=merged,
-                    title=merged.get("title"),
-                    last_channel_type=channel_type,
-                )
+                context_state.merge(next_context)
+            self._persist_session_context(
+                session_id=session_id,
+                context_state=context_state,
+                channel_type=channel_type,
+            )
             self._emit_event(
                 "chat_turn_created",
                 f"Assistant turn created for session {session_id}",
@@ -416,8 +443,21 @@ class ConversationOrchestrator:
             )
             return self._require_session(session_id)
 
-    def confirm_action(self, *, session_id: int, action_id: int, channel_type: str) -> dict[str, Any]:
+    def confirm_action(
+        self,
+        *,
+        session_id: int,
+        action_id: int,
+        channel_type: str,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
         action = self._get_action_for_session(session_id, action_id)
+        if expected_version is not None and int(action.get("version") or 1) != expected_version:
+            raise StaleActionError(
+                f"Action {action_id} version mismatch: expected {expected_version}, "
+                f"found {action.get('version')}",
+                latest_action=action,
+            )
         if action["status"] == "expired":
             self._record_assistant_message(session_id, "Confirmation expired. Please submit the request again.", channel_type)
             return self._require_session(session_id)
@@ -429,8 +469,9 @@ class ConversationOrchestrator:
             )
             return self._require_session(session_id)
 
-        self.session_manager.update_action(
+        self.session_manager.update_action_versioned(
             action_id,
+            expected_version=expected_version or int(action.get("version") or 1),
             status="confirmed",
             confirmed_at=_utcnow(),
         )
@@ -446,10 +487,35 @@ class ConversationOrchestrator:
         self._record_assistant_message(session_id, assistant_text, channel_type)
         return self._require_session(session_id)
 
-    def reject_action(self, *, session_id: int, action_id: int, channel_type: str) -> dict[str, Any]:
+    def reject_action(
+        self,
+        *,
+        session_id: int,
+        action_id: int,
+        channel_type: str,
+        expected_version: int | None = None,
+    ) -> dict[str, Any]:
         action = self._get_action_for_session(session_id, action_id)
-        self.session_manager.update_action(
+        if expected_version is not None and int(action.get("version") or 1) != expected_version:
+            raise StaleActionError(
+                f"Action {action_id} version mismatch: expected {expected_version}, "
+                f"found {action.get('version')}",
+                latest_action=action,
+            )
+        if action["status"] == "expired":
+            self._record_assistant_message(session_id, "Action already expired.", channel_type)
+            return self._require_session(session_id)
+        if action["status"] != "awaiting_confirmation":
+            self._record_assistant_message(
+                session_id,
+                f"Action {action_id} is not awaiting confirmation.",
+                channel_type,
+            )
+            return self._require_session(session_id)
+
+        self.session_manager.update_action_versioned(
             action_id,
+            expected_version=expected_version or int(action.get("version") or 1),
             status="rejected",
             rejection_reason="Cancelled by operator.",
         )
@@ -473,7 +539,13 @@ class ConversationOrchestrator:
         except Exception:
             pass
 
-    def _classify_intent(self, message_text: str, context: dict[str, Any]) -> dict[str, Any]:
+    def _classify_intent(
+        self,
+        message_text: str,
+        context: dict[str, Any],
+        *,
+        requested_mode: str | None = None,
+    ) -> dict[str, Any]:
         """Classify user message into a structured intent dict.
 
         Delegates to IntentClassifier for the three-layer classification,
@@ -481,7 +553,9 @@ class ConversationOrchestrator:
         expected by _handle_intent().
         """
         classified = self._intent_classifier.classify(
-            message_text, context,
+            message_text,
+            context,
+            requested_mode=requested_mode,
         )
 
         # Convert ClassifiedIntent to the legacy dict format used by _handle_intent
@@ -2132,6 +2206,19 @@ class ConversationOrchestrator:
             source_channel_type=channel_type,
         )
 
+    def _persist_session_context(
+        self,
+        *,
+        session_id: int,
+        context_state: SessionContext,
+        channel_type: str,
+    ) -> None:
+        self.session_manager.update_session_context(
+            session_id,
+            context_json=context_state.to_dict(),
+            last_channel_type=channel_type,
+        )
+
     def _build_research_summary(self, ticker_t212: str) -> tuple[str, str]:
         yf_ticker = t212_to_yf(ticker_t212)
         started = time.monotonic()
@@ -2248,6 +2335,10 @@ class ConversationOrchestrator:
 
     def _extract_subjects_for_research(self, message_text: str, context: dict[str, Any]) -> list[str]:
         lowered = message_text.lower()
+        context_state = SessionContext.from_json(context)
+        resolved_entities = self._entity_resolver.resolve(message_text, context_state)
+        if resolved_entities.tickers:
+            return resolved_entities.tickers
         compare_request = parse_compare_request(message_text)
         if compare_request is not None:
             return self._resolve_subjects(compare_request.subjects, context)
@@ -2380,15 +2471,26 @@ class ConversationOrchestrator:
         return sentence + "."
 
     def _resolve_subjects(self, subjects: list[str], context: dict[str, Any]) -> list[str]:
+        context_state = SessionContext.from_json(context)
         resolved: list[str] = []
         for subject in subjects:
+            entities = self._entity_resolver.resolve(subject, context_state)
+            if entities.tickers:
+                for ticker in entities.tickers:
+                    if ticker and ticker not in resolved:
+                        resolved.append(ticker)
+                continue
             value = self._resolve_subject(subject, context)
-            if value:
+            if value and value not in resolved:
                 resolved.append(value)
         return resolved
 
     def _resolve_subject(self, subject: str, context: dict[str, Any]) -> str:
         cleaned = _clean_text(subject)
+        context_state = SessionContext.from_json(context)
+        entities = self._entity_resolver.resolve(cleaned, context_state)
+        if entities.tickers:
+            return str(entities.tickers[0])
         lowered = cleaned.lower()
         last_tickers = list(context.get("last_subject_tickers") or [])
         if lowered in {"the first one", "first one", "first"} and last_tickers:

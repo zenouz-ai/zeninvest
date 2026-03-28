@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy import func
 
+from src.agents.conversation.context import SessionContext
 from src.data.database import get_session
 from src.data.models import (
     ChatAction,
@@ -58,6 +59,10 @@ class ChatActionNotFoundError(LookupError):
 class StaleActionError(Exception):
     """Raised when an action's version has changed (optimistic concurrency)."""
 
+    def __init__(self, message: str, *, latest_action: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.latest_action = latest_action
+
 
 class SessionManager:
     """Manages conversational trading session lifecycle and audit persistence."""
@@ -96,6 +101,26 @@ class SessionManager:
                 logger.info("Resumed chat session %s (%s)", existing.id, channel_type)
                 return int(existing.id)
 
+            inherited_context: dict[str, Any] | None = None
+            previous_session_id: int | None = None
+            if user_id:
+                previous_session = (
+                    session.query(ChatSession)
+                    .filter(
+                        ChatSession.channel_type == channel_type,
+                        ChatSession.user_id == user_id,
+                    )
+                    .order_by(ChatSession.last_activity_at.desc(), ChatSession.id.desc())
+                    .first()
+                )
+                if previous_session is not None:
+                    previous_context = SessionContext.from_json(_json_loads(previous_session.context_json))
+                    inherited = SessionContext()
+                    inherited.inherit_from(previous_context)
+                    inherited.previous_session_id = int(previous_session.id)
+                    inherited_context = inherited.to_dict()
+                    previous_session_id = int(previous_session.id)
+
             chat_session = ChatSession(
                 status="active",
                 channel_type=channel_type,
@@ -103,6 +128,8 @@ class SessionManager:
                 user_id=user_id,
                 title=title,
                 last_channel_type=channel_type,
+                context_json=_json_dumps(inherited_context),
+                previous_session_id=previous_session_id,
             )
             session.add(chat_session)
             session.commit()
@@ -528,7 +555,8 @@ class SessionManager:
             if action.version != expected_version:
                 raise StaleActionError(
                     f"Action {action_id} version mismatch: expected {expected_version}, "
-                    f"found {action.version}"
+                    f"found {action.version}",
+                    latest_action=self._serialize_action(action),
                 )
             if status is not None:
                 action.status = status

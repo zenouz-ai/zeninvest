@@ -186,6 +186,14 @@ class SessionContext:
                 self.active_tickers[k] = v
         if not self.watchlist and previous.watchlist:
             self.watchlist = list(previous.watchlist)
+        if not self.last_subject_tickers and previous.last_subject_tickers:
+            self.last_subject_tickers = list(previous.last_subject_tickers)
+        if not self.last_selection_tickers and previous.last_selection_tickers:
+            self.last_selection_tickers = list(previous.last_selection_tickers)
+        if self.last_selection_result is None and previous.last_selection_result is not None:
+            self.last_selection_result = previous.last_selection_result
+        if not self.conversation_summary and previous.conversation_summary:
+            self.conversation_summary = previous.conversation_summary
 
     def clear_inherited(self) -> None:
         """User requested 'start fresh' — drop inherited state."""

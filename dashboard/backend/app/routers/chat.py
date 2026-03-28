@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Never
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -12,6 +12,7 @@ from src.agents.conversation.session_manager import (
     ChatActionNotFoundError,
     ChatSessionNotFoundError,
     SessionManager,
+    StaleActionError,
 )
 
 router = APIRouter()
@@ -37,9 +38,10 @@ class SubmitTurnRequest(BaseModel):
 
 class SessionActionRequest(BaseModel):
     channel_type: Literal["dashboard", "slack"] = "dashboard"
+    expected_version: int = Field(gt=0)
 
 
-def _raise_server_error(exc: Exception) -> None:
+def _raise_server_error(exc: Exception) -> Never:
     raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
@@ -110,9 +112,18 @@ async def confirm_action(session_id: int, action_id: int, body: SessionActionReq
             session_id=session_id,
             action_id=action_id,
             channel_type=body.channel_type,
+            expected_version=body.expected_version,
         )
     except (ChatSessionNotFoundError, ChatActionNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except StaleActionError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(exc),
+                "action": exc.latest_action,
+            },
+        ) from exc
     except Exception as exc:
         _raise_server_error(exc)
 
@@ -125,9 +136,18 @@ async def reject_action(session_id: int, action_id: int, body: SessionActionRequ
             session_id=session_id,
             action_id=action_id,
             channel_type=body.channel_type,
+            expected_version=body.expected_version,
         )
     except (ChatSessionNotFoundError, ChatActionNotFoundError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except StaleActionError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": str(exc),
+                "action": exc.latest_action,
+            },
+        ) from exc
     except Exception as exc:
         _raise_server_error(exc)
 

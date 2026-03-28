@@ -333,6 +333,7 @@ export interface ChatAction {
   executed_at: string | null
   created_at: string | null
   updated_at: string | null
+  version: number
 }
 
 export interface ChatResearchLog {

@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from src.agents.conversation.context import SessionContext
 from src.agents.conversation.session_manager import (
     ChatSessionNotFoundError,
     SessionManager,
@@ -197,6 +198,28 @@ class TestSessionManager:
         assert result is not None
         assert result["status"] == "closed"
         assert result["ended_at"] is not None
+
+    def test_create_session_inherits_previous_context_for_same_user_and_channel(self):
+        mgr = SessionManager()
+        first_id = mgr.create_session(channel_type="dashboard", user_id="u1")
+        mgr.update_session_context(
+            first_id,
+            context_json=SessionContext(
+                last_subject_tickers=["NVDA_US_EQ"],
+                watchlist=["AMD_US_EQ"],
+                conversation_summary="Semiconductor discussion",
+            ).to_dict(),
+        )
+        mgr.end_session(first_id)
+
+        second_id = mgr.create_session(channel_type="dashboard", user_id="u1")
+        detail = mgr.get_session(second_id)
+
+        assert detail is not None
+        assert detail["context_json"]["previous_session_id"] == first_id
+        assert detail["context_json"]["watchlist"] == ["AMD_US_EQ"]
+        assert detail["context_json"]["last_subject_tickers"] == ["NVDA_US_EQ"]
+        assert detail["context_json"]["conversation_summary"] == "Semiconductor discussion"
 
     def test_add_turn_to_missing_session_raises_not_found(self):
         mgr = SessionManager()

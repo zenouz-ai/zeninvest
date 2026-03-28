@@ -1,10 +1,14 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import axios from 'axios'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { Panel } from '../components/Panel'
 import { StatusPill } from '../components/StatusPill'
 import type { PillVariant } from '../components/StatusPill'
 import { SectionHeader } from '../components/SectionHeader'
 import { TableSkeleton } from '../components/Skeleton'
+import { ActionCard } from '../components/chat/ActionCard'
+import { ChatInput } from '../components/chat/ChatInput'
+import { WorkflowTimeline } from '../components/chat/WorkflowTimeline'
 import { chatApi, commandsApi } from '../api/client'
 import { useSSE } from '../hooks/useSSE'
 import type {
@@ -14,7 +18,6 @@ import type {
   ChatSessionDetail,
   ChatSessionSummary,
   ChatTurn,
-  ChatWorkflowStep,
   CommandStats,
   Event,
   SlackCommand,
@@ -198,51 +201,6 @@ function SessionList({
   )
 }
 
-function WorkflowRail({ steps }: { steps: ChatWorkflowStep[] }) {
-  const recentSteps = steps.slice(-12)
-
-  return (
-    <Panel className="space-y-4">
-      <SectionHeader
-        eyebrow="Transparency"
-        title="Agent Activity"
-        subtitle="Operator-safe workflow steps, tool usage, and spend deltas for this conversation."
-      />
-      {recentSteps.length === 0 ? (
-        <p className="text-sm text-terminal-text-dim">No workflow trace yet for this session.</p>
-      ) : (
-        <div className="space-y-3">
-          {recentSteps.map((step) => (
-            <div key={step.id} className="rounded-xl border border-terminal-border bg-terminal-surface/30 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-terminal-text">
-                    {step.label || step.step_key.replace(/_/g, ' ')}
-                  </p>
-                  <p className="mt-1 text-xs text-terminal-text-dim">{step.detail || 'In progress'}</p>
-                </div>
-                <StatusPill variant={STATUS_VARIANT[step.status] || 'dim'} label={step.status} />
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-terminal-text-dim">
-                <span>{safeFormat(step.started_at)}</span>
-                {step.tool_name && <span>Tool: {step.tool_name}</span>}
-                {step.provider && <span>Provider: {step.provider}</span>}
-                {step.model && <span>Model: {step.model}</span>}
-                {typeof step.cost_gbp === 'number' && step.cost_gbp > 0 && (
-                  <span>Cost: {formatCurrency(step.cost_gbp)}</span>
-                )}
-                {typeof step.latency_ms === 'number' && step.latency_ms > 0 && (
-                  <span>Latency: {Math.round(step.latency_ms)} ms</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Panel>
-  )
-}
-
 function EvidencePanels({ latestAssistant }: { latestAssistant: ChatTurn | null }) {
   const payload = assistantPayload(latestAssistant)
   const citations = asObjectArray(payload?.citations)
@@ -383,21 +341,13 @@ function ChatThread({
   sessionDetail,
   loading,
   submitting,
-  composer,
-  composerMode,
-  onComposerChange,
-  onComposerModeChange,
   onSubmit,
   onClose,
 }: {
   sessionDetail: ChatSessionDetail | null
   loading: boolean
   submitting: boolean
-  composer: string
-  composerMode: 'quick' | 'research' | 'committee' | 'trade'
-  onComposerChange: (value: string) => void
-  onComposerModeChange: (value: 'quick' | 'research' | 'committee' | 'trade') => void
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+  onSubmit: (message: string, mode?: string) => void
   onClose: () => void
 }) {
   const latestAssistant = latestAssistantTurn(sessionDetail)
@@ -482,43 +432,16 @@ function ChatThread({
 
           <EvidencePanels latestAssistant={latestAssistant} />
 
-          <form className="space-y-3" onSubmit={onSubmit}>
-            <div className="flex flex-wrap gap-2">
-              {(['quick', 'research', 'committee', 'trade'] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => onComposerModeChange(value)}
-                  className={`rounded-full px-3 py-1.5 text-[11px] uppercase tracking-wide transition-colors ${
-                    composerMode === value
-                      ? 'bg-cyan text-terminal-bg'
-                      : 'border border-terminal-border text-terminal-text-dim hover:border-cyan/40 hover:text-terminal-text'
-                  }`}
-                >
-                  {value}
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={composer}
-              onChange={(event) => onComposerChange(event.target.value)}
+          <div className="space-y-3">
+            <p className="text-xs text-terminal-text-dim">
+              Dashboard replies continue the same session even when the thread started in Slack. Execution remains confirm-gated and versioned.
+            </p>
+            <ChatInput
+              onSubmit={onSubmit}
+              disabled={submitting}
               placeholder="Try: review AMD and compare it with NVDA, or liquidate holdings below £100, or set the stop for TSLA to 240"
-              rows={4}
-              className="w-full rounded-2xl border border-terminal-border bg-terminal-surface/70 px-4 py-3 text-sm text-terminal-text outline-none transition-colors placeholder:text-terminal-text-dim focus:border-cyan"
             />
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-terminal-text-dim">
-                Dashboard replies continue the same session even when the thread started in Slack. Current mode: {composerMode}.
-              </p>
-              <button
-                type="submit"
-                disabled={submitting || !composer.trim()}
-                className="rounded border border-cyan/50 bg-cyan/10 px-4 py-2 text-xs uppercase tracking-wide text-cyan transition-colors hover:border-cyan hover:bg-cyan/15 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {submitting ? 'Sending…' : 'Send'}
-              </button>
-            </div>
-          </form>
+          </div>
         </>
       )}
     </Panel>
@@ -531,8 +454,8 @@ function ActionRail({
   onReject,
 }: {
   sessionDetail: ChatSessionDetail | null
-  onConfirm: (actionId: number) => void
-  onReject: (actionId: number) => void
+  onConfirm: (action: ChatAction) => void
+  onReject: (action: ChatAction) => void
 }) {
   const pendingActions = useMemo(
     () => (sessionDetail?.actions || []).filter((action) =>
@@ -554,7 +477,18 @@ function ActionRail({
 
   return (
     <div className="space-y-4">
-      <WorkflowRail steps={sessionDetail?.workflow_steps || []} />
+      <Panel className="space-y-4">
+        <SectionHeader
+          eyebrow="Transparency"
+          title="Agent Activity"
+          subtitle="Operator-safe workflow steps, tool usage, and spend deltas for this conversation."
+        />
+        {(sessionDetail?.workflow_steps || []).length === 0 ? (
+          <p className="text-sm text-terminal-text-dim">No workflow trace yet for this session.</p>
+        ) : (
+          <WorkflowTimeline steps={sessionDetail?.workflow_steps || []} />
+        )}
+      </Panel>
 
       <Panel className="space-y-4">
         <SectionHeader
@@ -579,43 +513,12 @@ function ActionRail({
           <p className="text-sm text-terminal-text-dim">No pending proposals in this session.</p>
         ) : (
           pendingActions.map((action) => (
-            <div key={action.id} className="rounded-2xl border border-terminal-border bg-terminal-surface/40 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-terminal-text">{action.title || action.action_type}</p>
-                  <p className="mt-1 text-xs text-terminal-text-dim">
-                    {action.ticker ? cleanTicker(action.ticker) : 'Multi-item action'}
-                  </p>
-                </div>
-                {renderActionStatus(action)}
-              </div>
-              {action.preview_text && (
-                <pre className="mt-3 whitespace-pre-wrap break-words text-xs leading-6 text-terminal-text-muted">
-                  {action.preview_text}
-                </pre>
-              )}
-              {action.status === 'awaiting_confirmation' && (
-                <div className="mt-4 flex gap-2">
-                  <button
-                    onClick={() => onConfirm(action.id)}
-                    className="rounded border border-gain/50 bg-gain/10 px-3 py-1.5 text-xs uppercase tracking-wide text-gain transition-colors hover:border-gain"
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    onClick={() => onReject(action.id)}
-                    className="rounded border border-loss/50 bg-loss/10 px-3 py-1.5 text-xs uppercase tracking-wide text-loss transition-colors hover:border-loss"
-                  >
-                    Reject
-                  </button>
-                </div>
-              )}
-              {action.expires_at && (
-                <p className="mt-3 text-[11px] text-terminal-text-dim">
-                  Expires: {safeFormat(action.expires_at)}
-                </p>
-              )}
-            </div>
+            <ActionCard
+              key={action.id}
+              action={action}
+              onConfirm={() => onConfirm(action)}
+              onReject={() => onReject(action)}
+            />
           ))
         )}
       </Panel>
@@ -991,8 +894,6 @@ export default function Commands() {
   const [sessionDetail, setSessionDetail] = useState<ChatSessionDetail | null>(null)
   const [chatLoading, setChatLoading] = useState(true)
   const [chatError, setChatError] = useState<string | null>(null)
-  const [composer, setComposer] = useState('')
-  const [composerMode, setComposerMode] = useState<'quick' | 'research' | 'committee' | 'trade'>('research')
   const [submitting, setSubmitting] = useState(false)
 
   const [commands, setCommands] = useState<SlackCommand[]>([])
@@ -1107,9 +1008,7 @@ export default function Commands() {
     }
   }, [fetchSessions])
 
-  const handleSendTurn = useCallback(async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const message = composer.trim()
+  const handleSendTurn = useCallback(async (message: string, mode?: string) => {
     if (!message) return
 
     setSubmitting(true)
@@ -1124,46 +1023,63 @@ export default function Commands() {
       const detail = await chatApi.submitTurn(activeSessionId, {
         message_text: message,
         channel_type: 'dashboard',
-        mode: composerMode,
+        mode: (mode as 'quick' | 'research' | 'committee' | 'trade' | undefined) ?? 'research',
         budget_tier: 'premium',
       })
       setSessionDetail(detail)
-      setComposer('')
       await fetchSessions(detail.id)
     } catch (error) {
       setChatError(error instanceof Error ? error.message : 'Failed to send chat turn')
     } finally {
       setSubmitting(false)
     }
-  }, [composer, composerMode, fetchSessions, selectedSessionId])
+  }, [fetchSessions, selectedSessionId])
 
-  const handleConfirmAction = useCallback(async (actionId: number) => {
+  const handleConfirmAction = useCallback(async (action: ChatAction) => {
     if (!sessionDetail) return
     setSubmitting(true)
     try {
-      const detail = await chatApi.confirmAction(sessionDetail.id, actionId, { channel_type: 'dashboard' })
+      const detail = await chatApi.confirmAction(sessionDetail.id, action.id, {
+        channel_type: 'dashboard',
+        expected_version: action.version,
+      })
       setSessionDetail(detail)
       await fetchSessions(detail.id)
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : 'Failed to confirm action')
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        await fetchSessionDetail(sessionDetail.id)
+        await fetchSessions(sessionDetail.id)
+        setChatError('This action changed before confirmation. Review the latest proposal state and try again.')
+      } else {
+        setChatError(error instanceof Error ? error.message : 'Failed to confirm action')
+      }
     } finally {
       setSubmitting(false)
     }
-  }, [fetchSessions, sessionDetail])
+  }, [fetchSessionDetail, fetchSessions, sessionDetail])
 
-  const handleRejectAction = useCallback(async (actionId: number) => {
+  const handleRejectAction = useCallback(async (action: ChatAction) => {
     if (!sessionDetail) return
     setSubmitting(true)
     try {
-      const detail = await chatApi.rejectAction(sessionDetail.id, actionId, { channel_type: 'dashboard' })
+      const detail = await chatApi.rejectAction(sessionDetail.id, action.id, {
+        channel_type: 'dashboard',
+        expected_version: action.version,
+      })
       setSessionDetail(detail)
       await fetchSessions(detail.id)
     } catch (error) {
-      setChatError(error instanceof Error ? error.message : 'Failed to reject action')
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        await fetchSessionDetail(sessionDetail.id)
+        await fetchSessions(sessionDetail.id)
+        setChatError('This action changed before rejection. Review the latest proposal state and try again.')
+      } else {
+        setChatError(error instanceof Error ? error.message : 'Failed to reject action')
+      }
     } finally {
       setSubmitting(false)
     }
-  }, [fetchSessions, sessionDetail])
+  }, [fetchSessionDetail, fetchSessions, sessionDetail])
 
   const handleCloseSession = useCallback(async () => {
     if (!sessionDetail) return
@@ -1182,8 +1098,8 @@ export default function Commands() {
     <div className="space-y-6">
       <PageBrandHeader
         eyebrow="Trade Console"
-        title="Research"
-        description="Slack remains the primary live surface, but this dashboard now continues the same conversational trading sessions with proposal review, execution state, research trace, and a legacy Slack audit."
+        title="Chat"
+        description="This is the canonical dashboard surface for conversational trading sessions, proposal review, execution state, research trace, and the legacy Slack audit."
       />
 
       <Panel className="flex flex-wrap items-center justify-between gap-3">
@@ -1227,17 +1143,13 @@ export default function Commands() {
             sessionDetail={sessionDetail}
             loading={chatLoading && !sessionDetail}
             submitting={submitting}
-            composer={composer}
-            composerMode={composerMode}
-            onComposerChange={setComposer}
-            onComposerModeChange={setComposerMode}
-            onSubmit={(event) => void handleSendTurn(event)}
+            onSubmit={(message, mode) => void handleSendTurn(message, mode)}
             onClose={() => void handleCloseSession()}
           />
           <ActionRail
             sessionDetail={sessionDetail}
-            onConfirm={(actionId) => void handleConfirmAction(actionId)}
-            onReject={(actionId) => void handleRejectAction(actionId)}
+            onConfirm={(action) => void handleConfirmAction(action)}
+            onReject={(action) => void handleRejectAction(action)}
           />
         </div>
       ) : (

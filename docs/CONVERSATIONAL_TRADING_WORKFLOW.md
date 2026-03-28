@@ -18,7 +18,7 @@ Define a single implementation plan for a dialogue-driven trading workflow that 
 - Agentic research capabilities (US-4.4, delivered)
 
 This document is the canonical design for cross-channel conversational trade operations.
-Current implementation state: the core US-1.9 MVP is now deployed on the VPS and has been extended with an **agentic beta** path. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, chat SSE events, Slack thread continuity, dashboard-to-Slack reply mirroring for Slack-backed sessions, and the chat-first dashboard `Research` console (`/commands`) are implemented. The beta path adds a planner-led route selector, evidence-driven replies, related-ticker scans, hidden specialist opinions folded into one assistant voice, and a persisted `chat_workflow_steps` trace so the operator can see what the agent is doing step by step without exposing chain-of-thought. Recent hardening also added explicit degraded-turn warnings, deterministic `help_or_explain` fast-path handling, stricter compare / committee subject resolution, Slack bullet/list normalization before routing, deterministic precedence for explicit threaded commands, timezone-safe pending-action expiry checks, and deterministic compare support for 2-3 explicit names plus confirm-gated follow-ons such as `compare Amazon and Alphabet, then buy £20 of the stronger one`. The secondary `Legacy Slack Audit` tab is intentionally not the full conversation archive; it remains the one-shot `SlackCommandLog` view and now auto-refreshes while open. Chat-triggered LLM calls and paid research calls continue to carry `chat_session_id` / `chat_turn_id` attribution so session-level operator spend can be measured directly.
+Current implementation state: the core US-1.9 MVP is now deployed on the VPS and has been extended with an **agentic beta** path. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, chat SSE events, Slack thread continuity, dashboard-to-Slack reply mirroring for Slack-backed sessions, and the chat-first dashboard console at `/chat` (with `/commands` retained as a backward-compatible alias) are implemented. The beta path adds a planner-led route selector, evidence-driven replies, related-ticker scans, hidden specialist opinions folded into one assistant voice, and a persisted `chat_workflow_steps` trace so the operator can see what the agent is doing step by step without exposing chain-of-thought. Recent hardening also added explicit degraded-turn warnings, deterministic `help_or_explain` fast-path handling, stricter compare / committee subject resolution, typed session context persistence, cross-session inheritance for same-user dashboard sessions, optimistic action-version checks on explicit confirm/reject APIs, Slack bullet/list normalization before routing, deterministic precedence for explicit threaded commands, timezone-safe pending-action expiry checks, and deterministic compare support for 2-3 explicit names plus confirm-gated follow-ons such as `compare Amazon and Alphabet, then buy £20 of the stronger one`. The secondary `Legacy Slack Audit` tab is intentionally not the full conversation archive; it remains the one-shot `SlackCommandLog` view and now auto-refreshes while open. Chat-triggered LLM calls and paid research calls continue to carry `chat_session_id` / `chat_turn_id` attribution so session-level operator spend can be measured directly.
 
 ---
 
@@ -228,35 +228,49 @@ Guardrails:
 
 ---
 
-## Dashboard Chat API Design (Proposed)
+## Dashboard Chat API Design (Current)
 
 Base prefix: `/api/chat`
 
 1. `POST /api/chat/sessions`
    - create session or resume active one (optional channel key)
-   - response: `session_id`, status, last context summary
+   - response: full session detail including latest context summary
 
 2. `POST /api/chat/sessions/{session_id}/turns`
    - submit a user turn
    - request: message, optional client metadata
-   - response: ack + `turn_id` (final response pushed via SSE)
+   - response: refreshed session detail, synchronously
+   - SSE still emits matching chat events for other open clients
 
 3. `POST /api/chat/sessions/{session_id}/actions/{action_id}/confirm`
    - explicit confirmation for pending action
-   - request: `confirm=true|false`
-   - response: action status transition
+   - request: `channel_type`, `expected_version`
+   - response: refreshed session detail
+   - `409 Conflict`: latest action payload returned when the proposal version changed
 
-4. `POST /api/chat/sessions/{session_id}/end`
+4. `POST /api/chat/sessions/{session_id}/actions/{action_id}/reject`
+   - explicit rejection for pending action
+   - request: `channel_type`, `expected_version`
+   - response: refreshed session detail
+   - `409 Conflict`: latest action payload returned when the proposal version changed
+
+5. `POST /api/chat/sessions/{session_id}/end`
    - explicit close
 
-5. `GET /api/chat/sessions/{session_id}`
+6. `GET /api/chat/sessions/{session_id}`
    - session summary and state
 
-6. `GET /api/chat/sessions/{session_id}/turns`
+7. `GET /api/chat/sessions/{session_id}/turns`
    - paginated turn history
 
-7. `GET /api/chat/sessions/{session_id}/actions`
+8. `GET /api/chat/sessions/{session_id}/actions`
    - pending/executed action ledger for UI action cards
+
+9. `GET /api/chat/sessions/{session_id}/spend`
+   - session-scoped cost summary
+
+10. `DELETE /api/chat/sessions/{session_id}`
+   - archive session without removing audit history
 
 SSE:
 

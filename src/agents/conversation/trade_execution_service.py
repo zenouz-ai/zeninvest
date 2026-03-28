@@ -244,15 +244,15 @@ class PortfolioService:
         try:
             inst = session.query(Instrument).filter(Instrument.ticker == ticker_t212).first()
             if inst:
-                parts = []
+                parts: list[str] = []
                 if inst.name:
-                    parts.append(f"{inst.name}")
+                    parts.append(str(inst.name))
                 if inst.sector:
                     parts.append(f"Sector: {inst.sector}")
                 if inst.industry:
                     parts.append(f"Industry: {inst.industry}")
                 if inst.business_summary:
-                    parts.append(inst.business_summary[:500])
+                    parts.append(str(inst.business_summary)[:500])
                 return " | ".join(parts) if parts else ""
             return ""
         except Exception:
@@ -266,7 +266,9 @@ class PortfolioService:
         session = get_session()
         try:
             inst = session.query(Instrument).filter(Instrument.ticker == ticker_t212).first()
-            return inst.sector or "Unknown" if inst else "Unknown"
+            if not inst or not inst.sector:
+                return "Unknown"
+            return str(inst.sector)
         except Exception:
             return "Unknown"
         finally:

@@ -204,6 +204,48 @@ def test_what_about_followup_resolves_new_symbol_instead_of_reusing_previous_sub
     assert set(queries) == {"GOOGL_US_EQ", "AMD_US_EQ", "NVDA_US_EQ"}
 
 
+def test_typed_context_persists_turn_count_and_pronoun_resolution(orchestrator):
+    session = orchestrator.start_session(channel_type="dashboard", user_id="operator", title="Pronoun test")
+
+    first_detail = orchestrator.process_turn(
+        session_id=session["id"],
+        message_text="review AMD",
+        channel_type="dashboard",
+    )
+    second_detail = orchestrator.process_turn(
+        session_id=session["id"],
+        message_text="what about it?",
+        channel_type="dashboard",
+    )
+
+    assert first_detail["context_json"]["turn_count"] == 1
+    assert "AMD_US_EQ" in (first_detail["context_json"]["active_tickers"] or {})
+    assert second_detail["context_json"]["turn_count"] == 2
+    assert "AMD_US_EQ" in second_detail["turns"][-1]["message_text"]
+
+
+def test_new_session_inherits_previous_context_and_resolves_follow_up(orchestrator):
+    first_session = orchestrator.start_session(channel_type="dashboard", user_id="operator", title="First")
+    first_detail = orchestrator.process_turn(
+        session_id=first_session["id"],
+        message_text="review NVDA",
+        channel_type="dashboard",
+    )
+    assert first_detail["context_json"]["last_subject_tickers"] == ["NVDA_US_EQ"]
+    orchestrator.session_manager.end_session(first_session["id"])
+
+    second_session = orchestrator.start_session(channel_type="dashboard", user_id="operator", title="Second")
+    second_detail = orchestrator.process_turn(
+        session_id=second_session["id"],
+        message_text="what about it?",
+        channel_type="dashboard",
+    )
+
+    assert second_detail["context_json"]["previous_session_id"] == first_session["id"]
+    assert second_detail["context_json"]["last_subject_tickers"] == ["NVDA_US_EQ"]
+    assert "NVDA_US_EQ" in second_detail["turns"][-1]["message_text"]
+
+
 def test_dashboard_reply_is_mirrored_back_to_slack_thread(orchestrator):
     mock_client = MagicMock()
     orchestrator.settings.notifications.setdefault("slack_trade_commands", {})["channel_id"] = "C123"

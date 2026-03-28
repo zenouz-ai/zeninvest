@@ -203,22 +203,22 @@ export const chatApi = {
   confirmAction: async (
     sessionId: number,
     actionId: number,
-    body?: { channel_type?: 'dashboard' | 'slack' }
+    body: { channel_type?: 'dashboard' | 'slack'; expected_version: number }
   ): Promise<ChatSessionDetail> => {
     const response = await api.post(
       `/api/chat/sessions/${sessionId}/actions/${actionId}/confirm`,
-      body ?? { channel_type: 'dashboard' }
+      body
     )
     return response.data
   },
   rejectAction: async (
     sessionId: number,
     actionId: number,
-    body?: { channel_type?: 'dashboard' | 'slack' }
+    body: { channel_type?: 'dashboard' | 'slack'; expected_version: number }
   ): Promise<ChatSessionDetail> => {
     const response = await api.post(
       `/api/chat/sessions/${sessionId}/actions/${actionId}/reject`,
-      body ?? { channel_type: 'dashboard' }
+      body
     )
     return response.data
   },

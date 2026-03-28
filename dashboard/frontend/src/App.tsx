@@ -16,7 +16,6 @@ const OrderManagement = lazy(() => import('./pages/OrderManagement'))
 const Costs = lazy(() => import('./pages/Costs'))
 const Roadmap = lazy(() => import('./pages/Roadmap'))
 const WorldNews = lazy(() => import('./pages/WorldNews'))
-const Commands = lazy(() => import('./pages/Commands'))
 const Chat = lazy(() => import('./pages/Chat'))
 const Evolution = lazy(() => import('./pages/Evolution'))
 const PublicOverview = lazy(() => import('./pages/PublicOverview'))
@@ -109,7 +108,7 @@ function MoreDropdown({ authenticated }: { authenticated: boolean }) {
         >
           <NavLink to="/opportunity" className={dropdownLinkClass} onClick={() => setOpen(false)}>Opportunity</NavLink>
           <NavLink to="/orders" className={dropdownLinkClass} onClick={() => setOpen(false)}>Order Mgmt</NavLink>
-          <NavLink to="/commands" className={dropdownLinkClass} onClick={() => setOpen(false)}>Research</NavLink>
+          <NavLink to="/chat" className={dropdownLinkClass} onClick={() => setOpen(false)}>Chat</NavLink>
           <NavLink to="/evolution" className={dropdownLinkClass} onClick={() => setOpen(false)}>Evolution</NavLink>
           <NavLink to="/world-news" className={dropdownLinkClass} onClick={() => setOpen(false)}>World News</NavLink>
           <NavLink to="/costs" className={dropdownLinkClass} onClick={() => setOpen(false)}>Costs</NavLink>
@@ -266,7 +265,7 @@ function DashboardShell() {
               {authenticated && <NavLink to="/runs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Run History</NavLink>}
               {authenticated && <NavLink to="/opportunity" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Opportunity</NavLink>}
               {authenticated && <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>}
-              {authenticated && <NavLink to="/commands" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Research</NavLink>}
+              {authenticated && <NavLink to="/chat" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Chat</NavLink>}
               {authenticated && <NavLink to="/evolution" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Evolution</NavLink>}
               <NavLink to="/world-news" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>World News</NavLink>
               {authenticated && <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>}
@@ -324,7 +323,7 @@ function DashboardShell() {
             <Route path="/opportunity" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Opportunity /></ProtectedRoute>} />
             <Route path="/orders" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><OrderManagement /></ProtectedRoute>} />
             <Route path="/costs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Costs /></ProtectedRoute>} />
-            <Route path="/commands" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Commands /></ProtectedRoute>} />
+            <Route path="/commands" element={<Navigate to="/chat" replace />} />
             <Route path="/chat" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Chat /></ProtectedRoute>} />
             <Route path="/evolution" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Evolution /></ProtectedRoute>} />
             <Route path="/world-news" element={<WorldNews publicView={!authenticated} />} />

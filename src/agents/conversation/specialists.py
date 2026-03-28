@@ -242,19 +242,19 @@ class ChatSpecialistEngine:
             except Exception:
                 continue
             if isinstance(payload, dict):
-                return payload
+                return dict(payload)
 
         # Salvage useful plain text when the model ignored the JSON-only instruction.
         logger.info("%s specialist returned non-JSON text; salvaging summary output.", role.capitalize())
         summary = self._summarize_plain_text(cleaned)
         if not summary:
             raise ValueError(f"{role} specialist returned unparsable content")
-        payload: dict[str, Any] = {"summary": summary}
+        summary_payload: dict[str, Any] = {"summary": summary}
         if "assessment" in summary_keys:
-            payload["assessment"] = summary
+            summary_payload["assessment"] = summary
         if "thesis" in summary_keys:
-            payload["thesis"] = summary
-        return payload
+            summary_payload["thesis"] = summary
+        return summary_payload
 
     def _summarize_plain_text(self, content: str) -> str:
         stripped = re.sub(r"```(?:json)?|```", "", content, flags=re.IGNORECASE).strip()

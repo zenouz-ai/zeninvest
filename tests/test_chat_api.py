@@ -139,7 +139,7 @@ def test_confirm_and_reject_action_routes(client, db_session):
 
     rejected = client.post(
         f"/api/chat/sessions/{session_id}/actions/{action['id']}/reject",
-        json={"channel_type": "dashboard"},
+        json={"channel_type": "dashboard", "expected_version": action["version"]},
     )
     assert rejected.status_code == 200
     rejected_detail = rejected.json()
@@ -160,12 +160,90 @@ def test_confirm_and_reject_action_routes(client, db_session):
     mgr.expire_old_pending_actions()
     confirmed = client.post(
         f"/api/chat/sessions/{session_id}/actions/{action['id']}/confirm",
-        json={"channel_type": "dashboard"},
+        json={"channel_type": "dashboard", "expected_version": action["version"]},
     )
     assert confirmed.status_code == 200
     confirmed_detail = confirmed.json()
     latest_assistant = confirmed_detail["turns"][-1]["message_text"]
     assert latest_assistant == "Confirmation expired. Please submit the request again."
+
+
+def test_confirm_route_returns_409_for_stale_version(client):
+    mgr = SessionManager()
+    session_id = mgr.create_session(channel_type="dashboard", user_id="operator")
+    action = mgr.create_action(
+        session_id=session_id,
+        turn_id=None,
+        action_type="direct_trade",
+        status="awaiting_confirmation",
+        title="Buy AAPL",
+        ticker="AAPL_US_EQ",
+        requires_confirmation=True,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    )
+    mgr.update_action_versioned(action["id"], expected_version=1, status="confirmed")
+
+    response = client.post(
+        f"/api/chat/sessions/{session_id}/actions/{action['id']}/confirm",
+        json={"channel_type": "dashboard", "expected_version": 1},
+    )
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["action"]["id"] == action["id"]
+    assert detail["action"]["status"] == "confirmed"
+    assert detail["action"]["version"] == 2
+
+
+def test_reject_route_returns_409_for_stale_version(client):
+    mgr = SessionManager()
+    session_id = mgr.create_session(channel_type="dashboard", user_id="operator")
+    action = mgr.create_action(
+        session_id=session_id,
+        turn_id=None,
+        action_type="direct_trade",
+        status="awaiting_confirmation",
+        title="Sell TSLA",
+        ticker="TSLA_US_EQ",
+        requires_confirmation=True,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+    )
+    mgr.update_action_versioned(action["id"], expected_version=1, status="confirmed")
+
+    response = client.post(
+        f"/api/chat/sessions/{session_id}/actions/{action['id']}/reject",
+        json={"channel_type": "dashboard", "expected_version": 1},
+    )
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["action"]["id"] == action["id"]
+    assert detail["action"]["status"] == "confirmed"
+    assert detail["action"]["version"] == 2
+
+
+def test_extended_session_endpoints(client):
+    created = client.post("/api/chat/sessions", json={"channel_type": "dashboard", "title": "Extended"})
+    session_id = created.json()["id"]
+    turn_response = client.post(
+        f"/api/chat/sessions/{session_id}/turns",
+        json={"message_text": "help me understand this workflow", "channel_type": "dashboard"},
+    )
+    detail = turn_response.json()
+
+    turns = client.get(f"/api/chat/sessions/{session_id}/turns")
+    actions = client.get(f"/api/chat/sessions/{session_id}/actions")
+    spend = client.get(f"/api/chat/sessions/{session_id}/spend")
+    archived = client.delete(f"/api/chat/sessions/{session_id}")
+
+    assert turns.status_code == 200
+    assert len(turns.json()) == len(detail["turns"])
+    assert actions.status_code == 200
+    assert actions.json() == []
+    assert spend.status_code == 200
+    assert "total_cost_gbp" in spend.json()
+    assert archived.status_code == 200
+    assert archived.json() == {"status": "archived", "session_id": session_id}
 
 
 def test_end_missing_session_returns_404(client):
