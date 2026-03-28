@@ -250,3 +250,4 @@ conversation:
   max_research_calls_per_turn: 4
   native_web_search_enabled: false
   beta_shadow_logging_enabled: true
+  chat_llm_daily_budget_gbp: 0.50           # Separate daily budget for chat LLM calls (does not consume scheduled cycle budgets)

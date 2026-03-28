@@ -562,6 +562,7 @@ class ChatSession(Base):
     ended_at = Column(DateTime, nullable=True)
     context_json = Column(Text, nullable=True)
     linked_cycle_id = Column(String(100), nullable=True)
+    previous_session_id = Column(Integer, nullable=True)
 
 
 class ChatTurn(Base):
@@ -611,6 +612,7 @@ class ChatAction(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         index=True,
     )
+    version = Column(Integer, nullable=False, default=1)
 
 
 class ChatResearchLog(Base):

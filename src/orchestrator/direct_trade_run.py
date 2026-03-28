@@ -6,6 +6,7 @@ preserving pricing, preflight validation, confirmation, execution, and audit.
 
 from typing import Any
 
+from src.agents.conversation.trade_execution_service import PortfolioService
 from src.agents.execution.order_manager import OrderManager
 from src.agents.execution.t212_client import T212Client
 from src.agents.market_data.data_fetcher import DataFetcher
@@ -33,6 +34,7 @@ class DirectTradeRunner:
         self.data_fetcher = DataFetcher()
         self._t212_client: T212Client | None = None
         self._order_manager: OrderManager | None = None
+        self._portfolio_service: PortfolioService | None = None
 
     @property
     def t212_client(self) -> T212Client:
@@ -45,6 +47,15 @@ class DirectTradeRunner:
         if self._order_manager is None:
             self._order_manager = OrderManager(dry_run=self.dry_run)
         return self._order_manager
+
+    @property
+    def portfolio_service(self) -> PortfolioService:
+        if self._portfolio_service is None:
+            self._portfolio_service = PortfolioService(
+                t212_client=self._t212_client,
+                data_fetcher=self.data_fetcher,
+            )
+        return self._portfolio_service
 
     def run(
         self,
@@ -299,93 +310,28 @@ class DirectTradeRunner:
         return reason or "Execution failed"
 
     def _get_portfolio_data(self) -> dict[str, Any]:
-        account_summary: dict[str, Any] = {}
-        try:
-            account_summary = self.t212_client.get_account_summary()
-        except Exception as e:
-            logger.warning("Account summary unavailable for direct trade: %s", e)
-        try:
-            cash_data = self.t212_client.get_cash()
-        except Exception as e:
-            logger.warning("Cash endpoint unavailable for direct trade: %s", e)
-            cash_data = account_summary.get("cash", {})
-        try:
-            positions = self.t212_client.get_portfolio()
-        except Exception:
-            positions = []
-
-        total = self._get_total_value_gbp(account_summary, cash_data, positions)
-        cash = self._extract_available_cash(cash_data)
-        cash_pct = (cash / total * 100) if total > 0 else 10.0
-        invested = float(((account_summary.get("investments") or {}).get("currentValue", 0)) or 0)
-        return {
-            "total_value": total,
-            "cash": cash,
-            "cash_pct": cash_pct,
-            "invested": invested,
-            "positions": positions,
-            "account_summary": account_summary,
-        }
+        """Delegates to PortfolioService."""
+        return self.portfolio_service.get_portfolio_data(caller="direct_trade_run")
 
     def _extract_price(self, stock_data: dict[str, Any]) -> float | None:
-        indicators = stock_data.get("indicators", {})
-        if indicators and isinstance(indicators, dict):
-            price = indicators.get("current_price") or indicators.get("close")
-            if price is not None:
-                return float(price)
-        fundamentals = stock_data.get("fundamentals", {})
-        if fundamentals and isinstance(fundamentals, dict):
-            price = fundamentals.get("currentPrice") or fundamentals.get("previousClose")
-            if price is not None:
-                return float(price)
-        return None
+        """Delegates to PortfolioService."""
+        return self.portfolio_service.extract_price(stock_data)
 
     def _compute_fx_price_gbp(
         self, current_price: float, ticker: str, portfolio_data: dict[str, Any] | None
     ) -> float:
-        if not self.settings.fx_aware_quantity:
-            return current_price
-        if "_UK_EQ" in ticker:
-            return current_price / 100
-        if "_US_EQ" not in ticker:
-            return current_price
-        positions = (portfolio_data or {}).get("positions", [])
-        invested_gbp = float(
-            (
-                (((portfolio_data or {}).get("account_summary") or {}).get("investments") or {})
-                .get("currentValue", 0)
-            )
-            or (portfolio_data or {}).get("invested", 0)
-            or 0
-        )
-        scale = self._compute_position_value_scale(positions, invested_gbp)
-        return current_price * scale
+        """Delegates to PortfolioService."""
+        return self.portfolio_service.compute_fx_price_gbp(current_price, ticker, portfolio_data)
 
     @staticmethod
     def _compute_position_value_scale(positions: list[dict[str, Any]], invested_gbp: float) -> float:
-        if invested_gbp <= 0 or not positions:
-            return 1.0
-        native_total = 0.0
-        for pos in positions:
-            native_total += float(pos.get("quantity", 0) or 0) * float(pos.get("currentPrice", 0) or 0)
-        if native_total <= 0:
-            return 1.0
-        return invested_gbp / native_total
+        return PortfolioService.compute_position_value_scale(positions, invested_gbp)
 
     def _extract_available_cash(self, cash_data: Any) -> float:
-        if isinstance(cash_data, dict):
-            return float(cash_data.get("free") or cash_data.get("availableToTrade") or 0)
-        return float(cash_data or 0)
+        return PortfolioService.extract_available_cash(cash_data)
 
     def _extract_reserved_cash(self, cash_data: Any) -> float:
-        if isinstance(cash_data, dict):
-            return float(
-                cash_data.get("reservedForOrders")
-                or cash_data.get("blocked")
-                or cash_data.get("reserved")
-                or 0
-            )
-        return 0.0
+        return PortfolioService.extract_reserved_cash(cash_data)
 
     def _get_total_value_gbp(
         self,
@@ -393,29 +339,10 @@ class DirectTradeRunner:
         cash_data: Any,
         positions: list[dict[str, Any]],
     ) -> float:
-        total_value_raw = account_summary.get("totalValue")
-        if total_value_raw is not None:
-            return float(total_value_raw)
-
-        cash = self._extract_available_cash(cash_data)
-        reserved = self._extract_reserved_cash(cash_data)
-        invested = float((account_summary.get("investments") or {}).get("currentValue", 0) or 0)
-        if invested <= 0:
-            invested = sum(float(p.get("currentValue", 0) or 0) for p in positions)
-        total = cash + invested + reserved
-        return total if total > 0 else 10000.0
+        return self.portfolio_service.get_total_value_gbp(account_summary, cash_data, positions)
 
     def _get_available_cash_gbp(self) -> float:
-        try:
-            cash_data = self.t212_client.get_cash()
-            cash = self._extract_available_cash(cash_data)
-            if cash > 0:
-                return cash
-        except Exception as e:
-            logger.warning("Cash endpoint unavailable during direct-trade preflight: %s", e)
-
-        account_summary = self.t212_client.get_account_summary()
-        return self._extract_available_cash(account_summary.get("cash", {}))
+        return self.portfolio_service.get_available_cash_gbp()
 
     def close(self) -> None:
         self.data_fetcher.close()

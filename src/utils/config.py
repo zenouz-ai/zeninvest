@@ -903,6 +903,10 @@ class Settings:
     def conversation_beta_shadow_logging_enabled(self) -> bool:
         return bool(self._conversation.get("beta_shadow_logging_enabled", True))
 
+    @property
+    def conversation_chat_llm_daily_budget_gbp(self) -> float:
+        return float(self._conversation.get("chat_llm_daily_budget_gbp", 0.50))
+
     # --- Environment variables ---
     @staticmethod
     def get_env(key: str) -> str:

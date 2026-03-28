@@ -14,6 +14,21 @@ from src.agents.conversation.compare_parser import (
     parse_compare_request,
     retarget_trade_intent_to_winner,
 )
+from src.agents.conversation.intent_classifier import (
+    ClassifiedIntent,
+    IntentClassifier,
+    COMMITTEE_SUBJECT_RE,
+    CONFIRM_WORDS,
+    FOLLOW_UP_CONTEXT_RE,
+    PEER_SCAN_HINT_RE,
+    PORTFOLIO_VALUE_RE,
+    PORTFOLIO_PNL_RE,
+    REJECT_WORDS,
+    RESEARCH_PREFIX_RE,
+    STOP_UPDATE_RE,
+    TARGET_SUFFIX_RE,
+)
+from src.agents.conversation.composer_safety import apply_safety_check
 from src.agents.conversation.planner import ChatPlanner, ChatPlannerDecision
 from src.agents.execution.order_manager import OrderManager
 from src.agents.market_data.data_fetcher import DataFetcher
@@ -44,36 +59,7 @@ except ImportError:  # pragma: no cover - dashboard import is optional in some e
     log_event = None
 
 
-STOP_UPDATE_RE = re.compile(
-    r"^\s*(?:set|update|move|raise|lower)\s+(?:the\s+)?stop(?:-loss)?(?:\s+(?:for|on))?\s+"
-    r"(?P<subject>.+?)\s+(?:to|at)\s+\$?(?P<price>\d+(?:\.\d+)?)\s*$",
-    re.IGNORECASE,
-)
-PORTFOLIO_VALUE_RE = re.compile(
-    r"^\s*(?:liquidate|sell)\s+(?:all\s+)?(?:tickers|holdings|positions)\s+(?:with\s+)?(?:holding\s+|value\s+)?"
-    r"(?:below|under)\s+[£$]?(?P<threshold>\d+(?:\.\d+)?)\s*$",
-    re.IGNORECASE,
-)
-PORTFOLIO_PNL_RE = re.compile(
-    r"^\s*(?:liquidate|sell)\s+(?:all\s+)?(?P<bucket>winners|losers)\s+"
-    r"(?:(?:above|over|below|under|worse\s+than|better\s+than)\s+)?(?P<threshold>-?\d+(?:\.\d+)?)%?\s*$",
-    re.IGNORECASE,
-)
-CONFIRM_WORDS = {"yes", "y", "confirm", "approved", "do it", "go ahead"}
-REJECT_WORDS = {"no", "n", "reject", "cancel", "stop"}
-RESEARCH_PREFIX_RE = re.compile(
-    r"^\s*(?:compare|contrast|what about|how about|tell me about|research|look into|explain|dig deeper on|happening with|show me|give me|views on|thoughts on|pros and cons of|bull and bear views on|committee view on)\s+",
-    re.IGNORECASE,
-)
-COMMITTEE_SUBJECT_RE = re.compile(
-    r"\b(?:views?|bull and bear views?|committee view|pros and cons)\s+(?:on|for|about)\s+(?P<subject>.+?)\s*$",
-    re.IGNORECASE,
-)
-TARGET_SUFFIX_RE = re.compile(r"\b(?:on|for|about)\s+(?P<subject>.+?)\s*$", re.IGNORECASE)
-FOLLOW_UP_CONTEXT_RE = re.compile(
-    r"\b(what about|how about|dig deeper|tell me more|tell me about it|explain more|that one|those|them|it)\b",
-    re.IGNORECASE,
-)
+# Regex constants are now consolidated in intent_classifier.py and imported above.
 SLACK_REPLY_MAX_CHARS = 3500
 
 
@@ -128,6 +114,7 @@ class ConversationOrchestrator:
         self._slack_web_client: Any | None = None
         self._planner = ChatPlanner()
         self._specialists = ChatSpecialistEngine()
+        self._intent_classifier = IntentClassifier()
 
     @property
     def data_fetcher(self) -> DataFetcher:
@@ -487,59 +474,61 @@ class ConversationOrchestrator:
             pass
 
     def _classify_intent(self, message_text: str, context: dict[str, Any]) -> dict[str, Any]:
-        trade_intent = parse_trade_command(message_text, use_llm_fallback=False)
-        if trade_intent is not None:
-            resolved_subjects = self._resolve_subjects(trade_intent.subject_phrases, context)
-            trade_intent.subject_phrases = resolved_subjects
-            trade_intent.ticker = (resolved_subjects[0].upper() if resolved_subjects else trade_intent.ticker)
-            return {"kind": "trade_command", "intent": trade_intent}
+        """Classify user message into a structured intent dict.
 
-        stop_match = STOP_UPDATE_RE.match(message_text)
-        if stop_match:
-            subject = self._resolve_subject(stop_match.group("subject"), context)
+        Delegates to IntentClassifier for the three-layer classification,
+        then converts the ClassifiedIntent into the legacy dict format
+        expected by _handle_intent().
+        """
+        classified = self._intent_classifier.classify(
+            message_text, context,
+        )
+
+        # Convert ClassifiedIntent to the legacy dict format used by _handle_intent
+        if classified.intent_type in ("trade_command", "cancel", "review"):
+            trade_intent = classified.payload.get("trade_intent")
+            if trade_intent is not None:
+                resolved_subjects = self._resolve_subjects(trade_intent.subject_phrases, context)
+                trade_intent.subject_phrases = resolved_subjects
+                trade_intent.ticker = (resolved_subjects[0].upper() if resolved_subjects else trade_intent.ticker)
+                return {"kind": "trade_command", "intent": trade_intent}
+
+        if classified.intent_type == "update_stop":
+            subject = self._resolve_subject(classified.payload.get("subject", ""), context)
             return {
                 "kind": "update_stop",
                 "subject": subject,
-                "stop_price": float(stop_match.group("price")),
+                "stop_price": float(classified.payload.get("stop_price", 0)),
             }
 
-        compare_request = parse_compare_request(message_text)
-        if compare_request is not None:
-            subjects = self._resolve_subjects(compare_request.subjects, context)
-            return {
-                "kind": "research",
-                "subjects": subjects,
-                "mode": "compare",
-                "compare_request": compare_request.as_dict(),
-            }
+        if classified.intent_type == "portfolio_rule":
+            return {"kind": "portfolio_rule", **classified.payload}
 
-        portfolio_match = PORTFOLIO_VALUE_RE.match(message_text)
-        if portfolio_match:
-            return {
-                "kind": "portfolio_rule",
-                "rule": "value_below",
-                "threshold": float(portfolio_match.group("threshold")),
-            }
+        if classified.intent_type == "compare":
+            compare_request = classified.payload.get("compare_request")
+            if compare_request is not None:
+                subjects = self._resolve_subjects(compare_request.subjects, context)
+                return {
+                    "kind": "research",
+                    "subjects": subjects,
+                    "mode": "compare",
+                    "compare_request": compare_request.as_dict(),
+                }
+            # Heuristic compare (no structured CompareRequest)
+            subjects = self._extract_subjects_for_research(message_text, context)
+            if subjects:
+                return {"kind": "research", "subjects": subjects, "mode": "compare"}
 
-        pnl_match = PORTFOLIO_PNL_RE.match(message_text)
-        if pnl_match:
-            bucket = pnl_match.group("bucket").lower()
-            threshold = float(pnl_match.group("threshold"))
-            if bucket == "losers" and threshold > 0:
-                threshold = -threshold
-            if bucket == "winners" and threshold < 0:
-                threshold = abs(threshold)
-            return {
-                "kind": "portfolio_rule",
-                "rule": "pnl_threshold",
-                "bucket": bucket,
-                "threshold": threshold,
-            }
+        if classified.intent_type == "research":
+            context_tickers = classified.payload.get("context_tickers")
+            if context_tickers:
+                return {"kind": "research", "subjects": context_tickers, "mode": "analysis"}
+            subjects = self._extract_subjects_for_research(message_text, context)
+            if subjects:
+                return {"kind": "research", "subjects": subjects, "mode": "analysis"}
 
-        subjects = self._extract_subjects_for_research(message_text, context)
-        if subjects:
-            return {"kind": "research", "subjects": subjects, "mode": "analysis"}
-
+        # For confirm/reject/greeting/help/ambiguous — fall through to clarify
+        # (confirm/reject are handled before _classify_intent is called in process_turn)
         return {"kind": "clarify"}
 
     def _handle_intent(
@@ -966,6 +955,13 @@ class ConversationOrchestrator:
                 assistant_text = f"{selection_prefix}\n\n{assistant_text}"
         if proactive_result and proactive_result.get("assistant_suffix"):
             assistant_text = f"{assistant_text}\n\n{proactive_result['assistant_suffix']}"
+
+        # Phase 5: Post-composition safety — ensure risk warnings aren't dropped
+        assistant_text = apply_safety_check(
+            assistant_text,
+            evidence_bundle,
+            route=planner_decision.route,
+        )
 
         proposed_action: dict[str, Any] | None = None
         if planner_decision.post_compare_trade_intent and winner_summary is not None:

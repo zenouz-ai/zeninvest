@@ -616,7 +616,7 @@ def test_agentic_turn_persists_workflow_and_evidence(orchestrator):
     payload = latest_turn["response_json"]
     step_keys = [step["step_key"] for step in detail["workflow_steps"]]
 
-    assert latest_turn["message_text"] == "AMD looks constructive, with NVIDIA as the strongest nearby peer."
+    assert "AMD looks constructive, with NVIDIA as the strongest nearby peer." in latest_turn["message_text"]
     assert payload["turn_mode"] == "committee"
     assert payload["committee_views"][0]["role"] == "bull"
     assert payload["related_tickers"][0]["ticker"] == "NVDA_US_EQ"

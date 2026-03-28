@@ -47,10 +47,14 @@ def _raise_server_error(exc: Exception) -> None:
 async def list_sessions(
     limit: int = Query(default=50, ge=1, le=200),
     status: str | None = Query(default=None),
+    channel_type: str | None = Query(default=None),
 ) -> list[dict[str, Any]]:
     """List recent conversation sessions for the dashboard operator console."""
     try:
-        return _orchestrator.list_sessions(limit=limit, status=status)
+        sessions = _orchestrator.list_sessions(limit=limit, status=status)
+        if channel_type:
+            sessions = [s for s in sessions if s.get("channel_type") == channel_type]
+        return sessions
     except Exception as exc:
         _raise_server_error(exc)
 
@@ -134,6 +138,59 @@ async def end_session(session_id: int) -> dict[str, Any]:
     try:
         _session_manager.end_session(session_id)
         return {"status": "closed", "session_id": session_id}
+    except ChatSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        _raise_server_error(exc)
+
+
+# ---------------------------------------------------------------------------
+# Phase 7: Extended chat API endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/sessions/{session_id}/turns")
+async def list_turns(
+    session_id: int,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> list[dict[str, Any]]:
+    """Return paginated turns for a session."""
+    try:
+        return _session_manager.list_turns(session_id, offset=offset, limit=limit)
+    except Exception as exc:
+        _raise_server_error(exc)
+
+
+@router.get("/sessions/{session_id}/actions")
+async def list_actions(
+    session_id: int,
+    status: str | None = Query(default=None),
+) -> list[dict[str, Any]]:
+    """Return actions for a session, optionally filtered by status."""
+    try:
+        return _session_manager.list_actions(session_id, status=status)
+    except Exception as exc:
+        _raise_server_error(exc)
+
+
+@router.get("/sessions/{session_id}/spend")
+async def get_session_spend(session_id: int) -> dict[str, Any]:
+    """Return cost summary for a session."""
+    try:
+        return _session_manager.get_session_spend(session_id)
+    except ChatSessionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        _raise_server_error(exc)
+
+
+@router.delete("/sessions/{session_id}")
+async def archive_session(session_id: int) -> dict[str, Any]:
+    """Soft-delete (archive) a session."""
+    try:
+        _session_manager.archive_session(session_id)
+        return {"status": "archived", "session_id": session_id}
     except ChatSessionNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
