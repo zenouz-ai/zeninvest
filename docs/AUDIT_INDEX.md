@@ -33,35 +33,35 @@ last_updated: 2026-03-29
 
 ## Critical Findings
 
-| ID | Title | Status | Document |
-|----|-------|--------|----------|
-| C1 | Dashboard has no authentication | Fixed (US-7.1) | AUDIT_REPORT |
-| C2 | No US holiday calendar | Fixed | AUDIT_REPORT |
-| C-1 | Tenacity retries duplicate real orders | Fixed | TRADING_SYSTEM_AUDIT |
-| C-2 | Order placed before DB record exists | Fixed | TRADING_SYSTEM_AUDIT |
-| C-3 | liquidate_all assumes filled | Fixed | TRADING_SYSTEM_AUDIT |
-| C-1 | MODIFY verdicts silently ignored | Fixed | AGENT_LOGIC_AUDIT |
-| C-2 | CAUTION consensus ineffective | Fixed | AGENT_LOGIC_AUDIT |
-| C-3 | No conviction score validation | Fixed | AGENT_LOGIC_AUDIT |
-| C-4 | Gemini score extraction unbounded | Fixed | AGENT_LOGIC_AUDIT |
-| C-5 | Orphaned submitting orders unsynced | Fixed | AGENT_LOGIC_AUDIT |
-| 1.1 | Concurrent cycle execution possible | Fixed | FORMAL_VERIFICATION |
-| 1.2 | Strategy decisions not deduplicated | Fixed | FORMAL_VERIFICATION |
-| 6.3 | Stop-loss placement not atomic with BUY | Fixed | FORMAL_VERIFICATION |
+| Doc ID | ID | Title | Status | Document |
+|--------|----|-------|--------|----------|
+| AR-C1 | C1 | Dashboard has no authentication | Fixed (US-7.1) | AUDIT_REPORT |
+| AR-C2 | C2 | No US holiday calendar | Fixed | AUDIT_REPORT |
+| TSA-C-1 | C-1 | Tenacity retries duplicate real orders | Fixed | TRADING_SYSTEM_AUDIT |
+| TSA-C-2 | C-2 | Order placed before DB record exists | Fixed | TRADING_SYSTEM_AUDIT |
+| TSA-C-3 | C-3 | liquidate_all assumes filled | Fixed | TRADING_SYSTEM_AUDIT |
+| ALA-C-1 | C-1 | MODIFY verdicts silently ignored | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-C-2 | C-2 | CAUTION consensus ineffective | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-C-3 | C-3 | No conviction score validation | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-C-4 | C-4 | Gemini score extraction unbounded | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-C-5 | C-5 | Orphaned submitting orders unsynced | Fixed | AGENT_LOGIC_AUDIT |
+| FVA-1.1 | 1.1 | Concurrent cycle execution possible | Fixed | FORMAL_VERIFICATION |
+| FVA-1.2 | 1.2 | Strategy decisions not deduplicated | Fixed | FORMAL_VERIFICATION |
+| FVA-6.3 | 6.3 | Stop-loss placement not atomic with BUY | Fixed | FORMAL_VERIFICATION |
 
 ## High Findings
 
-| ID | Title | Status | Document |
-|----|-------|--------|----------|
-| H-1 | Cancel-then-replace stop not atomic | Fixed | TRADING_SYSTEM_AUDIT |
-| H-2 | Portfolio data stale throughout cycle | Fixed | TRADING_SYSTEM_AUDIT |
-| H-3 | Correlation check disabled | Fixed | TRADING_SYSTEM_AUDIT |
-| H-4 | Daily loss halt disabled | Fixed | TRADING_SYSTEM_AUDIT |
-| H-5 | GPT-4o defaults AGREE on parse failure | Fixed | TRADING_SYSTEM_AUDIT |
-| H-6 | Session leaks in orchestrator | Fixed | TRADING_SYSTEM_AUDIT |
-| H-1 | Risk SELL/REDUCE skip critical checks | Fixed | AGENT_LOGIC_AUDIT |
-| H-2 | entry_type undefined in schema | Fixed | AGENT_LOGIC_AUDIT |
-| H-3 | Strategy tool-use timeout too short | Fixed | AGENT_LOGIC_AUDIT |
-| H-4 | Consensus not recorded on moderation log | Fixed | AGENT_LOGIC_AUDIT |
-| H-5 | Repaired JSON produces partial decisions | Fixed | AGENT_LOGIC_AUDIT |
-| H-6 | No dedup of strategy decisions by ticker | Fixed | AGENT_LOGIC_AUDIT |
+| Doc ID | ID | Title | Status | Document |
+|--------|----|-------|--------|----------|
+| TSA-H-1 | H-1 | Cancel-then-replace stop not atomic | Fixed | TRADING_SYSTEM_AUDIT |
+| TSA-H-2 | H-2 | Portfolio data stale throughout cycle | Fixed | TRADING_SYSTEM_AUDIT |
+| TSA-H-3 | H-3 | Correlation check disabled | Fixed | TRADING_SYSTEM_AUDIT |
+| TSA-H-4 | H-4 | Daily loss halt disabled | Fixed | TRADING_SYSTEM_AUDIT |
+| TSA-H-5 | H-5 | GPT-4o defaults AGREE on parse failure | Fixed | TRADING_SYSTEM_AUDIT |
+| TSA-H-6 | H-6 | Session leaks in orchestrator | Fixed | TRADING_SYSTEM_AUDIT |
+| ALA-H-1 | H-1 | Risk SELL/REDUCE skip critical checks | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-H-2 | H-2 | entry_type undefined in schema | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-H-3 | H-3 | Strategy tool-use timeout too short | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-H-4 | H-4 | Consensus not recorded on moderation log | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-H-5 | H-5 | Repaired JSON produces partial decisions | Fixed | AGENT_LOGIC_AUDIT |
+| ALA-H-6 | H-6 | No dedup of strategy decisions by ticker | Fixed | AGENT_LOGIC_AUDIT |

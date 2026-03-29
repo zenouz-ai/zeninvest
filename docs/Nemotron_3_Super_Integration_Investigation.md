@@ -1,7 +1,7 @@
 ---
 title: Nemotron 3 Super Integration Investigation
 tags: [nemotron, investigation, moderation, cost-optimization]
-status: archive
+status: archived
 last_updated: 2026-03-29
 user_stories: [US-2.4]
 ---

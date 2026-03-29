@@ -6,7 +6,7 @@ last_updated: 2026-03-29
 
 # Proactive Macro News Intelligence (Unified Spec)
 
-> **Status:** Active | **User stories:** US-4.5 (delivered)
+> **Status:** Delivered | **User stories:** US-4.5 (delivered)
 > **Related:** [WORLD_NEWS_DASHBOARD.md](WORLD_NEWS_DASHBOARD.md) (frontend display), [ARCHITECTURE.md](ARCHITECTURE.md), [GOVERNANCE.md](GOVERNANCE.md)
 
 A macro layer above ticker analysis that proactively scans macro/geopolitical developments, reasons about second-order effects, and drives portfolio positioning proposals under deterministic risk controls.
