@@ -1,7 +1,7 @@
 ---
 tags: [dashboard, deployment, cloudflare, nginx, docker, security]
 status: delivered
-last_updated: 2026-03-27
+last_updated: 2026-03-29
 ---
 
 # Cloudflare Domain Rollout for `zeninvest.zenouz.ai`
@@ -21,7 +21,7 @@ The delivered posture is:
 - Dockerized `nginx` as the only public ingress on `80/443`
 - internal-only `dashboard` service on the Compose network (`expose: 8000`)
 - canonical host/scheme enforcement at nginx
-- anonymous read-only surface limited to Overview, Portfolio, World News, and Roadmap
+- anonymous access exposes the full tab map, but each public page is intentionally either a sanitized live view or a disabled preview surface
 - operator pages and controls still protected by session auth over proxied HTTPS
 - no public raw `:8000` exposure in the target state
 

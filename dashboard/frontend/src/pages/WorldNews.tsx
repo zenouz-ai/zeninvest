@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { macroApi, publicApi } from '../api/client'
-import type { MacroState, MacroHeadline } from '../types'
+import type { MacroState, MacroHeadline, PublicMacroState } from '../types'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { Panel } from '../components/Panel'
 import { SectionHeader } from '../components/SectionHeader'
@@ -60,8 +60,8 @@ function groupHeadlinesByDate(headlines: MacroHeadline[]): Record<string, MacroH
 }
 
 export default function WorldNews({ publicView = false }: { publicView?: boolean }) {
-  const [state, setState] = useState<MacroState | null>(null)
-  const [stateHistory, setStateHistory] = useState<MacroState[]>([])
+  const [state, setState] = useState<MacroState | PublicMacroState | null>(null)
+  const [stateHistory, setStateHistory] = useState<Array<MacroState | PublicMacroState>>([])
   const [headlines, setHeadlines] = useState<MacroHeadline[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -123,8 +123,11 @@ export default function WorldNews({ publicView = false }: { publicView?: boolean
   }
 
   const actionPlan = state?.action_plan
-  const biasLabel = actionPlan?.portfolio_bias
-    ? actionPlan.portfolio_bias.charAt(0).toUpperCase() + actionPlan.portfolio_bias.slice(1)
+  const portfolioBias = actionPlan && 'portfolio_bias' in actionPlan && typeof actionPlan.portfolio_bias === 'string'
+    ? actionPlan.portfolio_bias
+    : null
+  const biasLabel = portfolioBias
+    ? portfolioBias.charAt(0).toUpperCase() + portfolioBias.slice(1)
     : null
 
   return (

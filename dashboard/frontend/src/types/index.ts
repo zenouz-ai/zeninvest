@@ -184,6 +184,77 @@ export interface PortfolioHistoryStart {
   timestamp: string | null
 }
 
+export interface PublicUniverseItem {
+  ticker: string
+  name: string | null
+  sector: string | null
+  industry: string | null
+  market_cap_bucket: string
+  status: string
+  last_screened_at: string | null
+}
+
+export interface PublicPortfolioPosition {
+  ticker: string
+  sector: string | null
+  allocation_pct: number
+  pnl_band: string
+  protection_status: string
+}
+
+export interface PublicPortfolioSector {
+  sector: string
+  allocation_pct: number
+}
+
+export interface PublicPortfolioProtectionSummary {
+  protected_count: number
+  needs_lock_count: number
+  exit_required_count: number
+  inactive_count: number
+}
+
+export interface PublicPortfolioSnapshot {
+  timestamp: string
+  num_positions: number
+  positions_visible: number
+  cash_pct: number
+  invested_pct: number
+  value_index: number
+  pnl_band: string
+  positions: PublicPortfolioPosition[]
+  sector_allocations: PublicPortfolioSector[]
+  protection_summary: PublicPortfolioProtectionSummary
+}
+
+export interface PublicPortfolioHistoryPoint {
+  timestamp: string
+  value_index: number
+}
+
+export interface PublicRunSummary {
+  started_at: string
+  completed_at: string | null
+  run_type: string
+  status: string
+  duration_seconds: number | null
+  stocks_screened: number | null
+  decisions_made: number | null
+  orders_placed: number | null
+  audit_status: string
+  audit_degraded: boolean
+}
+
+export interface PublicOpportunityPreview {
+  ticker: string
+  name: string | null
+  sector: string | null
+  stage: string
+  action: string
+  score_band: string
+  last_updated: string
+}
+
 export interface StopLossCurrent {
   ticker: string
   stop_price: number | null
@@ -290,6 +361,21 @@ export interface MacroSummary {
   headline_count_7d: number
   category_counts: Record<string, number>
   last_updated: string | null
+}
+
+export interface PublicMacroState {
+  timestamp: string
+  regime: 'RISK_ON' | 'RISK_OFF' | 'NEUTRAL'
+  confidence_score: number
+  top_signals: Array<{ signal_type: string; signal_text: string; source: string }>
+  action_plan: {
+    summary?: string
+    sector_implications?: Array<{ sector: string; bias: string; confidence: number; rationale: string }>
+    risks?: string[]
+    opportunities?: string[]
+  }
+  sector_summary: string | null
+  economic_highlights: string | null
 }
 
 // --- Slack Trade Commands ---

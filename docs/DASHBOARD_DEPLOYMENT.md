@@ -1,12 +1,12 @@
 ---
 tags: [dashboard, deployment, vps, docker]
 status: delivered
-last_updated: 2026-03-27
+last_updated: 2026-03-29
 ---
 
 # Dashboard Deployment
 
-> VPS deployment plan for the 11-page monitoring dashboard (US-1.8 + US-7.7).
+> VPS deployment plan for the 11-page monitoring dashboard (US-1.8 + US-7.7 + US-7.8).
 
 ## Purpose
 
@@ -43,7 +43,7 @@ The three app services share the same SQLite DB via `./data` volume. The `dashbo
 
 **Frontend API URL:** The frontend is served from the same origin as the API. Requests use relative paths (`/api/*`). The SSE activity feed uses `/api/events/stream` (same-origin), so it works through the canonical HTTPS domain and any localhost/dev tunnel using the same-origin path.
 
-**Authentication:** Public, read-only routes live under `/api/public/*`, including the anonymous Portfolio and World News data feeds. Operator routes require backend login and a signed session cookie. Operator login is blocked on plain HTTP except localhost-only development mode.
+**Authentication:** Public, read-only routes live under `/api/public/*`, including dedicated sanitized feeds for Overview, Universe, Portfolio, Runs, Opportunity, Costs, and World News plus roadmap docs. Order Management, Chat, and Evolution are visible publicly only as disabled preview surfaces. Operator routes require backend login and a signed session cookie. Operator login is blocked on plain HTTP except localhost-only development mode.
 
 **Hardening visibility:** Order rows can now include `warning_note` for off-hours submissions, and status/system payloads expose HALTED auto-recovery progress plus any active peak-inflation warning note for dashboard alerts.
 
@@ -150,7 +150,7 @@ When the operator has run the steps above on a VPS:
 - [x] Build & run: `docker compose up -d --build`
 - [x] Verify: `docker compose exec nginx nginx -t`, open the dashboard in a browser, and confirm HTTPS login + anonymous public routes
 
-**Outcome:** Dashboard is running on VPS at `https://zeninvest.zenouz.ai` with Cloudflare + nginx and no public raw `:8000` exposure. The anonymous read-only surface includes Overview, Portfolio, World News, and Roadmap; operator pages and controls remain authenticated. Portfolio includes Cash, Investments, Positions (T212 positions normalised for display), sector allocation, and chronological value history chart.
+**Outcome:** Dashboard is running on VPS at `https://zeninvest.zenouz.ai` with Cloudflare + nginx and no public raw `:8000` exposure. Signed-out visitors can browse the full product navigation, but every anonymous tab is intentionally either a sanitized live view (Overview, Universe, Portfolio, Runs, Opportunity, Costs, World News, Roadmap) or a disabled preview surface (Order Management, Chat, Evolution). Operator pages and controls remain authenticated.
 
 ---
 
@@ -175,7 +175,7 @@ Rollback:
 ## Security Note
 
 With the canonical HTTPS domain:
-- **Public vs operator split:** Anonymous access is limited to the read-only surface backed by `/api/public/*` (including roadmap docs, performance snapshot, portfolio read models, and World News / macro read models). Trading controls, Universe, runs, events, commands, research, and all mutation endpoints remain operator-only.
+- **Public vs operator split:** Anonymous access is limited to intentionally exposed `/api/public/*` read models and disabled preview surfaces. Public live routes cover roadmap docs, performance snapshot, universe, portfolio, runs, opportunity, costs, and World News / macro read models. Trading controls, events, chat execution, evolution planning, research, and all mutation endpoints remain operator-only.
 - **Operator login:** Set these in `.env`:
   ```
   DASHBOARD_OPERATOR_USERNAME=<operator-username>
@@ -195,6 +195,12 @@ With the canonical HTTPS domain:
   - `/api/public/docs/*`
   - `/api/public/costs/*`
   - `/api/public/performance/*`
+  - `/api/public/universe`
+  - `/api/public/portfolio`
+  - `/api/public/portfolio/history`
+  - `/api/public/runs`
+  - `/api/public/opportunity`
+  - `/api/public/macro/*`
 - **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: `https://zeninvest.zenouz.ai` plus localhost dev origins. If you override it, keep the canonical HTTPS domain and localhost origins:
   ```yaml
   dashboard:

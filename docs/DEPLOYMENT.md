@@ -1770,7 +1770,7 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 
 **To rebuild after updates:** `git pull origin main` then `docker compose up -d --build` (or `docker compose up -d --build dashboard` for dashboard-only, `docker compose up -d --build investment-agent` for agent-only). See [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md#updating--rebuilding-the-dashboard).
 
-**Outcome:** Dashboard is running on VPS behind Nginx. The full 11-page dashboard surface is reachable on the canonical HTTPS domain `https://zeninvest.zenouz.ai`, while public access is intentionally limited to the anonymous read-only pages (Overview, Portfolio, World News, Roadmap) and `/api/public/*`. Operator pages, SSE activity, and protected APIs still require sign-in, while the FastAPI dashboard service remains internal-only on the Docker network.
+**Outcome:** Dashboard is running on VPS behind Nginx. The full 11-page dashboard surface is reachable on the canonical HTTPS domain `https://zeninvest.zenouz.ai`, while public access is intentionally constrained to sanitized `/api/public/*` read models and disabled preview surfaces where appropriate. Signed-out visitors can browse the full tab map, but operator pages, SSE activity, and protected APIs still require sign-in, while the FastAPI dashboard service remains internal-only on the Docker network.
 
 **Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use the **Dry Run** or **Live Run** buttons on Dashboard Home (Live Run requires confirmation), or `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live) / `... --dry-run` (dry).
 

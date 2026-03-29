@@ -5,12 +5,21 @@ import { LoadingSpinner } from './components/LoadingSpinner'
 import { useDashboardAuthRequired } from './hooks/useDashboardAuthRequired'
 import { useSSE } from './hooks/useSSE'
 import { authApi, type AuthSession } from './api/client'
+import { getMoreNavigationItems, getPrimaryNavigationItems } from './navigation'
 import { clearDashboardAuthRequired } from './utils/authErrorBridge'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Universe = lazy(() => import('./pages/Universe'))
 const RunHistory = lazy(() => import('./pages/RunHistory'))
 const Portfolio = lazy(() => import('./pages/Portfolio'))
+const PublicUniverse = lazy(() => import('./pages/PublicUniverse'))
+const PublicRuns = lazy(() => import('./pages/PublicRuns'))
+const PublicPortfolio = lazy(() => import('./pages/PublicPortfolio'))
+const PublicOpportunity = lazy(() => import('./pages/PublicOpportunity'))
+const PublicOrderManagement = lazy(() => import('./pages/PublicOrderManagement'))
+const PublicCosts = lazy(() => import('./pages/PublicCosts'))
+const PublicChat = lazy(() => import('./pages/PublicChat'))
+const PublicEvolution = lazy(() => import('./pages/PublicEvolution'))
 const Opportunity = lazy(() => import('./pages/Opportunity'))
 const OrderManagement = lazy(() => import('./pages/OrderManagement'))
 const Costs = lazy(() => import('./pages/Costs'))
@@ -68,6 +77,7 @@ function ProtectedRoute({
 function MoreDropdown({ authenticated }: { authenticated: boolean }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const items = getMoreNavigationItems(authenticated)
 
   useEffect(() => {
     if (!open) return
@@ -78,7 +88,7 @@ function MoreDropdown({ authenticated }: { authenticated: boolean }) {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
 
-  if (!authenticated) return null
+  if (items.length === 0) return null
 
   return (
     <div ref={ref} className="relative inline-flex items-center">
@@ -106,12 +116,11 @@ function MoreDropdown({ authenticated }: { authenticated: boolean }) {
             backdropFilter: 'blur(12px)',
           }}
         >
-          <NavLink to="/opportunity" className={dropdownLinkClass} onClick={() => setOpen(false)}>Opportunity</NavLink>
-          <NavLink to="/orders" className={dropdownLinkClass} onClick={() => setOpen(false)}>Order Mgmt</NavLink>
-          <NavLink to="/chat" className={dropdownLinkClass} onClick={() => setOpen(false)}>Chat</NavLink>
-          <NavLink to="/evolution" className={dropdownLinkClass} onClick={() => setOpen(false)}>Evolution</NavLink>
-          <NavLink to="/world-news" className={dropdownLinkClass} onClick={() => setOpen(false)}>World News</NavLink>
-          <NavLink to="/costs" className={dropdownLinkClass} onClick={() => setOpen(false)}>Costs</NavLink>
+          {items.map((item) => (
+            <NavLink key={item.to} to={item.to} className={dropdownLinkClass} onClick={() => setOpen(false)}>
+              {item.label}
+            </NavLink>
+          ))}
         </div>
       )}
     </div>
@@ -148,6 +157,8 @@ function DashboardShell() {
 
   const authenticated = authStatus === 'authenticated'
   const authResolved = authStatus !== 'loading'
+  const primaryNavItems = getPrimaryNavigationItems(authenticated)
+  const mobileNavItems = [...primaryNavItems, ...getMoreNavigationItems(authenticated)]
 
   const { events: sseEvents, connectionState: sseConnectionState, sseDisconnectedAlert } = useSSE({
     enabled: authenticated,
@@ -198,13 +209,11 @@ function DashboardShell() {
                 <span className="brand-gradient-text font-body font-normal">.ai</span>
               </Link>
               <div className="hidden sm:flex sm:items-center sm:gap-1">
-                {!authenticated && <NavLink to="/" end className={navLinkClass}>Overview</NavLink>}
-                {authenticated && <NavLink to="/dashboard" className={navLinkClass}>Dashboard</NavLink>}
-                {authenticated && <NavLink to="/universe" className={navLinkClass}>Universe</NavLink>}
-                <NavLink to="/portfolio" className={navLinkClass}>Portfolio</NavLink>
-                {authenticated && <NavLink to="/runs" className={navLinkClass}>Runs</NavLink>}
-                {!authenticated && <NavLink to="/world-news" className={navLinkClass}>World News</NavLink>}
-                <NavLink to="/roadmap" className={navLinkClass}>Roadmap</NavLink>
+                {primaryNavItems.map((item) => (
+                  <NavLink key={item.to} to={item.to} end={item.to === '/'} className={navLinkClass}>
+                    {item.label}
+                  </NavLink>
+                ))}
                 <MoreDropdown authenticated={authenticated} />
               </div>
             </div>
@@ -258,18 +267,17 @@ function DashboardShell() {
             style={{ background: 'rgba(6, 6, 10, 0.95)' }}
           >
             <div className="pt-2 pb-3 space-y-0.5 px-3">
-              {!authenticated && <NavLink to="/" end className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Overview</NavLink>}
-              {authenticated && <NavLink to="/dashboard" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Dashboard</NavLink>}
-              {authenticated && <NavLink to="/universe" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Universe</NavLink>}
-              <NavLink to="/portfolio" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Portfolio</NavLink>
-              {authenticated && <NavLink to="/runs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Run History</NavLink>}
-              {authenticated && <NavLink to="/opportunity" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Opportunity</NavLink>}
-              {authenticated && <NavLink to="/orders" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Order Mgmt</NavLink>}
-              {authenticated && <NavLink to="/chat" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Chat</NavLink>}
-              {authenticated && <NavLink to="/evolution" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Evolution</NavLink>}
-              <NavLink to="/world-news" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>World News</NavLink>
-              {authenticated && <NavLink to="/costs" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Costs</NavLink>}
-              <NavLink to="/roadmap" className={mobileLinkClass} onClick={() => setMobileMenuOpen(false)}>Roadmap</NavLink>
+              {mobileNavItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  className={mobileLinkClass}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {item.mobileLabel ?? item.label}
+                </NavLink>
+              ))}
               <div className="pt-2 pb-1">
                 {authenticated ? (
                   <button
@@ -316,16 +324,16 @@ function DashboardShell() {
                 </ProtectedRoute>
               )}
             />
-            <Route path="/universe" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Universe /></ProtectedRoute>} />
-            <Route path="/universe/:ticker" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Universe /></ProtectedRoute>} />
-            <Route path="/runs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><RunHistory /></ProtectedRoute>} />
-            <Route path="/portfolio" element={<Portfolio publicView={!authenticated} />} />
-            <Route path="/opportunity" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Opportunity /></ProtectedRoute>} />
-            <Route path="/orders" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><OrderManagement /></ProtectedRoute>} />
-            <Route path="/costs" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Costs /></ProtectedRoute>} />
+            <Route path="/universe" element={authenticated ? <Universe /> : <PublicUniverse />} />
+            <Route path="/universe/:ticker" element={authenticated ? <Universe /> : <PublicUniverse />} />
+            <Route path="/runs" element={authenticated ? <RunHistory /> : <PublicRuns />} />
+            <Route path="/portfolio" element={authenticated ? <Portfolio /> : <PublicPortfolio />} />
+            <Route path="/opportunity" element={authenticated ? <Opportunity /> : <PublicOpportunity />} />
+            <Route path="/orders" element={authenticated ? <OrderManagement /> : <PublicOrderManagement />} />
+            <Route path="/costs" element={authenticated ? <Costs /> : <PublicCosts />} />
             <Route path="/commands" element={<Navigate to="/chat" replace />} />
-            <Route path="/chat" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Chat /></ProtectedRoute>} />
-            <Route path="/evolution" element={<ProtectedRoute authenticated={authenticated} resolved={authResolved}><Evolution /></ProtectedRoute>} />
+            <Route path="/chat" element={authenticated ? <Chat /> : <PublicChat />} />
+            <Route path="/evolution" element={authenticated ? <Evolution /> : <PublicEvolution />} />
             <Route path="/world-news" element={<WorldNews publicView={!authenticated} />} />
             <Route path="*" element={<Navigate to={homePath} replace />} />
           </Routes>

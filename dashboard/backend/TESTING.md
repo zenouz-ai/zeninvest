@@ -1,6 +1,6 @@
 # Testing the Dashboard Backend
 
-## Full dashboard check (8 pages + full API)
+## Full dashboard check (11 pages + full API)
 
 Use this to confirm the full API and frontend are in place.
 
@@ -50,20 +50,23 @@ Then either:
 - **Option A — SPA via FastAPI:** From repo root, ensure backend is serving; open **http://localhost:8000**. FastAPI serves the built frontend from `dashboard/frontend/dist` when that folder exists.
 - **Option B — Dev server (proxies to backend):** From `dashboard/frontend`, run `npm run dev` and open **http://localhost:3000**.
 
-### 6. Verify all 8 pages
+### 6. Verify all 11 pages
 
 In the browser, confirm each route loads without errors:
 
 | Page            | URL                    | What to check                                      |
 |-----------------|------------------------|----------------------------------------------------|
-| Dashboard Home  | `/`                    | Skeleton loading → state badge, metrics, SSE feed, positions with sparklines, alert banner |
-| Universe        | `/universe`            | Table skeleton → sortable table, expand row for pipeline waterfall + committee reasoning; deep-link: `/universe/AAPL`; URL params: `?q=AAPL&sector=Technology` |
-| Run History     | `/runs`                | Table skeleton → timeline, run diff (from/to)       |
-| Portfolio       | `/portfolio`           | Table skeleton → positions with sparklines + Force Sell button per row, P&L with ▲/▼ arrows, profit-lock protection state with required/current lock prices, mobile card layout (resize < 640px) |
-| Opportunity     | `/opportunity`         | Table skeleton → UOV queue and scores table (via "More" dropdown) |
-| Order Management| `/orders`              | Table skeleton → current stops merged across orders/adjustments, profit-lock status/required line/active stop/protected qty, adjustment history (via "More" dropdown) |
-| Costs           | `/costs`               | Card skeleton → degradation badge, daily chart, monthly table (via "More" dropdown) |
-| Roadmap         | `/roadmap`             | Project timeline, topic filter, Architecture tab (via "More" dropdown) |
+| Overview        | `/`                    | Signed-out: public overview surface with full nav and safe summary cards; signed-in: operator dashboard home |
+| Universe        | `/universe`            | Signed-out: first 10 sanitized instruments; signed-in: sortable table with pipeline waterfall, deep-link `/universe/AAPL`, URL params `?q=AAPL&sector=Technology` |
+| Portfolio       | `/portfolio`           | Signed-out: normalized history + capped holdings, no actions; signed-in: positions with sparklines + Force Sell button, P&L with ▲/▼ arrows, profit-lock state, mobile card layout |
+| Runs            | `/runs`                | Signed-out: last 5 sanitized runs; signed-in: timeline, run diff, dataset audits |
+| World News      | `/world-news`          | Macro regime, timeline, headline archive; public mode omits operator-only portfolio bias |
+| Roadmap         | `/roadmap`             | Project timeline, topic filter, Architecture tab |
+| Opportunity     | `/opportunity`         | Signed-out: capped preview examples; signed-in: full UOV queue and scores table |
+| Order Management| `/orders`              | Signed-out: preview-only explainer; signed-in: stops, health, execution quality, adjustments |
+| Costs           | `/costs`               | Signed-out: aggregate totals only; signed-in: degradation badge, daily chart, monthly table |
+| Chat            | `/chat`                | Signed-out: preview-only demo transcript; signed-in: full operator console |
+| Evolution       | `/evolution`           | Signed-out: preview-only planner concept; signed-in: authenticated evolution planner |
 
 ### 7. SSE activity feed
 

@@ -19,6 +19,12 @@ import type {
   Order,
   PortfolioSnapshot,
   PortfolioHistoryStart,
+  PublicMacroState,
+  PublicOpportunityPreview,
+  PublicPortfolioHistoryPoint,
+  PublicPortfolioSnapshot,
+  PublicRunSummary,
+  PublicUniverseItem,
   Run,
   SlackCommand,
   StopLossCurrent,
@@ -90,6 +96,10 @@ export const authApi = {
 }
 
 export const publicApi = {
+  getUniverse: async (params?: { limit?: number }): Promise<PublicUniverseItem[]> => {
+    const response = await api.get('/api/public/universe', { params })
+    return response.data
+  },
   getDailyCosts: async (params?: { days?: number }): Promise<any[]> => {
     const response = await api.get('/api/public/costs/daily', { params })
     return response.data
@@ -102,31 +112,27 @@ export const publicApi = {
     const response = await api.get('/api/public/performance/metrics')
     return response.data
   },
-  getPortfolioCurrent: async (): Promise<PortfolioSnapshot | null> => {
-    try {
-      const response = await api.get('/api/public/portfolio')
-      return response.data
-    } catch (err: any) {
-      if (err?.response?.status === 404) return null
-      throw err
-    }
+  getPortfolioCurrent: async (): Promise<PublicPortfolioSnapshot | null> => {
+    const response = await api.get('/api/public/portfolio')
+    return response.data
   },
-  getPortfolioHistory: async (params?: {
-    limit?: number
-    offset?: number
-  }): Promise<PortfolioSnapshot[]> => {
+  getPortfolioHistory: async (params?: { limit?: number }): Promise<PublicPortfolioHistoryPoint[]> => {
     const response = await api.get('/api/public/portfolio/history', { params })
     return response.data
   },
-  getPortfolioHistoryStart: async (): Promise<PortfolioHistoryStart> => {
-    const response = await api.get('/api/public/portfolio/history-start')
+  getRuns: async (params?: { limit?: number }): Promise<PublicRunSummary[]> => {
+    const response = await api.get('/api/public/runs', { params })
     return response.data
   },
-  getMacroState: async (): Promise<MacroState | null> => {
+  getOpportunity: async (params?: { limit?: number }): Promise<PublicOpportunityPreview[]> => {
+    const response = await api.get('/api/public/opportunity', { params })
+    return response.data
+  },
+  getMacroState: async (): Promise<PublicMacroState | null> => {
     const response = await api.get('/api/public/macro/state')
     return response.data
   },
-  getMacroStateHistory: async (days = 7): Promise<MacroState[]> => {
+  getMacroStateHistory: async (days = 7): Promise<PublicMacroState[]> => {
     const response = await api.get('/api/public/macro/state/history', { params: { days } })
     return response.data
   },

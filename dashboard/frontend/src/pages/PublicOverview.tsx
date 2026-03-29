@@ -160,9 +160,49 @@ export default function PublicOverview() {
           <Link to="/login" className="btn-secondary">
             Operator sign in
           </Link>
+          <Link to="/universe" className="btn-secondary">
+            Universe
+          </Link>
+          <Link to="/runs" className="btn-secondary">
+            Runs
+          </Link>
+          <Link to="/opportunity" className="btn-secondary">
+            Opportunity
+          </Link>
           <Link to="/roadmap" className="btn-secondary">
             View roadmap
           </Link>
+        </div>
+      </Panel>
+
+      <Panel className="space-y-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">Public Demo Surface</h2>
+            <p className="mt-1 text-sm text-terminal-text-dim">
+              Every product tab is visible publicly. Some tabs use live sanitized data; others are intentionally demo-only previews.
+            </p>
+          </div>
+          <StatusPill label="Full nav visible" variant="live" />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {[
+            ['Universe', '/universe', 'Live sample of 10 screening rows.'],
+            ['Portfolio', '/portfolio', 'Normalized holdings, allocation, and protection state.'],
+            ['Runs', '/runs', 'Last 5 runs with high-level health.'],
+            ['Opportunity', '/opportunity', '5 public-safe opportunity previews.'],
+            ['Order Mgmt', '/orders', 'Static preview only.'],
+            ['Chat', '/chat', 'Static preview only.'],
+            ['Evolution', '/evolution', 'Static preview only.'],
+            ['World News', '/world-news', 'Live macro headlines and regime context.'],
+            ['Roadmap', '/roadmap', 'Full roadmap and architecture stay public.'],
+            ['Costs', '/costs', 'Aggregated live cost totals only.'],
+          ].map(([label, href, description]) => (
+            <Link key={href} to={href} className="rounded-panel border border-terminal-border bg-terminal-bg/25 p-4 transition-colors hover:border-cyan/30 hover:bg-white/[0.03]">
+              <div className="text-sm font-semibold text-terminal-text">{label}</div>
+              <div className="mt-1 text-sm text-terminal-text-dim">{description}</div>
+            </Link>
+          ))}
         </div>
       </Panel>
 

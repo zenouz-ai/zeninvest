@@ -523,6 +523,105 @@ class PublicCostMonthlySchema(BaseModel):
     research_cost_gbp: float = 0.0
 
 
+class PublicUniverseItemSchema(BaseModel):
+    """Public-safe universe table row."""
+
+    ticker: str
+    name: str | None
+    sector: str | None
+    industry: str | None
+    market_cap_bucket: str
+    status: str
+    last_screened_at: datetime | None
+
+
+class PublicPortfolioPositionSchema(BaseModel):
+    """Public-safe portfolio holding summary."""
+
+    ticker: str
+    sector: str | None = None
+    allocation_pct: float
+    pnl_band: str
+    protection_status: str
+
+
+class PublicPortfolioSectorSchema(BaseModel):
+    """Public-safe sector allocation summary."""
+
+    sector: str
+    allocation_pct: float
+
+
+class PublicPortfolioProtectionSchema(BaseModel):
+    """Aggregate protection-state counts for public portfolio views."""
+
+    protected_count: int = 0
+    needs_lock_count: int = 0
+    exit_required_count: int = 0
+    inactive_count: int = 0
+
+
+class PublicPortfolioSnapshotSchema(BaseModel):
+    """Public-safe portfolio snapshot."""
+
+    timestamp: datetime
+    num_positions: int
+    positions_visible: int
+    cash_pct: float
+    invested_pct: float
+    value_index: float
+    pnl_band: str
+    positions: list[PublicPortfolioPositionSchema]
+    sector_allocations: list[PublicPortfolioSectorSchema]
+    protection_summary: PublicPortfolioProtectionSchema
+
+
+class PublicPortfolioHistoryPointSchema(BaseModel):
+    """Public-safe normalized portfolio history point."""
+
+    timestamp: datetime
+    value_index: float
+
+
+class PublicRunSummarySchema(BaseModel):
+    """Public-safe run summary."""
+
+    started_at: datetime
+    completed_at: datetime | None
+    run_type: str
+    status: str
+    duration_seconds: float | None = None
+    stocks_screened: int | None = None
+    decisions_made: int | None = None
+    orders_placed: int | None = None
+    audit_status: str = "healthy"
+    audit_degraded: bool = False
+
+
+class PublicOpportunityPreviewSchema(BaseModel):
+    """Public-safe opportunity preview row."""
+
+    ticker: str
+    name: str | None = None
+    sector: str | None = None
+    stage: str
+    action: str
+    score_band: str
+    last_updated: datetime
+
+
+class PublicMacroStateSchema(BaseModel):
+    """Public-safe macro state snapshot."""
+
+    timestamp: datetime
+    regime: str
+    confidence_score: float
+    top_signals: list[dict[str, Any]] = []
+    action_plan: dict[str, Any] = {}
+    sector_summary: str | None = None
+    economic_highlights: str | None = None
+
+
 class AuthLoginRequestSchema(BaseModel):
     """Operator login request payload."""
 

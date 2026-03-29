@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { portfolioApi, publicApi, systemApi } from '../api/client'
+import { portfolioApi, systemApi } from '../api/client'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
 import { Sparkline } from '../components/Sparkline'
@@ -177,7 +177,7 @@ function ProfitLockSummary({
   )
 }
 
-export default function Portfolio({ publicView = false }: { publicView?: boolean }) {
+export default function Portfolio() {
   const [currentPortfolio, setCurrentPortfolio] = useState<PortfolioSnapshot | null>(null)
   const [history, setHistory] = useState<PortfolioSnapshot[]>([])
   const [historyStartTimestamp, setHistoryStartTimestamp] = useState<string | null>(null)
@@ -199,11 +199,9 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
     setError(null)
     try {
       const [current, historyData, historyStart] = await Promise.all([
-        publicView ? publicApi.getPortfolioCurrent() : portfolioApi.current(),
-        publicView
-          ? publicApi.getPortfolioHistory({ limit: PORTFOLIO_HISTORY_FETCH_LIMIT })
-          : portfolioApi.history({ limit: PORTFOLIO_HISTORY_FETCH_LIMIT }),
-        publicView ? publicApi.getPortfolioHistoryStart() : portfolioApi.historyStart(),
+        portfolioApi.current(),
+        portfolioApi.history({ limit: PORTFOLIO_HISTORY_FETCH_LIMIT }),
+        portfolioApi.historyStart(),
       ])
       setCurrentPortfolio(current)
       setHistory(historyData)
@@ -220,7 +218,7 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
     fetchPortfolio()
     const interval = setInterval(fetchPortfolio, 30000) // Refresh every 30s
     return () => clearInterval(interval)
-  }, [publicView])
+  }, [])
 
   const positions = currentPortfolio?.positions ?? []
 
@@ -373,7 +371,7 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
   const COLORS = ['#00d4ff', '#00ffa3', '#6332ff', '#ff4466', '#f7c948']
 
   const handleForceSell = async () => {
-    if (publicView || !forceSellTicker) return
+    if (!forceSellTicker) return
     setForceSellLoading(true)
     setForceSellResult(null)
     try {
@@ -432,9 +430,7 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
             </div>
           ) : null
         }
-        description={publicView
-          ? 'Read-only portfolio view: current positions, cash, value history, and protection state from the latest snapshot. Charts show portfolio value over time and sector allocation; operator actions remain private.'
-          : 'Current positions, cash, value history, and profit-lock protection state from the latest snapshot. Positions table lists ticker, quantity, value, P&L, and whether winners above the sell threshold are fully protected.'}
+        description="Current positions, cash, value history, and profit-lock protection state from the latest snapshot. Positions table lists ticker, quantity, value, P&L, and whether winners above the sell threshold are fully protected."
       />
       <div className="text-xs text-terminal-text-dim">
         {currentPortfolio?.timestamp
@@ -443,7 +439,7 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
       </div>
 
       {/* Force Sell confirmation modal */}
-      {!publicView && forceSellTicker && (
+      {forceSellTicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setForceSellTicker(null)}>
           <div ref={forceSellModalRef} className="bg-terminal-surface border border-terminal-border rounded-lg p-4 max-w-sm shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-base font-semibold text-loss mb-2">Force sell {cleanTicker(forceSellTicker)}?</h3>
@@ -461,17 +457,9 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
       )}
 
       {/* Result toast */}
-      {!publicView && forceSellResult && (
+      {forceSellResult && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded shadow-lg text-sm font-mono ${forceSellResult.type === 'success' ? 'bg-gain/20 border border-gain/40 text-gain' : 'bg-loss/20 border border-loss/40 text-loss'}`}>
           {forceSellResult.message}
-        </div>
-      )}
-
-      {publicView && (
-        <div className="card border-cyan/20">
-          <p className="text-sm text-terminal-text-dim">
-            This page is public in read-only mode. Trading controls such as Force Sell remain operator-only behind sign-in.
-          </p>
         </div>
       )}
 
@@ -770,17 +758,15 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
                       <span className="text-terminal-text-dim text-xs">Qty</span>
                       <div className="font-mono">{pos.quantity}</div>
                     </div>
-                    {!publicView && (
-                      <div className="flex items-end justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setForceSellTicker(pos.ticker)}
-                          className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
-                        >
-                          Force Sell
-                        </button>
-                      </div>
-                    )}
+                    <div className="flex items-end justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setForceSellTicker(pos.ticker)}
+                        className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
+                      >
+                        Force Sell
+                      </button>
+                    </div>
                   </div>
                   {hasProfitLockInfo(pos.profit_lock_status) && (
                     <div className="mt-3 pt-3 border-t border-terminal-border">
@@ -853,7 +839,7 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
                     />
                     <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Protection</th>
                     <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Trend</th>
-                    {!publicView && <th scope="col" className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>}
+                    <th scope="col" className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -883,17 +869,15 @@ export default function Portfolio({ publicView = false }: { publicView?: boolean
                           <span className="text-terminal-text-dim text-xs">—</span>
                         )}
                       </td>
-                      {!publicView && (
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setForceSellTicker(pos.ticker)}
-                            className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
-                          >
-                            Force Sell
-                          </button>
-                        </td>
-                      )}
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setForceSellTicker(pos.ticker)}
+                          className="text-xs text-loss hover:text-loss/80 border border-loss/30 hover:border-loss/60 rounded px-2 py-0.5 transition-colors"
+                        >
+                          Force Sell
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
