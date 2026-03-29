@@ -165,6 +165,26 @@ class NotificationService:
             dedup_parts=[cycle_id, payload.get("ticker"), payload.get("action")],
         )
 
+    def emit_execution_quality_alert(
+        self,
+        *,
+        cycle_id: str | None,
+        payload: dict[str, Any],
+        source: str = "execution_quality",
+    ) -> None:
+        self._emit(
+            event_type="execution_quality_alert",
+            severity="warning",
+            cycle_id=cycle_id,
+            payload=payload,
+            source=source,
+            dedup_parts=[
+                payload.get("alert_date"),
+                payload.get("window_days"),
+                payload.get("warning_threshold_bps"),
+            ],
+        )
+
     @staticmethod
     def _trade_execution_severity(payload: dict[str, Any]) -> str:
         status = str(payload.get("execution_status", "")).strip().lower()

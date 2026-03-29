@@ -724,6 +724,31 @@ class Settings:
         return float(self.order_management.get("default_stop_loss_pct", -15.0))
 
     @property
+    def resubmit_partial_fills(self) -> bool:
+        return bool(self.order_management.get("resubmit_partial_fills", True))
+
+    @property
+    def execution_quality(self) -> dict[str, Any]:
+        raw = self.order_management.get("execution_quality", {})
+        return raw if isinstance(raw, dict) else {}
+
+    @property
+    def execution_quality_enabled(self) -> bool:
+        return bool(self.execution_quality.get("enabled", False))
+
+    @property
+    def execution_quality_alert_window_days(self) -> int:
+        return int(self.execution_quality.get("alert_window_days", 7))
+
+    @property
+    def execution_quality_warning_threshold_bps(self) -> float:
+        return float(self.execution_quality.get("warning_threshold_bps", 25.0))
+
+    @property
+    def execution_quality_warning_min_fills(self) -> int:
+        return int(self.execution_quality.get("warning_min_fills", 5))
+
+    @property
     def reassess_stops_enabled(self) -> bool:
         return bool(self.order_management.get("reassess_stops", False))
 

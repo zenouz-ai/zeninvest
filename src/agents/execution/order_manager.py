@@ -114,6 +114,73 @@ class OrderManager:
         direction = "BUY" if quantity > 0 else "SELL"
         return f"{ticker}_{direction}_{abs(quantity):.2f}"
 
+    @staticmethod
+    def _make_resubmit_dedup_key(base_key: str, source_order_id: int) -> str:
+        """Tag a dedup key so one recovery attempt is distinct from the original order."""
+        return f"{base_key}__resubmit_{source_order_id}"
+
+    @staticmethod
+    def _compute_slippage_bps(
+        *,
+        action: str,
+        decision_price: float | None,
+        fill_price: float | None,
+    ) -> float | None:
+        """Return side-adjusted slippage where positive means worse for the operator."""
+        if not decision_price or decision_price <= 0 or fill_price is None:
+            return None
+        if action == "BUY":
+            return ((fill_price - decision_price) / decision_price) * 10_000
+        return ((decision_price - fill_price) / decision_price) * 10_000
+
+    def _find_partial_fill_resubmission_candidate(
+        self,
+        *,
+        ticker: str,
+        desired_quantity: float,
+        strategy: str | None,
+    ) -> Order | None:
+        """Return the latest eligible cancelled partial BUY that may be retried once."""
+        if not self.settings.resubmit_partial_fills:
+            return None
+        if strategy == "slack_direct" or desired_quantity <= 0:
+            return None
+
+        session = get_session()
+        try:
+            candidates = (
+                session.query(Order)
+                .filter(
+                    Order.ticker == ticker,
+                    Order.action == "BUY",
+                    Order.order_type == "market",
+                    Order.status == "cancelled",
+                    Order.filled_quantity.isnot(None),
+                    Order.remaining_quantity.isnot(None),
+                    Order.filled_quantity > 0,
+                    Order.remaining_quantity > 0,
+                    Order.resubmitted_from_order_id.is_(None),
+                )
+                .order_by(Order.timestamp.desc(), Order.id.desc())
+                .all()
+            )
+            for row in candidates:
+                child = (
+                    session.query(Order.id)
+                    .filter(Order.resubmitted_from_order_id == row.id)
+                    .first()
+                )
+                if child is not None:
+                    continue
+                remainder = float(row.remaining_quantity or 0)
+                if remainder <= 0 or desired_quantity + 1e-9 < remainder:
+                    continue
+                session.expunge(row)
+                return row
+            return None
+        finally:
+            session.close()
+
     def check_off_hours_order_policy(
         self,
         *,
@@ -582,10 +649,15 @@ class OrderManager:
         order_type: str,
         quantity: float,
         price: float | None = None,
+        decision_price: float | None = None,
         limit_price: float | None = None,
         stop_price: float | None = None,
         value_gbp: float | None = None,
+        filled_quantity: float | None = None,
+        remaining_quantity: float | None = None,
+        slippage_bps: float | None = None,
         t212_order_id: str | None = None,
+        resubmitted_from_order_id: int | None = None,
         status: str = "pending",
         strategy: str | None = None,
         conviction: int | None = None,
@@ -605,10 +677,15 @@ class OrderManager:
                 order_type=order_type,
                 quantity=quantity,
                 price=price,
+                decision_price=decision_price,
                 limit_price=limit_price,
                 stop_price=stop_price,
                 value_gbp=value_gbp,
+                filled_quantity=filled_quantity,
+                remaining_quantity=remaining_quantity,
+                slippage_bps=slippage_bps,
                 t212_order_id=t212_order_id,
+                resubmitted_from_order_id=resubmitted_from_order_id,
                 status=status,
                 strategy=strategy,
                 conviction=conviction,
@@ -633,6 +710,10 @@ class OrderManager:
         order_id: int,
         status: str,
         t212_order_id: str | None = None,
+        price: float | None = None,
+        filled_quantity: float | None = None,
+        remaining_quantity: float | None = None,
+        slippage_bps: float | None = None,
         error_message: str | None = None,
     ) -> None:
         """Update an existing order record's status (for write-before-execute pattern)."""
@@ -643,6 +724,14 @@ class OrderManager:
                 row.status = status
                 if t212_order_id:
                     row.t212_order_id = t212_order_id
+                if price is not None:
+                    row.price = price
+                if filled_quantity is not None:
+                    row.filled_quantity = filled_quantity
+                if remaining_quantity is not None:
+                    row.remaining_quantity = remaining_quantity
+                if slippage_bps is not None:
+                    row.slippage_bps = slippage_bps
                 if error_message:
                     row.error_message = error_message
                 session.commit()
@@ -719,6 +808,9 @@ class OrderManager:
         if action in ("SELL", "REDUCE"):
             quantity = -quantity
 
+        resubmission_source: Order | None = None
+        strategy_for_log = strategy
+
         # SELL/REDUCE: cancel stops first, then clamp to broker position (reduces T212 400 oversell).
         if action in ("SELL", "REDUCE"):
             cancel_result = self.cancel_conflicting_stops(ticker)
@@ -735,9 +827,12 @@ class OrderManager:
                     order_type="market",
                     quantity=quantity,
                     price=current_price,
+                    decision_price=current_price,
                     value_gbp=abs(quantity) * current_price,
+                    filled_quantity=0.0,
+                    remaining_quantity=abs(quantity),
                     status="failed",
-                    strategy=strategy,
+                    strategy=strategy_for_log,
                     conviction=conviction,
                     moderation_result=moderation_result,
                     risk_result=risk_result,
@@ -772,9 +867,12 @@ class OrderManager:
                     order_type="market",
                     quantity=quantity,
                     price=current_price,
+                    decision_price=current_price,
                     value_gbp=abs(quantity) * current_price,
+                    filled_quantity=0.0,
+                    remaining_quantity=abs(quantity),
                     status="failed",
-                    strategy=strategy,
+                    strategy=strategy_for_log,
                     conviction=conviction,
                     moderation_result=moderation_result,
                     risk_result=risk_result,
@@ -806,9 +904,12 @@ class OrderManager:
                     order_type="market",
                     quantity=quantity,
                     price=current_price,
+                    decision_price=current_price,
                     value_gbp=abs(quantity) * current_price,
+                    filled_quantity=0.0,
+                    remaining_quantity=abs(quantity),
                     status="failed",
-                    strategy=strategy,
+                    strategy=strategy_for_log,
                     conviction=conviction,
                     moderation_result=moderation_result,
                     risk_result=risk_result,
@@ -847,7 +948,19 @@ class OrderManager:
                     "value_gbp": 0.0,
                 }
 
+        if action == "BUY":
+            resubmission_source = self._find_partial_fill_resubmission_candidate(
+                ticker=ticker,
+                desired_quantity=float(quantity),
+                strategy=strategy,
+            )
+            if resubmission_source is not None:
+                quantity = float(resubmission_source.remaining_quantity or quantity)
+                strategy_for_log = "partial_fill_resubmit"
+
         dedup_key = self._make_dedup_key(ticker, quantity)
+        if resubmission_source is not None:
+            dedup_key = self._make_resubmit_dedup_key(dedup_key, resubmission_source.id)
 
         if self._is_duplicate(dedup_key):
             logger.warning(f"Duplicate order detected: {dedup_key}")
@@ -860,6 +973,7 @@ class OrderManager:
                 "quantity": abs(quantity),
                 "price": current_price,
                 "value_gbp": float(abs(target_amount_gbp)) if action == "BUY" else computed_dup,
+                "decision_price": current_price,
             }
 
         computed_value_gbp = abs(quantity) * (price_gbp or current_price)
@@ -867,15 +981,21 @@ class OrderManager:
         # for BUY orders. This avoids off-by-a-few-pence skips when the share quantity
         # is rounded down to 2 decimals.
         if action == "BUY":
-            value_gbp = float(abs(target_amount_gbp))
+            if resubmission_source is not None:
+                value_gbp = computed_value_gbp
+            else:
+                value_gbp = float(abs(target_amount_gbp))
         else:
             value_gbp = computed_value_gbp
-        can_place, reject_reason = self._passes_min_order_value(
-            action=action,
-            order_type="market",
-            value_gbp=value_gbp,
-            allow_below_min_full_sell=True,
-        )
+        if resubmission_source is not None:
+            can_place, reject_reason = True, None
+        else:
+            can_place, reject_reason = self._passes_min_order_value(
+                action=action,
+                order_type="market",
+                value_gbp=value_gbp,
+                allow_below_min_full_sell=True,
+            )
         if not can_place:
             logger.info(
                 f"Order skipped: {action} {ticker} value £{value_gbp:.2f} below minimum "
@@ -889,6 +1009,7 @@ class OrderManager:
                 "quantity": abs(quantity),
                 "price": current_price,
                 "value_gbp": value_gbp,
+                "decision_price": current_price,
             }
 
         can_place_off_hours, warning_note = self.check_off_hours_order_policy(
@@ -906,6 +1027,7 @@ class OrderManager:
                 "price": current_price,
                 "value_gbp": value_gbp,
                 "warning_note": warning_note,
+                "decision_price": current_price,
             }
 
         if self.dry_run:
@@ -916,12 +1038,17 @@ class OrderManager:
                 order_type="market",
                 quantity=quantity,
                 price=current_price,
+                decision_price=current_price,
                 value_gbp=value_gbp,
+                filled_quantity=abs(quantity),
+                remaining_quantity=0.0,
+                slippage_bps=0.0,
                 status="dry_run",
-                strategy=strategy,
+                strategy=strategy_for_log,
                 conviction=conviction,
                 moderation_result=moderation_result,
                 risk_result=risk_result,
+                resubmitted_from_order_id=resubmission_source.id if resubmission_source is not None else None,
                 dedup_key=dedup_key,
                 warning_note=warning_note,
             )
@@ -939,10 +1066,14 @@ class OrderManager:
                             "action": action,
                             "quantity": abs(quantity),
                             "price": current_price,
+                            "decision_price": current_price,
                             "value_gbp": value_gbp,
                             "status": "dry_run",
-                            "strategy": strategy,
+                            "strategy": strategy_for_log,
                             "conviction": conviction,
+                            "filled_quantity": abs(quantity),
+                            "remaining_quantity": 0.0,
+                            "slippage_bps": 0.0,
                             "warning_note": warning_note,
                         },
                     )
@@ -957,6 +1088,11 @@ class OrderManager:
                 "quantity": abs(quantity),
                 "price": current_price,
                 "value_gbp": value_gbp,
+                "decision_price": current_price,
+                "filled_quantity": abs(quantity),
+                "remaining_quantity": 0.0,
+                "slippage_bps": 0.0,
+                "resubmitted_from_order_id": resubmission_source.id if resubmission_source is not None else None,
                 "warning_note": warning_note,
             }
 
@@ -968,13 +1104,17 @@ class OrderManager:
             action=action,
             order_type="market",
             quantity=quantity,
-            price=current_price,
+            price=None,
+            decision_price=current_price,
             value_gbp=value_gbp,
+            filled_quantity=0.0,
+            remaining_quantity=abs(quantity),
             status="submitting",
-            strategy=strategy,
+            strategy=strategy_for_log,
             conviction=conviction,
             moderation_result=moderation_result,
             risk_result=risk_result,
+            resubmitted_from_order_id=resubmission_source.id if resubmission_source is not None else None,
             dedup_key=dedup_key,
             warning_note=warning_note,
         )
@@ -992,10 +1132,14 @@ class OrderManager:
                             "action": action,
                             "quantity": abs(quantity),
                             "price": current_price,
+                            "decision_price": current_price,
                             "value_gbp": value_gbp,
-                            "strategy": strategy,
+                            "strategy": strategy_for_log,
                             "conviction": conviction,
                             "warning_note": warning_note,
+                            "resubmitted_from_order_id": (
+                                resubmission_source.id if resubmission_source is not None else None
+                            ),
                         },
                     )
                 except Exception:
@@ -1004,10 +1148,36 @@ class OrderManager:
             result = self.client.place_market_order(ticker, quantity)
             t212_order_id = result.get("id") or result.get("orderId")
             t212_status = (result.get("status") or "").upper()
+            filled_qty_raw = result.get("filledQuantity")
+            filled_val_raw = result.get("filledValue")
+            filled_quantity = 0.0
+            if filled_qty_raw is not None:
+                try:
+                    filled_quantity = abs(float(filled_qty_raw))
+                except (TypeError, ValueError):
+                    filled_quantity = 0.0
+            elif t212_status == "FILLED":
+                filled_quantity = abs(quantity)
+            remaining_quantity = max(abs(quantity) - filled_quantity, 0.0)
+            fill_price = None
+            if filled_quantity > 0 and filled_val_raw is not None:
+                try:
+                    fill_price = abs(float(filled_val_raw)) / filled_quantity
+                except (TypeError, ValueError, ZeroDivisionError):
+                    fill_price = None
+            elif t212_status == "FILLED":
+                fill_price = current_price
+            slippage_bps = self._compute_slippage_bps(
+                action=action,
+                decision_price=current_price,
+                fill_price=fill_price,
+            )
 
             # Map T212 status to our DB status (do not assume filled — T212 may return NEW/pending)
-            if t212_status in ("FILLED", "PARTIALLY_FILLED"):
+            if t212_status == "FILLED":
                 db_status = "filled"
+            elif t212_status == "PARTIALLY_FILLED":
+                db_status = "pending"
             elif t212_status in ("REJECTED", "CANCELLED", "CANCELLING"):
                 db_status = "failed"
                 logger.warning(f"T212 order {t212_order_id} status={t212_status}")
@@ -1017,7 +1187,15 @@ class OrderManager:
                     logger.info(f"T212 order {t212_order_id} status={t212_status} -> pending")
 
             # Update the pre-written record with T212 response
-            self._update_order_status(order.id, db_status, t212_order_id=str(t212_order_id) if t212_order_id else None)
+            self._update_order_status(
+                order.id,
+                db_status,
+                t212_order_id=str(t212_order_id) if t212_order_id else None,
+                price=fill_price,
+                filled_quantity=filled_quantity,
+                remaining_quantity=remaining_quantity,
+                slippage_bps=slippage_bps,
+            )
 
             logger.info(
                 f"Order {'filled' if db_status == 'filled' else 'placed'}: {action} {abs(quantity)} x {ticker} = £{value_gbp:.2f} (T212 status={t212_status})"
@@ -1036,12 +1214,16 @@ class OrderManager:
                             "ticker": ticker,
                             "action": action,
                             "quantity": abs(quantity),
-                            "price": current_price,
+                            "price": fill_price if fill_price is not None else current_price,
+                            "decision_price": current_price,
                             "value_gbp": value_gbp,
                             "status": db_status,
                             "t212_status": t212_status,
-                            "strategy": strategy,
+                            "strategy": strategy_for_log,
                             "conviction": conviction,
+                            "filled_quantity": filled_quantity,
+                            "remaining_quantity": remaining_quantity,
+                            "slippage_bps": slippage_bps,
                             "warning_note": warning_note,
                         },
                     )
@@ -1055,8 +1237,13 @@ class OrderManager:
                 "ticker": ticker,
                 "action": action,
                 "quantity": abs(quantity),
-                "price": current_price,
+                "price": fill_price if fill_price is not None else current_price,
                 "value_gbp": value_gbp,
+                "decision_price": current_price,
+                "filled_quantity": filled_quantity,
+                "remaining_quantity": remaining_quantity,
+                "slippage_bps": slippage_bps,
+                "resubmitted_from_order_id": resubmission_source.id if resubmission_source is not None else None,
                 "warning_note": warning_note,
             }
 
@@ -1079,6 +1266,10 @@ class OrderManager:
                 "quantity": abs(quantity),
                 "price": current_price,
                 "value_gbp": value_gbp,
+                "decision_price": current_price,
+                "filled_quantity": 0.0,
+                "remaining_quantity": abs(quantity),
+                "resubmitted_from_order_id": resubmission_source.id if resubmission_source is not None else None,
                 "warning_note": warning_note,
             }
 
@@ -1095,8 +1286,10 @@ class OrderManager:
     def _map_t212_status_to_order_status(t212_status: str) -> str:
         """Map T212 order status values to local DB status values."""
         upper = (t212_status or "").upper()
-        if upper in ("FILLED", "PARTIALLY_FILLED"):
+        if upper == "FILLED":
             return "filled"
+        if upper == "PARTIALLY_FILLED":
+            return "pending"
         if upper in ("REJECTED",):
             return "failed"
         if upper in ("CANCELLED", "CANCELLING"):
@@ -1116,6 +1309,8 @@ class OrderManager:
                 "stale_pending_count": 0,
                 "reconciled_pending_count": 0,
                 "filled_count": 0,
+                "market_fill_update_count": 0,
+                "partial_fill_count": 0,
                 "cancelled_count": 0,
                 "failed_count": 0,
                 "updated_total": 0,
@@ -1148,6 +1343,8 @@ class OrderManager:
                     "stale_pending_count": 0,
                     "reconciled_pending_count": 0,
                     "filled_count": 0,
+                    "market_fill_update_count": 0,
+                    "partial_fill_count": 0,
                     "cancelled_count": 0,
                     "failed_count": 0,
                     "updated_total": 0,
@@ -1164,6 +1361,8 @@ class OrderManager:
                 str(row.t212_order_id): row for row in local_pending if row.t212_order_id is not None
             }
             filled_count = 0
+            market_fill_update_count = 0
+            partial_fill_count = 0
             cancelled_count = 0
             failed_count = 0
             history_fetch_error = None
@@ -1189,27 +1388,57 @@ class OrderManager:
                             continue
                         t212_ids_seen.add(t212_id)
                         row = local_by_id[t212_id]
-                        db_status = self._map_t212_status_to_order_status(str(order_obj.get("status") or ""))
-                        if db_status == "pending":
-                            continue
-
-                        row.status = db_status
-                        if db_status == "cancelled":
-                            row.error_message = "Synced from T212 order history"
-                        elif db_status == "failed":
-                            row.error_message = "Rejected by T212"
                         filled_qty = order_obj.get("filledQuantity")
                         filled_val = order_obj.get("filledValue")
-                        if db_status == "filled" and filled_qty is not None and filled_qty > 0 and row.price is None:
-                            row.price = (filled_val or 0) / filled_qty if filled_val else None
+                        filled_quantity = float(row.filled_quantity or 0.0)
+                        if filled_qty is not None:
+                            try:
+                                filled_quantity = max(filled_quantity, abs(float(filled_qty)))
+                            except (TypeError, ValueError):
+                                pass
+                        elif str(order_obj.get("status") or "").upper() == "FILLED":
+                            filled_quantity = abs(float(row.quantity or 0.0))
 
-                        terminal_ids_seen.add(t212_id)
+                        prev_filled_quantity = float(row.filled_quantity or 0.0)
+                        fill_changed = filled_quantity > prev_filled_quantity + 1e-9
+                        if filled_quantity > 0:
+                            row.filled_quantity = filled_quantity
+                            row.remaining_quantity = max(abs(float(row.quantity or 0.0)) - filled_quantity, 0.0)
+                            if filled_val is not None:
+                                try:
+                                    row.price = abs(float(filled_val)) / filled_quantity
+                                except (TypeError, ValueError, ZeroDivisionError):
+                                    pass
+                            row.slippage_bps = self._compute_slippage_bps(
+                                action=row.action,
+                                decision_price=row.decision_price,
+                                fill_price=row.price,
+                            )
+
+                        db_status = self._map_t212_status_to_order_status(str(order_obj.get("status") or ""))
+                        if db_status == "pending" and not fill_changed:
+                            continue
+                        if db_status != "pending":
+                            row.status = db_status
+                            if db_status == "cancelled":
+                                row.error_message = "Synced from T212 order history"
+                            elif db_status == "failed":
+                                row.error_message = "Rejected by T212"
+                            terminal_ids_seen.add(t212_id)
+                        else:
+                            row.status = "pending"
+
                         if db_status == "filled":
                             filled_count += 1
                         elif db_status == "cancelled":
                             cancelled_count += 1
                         elif db_status == "failed":
                             failed_count += 1
+                        elif fill_changed and row.order_type == "market" and (row.filled_quantity or 0) > 0:
+                            partial_fill_count += 1
+
+                        if fill_changed and row.order_type == "market" and (row.filled_quantity or 0) > 0:
+                            market_fill_update_count += 1
 
                     if not next_page or len(items) < 50 or terminal_ids_seen == set(local_by_id):
                         break
@@ -1243,7 +1472,10 @@ class OrderManager:
                 stale_pending_count = len(stale_rows)
                 for row in stale_rows:
                     row.status = "cancelled"
-                    row.error_message = "Reconciled: missing from live T212 pending orders"
+                    if (row.filled_quantity or 0) > 0 and (row.remaining_quantity or 0) > 0:
+                        row.error_message = "Reconciled: partial fill remainder missing from live T212 pending orders"
+                    else:
+                        row.error_message = "Reconciled: missing from live T212 pending orders"
                 reconciled_pending_count = len(stale_rows)
                 cancelled_count += reconciled_pending_count
             except Exception as e:
@@ -1252,16 +1484,17 @@ class OrderManager:
                 logger.warning(f"Pending order reconciliation skipped: failed to fetch live pending orders: {e}")
 
             session.commit()
-            updated_total = filled_count + cancelled_count + failed_count
+            updated_total = filled_count + partial_fill_count + cancelled_count + failed_count
             last_broker_sync_at = max(
                 [ts for ts in (last_history_sync_at, last_live_pending_sync_at) if ts is not None],
                 default=None,
             )
             if updated_total:
                 logger.info(
-                    "Order sync updated %s orders (filled=%s cancelled=%s failed=%s)",
+                    "Order sync updated %s orders (filled=%s partial=%s cancelled=%s failed=%s)",
                     updated_total,
                     filled_count,
+                    partial_fill_count,
                     cancelled_count,
                     failed_count,
                 )
@@ -1271,6 +1504,8 @@ class OrderManager:
                 "stale_pending_count": stale_pending_count,
                 "reconciled_pending_count": reconciled_pending_count,
                 "filled_count": filled_count,
+                "market_fill_update_count": market_fill_update_count,
+                "partial_fill_count": partial_fill_count,
                 "cancelled_count": cancelled_count,
                 "failed_count": failed_count,
                 "updated_total": updated_total,
@@ -1292,6 +1527,8 @@ class OrderManager:
                 "stale_pending_count": 0,
                 "reconciled_pending_count": 0,
                 "filled_count": 0,
+                "market_fill_update_count": 0,
+                "partial_fill_count": 0,
                 "cancelled_count": 0,
                 "failed_count": 0,
                 "updated_total": 0,

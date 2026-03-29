@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useState } from 'react'
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ordersApi, stopLossApi } from '../api/client'
 import { TableSkeleton } from '../components/Skeleton'
 import { safeFormat } from '../utils/date'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { StatusPill, type PillVariant } from '../components/StatusPill'
-import { cleanTicker, type StopLossCurrent } from '../types'
+import { cleanTicker, type ExecutionQuality, type StopLossCurrent } from '../types'
 
 function formatMoney(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—'
@@ -14,6 +15,11 @@ function formatMoney(value: number | null | undefined): string {
 function formatQuantity(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—'
   return value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+function formatBps(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  return `${value.toFixed(1)} bps`
 }
 
 function profitLockLabel(status: string | null | undefined): string {
@@ -46,6 +52,7 @@ export default function OrderManagement() {
   const [current, setCurrent] = useState<StopLossCurrent[]>([])
   const [adjustments, setAdjustments] = useState<any[]>([])
   const [recentOrders, setRecentOrders] = useState<any[]>([])
+  const [executionQuality, setExecutionQuality] = useState<ExecutionQuality | null>(null)
   const [expandedErrorOrderId, setExpandedErrorOrderId] = useState<number | null>(null)
   const [health, setHealth] = useState<{
     failed_open_count: number
@@ -91,14 +98,16 @@ export default function OrderManagement() {
     setError(null)
     try {
       const healthData = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: true })
-      const [currentData, adjData, ordersData] = await Promise.all([
+      const [currentData, adjData, ordersData, executionQualityData] = await Promise.all([
         stopLossApi.getCurrent(),
         stopLossApi.getAdjustments({ limit: 50 }),
         ordersApi.list({ limit: 30 }),
+        ordersApi.executionQuality({ days: 30 }),
       ])
       setCurrent(currentData)
       setAdjustments(adjData)
       setRecentOrders(ordersData)
+      setExecutionQuality(executionQualityData)
       setHealth(healthData)
     } catch (e) {
       console.error('Failed to fetch stop-loss data:', e)
@@ -133,7 +142,7 @@ export default function OrderManagement() {
     <div className="space-y-6">
       <PageBrandHeader
         title="Order Management"
-        description="Stop-loss levels for current positions, profit-lock coverage for winners above the sell threshold, and history of adjustments (ATR reassessment, trailing stops, limit orders). Recent broker orders include failure details and any off-hours placement notes."
+        description="Execution quality, partial-fill recovery visibility, stop-loss levels for current positions, and history of adjustments. Recent broker orders include fill telemetry, failure details, and any off-hours placement notes."
       />
 
       {health && (
@@ -244,6 +253,110 @@ export default function OrderManagement() {
         </div>
       )}
 
+      {executionQuality && (
+        <div className="card">
+          <h2 className="text-lg font-semibold tracking-wide mb-3">Execution Quality</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <div className="border border-terminal-border rounded-md p-3">
+              <div className="text-terminal-text-dim">Overall ({executionQuality.window_days}d)</div>
+              <div className="font-mono text-lg">{formatBps(executionQuality.overall.mean_bps)}</div>
+              <div className="text-xs text-terminal-text-dim mt-1">
+                fills={executionQuality.overall.count} · p50={formatBps(executionQuality.overall.p50_bps)} · p95={formatBps(executionQuality.overall.p95_bps)}
+              </div>
+            </div>
+            <div className="border border-terminal-border rounded-md p-3">
+              <div className="text-terminal-text-dim">BUY</div>
+              <div className="font-mono text-lg">{formatBps(executionQuality.buy.mean_bps)}</div>
+              <div className="text-xs text-terminal-text-dim mt-1">
+                fills={executionQuality.buy.count} · best={formatBps(executionQuality.buy.best_bps)} · worst={formatBps(executionQuality.buy.worst_bps)}
+              </div>
+            </div>
+            <div className="border border-terminal-border rounded-md p-3">
+              <div className="text-terminal-text-dim">EXIT</div>
+              <div className="font-mono text-lg">{formatBps(executionQuality.exit.mean_bps)}</div>
+              <div className="text-xs text-terminal-text-dim mt-1">
+                fills={executionQuality.exit.count} · best={formatBps(executionQuality.exit.best_bps)} · worst={formatBps(executionQuality.exit.worst_bps)}
+              </div>
+            </div>
+          </div>
+          {executionQuality.warning_breached && executionQuality.warning_message && (
+            <p className="text-warning text-xs mt-3">{executionQuality.warning_message}</p>
+          )}
+          {(executionQuality.buy.count > 0 || executionQuality.exit.count > 0) && (
+            <div className="h-72 mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={[
+                    {
+                      bucket: 'BUY',
+                      mean: executionQuality.buy.mean_bps,
+                      p50: executionQuality.buy.p50_bps,
+                      p95: executionQuality.buy.p95_bps,
+                    },
+                    {
+                      bucket: 'EXIT',
+                      mean: executionQuality.exit.mean_bps,
+                      p50: executionQuality.exit.p50_bps,
+                      p95: executionQuality.exit.p95_bps,
+                    },
+                  ]}
+                  margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                  <XAxis dataKey="bucket" stroke="rgba(255,255,255,0.45)" />
+                  <YAxis stroke="rgba(255,255,255,0.45)" tickFormatter={(value) => `${value}bps`} />
+                  <Tooltip formatter={(value: number) => formatBps(value)} />
+                  <Legend />
+                  <Bar dataKey="mean" fill="#00d4ff" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="p50" fill="#6332ff" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="p95" fill="#00ffa3" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {executionQuality && executionQuality.recent_partial_fills.length > 0 && (
+        <div className="card">
+          <h2 className="text-lg font-semibold tracking-wide mb-3">Open Partial Fills</h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-terminal-surface z-10">
+                <tr className="border-b border-terminal-border text-left">
+                  <th className="py-2 font-mono">Time</th>
+                  <th className="py-2 font-mono">Ticker</th>
+                  <th className="py-2 font-mono">Requested</th>
+                  <th className="py-2 font-mono">Filled</th>
+                  <th className="py-2 font-mono">Remaining</th>
+                  <th className="py-2 font-mono">Status</th>
+                  <th className="py-2 font-mono">Eligible</th>
+                </tr>
+              </thead>
+              <tbody>
+                {executionQuality.recent_partial_fills.map((order) => (
+                  <tr key={order.id} className="border-b border-terminal-border">
+                    <td className="py-1 font-mono text-xs">{safeFormat(order.timestamp, 'MMM dd HH:mm', '')}</td>
+                    <td className="py-1 font-mono">{cleanTicker(order.ticker)}</td>
+                    <td className="py-1 font-mono">{formatQuantity(order.requested_quantity)}</td>
+                    <td className="py-1 font-mono">{formatQuantity(order.filled_quantity)}</td>
+                    <td className="py-1 font-mono">{formatQuantity(order.remaining_quantity)}</td>
+                    <td className="py-1">{order.status}</td>
+                    <td className="py-1">
+                      <StatusPill
+                        label={order.resubmission_eligible ? 'Can Retry' : 'Observe'}
+                        variant={order.resubmission_eligible ? 'warning' : 'dim'}
+                        className="w-fit"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <h2 className="text-lg font-semibold tracking-wide mb-3">Recent Orders ({recentOrders.length})</h2>
         {recentOrders.length === 0 ? (
@@ -257,6 +370,10 @@ export default function OrderManagement() {
                   <th className="py-2 font-mono">Ticker</th>
                   <th className="py-2 font-mono">Action</th>
                   <th className="py-2 font-mono">Qty</th>
+                  <th className="py-2 font-mono">Decision</th>
+                  <th className="py-2 font-mono">Fill</th>
+                  <th className="py-2 font-mono">Slip bps</th>
+                  <th className="py-2 font-mono">Remaining</th>
                   <th className="py-2 font-mono">Type</th>
                   <th className="py-2 font-mono">Status</th>
                   <th className="py-2 font-mono">Notes</th>
@@ -270,7 +387,13 @@ export default function OrderManagement() {
                       <td className="py-1 font-mono text-xs">{safeFormat(o.timestamp, 'MMM dd HH:mm', '')}</td>
                       <td className="py-1 font-mono">{cleanTicker(o.ticker)}</td>
                       <td className="py-1">{o.action}</td>
-                      <td className="py-1 font-mono">{o.quantity}</td>
+                      <td className="py-1 font-mono">{formatQuantity(o.quantity)}</td>
+                      <td className="py-1 font-mono">{o.decision_price != null ? o.decision_price.toFixed(2) : '—'}</td>
+                      <td className="py-1 font-mono">{o.price != null ? o.price.toFixed(2) : '—'}</td>
+                      <td className={`py-1 font-mono ${o.slippage_bps != null && o.slippage_bps > 0 ? 'text-warning' : ''}`}>
+                        {formatBps(o.slippage_bps)}
+                      </td>
+                      <td className="py-1 font-mono">{formatQuantity(o.remaining_quantity)}</td>
                       <td className="py-1 text-terminal-text-dim">{o.order_type}</td>
                       <td className={`py-1 ${o.status === 'failed' ? 'text-loss' : ''}`}>{o.status}</td>
                       <td className="py-1 text-xs text-terminal-text-dim">
@@ -290,9 +413,11 @@ export default function OrderManagement() {
                     </tr>
                     {expandedErrorOrderId === o.id && o.error_message && (
                       <tr className="border-b border-terminal-border bg-terminal-surface/30">
-                        <td className="py-2 text-xs text-terminal-text-dim" colSpan={8}>
+                        <td className="py-2 text-xs text-terminal-text-dim" colSpan={12}>
                           <div><span className="font-semibold">Order ID:</span> {o.id}</div>
                           <div><span className="font-semibold">Broker ID:</span> {o.t212_order_id ?? '—'}</div>
+                          <div><span className="font-semibold">Filled / Remaining:</span> {formatQuantity(o.filled_quantity)} / {formatQuantity(o.remaining_quantity)}</div>
+                          <div><span className="font-semibold">Slippage:</span> {formatBps(o.slippage_bps)}</div>
                           {o.warning_note && (
                             <div className="mt-1 whitespace-pre-wrap break-words text-warning">
                               <span className="font-semibold">Note:</span> {o.warning_note}
@@ -306,9 +431,11 @@ export default function OrderManagement() {
                     )}
                     {expandedErrorOrderId === o.id && !o.error_message && o.warning_note && (
                       <tr className="border-b border-terminal-border bg-terminal-surface/30">
-                        <td className="py-2 text-xs text-terminal-text-dim" colSpan={8}>
+                        <td className="py-2 text-xs text-terminal-text-dim" colSpan={12}>
                           <div><span className="font-semibold">Order ID:</span> {o.id}</div>
                           <div><span className="font-semibold">Broker ID:</span> {o.t212_order_id ?? '—'}</div>
+                          <div><span className="font-semibold">Filled / Remaining:</span> {formatQuantity(o.filled_quantity)} / {formatQuantity(o.remaining_quantity)}</div>
+                          <div><span className="font-semibold">Slippage:</span> {formatBps(o.slippage_bps)}</div>
                           <div className="mt-1 whitespace-pre-wrap break-words text-warning">
                             <span className="font-semibold">Note:</span> {o.warning_note}
                           </div>

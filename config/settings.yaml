@@ -184,7 +184,13 @@ intraday_refresh:
 order_management:
   enabled: true
   default_stop_loss_pct: -15       # Default stop-loss % when placing missing stops (no ATR or no decision)
+  resubmit_partial_fills: true     # Retry eligible cancelled partial BUY remainders once when a later cycle still approves the BUY
   reassess_stops: true            # Reassess stop-losses each cycle based on ATR
+  execution_quality:
+    enabled: true
+    alert_window_days: 7
+    warning_threshold_bps: 25.0
+    warning_min_fills: 5
   trailing_stops:
     enabled: true                 # Software-based trailing stops (cancel + replace)
     default_trail_pct: 10.0       # Trail distance as % below high-water mark
@@ -209,6 +215,7 @@ notifications:
     critical_cycle_failure: ["slack", "email"]
     order_adjustment: ["slack"]
     trade_without_stop: ["slack", "email"]
+    execution_quality_alert: ["slack"]
   timeout_seconds: 5
   max_retries: 2
   dedup_window_seconds: 300

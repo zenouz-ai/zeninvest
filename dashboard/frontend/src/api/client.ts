@@ -3,6 +3,7 @@ import type {
   ChatSessionDetail,
   ChatSessionSummary,
   CommandStats,
+  ExecutionQuality,
   Event,
   EvolutionArtifact,
   EvolutionDeployment,
@@ -611,6 +612,10 @@ export const ordersApi = {
     last_refresh_summary?: Record<string, any> | null
   }> => {
     const response = await api.get('/api/orders/health', { params })
+    return response.data
+  },
+  executionQuality: async (params?: { days?: number }): Promise<ExecutionQuality> => {
+    const response = await api.get('/api/orders/execution-quality', { params })
     return response.data
   },
 }

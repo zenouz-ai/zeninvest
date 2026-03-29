@@ -105,11 +105,16 @@ class Order(Base):
     action = Column(String(10), nullable=False)  # BUY, SELL, REDUCE
     order_type = Column(String(20), nullable=False)  # market, limit, stop
     quantity = Column(Float, nullable=False)
-    price = Column(Float, nullable=True)  # filled price
+    price = Column(Float, nullable=True)  # average filled price
+    decision_price = Column(Float, nullable=True)
     limit_price = Column(Float, nullable=True)
     stop_price = Column(Float, nullable=True)
     value_gbp = Column(Float, nullable=True)
+    filled_quantity = Column(Float, nullable=True)
+    remaining_quantity = Column(Float, nullable=True)
+    slippage_bps = Column(Float, nullable=True)
     t212_order_id = Column(String(100), nullable=True, index=True)
+    resubmitted_from_order_id = Column(Integer, ForeignKey("orders.id"), nullable=True, index=True)
     status = Column(String(20), nullable=False, default="pending")  # pending, filled, cancelled, failed
     strategy = Column(String(50), nullable=True)
     conviction = Column(Integer, nullable=True)

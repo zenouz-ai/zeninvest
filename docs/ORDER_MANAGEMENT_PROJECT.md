@@ -1,12 +1,12 @@
 ---
 tags: [order-management, stop-loss, trailing, limit-orders]
 status: delivered
-last_updated: 2026-03-26
+last_updated: 2026-03-29
 ---
 
 # Order Management
 
-> Stop-loss, trailing stops, and limit dip-buy order lifecycle.
+> Stop-loss, trailing stops, limit dip-buy orders, and the lean execution-quality / fill-recovery slice.
 
 ## Purpose
 
@@ -20,6 +20,8 @@ Order management covers:
 2. **ATR-based stop reassessment** — Recalculate stop levels each cycle from 14-day ATR; cancel/replace when changed.
 3. **Trailing stops** — Software-based: high-water mark (HWM), stop at `HWM × (1 - trail_pct/100)`; cancel + replace (T212 has no native trailing stop).
 4. **Limit dip-buy orders** — When strategy outputs `entry_type: "limit_dip"`, place limit BUY below current price instead of market.
+5. **Execution-quality telemetry** — For market orders, persist decision price, realised average fill price, fill/remainder quantities, and side-adjusted slippage in basis points.
+6. **Partial-fill recovery** — Preserve unfilled market-order remainder and allow one conservative BUY-only retry when a later approved cycle still covers it.
 
 All adjustments are persisted to `stop_loss_adjustments` and (where applicable) emitted as `order_adjustment` Slack notifications. Feature is gated by `order_management.enabled`; each sub-feature has its own switch.
 
@@ -40,6 +42,8 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
   - `StopLossManager.reassess_stops(positions, stocks_data, cycle_id)` — ATR-based stop levels for all positions; only tighten if `only_tighten_stops` is true.
   - `StopLossManager.apply_trailing_stops(positions, cycle_id)` — HWM-based ratchet; cancel existing stop, place new one at trail distance below HWM.
 - **Execution retry:** Mutating T212 POST/DELETE requests are not automatically retried. Only safe GET requests use retry logic.
+- **Execution-quality slice (delivered 2026-03-29):** Live market orders are written with `decision_price`, `filled_quantity`, `remaining_quantity`, and `price=None` until broker sync or immediate execution data provides a realised fill. `slippage_bps` is side-adjusted so positive numbers mean worse execution for the operator. Dry-run market orders log zero slippage and no remainder. Stop and limit orders intentionally do not participate in this telemetry slice.
+- **Partial-fill resubmission (delivered 2026-03-29):** `sync_orders_with_t212()` records partial fills from Trading 212 history. If a market BUY is partially filled and the live remainder later disappears, the order is marked `cancelled` while preserving the already-filled quantity and the remainder. One later approved BUY cycle may retry the exact remainder once, using a tagged dedup key and `strategy="partial_fill_resubmit"`. Direct/manual orders (`slack_direct`), SELL/REDUCE orders, and recursive retry chains are intentionally excluded.
 - **T212 empty-body DELETE:** T212's `DELETE /equity/orders/{id}` returns HTTP 200 with an empty body. `T212Client._request` returns `{}` for empty responses. The retry predicate only retries 429/5xx/network errors; 4xx (including 404) fails immediately. `cancel_conflicting_stops` also unwraps tenacity `RetryError` to detect 404 in the underlying exception.
 
 ### ATR-based reassessment
@@ -131,12 +135,12 @@ When a future user story is adopted, add it to `docs/SOPHISTICATION_ROADMAP.md` 
 
 ## Dashboard
 
-The Order Management page shows: **Order Health** (unresolved failed count, local-vs-live pending counts, stale/reconciled pending counts, last reconciliation timestamp), **Recent Orders** (all market/stop orders with status: filled/pending/dry_run/failed plus failure detail drill-down), **Current Stop-Loss Levels** (per position, source: order or adjustment), and **Adjustment History** (ATR reassessment, trailing, limit orders). Order status reflects T212 API response (see rule 7 in CLAUDE.md).
+The Order Management page shows: **Order Health** (unresolved failed count, local-vs-live pending counts, stale/reconciled pending counts, last reconciliation timestamp), **Execution Quality** (recent market-order slippage summaries, BUY-vs-EXIT grouped charting, and open partial-fill visibility), **Recent Orders** (all market/stop orders with status: filled/pending/dry_run/failed plus failure detail drill-down and market-order decision/fill/slippage/remainder columns), **Current Stop-Loss Levels** (per position, source: order or adjustment), and **Adjustment History** (ATR reassessment, trailing, limit orders). Order status reflects T212 API response (see rule 7 in CLAUDE.md).
 
 Clarification on `pending`:
 - `MARKET` + `pending` usually means the order is accepted (`NEW`) but not yet executed; this is common outside market hours.
 - `STOP` + `pending` is expected for working protective stops; these remain open until the stop price is triggered, cancelled, or replaced.
-- Local `orders.status` is reconciled at the start of each non-dry-run cycle by `OrderManager.sync_order_status_from_t212()` (pending -> filled when T212 history reports FILLED/PARTIALLY_FILLED).
+- Local market-order truth is reconciled by `OrderManager.sync_orders_with_t212()`. PARTIALLY_FILLED remains `pending` while the live remainder still exists; if that remainder disappears, the order is marked `cancelled` while keeping `filled_quantity` and `remaining_quantity` for audit and optional later retry.
 - Dashboard `/api/orders/health` runs reconciliation on demand: stale local `pending` stop rows that are missing from live T212 pending orders are marked `cancelled` with an audit message.
 - Failed-order alerting is based on unresolved failures (not raw historical failed rows). A failure remains unresolved if it is recent (default 7 days) or if no later successful order exists for the same `ticker + action + order_type`.
 

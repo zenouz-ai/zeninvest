@@ -139,6 +139,11 @@ class TestOrderManager:
         orders = db_session.query(Order).all()
         assert len(orders) == 1
         assert orders[0].status == "dry_run"
+        assert orders[0].decision_price == 175.0
+        assert orders[0].price == 175.0
+        assert orders[0].filled_quantity == pytest.approx(result["quantity"])
+        assert orders[0].remaining_quantity == 0.0
+        assert orders[0].slippage_bps == 0.0
 
     def test_dry_run_sell(self, db_session):
         mock_client = MagicMock()
@@ -329,7 +334,131 @@ class TestOrderManager:
 
         assert result["status"] == "filled"
         assert result["t212_order_id"] == "t212-order-123"
+        assert result["decision_price"] == 400.0
+        assert result["filled_quantity"] == pytest.approx(2.0)
+        assert result["remaining_quantity"] == 0.0
+        assert result["slippage_bps"] == 0.0
         mock_client.place_market_order.assert_called_once()
+
+        db_session.expire_all()
+        order = db_session.query(Order).one()
+        assert order.status == "filled"
+        assert order.decision_price == 400.0
+        assert order.price == 400.0
+        assert order.filled_quantity == pytest.approx(2.0)
+        assert order.remaining_quantity == 0.0
+        assert order.slippage_bps == 0.0
+
+    def test_live_order_partial_fill_tracks_remainder(self, db_session):
+        mock_client = MagicMock()
+        mock_client.place_market_order.return_value = {
+            "id": "t212-order-456",
+            "status": "PARTIALLY_FILLED",
+            "filledQuantity": 1.5,
+            "filledValue": 270.0,
+        }
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=500.0,
+            current_price=175.0,
+            quantity_override=2.0,
+        )
+
+        assert result["status"] == "pending"
+        assert result["filled_quantity"] == 1.5
+        assert result["remaining_quantity"] == 0.5
+        assert result["price"] == 180.0
+        assert result["slippage_bps"] == pytest.approx(((180.0 - 175.0) / 175.0) * 10_000)
+
+        db_session.expire_all()
+        order = db_session.query(Order).one()
+        assert order.status == "pending"
+        assert order.price == 180.0
+        assert order.filled_quantity == 1.5
+        assert order.remaining_quantity == 0.5
+        assert order.slippage_bps == pytest.approx(((180.0 - 175.0) / 175.0) * 10_000)
+
+    def test_partial_fill_resubmission_uses_exact_remainder_once(self, db_session):
+        source = Order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=5.0,
+            decision_price=100.0,
+            filled_quantity=3.0,
+            remaining_quantity=2.0,
+            status="cancelled",
+            strategy="momentum",
+        )
+        db_session.add(source)
+        db_session.commit()
+        source_id = source.id
+
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=500.0,
+            current_price=100.0,
+            strategy="momentum",
+        )
+
+        assert result["status"] == "dry_run"
+        assert result["quantity"] == 2.0
+        assert result["resubmitted_from_order_id"] == source.id
+
+        db_session.expire_all()
+        new_order = db_session.query(Order).order_by(Order.id.desc()).first()
+        assert new_order is not None
+        assert new_order.id != source.id
+        assert new_order.strategy == "partial_fill_resubmit"
+        assert new_order.resubmitted_from_order_id == source.id
+        assert new_order.quantity == 2.0
+        assert "__resubmit_" in (new_order.dedup_key or "")
+
+    def test_partial_fill_resubmission_skips_direct_manual_orders(self, db_session):
+        source = Order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=5.0,
+            decision_price=100.0,
+            filled_quantity=3.0,
+            remaining_quantity=2.0,
+            status="cancelled",
+            strategy="momentum",
+        )
+        db_session.add(source)
+        db_session.commit()
+        source_id = source.id
+
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=True)
+
+        result = manager.execute_market_order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            target_amount_gbp=500.0,
+            current_price=100.0,
+            strategy="slack_direct",
+        )
+
+        assert result["status"] == "dry_run"
+        assert result["quantity"] == 5.0
+        assert result["resubmitted_from_order_id"] is None
+
+        db_session.expire_all()
+        new_order = db_session.query(Order).order_by(Order.id.desc()).first()
+        assert new_order is not None
+        assert new_order.id != source_id
+        assert new_order.strategy == "slack_direct"
+        assert new_order.resubmitted_from_order_id is None
+        assert "__resubmit_" not in (new_order.dedup_key or "")
 
     def test_live_order_failure(self, db_session):
         mock_client = MagicMock()
@@ -1113,6 +1242,7 @@ class TestOrderHistorySync:
                 action="BUY",
                 order_type="market",
                 quantity=1.0,
+                decision_price=145.0,
                 t212_order_id="fill-1",
                 status="pending",
             ),
@@ -1155,9 +1285,143 @@ class TestOrderHistorySync:
         assert result["updated_total"] == 3
 
         db_session.expire_all()
-        assert db_session.query(Order).filter(Order.t212_order_id == "fill-1").first().status == "filled"
+        filled = db_session.query(Order).filter(Order.t212_order_id == "fill-1").first()
+        assert filled.status == "filled"
+        assert filled.price == 150.0
+        assert filled.filled_quantity == 1.0
+        assert filled.remaining_quantity == 0.0
+        assert filled.slippage_bps == pytest.approx(((150.0 - 145.0) / 145.0) * 10_000)
         assert db_session.query(Order).filter(Order.t212_order_id == "cancel-1").first().status == "cancelled"
         assert db_session.query(Order).filter(Order.t212_order_id == "reject-1").first().status == "failed"
+
+    def test_sync_orders_keeps_partial_fill_pending_while_remainder_is_live(self, db_session):
+        db_session.add(
+            Order(
+                ticker="AAPL_US_EQ",
+                action="BUY",
+                order_type="market",
+                quantity=2.0,
+                decision_price=100.0,
+                t212_order_id="partial-1",
+                status="pending",
+            )
+        )
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_order_history.return_value = {
+            "items": [
+                {
+                    "order": {
+                        "id": "partial-1",
+                        "status": "PARTIALLY_FILLED",
+                        "filledQuantity": 1.0,
+                        "filledValue": 105.0,
+                    }
+                }
+            ],
+            "nextPagePath": None,
+        }
+        mock_client.get_pending_orders.return_value = [
+            {"id": "partial-1", "ticker": "AAPL_US_EQ", "type": "MARKET"}
+        ]
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.sync_orders_with_t212()
+
+        assert result["partial_fill_count"] == 1
+        assert result["market_fill_update_count"] == 1
+        assert result["updated_total"] == 1
+
+        db_session.expire_all()
+        row = db_session.query(Order).filter(Order.t212_order_id == "partial-1").one()
+        assert row.status == "pending"
+        assert row.price == 105.0
+        assert row.filled_quantity == 1.0
+        assert row.remaining_quantity == 1.0
+        assert row.slippage_bps == pytest.approx(500.0)
+
+    def test_sync_orders_reconciles_partial_fill_to_cancelled_when_remainder_disappears(self, db_session):
+        db_session.add(
+            Order(
+                ticker="AAPL_US_EQ",
+                action="BUY",
+                order_type="market",
+                quantity=2.0,
+                decision_price=100.0,
+                t212_order_id="partial-stale-1",
+                status="pending",
+            )
+        )
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_order_history.return_value = {
+            "items": [
+                {
+                    "order": {
+                        "id": "partial-stale-1",
+                        "status": "PARTIALLY_FILLED",
+                        "filledQuantity": 1.25,
+                        "filledValue": 131.25,
+                    }
+                }
+            ],
+            "nextPagePath": None,
+        }
+        mock_client.get_pending_orders.return_value = []
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        result = manager.sync_orders_with_t212()
+
+        assert result["partial_fill_count"] == 1
+        assert result["reconciled_pending_count"] == 1
+
+        db_session.expire_all()
+        row = db_session.query(Order).filter(Order.t212_order_id == "partial-stale-1").one()
+        assert row.status == "cancelled"
+        assert row.filled_quantity == 1.25
+        assert row.remaining_quantity == 0.75
+        assert "partial fill remainder missing" in (row.error_message or "").lower()
+
+    def test_sync_orders_computes_side_adjusted_sell_slippage(self, db_session):
+        db_session.add(
+            Order(
+                ticker="MSFT_US_EQ",
+                action="SELL",
+                order_type="market",
+                quantity=-1.0,
+                decision_price=100.0,
+                t212_order_id="sell-fill-1",
+                status="pending",
+            )
+        )
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_order_history.return_value = {
+            "items": [
+                {
+                    "order": {
+                        "id": "sell-fill-1",
+                        "status": "FILLED",
+                        "filledQuantity": 1.0,
+                        "filledValue": 90.0,
+                    }
+                }
+            ],
+            "nextPagePath": None,
+        }
+        mock_client.get_pending_orders.return_value = []
+
+        manager = OrderManager(client=mock_client, dry_run=False)
+        manager.sync_orders_with_t212()
+
+        db_session.expire_all()
+        row = db_session.query(Order).filter(Order.t212_order_id == "sell-fill-1").one()
+        assert row.status == "filled"
+        assert row.price == 90.0
+        assert row.slippage_bps == pytest.approx(1000.0)
 
 
 class TestPendingMarketSellCancellation:

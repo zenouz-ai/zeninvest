@@ -1,6 +1,7 @@
 """Orders router - order history and operational health."""
 
 from datetime import datetime, timedelta, timezone
+import math
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import and_, desc, or_
@@ -12,12 +13,61 @@ from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
 from ..database import Run
-from ..schemas import FailedOrderHealthSchema, OrderSchema, OrdersHealthSchema
+from ..schemas import (
+    ExecutionQualitySchema,
+    ExecutionQualitySummarySchema,
+    FailedOrderHealthSchema,
+    OrderSchema,
+    OrdersHealthSchema,
+    RecentPartialFillSchema,
+)
 
 logger = get_logger("dashboard.orders")
 router = APIRouter()
 settings = get_settings()
 _RECENT_REFRESH_REUSE_WINDOW_SECONDS = 120
+
+
+def _percentile(values: list[float], pct: float) -> float | None:
+    if not values:
+        return None
+    if len(values) == 1:
+        return values[0]
+    ordered = sorted(values)
+    rank = (len(ordered) - 1) * pct
+    low = math.floor(rank)
+    high = math.ceil(rank)
+    if low == high:
+        return ordered[low]
+    weight = rank - low
+    return ordered[low] + (ordered[high] - ordered[low]) * weight
+
+
+def _build_execution_quality_summary(values: list[float]) -> ExecutionQualitySummarySchema:
+    if not values:
+        return ExecutionQualitySummarySchema(count=0)
+    ordered = sorted(values)
+    return ExecutionQualitySummarySchema(
+        count=len(ordered),
+        mean_bps=sum(ordered) / len(ordered),
+        p50_bps=_percentile(ordered, 0.50),
+        p95_bps=_percentile(ordered, 0.95),
+        best_bps=min(ordered),
+        worst_bps=max(ordered),
+    )
+
+
+def _is_partial_fill_resubmission_eligible(order: Order, session) -> bool:
+    if order.action != "BUY" or order.order_type != "market":
+        return False
+    if order.strategy == "slack_direct":
+        return False
+    if float(order.remaining_quantity or 0) <= 0 or float(order.filled_quantity or 0) <= 0:
+        return False
+    if order.status != "cancelled":
+        return False
+    child = session.query(Order.id).filter(Order.resubmitted_from_order_id == order.id).first()
+    return child is None
 
 
 @router.get("/", response_model=list[OrderSchema])
@@ -293,6 +343,102 @@ async def get_orders_health(
         last_refresh_completed_at=latest_refresh.completed_at if latest_refresh else None,
         last_refresh_status=latest_refresh.status if latest_refresh else None,
         last_refresh_summary=latest_refresh.summary_json if latest_refresh else None,
+    )
+
+
+@router.get("/execution-quality", response_model=ExecutionQualitySchema)
+async def get_execution_quality(
+    days: int = Query(default=30, ge=1, le=365),
+):
+    """Execution quality rollup for market fills plus recent partial-fill remainders."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    session = get_session()
+    try:
+        filled_market_orders = (
+            session.query(Order)
+            .filter(
+                Order.order_type == "market",
+                Order.decision_price.isnot(None),
+                Order.price.isnot(None),
+                Order.slippage_bps.isnot(None),
+                Order.filled_quantity.isnot(None),
+                Order.filled_quantity > 0,
+                Order.timestamp >= cutoff,
+            )
+            .order_by(desc(Order.timestamp))
+            .all()
+        )
+        overall_values = [float(order.slippage_bps) for order in filled_market_orders if order.slippage_bps is not None]
+        buy_values = [
+            float(order.slippage_bps)
+            for order in filled_market_orders
+            if order.slippage_bps is not None and order.action == "BUY"
+        ]
+        exit_values = [
+            float(order.slippage_bps)
+            for order in filled_market_orders
+            if order.slippage_bps is not None and order.action in ("SELL", "REDUCE")
+        ]
+
+        partial_rows = (
+            session.query(Order)
+            .filter(
+                Order.order_type == "market",
+                Order.remaining_quantity.isnot(None),
+                Order.remaining_quantity > 0,
+            )
+            .order_by(desc(Order.timestamp))
+            .limit(10)
+            .all()
+        )
+        recent_partial_fills = [
+            RecentPartialFillSchema(
+                id=order.id,
+                timestamp=order.timestamp,
+                ticker=order.ticker,
+                action=order.action,
+                requested_quantity=abs(float(order.quantity or 0)),
+                filled_quantity=float(order.filled_quantity or 0),
+                remaining_quantity=float(order.remaining_quantity or 0),
+                status=order.status,
+                strategy=order.strategy,
+                resubmission_eligible=_is_partial_fill_resubmission_eligible(order, session),
+                resubmitted_from_order_id=order.resubmitted_from_order_id,
+            )
+            for order in partial_rows
+        ]
+    finally:
+        session.close()
+
+    overall_summary = _build_execution_quality_summary(overall_values)
+    warning_threshold_bps = settings.execution_quality_warning_threshold_bps
+    warning_min_fills = settings.execution_quality_warning_min_fills
+    warning_breached = (
+        settings.execution_quality_enabled
+        and overall_summary.count >= warning_min_fills
+        and overall_summary.mean_bps is not None
+        and overall_summary.mean_bps >= warning_threshold_bps
+    )
+    warning_message = None
+    if warning_breached and overall_summary.mean_bps is not None:
+        warning_message = (
+            f"Average market-order slippage is {overall_summary.mean_bps:.1f} bps over the last "
+            f"{days}d ({overall_summary.count} fills), above the {warning_threshold_bps:.1f} bps threshold."
+        )
+
+    return ExecutionQualitySchema(
+        window_days=days,
+        warning_threshold_bps=warning_threshold_bps,
+        warning_min_fills=warning_min_fills,
+        warning_breached=warning_breached,
+        warning_message=warning_message,
+        overall=overall_summary,
+        buy=_build_execution_quality_summary(buy_values),
+        exit=_build_execution_quality_summary(exit_values),
+        recent_partial_fills=recent_partial_fills,
     )
 
 

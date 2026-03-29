@@ -137,17 +137,63 @@ class OrderSchema(BaseModel):
     order_type: str
     quantity: float
     price: float | None
+    decision_price: float | None = None
     limit_price: float | None = None
     stop_price: float | None = None
     value_gbp: float | None
+    filled_quantity: float | None = None
+    remaining_quantity: float | None = None
+    slippage_bps: float | None = None
     status: str
     strategy: str | None
     conviction: int | None
     t212_order_id: str | None = None
+    resubmitted_from_order_id: int | None = None
     warning_note: str | None = None
     error_message: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ExecutionQualitySummarySchema(BaseModel):
+    """Execution-quality aggregate for one slice of market orders."""
+
+    count: int
+    mean_bps: float | None = None
+    p50_bps: float | None = None
+    p95_bps: float | None = None
+    best_bps: float | None = None
+    worst_bps: float | None = None
+
+
+class RecentPartialFillSchema(BaseModel):
+    """Recent order with an unfilled remainder."""
+
+    id: int
+    timestamp: datetime
+    ticker: str
+    action: str
+    requested_quantity: float
+    filled_quantity: float
+    remaining_quantity: float
+    status: str
+    strategy: str | None = None
+    resubmission_eligible: bool
+    resubmitted_from_order_id: int | None = None
+
+
+class ExecutionQualitySchema(BaseModel):
+    """Execution quality rollup plus open partial fills."""
+
+    window_days: int
+    warning_threshold_bps: float
+    warning_min_fills: int
+    warning_breached: bool
+    warning_message: str | None = None
+    overall: ExecutionQualitySummarySchema
+    buy: ExecutionQualitySummarySchema
+    exit: ExecutionQualitySummarySchema
+    recent_partial_fills: list[RecentPartialFillSchema]
 
 
 class FailedOrderHealthSchema(BaseModel):

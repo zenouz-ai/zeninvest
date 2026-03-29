@@ -280,6 +280,75 @@ class Orchestrator:
         except Exception:
             pass
 
+    def _execution_quality_alert_payload(self, *, days: int) -> dict[str, Any] | None:
+        """Return alert payload when recent market-order slippage breaches the configured threshold."""
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        session = get_session()
+        try:
+            rows = (
+                session.query(Order.slippage_bps)
+                .filter(
+                    Order.order_type == "market",
+                    Order.slippage_bps.isnot(None),
+                    Order.filled_quantity.isnot(None),
+                    Order.filled_quantity > 0,
+                    Order.timestamp >= cutoff,
+                )
+                .all()
+            )
+        finally:
+            session.close()
+
+        values = [float(row[0]) for row in rows if row[0] is not None]
+        if len(values) < self.settings.execution_quality_warning_min_fills:
+            return None
+
+        mean_bps = sum(values) / len(values)
+        threshold = self.settings.execution_quality_warning_threshold_bps
+        if mean_bps < threshold:
+            return None
+
+        return {
+            "window_days": days,
+            "fill_count": len(values),
+            "mean_bps": round(mean_bps, 2),
+            "warning_threshold_bps": threshold,
+            "warning_message": (
+                f"Average market-order slippage is {mean_bps:.1f} bps over the last "
+                f"{days}d ({len(values)} fills), above the {threshold:.1f} bps threshold."
+            ),
+        }
+
+    def _maybe_emit_execution_quality_alert(
+        self,
+        *,
+        cycle_id: str,
+        sync_summary: dict[str, Any] | None,
+    ) -> None:
+        """Emit a Slack alert only when broker sync just added market-fill telemetry."""
+        if self.dry_run or not self.settings.execution_quality_enabled:
+            return
+        if not sync_summary or int(sync_summary.get("market_fill_update_count", 0) or 0) <= 0:
+            return
+
+        payload = self._execution_quality_alert_payload(
+            days=self.settings.execution_quality_alert_window_days,
+        )
+        if payload is None:
+            return
+
+        payload.update(
+            {
+                "cycle_id": cycle_id,
+                "alert_date": datetime.now(timezone.utc).date().isoformat(),
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        self.notification_service.emit_execution_quality_alert(
+            cycle_id=cycle_id,
+            payload=payload,
+        )
+
     def _build_refresh_audit_entries(
         self,
         *,
@@ -681,6 +750,8 @@ class Orchestrator:
                 "stale_pending_count": int(sync_summary.get("stale_pending_count", 0) or 0),
                 "reconciled_pending_count": int(sync_summary.get("reconciled_pending_count", 0) or 0),
                 "filled_count": int(sync_summary.get("filled_count", 0) or 0),
+                "market_fill_update_count": int(sync_summary.get("market_fill_update_count", 0) or 0),
+                "partial_fill_count": int(sync_summary.get("partial_fill_count", 0) or 0),
                 "cancelled_count": int(sync_summary.get("cancelled_count", 0) or 0),
                 "failed_count": int(sync_summary.get("failed_count", 0) or 0),
                 "updated_total": int(sync_summary.get("updated_total", 0) or 0),
@@ -809,6 +880,7 @@ class Orchestrator:
             sync_summary = self.order_manager.sync_orders_with_t212()
             result["order_sync"] = sync_summary
             result["orders_updated_total"] = int(sync_summary.get("updated_total", 0) or 0)
+            self._maybe_emit_execution_quality_alert(cycle_id=cycle_id, sync_summary=sync_summary)
 
             portfolio_data = self._get_portfolio_state()
             current_state = str(self.state_machine.get_state().get("state") or "ACTIVE")
@@ -1834,7 +1906,9 @@ class Orchestrator:
             # Sync order status from T212 (pending -> filled)
             if not self.dry_run:
                 try:
-                    self.order_manager.sync_order_status_from_t212()
+                    sync_summary = self.order_manager.sync_orders_with_t212()
+                    result["order_sync"] = sync_summary
+                    self._maybe_emit_execution_quality_alert(cycle_id=cycle_id, sync_summary=sync_summary)
                 except Exception as sync_err:
                     logger.warning(f"Order status sync skipped: {sync_err}")
 

@@ -8,7 +8,7 @@ last_updated: 2026-03-29
 # Sprint Plan — Week 1 (ZenInvest)
 
 > This sprint doc is a synchronized view of `docs/SOPHISTICATION_ROADMAP.md`, which is now the planning source of truth.
-> Current delivery order below reflects the agreed sequence as of 2026-03-28.
+> Current delivery order below reflects the agreed sequence as of 2026-03-29.
 
 ---
 
@@ -31,14 +31,21 @@ last_updated: 2026-03-29
 
 ---
 
+## Delivered This Week
+
+| Order | ID | Story | Why now | Success criteria |
+|-------|----|-------|---------|------------------|
+| 1 | US-7.3 | Execution Quality & Slippage Monitoring | Market-order telemetry and operator visibility were the smallest materially useful pre-live gate | Decision-time price, slippage rollups, threshold alerting, and open partial-fill visibility are live |
+| 2 | US-7.2 | Partial Fill Resubmission | Fill recovery only mattered once telemetry existed and could be shown safely | BUY-only remainder retry is gated, audited, and never bypasses the normal committee path |
+
 ## Current Delivery Order
 
 | Order | ID | Story | Why now | Success criteria |
 |-------|----|-------|---------|------------------|
 | 1 | US-8.1 | Open-Source Launch Preparation | Repo is now the highest-leverage next unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
-| 2 | US-7.3 | Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow closure | Slippage becomes measurable before any live-account posture change |
-| 3 | US-7.2 | Partial Fill Resubmission | Immediate follow-on once execution telemetry exists | Unfilled remainder can be recovered safely when the thesis still holds |
-| 4 | US-2.5 | Market Guidance Layer | Reusable learning-loop layer once the current execution-quality track is complete | Each cycle records explicit guidance snapshots that can influence screening and later review |
+| 2 | US-2.5 | Market Guidance Layer | Reusable learning-loop layer now that execution telemetry exists and is auditable | Each cycle records explicit guidance snapshots that can influence screening and later review |
+| 3 | US-2.6 | Strategy Episode Attribution | Follows naturally once guidance/cycle context becomes first-class and reviewable | Repo/config/prompt fingerprints can be mapped to later outcomes and operator review |
+| 4 | US-1.11 | Branch-Based Evolution Runner | Remains gated behind posture/workflow/CI maturity, but is the next evolution story after launch and learning-loop work | Low-risk repo changes can be prepared in isolated branches with validation artifacts |
 
 ---
 
@@ -53,6 +60,11 @@ last_updated: 2026-03-29
   - peak inflation detection
   - DB-level constraints
 - Broader audit backlog items remain parked under the same story for later follow-up.
+- `US-7.3` + `US-7.2` are now delivered as one lean execution-quality slice:
+  - market-order decision-vs-fill telemetry
+  - partial-fill remainder tracking
+  - BUY-only one-retry remainder resubmission when a later approved cycle still covers it
+  - dashboard rollups and threshold warning alerting
 
 ### Conversational Operator Workflow
 
@@ -96,8 +108,7 @@ last_updated: 2026-03-29
 
 ## Next After 8.1
 
-- `US-7.3` then `US-7.2` as one execution-quality and fill-recovery track.
-- `US-2.5` + `US-2.6` as the next learning-loop and attribution bundle once the execution-quality and entry-quality work above is complete.
+- `US-2.5` + `US-2.6` as the next learning-loop and attribution bundle now that the execution-quality and fill-recovery slice is shipped.
 - `US-2.1` + `US-2.2` + `US-2.3` only after trade-outcome volume is high enough to justify calibration work.
 
 ---

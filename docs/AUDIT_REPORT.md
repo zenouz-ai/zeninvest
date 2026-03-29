@@ -460,8 +460,8 @@ dashboard, runs, status, universe, portfolio, orders, events, decisions, moderat
 
 | # | Finding | Risk | Status | Roadmap |
 |---|---------|------|--------|---------|
-| I1 | **Partial fills not resubmitted** | Intended position size not fully achieved | **Open** — tracked as US-7.2 | US-7.2 |
-| I2 | **No slippage/market impact modelling** | Market orders execute at best available; no VWAP/TWAP | **Open** — tracked as US-7.3; pre-live prerequisite | US-7.3 |
+| I1 | **Partial fills not resubmitted** | Intended position size not fully achieved | **Delivered** — covered by US-7.2 lean BUY-only remainder recovery | US-7.2 |
+| I2 | **No slippage/market impact modelling** | Market orders execute at best available; no VWAP/TWAP | **Delivered (lean scope)** — covered by US-7.3 market-order telemetry, rollups, and threshold alerting; smart-routing work remains optional later | US-7.3 |
 | I3 | **Position sizing is pure LLM output** | Claude decides allocation % with no quantitative framework | **Open** — already tracked as US-3.1 (Risk-Parity Sizing) | US-3.1 |
 | I4 | **Orchestrator has no integration tests** | Full pipeline regressions may go undetected | **Open** — tracked as US-7.4 | US-7.4 |
 | I5 | **Opportunity optimizer under-tested** | Queue promotion, TTL expiry, swap logic have minimal coverage | **Fixed** — +7 tests (TTL, capacity, cash floor, dequeue, rejections) | US-7.4 (partial) |

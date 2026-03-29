@@ -85,6 +85,18 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
       }
     } catch { /* silent */ }
 
+    // 6. Execution quality degradation
+    try {
+      const executionQuality = await ordersApi.executionQuality({ days: 7 })
+      if (executionQuality.warning_breached && executionQuality.warning_message) {
+        newAlerts.push({
+          id: 'execution-quality',
+          severity: 'warning',
+          message: executionQuality.warning_message,
+        })
+      }
+    } catch { /* silent */ }
+
     setAlerts(newAlerts)
   }, [sseDisconnectedAlert])
 

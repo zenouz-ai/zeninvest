@@ -202,15 +202,55 @@ export interface Order {
   order_type: string
   quantity: number
   price: number | null
+  decision_price?: number | null
   limit_price?: number | null
   stop_price?: number | null
   value_gbp: number | null
+  filled_quantity?: number | null
+  remaining_quantity?: number | null
+  slippage_bps?: number | null
   status: string
   strategy: string | null
   conviction: number | null
   t212_order_id?: string | null
+  resubmitted_from_order_id?: number | null
   warning_note?: string | null
   error_message?: string | null
+}
+
+export interface ExecutionQualitySummary {
+  count: number
+  mean_bps: number | null
+  p50_bps: number | null
+  p95_bps: number | null
+  best_bps: number | null
+  worst_bps: number | null
+}
+
+export interface RecentPartialFill {
+  id: number
+  timestamp: string
+  ticker: string
+  action: 'BUY' | 'SELL' | 'REDUCE'
+  requested_quantity: number
+  filled_quantity: number
+  remaining_quantity: number
+  status: string
+  strategy: string | null
+  resubmission_eligible: boolean
+  resubmitted_from_order_id?: number | null
+}
+
+export interface ExecutionQuality {
+  window_days: number
+  warning_threshold_bps: number
+  warning_min_fills: number
+  warning_breached: boolean
+  warning_message: string | null
+  overall: ExecutionQualitySummary
+  buy: ExecutionQualitySummary
+  exit: ExecutionQualitySummary
+  recent_partial_fills: RecentPartialFill[]
 }
 
 // --- Macro / World News ---

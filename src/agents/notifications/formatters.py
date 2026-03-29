@@ -38,6 +38,8 @@ def _render_slack(event: NotificationEvent, *, slack_max_chars: int) -> list[Not
         body = _slack_order_adjustment(event.payload, prefix=prefix)
     elif event.event_type == "trade_without_stop":
         body = _slack_trade_without_stop(event.payload, prefix=prefix)
+    elif event.event_type == "execution_quality_alert":
+        body = _slack_execution_quality_alert(event.payload, prefix=prefix)
     else:
         body = _fallback_body(event)
 
@@ -63,6 +65,8 @@ def _render_email(event: NotificationEvent) -> list[NotificationMessage]:
         body = _email_order_adjustment(event.payload, prefix=prefix)
     elif event.event_type == "trade_without_stop":
         body = _email_trade_without_stop(event.payload, prefix=prefix)
+    elif event.event_type == "execution_quality_alert":
+        body = _email_execution_quality_alert(event.payload, prefix=prefix)
     else:
         body = _fallback_body(event)
 
@@ -78,6 +82,7 @@ def _title_for_event(event: NotificationEvent) -> str:
         "critical_cycle_failure": "Critical Cycle Failure",
         "order_adjustment": "Order Adjustment",
         "trade_without_stop": "Trade Without Stop-Loss",
+        "execution_quality_alert": "Execution Quality Alert",
     }
     return mapping.get(event.event_type, event.event_type)
 
@@ -498,6 +503,30 @@ def _email_trade_without_stop(payload: dict[str, Any], *, prefix: str) -> str:
         f"ACTION REQUIRED: This position has no stop-loss protection.\n"
         f"The next cycle's place_missing_stops() should auto-place the stop,\n"
         f"but verify manually if this is a live position.\n"
+    )
+
+
+def _slack_execution_quality_alert(payload: dict[str, Any], *, prefix: str) -> str:
+    return (
+        f"{prefix} [EXECUTION-QUALITY]\n"
+        f"Window: last {payload.get('window_days', 'N/A')}d\n"
+        f"Mean slippage: {payload.get('mean_bps', 'N/A')} bps\n"
+        f"Threshold: {payload.get('warning_threshold_bps', 'N/A')} bps\n"
+        f"Filled market orders: {payload.get('fill_count', 'N/A')}\n"
+        f"Detail: {_excerpt(payload.get('warning_message', ''), 240)}"
+    )
+
+
+def _email_execution_quality_alert(payload: dict[str, Any], *, prefix: str) -> str:
+    return (
+        f"{prefix} Execution Quality Alert\n"
+        f"Timestamp UTC: {payload.get('occurred_at', 'N/A')}\n"
+        f"Cycle: {payload.get('cycle_id', 'N/A')}\n\n"
+        f"Window: last {payload.get('window_days', 'N/A')}d\n"
+        f"Mean slippage: {payload.get('mean_bps', 'N/A')} bps\n"
+        f"Threshold: {payload.get('warning_threshold_bps', 'N/A')} bps\n"
+        f"Filled market orders: {payload.get('fill_count', 'N/A')}\n"
+        f"Detail: {payload.get('warning_message', 'N/A')}\n"
     )
 
 

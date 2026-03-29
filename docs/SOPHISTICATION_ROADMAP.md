@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **31** · Pipeline **19** · Total **50** · Delivered Progress **62%**
+**At a glance:** Delivered **33** · Pipeline **17** · Total **50** · Delivered Progress **66%**
 
 ### Priority rules
 
@@ -25,24 +25,24 @@ This document tracks every planned and delivered enhancement to the investment a
 3. **Data-gated learning stories only after enough `trade_outcomes` exist**
 4. **Lower-leverage investigations stay later unless tied to an immediate business need**
 
-### Current delivery order (as of March 28, 2026)
+### Current delivery order (as of March 29, 2026)
 
 | Order | Story | Why it matters now | Success criteria |
 |------|-------|--------------------|------------------|
 | 1 | **US-8.1** Open-Source Launch Preparation | Repo is now the highest-leverage unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
-| 2 | **US-7.3** Execution Quality & Slippage Monitoring | First execution-quality gate after posture and workflow closure | Slippage becomes measurable before any live-account posture change |
-| 3 | **US-7.2** Partial Fill Resubmission | Immediate follow-on once execution telemetry exists | Unfilled remainder can be recovered safely when the thesis still holds |
-| 4 | **US-2.5** Market Guidance Layer | Next reusable learning-loop layer once the current execution-quality track is complete | Each cycle records explicit guidance snapshots that can influence screening and later review |
+| 2 | **US-2.5** Market Guidance Layer | Next reusable learning-loop layer now that execution telemetry exists and is auditable | Each cycle records explicit guidance snapshots that can influence screening and later review |
+| 3 | **US-2.6** Strategy Episode Attribution | Follows naturally once guidance and cycle fingerprints are explicit | Repo/config/prompt changes can be reviewed against later outcomes instead of memory |
+| 4 | **US-1.11** Branch-Based Evolution Runner | Still gated, but it is the next evolution story after launch and learning-loop work | Low-risk repo changes can be prepared with validation artifacts and reviewable scope |
 
 ### Near-term umbrella tracks
 
 | Track | Included stories | Status | Why now |
 |-------|------------------|--------|---------|
-| **Production Access & Safety** | delivered `US-7.7`, delivered `US-7.5`, next `US-7.3`, then `US-7.2` | **Execution-quality follow-on active** | Canonical ingress and the quick hardening slice are shipped; the next leverage point is execution reliability |
+| **Production Access & Safety** | delivered `US-7.7`, delivered `US-7.5`, delivered `US-7.3`, delivered `US-7.2` | **Delivered through the lean execution-quality slice** | Canonical ingress, hardening, execution telemetry, and conservative fill recovery are all shipped |
 | **Conversational Operator Workflow** | delivered foundation `US-1.6`, delivered MVP `US-1.9` | **Delivered** | Shared Slack/dashboard operator workflow, confirmation gating, and audited session flow are now live |
 | **Zen Evolution Engine** | delivered `US-1.10` planner-only Phase 1, later gated phases `US-1.11`–`US-1.14` | **Phase 1 delivered; follow-ons gated** | The planning slice is live, but execution and promotion authority should expand only after posture, workflow, and CI foundations are stable |
 | **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
-| **Execution Quality & Fill Recovery** | `US-7.3` then `US-7.2` | **Next after current week** | Required before any move from practice posture toward live-account readiness |
+| **Execution Quality & Fill Recovery** | delivered `US-7.3` + `US-7.2` | **Delivered** | Market-order telemetry, threshold alerting, open partial visibility, and one guarded retry path are now in place |
 | **Entry Quality Guards** | `US-4.2` + `US-3.3` | **Delivered** | Earnings-aware and duplicate-risk-aware BUY review is now carried through strategy, moderation, and risk reasoning |
 | **Learning Loop & Attribution** | `US-2.5` + `US-2.6` | **Soon after the current execution-quality track** | Turns existing macro/micro/git history into reusable guidance and measured strategy-change evidence instead of ad hoc interpretation |
 | **Calibration & Adaptation** | `US-2.1`, `US-2.2`, `US-2.3` | **Data-gated** | Useful only once trade-outcome volume is high enough to justify the math |
@@ -96,8 +96,8 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-5.1** | Backtesting Engine | Replay history, paper broker, walk-forward, promotion report; yfinance + CSV cache | Release gate before strategy changes; historical confidence | **Delivered** |
 | **US-5.2** | Parameter Sensitivity | Vary RSI, MA, weights, limits; heat maps; robust vs fragile ranges | Useful later, but not more material than current production and operator milestones | **Later / optional** |
 | **US-7.1** | Dashboard Authentication | Session-based operator auth with secure cookies, signed backend-issued sessions, and explicit `/api/public/*` routes | Critical security hardening; prevents unauthorized operator access and aligns with the HTTPS proxy rollout | **Delivered** |
-| **US-7.2** | Partial Fill Resubmission | Detect partial fills and resubmit unfilled remainder in next cycle | Immediate follow-on to US-7.3 inside the first post-8.1 execution-quality track | **Next after current week** |
-| **US-7.3** | Execution Quality & Slippage | VWAP/TWAP awareness, execution timing, slippage tracking; pre-live prerequisite | First post-8.1 execution-quality story and prerequisite for any live-account posture shift | **Next after current week** |
+| **US-7.2** | Partial Fill Resubmission | Detect market-order partial fills, preserve remainder, and allow one BUY-only retry when a later approved cycle still covers it | Immediate follow-on to US-7.3 inside the first execution-quality track | **Delivered (2026-03-29)** |
+| **US-7.3** | Execution Quality & Slippage | Market-order decision-time price, fill telemetry, slippage rollups, dashboard stats, and threshold alerting; pre-live prerequisite | First execution-quality story and prerequisite for any live-account posture shift | **Delivered (2026-03-29)** |
 | **US-7.0** | Production Audit & Safety Fixes | Full codebase audit (34 findings: 3C+6H+12M+13L). Phase 1: no-retry on POST, write-before-execute, liquidate_all status mapping, stop atomicity, moderator parse-failure safety, session leaks. Phase 2: committed cash tracking, correlation/daily-loss activation, cycle timeout, exception safety, HALTED data. 12 of 34 fixed. See `docs/TRADING_SYSTEM_AUDIT.md`. | Eliminates 3 critical + 6 high severity financial-risk bugs; activates 2 previously disabled risk rules | **Delivered** |
 | **US-7.4** | Integration Test Coverage | End-to-end orchestrator run_cycle test, state machine transition tests | Catch pipeline regressions early; quality gate for new features | **Delivered** |
 | **US-6.1** | Gradient-Boosted Trade Scoring | Investigation then (if justified) XGBoost on indicators + fundamentals → forward return | Potentially useful long-term, but premature before more trade and execution data exist | **Later / optional** |
@@ -822,33 +822,39 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Value:** Medium — currently unfilled portions of partial fills are lost, meaning intended position sizes may not be achieved
 **Effort:** Small (2–3 days)
 **Data Sources:** Existing orders table, T212 order history
-**Stage:** Next after current week (bundled immediately after US-7.3)
+**Stage:** Delivered (2026-03-29)
 **Audit finding:** I1
 
 **Acceptance Criteria:**
-- [ ] `sync_order_status_from_t212()` detects partial fills and records unfilled remainder
-- [ ] Next cycle resubmits unfilled remainder if strategy still holds the position
-- [ ] Resubmission respects dedup (new dedup key with "resubmit" tag)
-- [ ] Config: `resubmit_partial_fills: true/false` (default: true)
-- [ ] Logged in orders table with `strategy = "partial_fill_resubmit"`
+- [x] `sync_orders_with_t212()` detects market-order partial fills and records unfilled remainder
+- [x] Later approved BUY cycles can resubmit the exact remainder when the newly desired size fully covers it
+- [x] Resubmission respects dedup via a tagged key suffix
+- [x] Config: `resubmit_partial_fills: true/false` (default: true)
+- [x] Retries are logged in `orders` with `strategy = "partial_fill_resubmit"` and lineage to the source order
+
+**Delivered scope:** Intentionally conservative. BUY-only, one explicit retry per source partial order, no direct/manual path, and no recursive retry chain.
 
 **Expands:** US-3.5 (Intelligent Order Management)
 
 ---
 
 **US-7.3: Execution Quality & Slippage Monitoring**
-**Value:** High — required before transitioning from practice to live account. Currently no VWAP/TWAP, no slippage tracking, no execution timing
+**Value:** High — required before transitioning from practice to live account. The shipped slice focuses on the smallest telemetry and operator-visibility set that materially improves execution confidence.
 **Effort:** Medium (3–5 days)
 **Data Sources:** Orders (filled price vs decision-time price), T212 execution reports
-**Stage:** Next after current week
+**Stage:** Delivered (2026-03-29)
 **Audit finding:** I2
 
 **Acceptance Criteria:**
-- [ ] Record decision-time price alongside order price for slippage calculation
-- [ ] `slippage_bps` column in orders table (filled_price - decision_price) / decision_price × 10000
-- [ ] Dashboard: slippage distribution chart (mean, p50, p95 by order type)
-- [ ] Alert when avg slippage exceeds configurable threshold
-- [ ] Investigation: VWAP-aware execution timing for large orders (>£2000)
+- [x] Record decision-time price alongside filled price for market-order slippage calculation
+- [x] Persist `decision_price`, `filled_quantity`, `remaining_quantity`, and `slippage_bps` on orders
+- [x] Dashboard: execution-quality card with mean / p50 / p95 and open partial-fill visibility
+- [x] Alert when average market-order slippage exceeds a configurable threshold
+
+**Delivered scope note:** This story deliberately excludes smart-routing work, stop/limit proxy slippage, and historical inference. It is a market-order-only telemetry slice.
+
+**Optional later investigation:**
+- [ ] VWAP-aware execution timing or sizing policy for large orders (>£2000)
 
 **Pre-requisite for:** Transition from `account_type: practice` to `account_type: live`
 **Related:** US-3.1 (Risk-Parity Sizing) — both are sizing/execution quality improvements
@@ -1062,28 +1068,28 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 ## Current delivery focus
 
-**Canonical order as of 2026-03-28:**
+**Canonical order as of 2026-03-29:**
 1. **US-8.1** — Open-Source Launch Preparation
-2. **US-7.3** — Execution Quality & Slippage Monitoring
-3. **US-7.2** — Partial Fill Resubmission
-4. **US-2.5** — Market Guidance Layer
+2. **US-2.5** — Market Guidance Layer
+3. **US-2.6** — Strategy Episode Attribution
+4. **US-1.11** — Branch-Based Evolution Runner
 
 **Success criteria:**
 - **US-8.1** — repo can be made public without legal, CI, or contributor-experience gaps
-- **US-7.3** — decision-time price and slippage metrics exist before live trading posture changes
-- **US-7.2** — unfilled remainder can be resubmitted safely when the thesis still holds
 - **US-2.5** — point-in-time guidance snapshots influence screening and are persisted for later review
+- **US-2.6** — repo/config/prompt fingerprints can be mapped cleanly onto later outcomes
+- **US-1.11** — low-risk changes can be prepared in isolated branches with validation artifacts
 
 **Recently delivered:**
 - **US-1.9** — shared Slack/dashboard conversational workflow, confirmation gate, audit trail, and VPS signoff complete
 - **US-1.10** — Evolution Planner Phase 1 shipped with authenticated planning, clarification loop, repo context, validation matrix, and audited blocked approvals
 - **US-7.7** — no public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy
 - **US-7.5** — quick hardening slice shipped with tests and no broader backlog creep
+- **US-7.3** + **US-7.2** — market-order execution telemetry, slippage rollups, open partial-fill visibility, guarded BUY-only remainder retry, and operator warning thresholds
 - **US-4.2** + **US-3.3** — entry-quality guard bundle shipped with earnings awareness, portfolio-overlap warnings, and soft risk advisories
 
 **Next after 8.1:**
-- **US-7.3** then **US-7.2** as the first execution-quality and fill-recovery track
-- **US-2.5** + **US-2.6** as the next learning-loop and attribution bundle once the execution-quality track is stable
+- **US-2.5** + **US-2.6** as the next learning-loop and attribution bundle now that the execution-quality track is shipped
 - **US-1.11** once CI, branch governance, and the first post-8.1 execution-quality track are stable
 - **US-2.1** + **US-2.2** + **US-2.3** only once trade-outcome volume is sufficient
 
