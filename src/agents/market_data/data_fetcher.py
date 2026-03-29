@@ -11,6 +11,7 @@ import yfinance as yf
 from sqlalchemy import func
 
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
+from src.agents.market_data.earnings import get_earnings_context
 from src.agents.market_data.finnhub_client import FinnhubClient
 from src.agents.market_data.fundamentals import get_fundamentals
 from src.agents.market_data.macro_intelligence import get_latest_macro_state, get_macro_intelligence, persist_headlines
@@ -275,6 +276,16 @@ class DataFetcher:
 
         # Fundamentals
         result["fundamentals"] = get_fundamentals(yf_ticker)
+        result["earnings"] = (
+            get_earnings_context(
+                yf_ticker,
+                price_history=df,
+                pre_window_trading_days=self.settings.pre_earnings_window_trading_days,
+                post_window_trading_days=self.settings.post_earnings_drift_window_trading_days,
+            )
+            if self.settings.earnings_calendar_enabled
+            else {}
+        )
 
         self._cache_market_data(yf_ticker, "lite_analysis", result)
         return result
@@ -309,6 +320,16 @@ class DataFetcher:
 
         # Fundamentals
         result["fundamentals"] = get_fundamentals(yf_ticker)
+        result["earnings"] = (
+            get_earnings_context(
+                yf_ticker,
+                price_history=df,
+                pre_window_trading_days=self.settings.pre_earnings_window_trading_days,
+                post_window_trading_days=self.settings.post_earnings_drift_window_trading_days,
+            )
+            if self.settings.earnings_calendar_enabled
+            else {}
+        )
 
         # Finnhub analyst data (recommendations + insider sentiment)
         try:

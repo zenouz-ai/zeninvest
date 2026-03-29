@@ -235,6 +235,7 @@ class TestPrompts:
             news_sentiment="AAPL: bullish 60%, 5 articles",
             macro_context="Regime: RISK_ON",
             company_profiles="**AAPL** (Apple Inc) | Consumer Electronics\nDesigns and sells smartphones and computers.",
+            entry_quality_guards="- AAPL_US_EQ: earnings 2026-04-30 (3 trading days, imminent) | avg corr 0.65 (high overlap) vs MSFT_US_EQ 0.72",
             tickers_to_decide="AAPL_US_EQ",
             system_state="ACTIVE",
             vix=18.0,
@@ -249,6 +250,7 @@ class TestPrompts:
         assert "AAPL" in prompt
         assert "BULL" in prompt
         assert "50.0%" in prompt
+        assert "ENTRY QUALITY GUARDS" in prompt
         assert '"expected_holding_period": "5-30 trading days"' in prompt
 
     def test_cautious_mode_prompt(self):
@@ -262,6 +264,7 @@ class TestPrompts:
             news_sentiment="None",
             macro_context="No proactive macro state available.",
             company_profiles="No profiles available.",
+            entry_quality_guards="No entry-quality guardrail data available.",
             tickers_to_decide="TICK1, TICK2",
             system_state="CAUTIOUS",
             vix=28.0,
@@ -380,6 +383,7 @@ class TestStrategyEngine:
             news_sentiment="Bullish news sentiment",
             macro_context="Regime: RISK_ON",
             company_profiles="**AAPL** (Apple Inc) | Consumer Electronics\nDesigns and sells smartphones.",
+            entry_quality_guards="- AAPL_US_EQ: earnings 2026-04-30 (3 trading days, imminent)",
             system_state="ACTIVE",
             vix=18.0,
             cash_pct=50.0,

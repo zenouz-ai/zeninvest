@@ -25,6 +25,8 @@ last_updated: 2026-03-28
 | US-1.9 | Conversational Trading Workflow MVP implementation | Delivered | Shared Slack/dashboard conversational flow, explicit confirm/reject APIs, audited session flow, and agentic beta transparency are shipped; local validation and VPS signoff completed |
 | US-7.7 | Dashboard HTTPS Domain & Canonical Access | Delivered | Canonical `https://zeninvest.zenouz.ai`, internal-only dashboard app, public raw `:8000` removed |
 | US-7.5 | Quick Hardening Slice | Delivered | Off-hours order annotations, HALTED auto-recovery, peak inflation detection, DB constraints, dashboard visibility |
+| US-3.3 | Correlation-Aware Screening | Delivered | Candidate-vs-portfolio overlap warnings now reach strategy, moderation, and risk reasoning without changing the hard veto |
+| US-4.2 | Earnings Calendar | Delivered | Earnings imminence and post-earnings drift context now flow through screening, prompting, moderation, and soft risk advisories |
 
 ---
 
@@ -35,7 +37,7 @@ last_updated: 2026-03-28
 | 1 | US-8.1 | Open-Source Launch Preparation | Repo is now the highest-leverage next unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
 | 2 | US-7.3 | Execution Quality & Slippage Monitoring | First execution-quality gate after posture/workflow closure | Slippage becomes measurable before any live-account posture change |
 | 3 | US-7.2 | Partial Fill Resubmission | Immediate follow-on once execution telemetry exists | Unfilled remainder can be recovered safely when the thesis still holds |
-| 4 | US-4.2 | Earnings Calendar | Small, high-value entry-quality guard once the current execution track is underway | Avoid buying into imminent earnings risk |
+| 4 | US-2.5 | Market Guidance Layer | Reusable learning-loop layer once the current execution-quality track is complete | Each cycle records explicit guidance snapshots that can influence screening and later review |
 
 ---
 
@@ -66,9 +68,17 @@ last_updated: 2026-03-28
 - `US-8.1` is now the lead current-week item after the production posture and operator-workflow work above.
 - `US-7.7` is already delivered and now acts as a practical prerequisite for a clean community/operator posture.
 
+### Entry Quality Guards
+
+- `US-4.2` and `US-3.3` are now delivered as one backend bundle.
+- Shipped scope:
+  - per-ticker earnings awareness and post-earnings drift context
+  - candidate-vs-portfolio correlation warnings
+  - strategy/moderation/risk plumbing for soft advisories without changing the existing hard correlation veto
+
 ### Learning Loop & Attribution
 
-- `US-2.5` and `US-2.6` are now defined as the next learning-loop track after the current execution-quality and entry-quality bundle.
+- `US-2.5` and `US-2.6` are now defined as the next learning-loop track after the current execution-quality bundle.
 - `US-2.5` must persist which guidance snapshot influenced each cycle so future analysis can reuse the evidence trail instead of inferring it later.
 - `US-2.6` must map repo/config/prompt changes onto cycle-level fingerprints so strategy shifts can be reviewed against later outcomes.
 
@@ -77,7 +87,6 @@ last_updated: 2026-03-28
 ## Next After 8.1
 
 - `US-7.3` then `US-7.2` as one execution-quality and fill-recovery track.
-- `US-4.2` + `US-3.3` as the next small, high-value entry-quality bundle.
 - `US-2.5` + `US-2.6` as the next learning-loop and attribution bundle once the execution-quality and entry-quality work above is complete.
 - `US-2.1` + `US-2.2` + `US-2.3` only after trade-outcome volume is high enough to justify calibration work.
 

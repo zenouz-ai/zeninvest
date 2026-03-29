@@ -348,6 +348,7 @@ class SingleTickerRunner:
                 news_sentiment="",
                 macro_context="",
                 company_profiles=self._get_company_profile(ticker_t212),
+                entry_quality_guards="No entry-quality guardrail data available.",
                 system_state="ACTIVE",
                 vix=None,
                 cash_pct=portfolio_data.get("cash_pct", 10.0),

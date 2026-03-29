@@ -16,14 +16,14 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **28** · Partial **1** · Pipeline **21**
+**At a glance:** Delivered **30** · Partial **1** · Pipeline **19**
 
 ### Priority rules
 
-1. **Production safety before new capability**  
-2. **Execution quality before any live-account posture change**  
-3. **Data-gated learning stories only after enough `trade_outcomes` exist**  
-4. **Lower-leverage investigations stay later unless tied to an immediate business need**  
+1. **Production safety before new capability**
+2. **Execution quality before any live-account posture change**
+3. **Data-gated learning stories only after enough `trade_outcomes` exist**
+4. **Lower-leverage investigations stay later unless tied to an immediate business need**
 
 ### Current delivery order (as of March 28, 2026)
 
@@ -32,7 +32,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | 1 | **US-8.1** Open-Source Launch Preparation | Repo is now the highest-leverage unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
 | 2 | **US-7.3** Execution Quality & Slippage Monitoring | First execution-quality gate after posture and workflow closure | Slippage becomes measurable before any live-account posture change |
 | 3 | **US-7.2** Partial Fill Resubmission | Immediate follow-on once execution telemetry exists | Unfilled remainder can be recovered safely when the thesis still holds |
-| 4 | **US-4.2** Earnings Calendar | Small, high-value entry-quality guard once execution telemetry work is queued | Avoid buying into imminent earnings risk and expose post-earnings context |
+| 4 | **US-2.5** Market Guidance Layer | Next reusable learning-loop layer once the current execution-quality track is complete | Each cycle records explicit guidance snapshots that can influence screening and later review |
 
 ### Near-term umbrella tracks
 
@@ -43,8 +43,8 @@ This document tracks every planned and delivered enhancement to the investment a
 | **Zen Evolution Engine** | partially delivered planner foundation `US-1.10`, later gated phases `US-1.11`–`US-1.14` | **Later / gated rollout** | Valuable north-star capability, but authority should expand only after posture, workflow, and CI foundations are stable |
 | **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
 | **Execution Quality & Fill Recovery** | `US-7.3` then `US-7.2` | **Next after current week** | Required before any move from practice posture toward live-account readiness |
-| **Entry Quality Guards** | `US-4.2` + `US-3.3` | **Next after current week** | Small, material improvements that reduce bad entries faster than model experimentation |
-| **Learning Loop & Attribution** | `US-2.5` + `US-2.6` | **Soon after the current execution and entry-quality bundle** | Turns existing macro/micro/git history into reusable guidance and measured strategy-change evidence instead of ad hoc interpretation |
+| **Entry Quality Guards** | `US-4.2` + `US-3.3` | **Delivered** | Earnings-aware and duplicate-risk-aware BUY review is now carried through strategy, moderation, and risk reasoning |
+| **Learning Loop & Attribution** | `US-2.5` + `US-2.6` | **Soon after the current execution-quality track** | Turns existing macro/micro/git history into reusable guidance and measured strategy-change evidence instead of ad hoc interpretation |
 | **Calibration & Adaptation** | `US-2.1`, `US-2.2`, `US-2.3` | **Data-gated** | Useful only once trade-outcome volume is high enough to justify the math |
 | **Research / Advanced optional work** | `US-2.4`, `US-3.2`, `US-4.3`, `US-5.2`, `US-6.1`, `US-6.2`, `US-6.3` | **Later / optional** | Valid ideas, but not materially more urgent than current posture, workflow, launch, and learning-loop work |
 
@@ -79,12 +79,12 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-2.6** | Strategy Episode Attribution | Git-backed, human-reviewed strategy-change episodes mapped onto cycle/version fingerprints so repo changes can be evaluated against later outcomes. See `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`. | Measures whether prompt/config/logic changes actually improved the system instead of relying on memory | **Planned / soon** |
 | **US-3.1** | Risk-Parity Position Sizing | Size positions inversely to trailing volatility; equal risk contribution | Reduces volatility without reducing returns; strong academic evidence | **Delivered** |
 | **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Useful later, but not more urgent than current posture, execution, and entry-quality work | **Later / optional** |
-| **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure; one of the next small, useful entry-quality upgrades | **Next after current week** |
+| **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure by surfacing duplicate-risk overlap before BUY execution | **Delivered** |
 | **US-3.4** | UOV Ranking & Queueing | Hybrid score, z-score, EWMA; ranked BUY execution; queue + swap suggestions | Solves capital saturation; deterministic opportunity ranking | **Delivered** |
 | **US-3.5** | Intelligent Order Management | Stop-loss (GTC) after BUY, ATR-based stop reassessment, software trailing stops, and limit dip-buy orders | More robust downside protection and smarter entries without manual intervention | **Delivered** |
 | **US-3.6** | Active Swing Rotation Strategy | Active swing posture: more permissive BUY throughput, deterministic +15% take-profit SELLs, final-cycle small-position cleanup, and clearer operator notifications/reporting | Promotes more frequent realized winners and lower idle cash without a major architectural rewrite | **Delivered** |
 | **US-4.1** | Volume-Weighted Signals | OBV, volume SMA ratio; feed into sub-strategy scoring | Volume confirms price moves; zero-cost signal enhancement | **Delivered** |
-| **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings; one of the next small, useful entry-quality upgrades | **Next after current week** |
+| **US-4.2** | Earnings Calendar | Next earnings date; flag "earnings imminent"; post-earnings drift signal | Avoid buying before earnings and expose post-earnings drift context through the full review chain | **Delivered** |
 | **US-4.3** | Sector Rotation Signal | 11 GICS sectors via ETFs; 3-month momentum; overweight/underweight in screening | Valid long-term signal work, but not material enough to outrank current safety and workflow work | **Later / optional** |
 | **US-4.4** | Agentic Research | 5 tools (web_search, news_search, sector_search, sec_search, macro_search) with caps 20/8/7 (total 35/cycle). All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have full tool-use loops. Pipeline-wide shared budget enforcement. Brave primary, Tavily fallback. SEC EDGAR free. Latency/cost recorded. 37 unit tests. Phase 0/0.2 notebooks validated. | Stale context mitigation, follow-up ability, broader coverage | **Delivered** |
 | **US-7.0a** | Agent Logic Audit Fixes | 27 findings (5C+7H+9M+6L). All Critical + High fixed: MODIFY verdicts as conditional AGREE (C-1), CAUTION 25% allocation reduction (C-2), conviction/allocation clamping (C-3), Gemini score bounds (C-4), orphaned "submitting" sync (C-5), risk-driven exit bypass (H-1), entry_type in schema (H-2), strategy timeout 120s (H-3), consensus on all moderator rows (H-4), repaired-decision validation (H-5), ticker dedup (H-6). 36 new tests. See `docs/AGENT_LOGIC_AUDIT.md`. | Eliminates 5 critical + 7 high LLM output parsing and consensus bugs | **Delivered** |
@@ -130,11 +130,11 @@ The POC is a fully functional autonomous trading agent running on Trading 212 Pr
 
 ## Design principles
 
-1. **Measure before you build** — collect live data first; only build what the data justifies  
-2. **Incremental, not revolutionary** — each phase builds on the previous; no big rewrites  
-3. **POC compatibility** — all enhancements integrate with the existing pipeline architecture  
-4. **Evidence-based decisions** — no technique adopted without literature review and clear expected impact  
-5. **Personal quant experience first** — prioritise insights, dashboards, and learning over institutional features  
+1. **Measure before you build** — collect live data first; only build what the data justifies
+2. **Incremental, not revolutionary** — each phase builds on the previous; no big rewrites
+3. **POC compatibility** — all enhancements integrate with the existing pipeline architecture
+4. **Evidence-based decisions** — no technique adopted without literature review and clear expected impact
+5. **Personal quant experience first** — prioritise insights, dashboards, and learning over institutional features
 
 ---
 
@@ -189,10 +189,10 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 ### P0 — Critical (Foundation)
 
 **US-1.4: Deploy POC to VPS**
-**Value:** Begin gathering live market data and performance evidence  
-**Effort:** Small (1–2 days, following DEPLOYMENT.md)  
-**Data Sources:** N/A  
-**Stage:** Delivered  
+**Value:** Begin gathering live market data and performance evidence
+**Effort:** Small (1–2 days, following DEPLOYMENT.md)
+**Data Sources:** N/A
+**Stage:** Delivered
 
 **Note:** Deployment *implementation* (Docker, DEPLOYMENT.md, DASHBOARD_DEPLOYMENT.md) was delivered as code. US-1.4 is the operator checklist: run on VPS, first cycle logged, health/backup confirmed.
 
@@ -206,12 +206,12 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 ---
 
 **US-1.1: Performance Tracking Module**
-**Value:** Enables all future improvements — can't improve what you can't measure  
-**Effort:** Medium (3–5 days)  
-**Data Sources:** Existing database (portfolio_snapshots, orders, strategy_decisions)  
-**Stage:** Delivered  
+**Value:** Enables all future improvements — can't improve what you can't measure
+**Effort:** Medium (3–5 days)
+**Data Sources:** Existing database (portfolio_snapshots, orders, strategy_decisions)
+**Stage:** Delivered
 
-**Status (2026-03-05):** Delivered  
+**Status (2026-03-05):** Delivered
 
 **Acceptance Criteria:**
 - [x] Daily Sharpe ratio (rolling 30/60/90 day) computed from portfolio_snapshots
@@ -226,12 +226,12 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 ---
 
 **US-1.2: Trade Outcome Tracker**
-**Value:** Links strategy decisions to actual P&L — core data for calibration  
-**Effort:** Medium (3–5 days)  
-**Data Sources:** Existing orders + portfolio data  
-**Stage:** Delivered  
+**Value:** Links strategy decisions to actual P&L — core data for calibration
+**Effort:** Medium (3–5 days)
+**Data Sources:** Existing orders + portfolio data
+**Stage:** Delivered
 
-**Status (2026-03-05):** Delivered  
+**Status (2026-03-05):** Delivered
 
 **Acceptance Criteria:**
 - [x] Each BUY tracked until corresponding SELL/REDUCE
@@ -248,10 +248,10 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 ### P2 - Medium (Learning loop and calibration)
 
 **US-2.5: Market Guidance Layer**
-**Value:** Turns accumulated macro, micro, and outcome data into reusable forward guidance for future cycles  
-**Effort:** Medium-Large (5-8 days)  
-**Data Sources:** `macro_state`, `macro_signal_logs`, `macro_headlines`, `research_logs`, `strategy_decisions`, `opportunity_score_snapshots`, `trade_outcomes`, `portfolio_snapshots`, `instruments`  
-**Stage:** Planned / soon after the current execution and entry-quality bundle  
+**Value:** Turns accumulated macro, micro, and outcome data into reusable forward guidance for future cycles
+**Effort:** Medium-Large (5-8 days)
+**Data Sources:** `macro_state`, `macro_signal_logs`, `macro_headlines`, `research_logs`, `strategy_decisions`, `opportunity_score_snapshots`, `trade_outcomes`, `portfolio_snapshots`, `instruments`
+**Stage:** Planned / soon after the current execution and entry-quality bundle
 
 **Detailed plan:** `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`.
 
@@ -267,10 +267,10 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 ---
 
 **US-2.6: Strategy Episode Attribution**
-**Value:** Measures whether repo, prompt, and config changes improved behaviour instead of relying on memory or commit-message guesswork  
-**Effort:** Medium (4-6 days)  
-**Data Sources:** Git history on `main`, cycle IDs, `trade_outcomes`, `performance_metrics`, `strategy_decisions`, `orders`, config and prompt fingerprints  
-**Stage:** Planned / soon after the current execution and entry-quality bundle  
+**Value:** Measures whether repo, prompt, and config changes improved behaviour instead of relying on memory or commit-message guesswork
+**Effort:** Medium (4-6 days)
+**Data Sources:** Git history on `main`, cycle IDs, `trade_outcomes`, `performance_metrics`, `strategy_decisions`, `orders`, config and prompt fingerprints
+**Stage:** Planned / soon after the current execution and entry-quality bundle
 
 **Detailed plan:** `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`.
 
@@ -288,10 +288,10 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 ### P1 — High (Foundation & Calibration)
 
 **US-1.3: Performance Dashboard (CLI + Export)**
-**Value:** Personal quant experience — immediate visibility  
-**Effort:** Small (2–3 days)  
-**Data Sources:** performance_metrics, trade_outcomes, cost_logs  
-**Stage:** Delivered (CLI); export/summary open  
+**Value:** Personal quant experience — immediate visibility
+**Effort:** Small (2–3 days)
+**Data Sources:** performance_metrics, trade_outcomes, cost_logs
+**Stage:** Delivered (CLI); export/summary open
 
 **Acceptance Criteria:**
 - [x] `--dashboard` CLI: portfolio value, Sharpe, win rate, costs, active positions
@@ -303,14 +303,14 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 ---
 
 **US-1.5: Chat Interface & Real-Time Trade Alerts**
-**Value:** Immediate operator visibility; foundation for human-in-the-loop  
-**Effort:** Medium (4–6 days)  
-**Data Sources:** Orchestrator decisions, orders, system_state, risk_decisions, moderation_logs  
-**Stage:** Delivered (Phase 1 outbound)  
+**Value:** Immediate operator visibility; foundation for human-in-the-loop
+**Effort:** Medium (4–6 days)
+**Data Sources:** Orchestrator decisions, orders, system_state, risk_decisions, moderation_logs
+**Stage:** Delivered (Phase 1 outbound)
 
-**Detailed plan:** `docs/CHAT_AND_COMMANDS.md`  
+**Detailed plan:** `docs/CHAT_AND_COMMANDS.md`
 
-**Status (2026-03-05):** Delivered (Phase 1 outbound alerts)  
+**Status (2026-03-05):** Delivered (Phase 1 outbound alerts)
 
 **Acceptance Criteria:**
 - [x] Notification service under `src/agents/notifications/`
@@ -324,10 +324,10 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 ---
 
 **US-3.1: Risk-Parity Position Sizing**
-**Value:** High — reduces volatility without reducing returns; strong academic evidence  
-**Effort:** Medium (4–5 days)  
-**Data Sources:** Historical returns from market_data_cache  
-**Stage:** Delivered  
+**Value:** High — reduces volatility without reducing returns; strong academic evidence
+**Effort:** Medium (4–5 days)
+**Data Sources:** Historical returns from market_data_cache
+**Stage:** Delivered
 
 **Acceptance Criteria:**
 - [x] Position sized inversely to trailing 60-day volatility
@@ -336,21 +336,21 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 - [x] Existing risk limits (15% per stock, etc.) remain hard caps
 - [x] A/B log: risk-parity size vs Claude proposed size
 
-**Technical Approach:** `weight_i = (1/vol_i) / sum(1/vol_j)`.  
+**Technical Approach:** `weight_i = (1/vol_i) / sum(1/vol_j)`.
 **Literature:** Maillard, Roncalli & Teiletche (2010) "The Properties of Equally Weighted Risk Contribution Portfolios"
 **Status (2026-03):** Delivered — `risk.risk_parity_enabled` gate, 60-day configurable realized vol, vol floor + target-vol scaler, persisted `strategy_decisions` audit fields, dashboard/API waterfall exposure, and delta-to-target BUY execution semantics.
 
 ---
 
 **US-5.1: Backtesting Engine**
-**Value:** Critical for long-term confidence; release gate before strategy changes  
-**Effort:** Large (5–8 days)  
-**Data Sources:** yfinance historical (fetch + CSV cache when data/backtest/ empty)  
-**Stage:** Delivered  
+**Value:** Critical for long-term confidence; release gate before strategy changes
+**Effort:** Large (5–8 days)
+**Data Sources:** yfinance historical (fetch + CSV cache when data/backtest/ empty)
+**Stage:** Delivered
 
-**Detailed plan:** `docs/BACKTESTING.md` (includes walk-forward validation and promotion report).  
+**Detailed plan:** `docs/BACKTESTING.md` (includes walk-forward validation and promotion report).
 
-**Status (2026-03):** Delivered  
+**Status (2026-03):** Delivered
 
 **Acceptance Criteria:**
 - [x] Replay historical data; deterministic policy (LLM-free proxy)
@@ -365,35 +365,35 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 
 **US-3.5: Intelligent Order Management (Stop-Loss, Trailing, Limit Dip-Buy)**
 
-**Value:** Automatic downside protection and smarter entries without manual intervention  
-**Effort:** Medium (implemented)  
-**Data Sources:** Existing orders, positions, indicators (ATR), T212 stop/limit APIs  
-**Stage:** Delivered  
+**Value:** Automatic downside protection and smarter entries without manual intervention
+**Effort:** Medium (implemented)
+**Data Sources:** Existing orders, positions, indicators (ATR), T212 stop/limit APIs
+**Stage:** Delivered
 
-**Summary:**  
-Implements an order-management layer that automatically:  
-- Places a **GTC stop-loss after every BUY** using Claude's `stop_loss_pct`.  
-- **Reassesses stops each cycle** using 14-day ATR × configurable multiplier, clamped to `[min_stop_distance_pct, max_stop_distance_pct]`, and (by default) only tightens stops (never widens).  
-- Provides **software trailing stops** using a high-water mark per position and cancel+replace semantics, since T212 has no native trailing stop.  
-- Supports **limit dip-buy entries** when strategy outputs `entry_type: "limit_dip"`, placing a limit BUY below current price with configurable offset and validity.  
+**Summary:**
+Implements an order-management layer that automatically:
+- Places a **GTC stop-loss after every BUY** using Claude's `stop_loss_pct`.
+- **Reassesses stops each cycle** using 14-day ATR × configurable multiplier, clamped to `[min_stop_distance_pct, max_stop_distance_pct]`, and (by default) only tightens stops (never widens).
+- Provides **software trailing stops** using a high-water mark per position and cancel+replace semantics, since T212 has no native trailing stop.
+- Supports **limit dip-buy entries** when strategy outputs `entry_type: "limit_dip"`, placing a limit BUY below current price with configurable offset and validity.
 
 All adjustments are persisted in `stop_loss_adjustments` and emitted as `order_adjustment` Slack notifications. Behaviour and config are documented in `docs/ORDER_MANAGEMENT_PROJECT.md` and referenced from `GOVERNANCE.md` (§3.3 Intelligent Order Management).
 
-**Integration:**  
-- `OrderManager.place_stop_loss()` called after successful BUY executions.  
-- `StopLossManager.reassess_stops()` and `StopLossManager.apply_trailing_stops()` run after execution each cycle.  
-- BUY path branches on `decision.entry_type` (`market` vs `limit_dip`) to choose market vs limit orders.  
+**Integration:**
+- `OrderManager.place_stop_loss()` called after successful BUY executions.
+- `StopLossManager.reassess_stops()` and `StopLossManager.apply_trailing_stops()` run after execution each cycle.
+- BUY path branches on `decision.entry_type` (`market` vs `limit_dip`) to choose market vs limit orders.
 
 ---
 
 **US-3.6: Active Swing Rotation Strategy**
 
-**Value:** Promotes more frequent realized winners and pushes more qualified BUYs through each cycle  
-**Effort:** Medium (implemented)  
-**Data Sources:** Existing strategy outputs, portfolio snapshots, trade_outcomes, notification stack  
-**Stage:** Delivered  
+**Value:** Promotes more frequent realized winners and pushes more qualified BUYs through each cycle
+**Effort:** Medium (implemented)
+**Data Sources:** Existing strategy outputs, portfolio snapshots, trade_outcomes, notification stack
+**Stage:** Delivered
 
-**Summary:**  
+**Summary:**
 Repositions the system from a conservative medium-term allocator toward an **active swing** posture without changing the core architecture:
 - Strategy prompt now targets **2-15 trading day** swings and allows BUYs at lower conviction when supported by catalyst/valuation context.
 - Universe and UOV gates are loosened so more approved BUYs can execute in-cycle (`effective_screening_cooldown_override=4`, `review_cooldown_days=2`, `max_reviews_per_30_days=10`, `immediate_threshold_z=0.0`, `queue_threshold_z=-0.15`).
@@ -401,7 +401,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - Adds deterministic **small-position cleanup** for holdings below `£200`, executed immediately in a pre-strategy pass without LLM involvement for that cleanup ticker.
 - Updates Slack/email summaries and strategy-performance reporting so operators can distinguish submitted, queued, skipped, take-profit, cleanup, and risk-driven outcomes in plain English.
 
-**Integration:**  
+**Integration:**
 - `Strategy` prompt updated in `src/agents/strategy/prompts.py` for active swing posture.
 - `Orchestrator` now applies deterministic take-profit and cleanup overrides before ordinary SELL/REDUCE handling and updates cycle-summary reason codes.
 - `performance_metrics` + `trade_outcomes` now feed the strategy-performance summary using the live wide-schema tables rather than the legacy metric-name/value shape.
@@ -409,10 +409,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-2.1: Conviction Calibration**
-**Value:** Position sizing by calibrated conviction can add 2–5% annually  
-**Effort:** Medium (3–4 days)  
-**Data Sources:** trade_outcomes, strategy_decisions  
-**Stage:** Planned / data-gated  
+**Value:** Position sizing by calibrated conviction can add 2–5% annually
+**Effort:** Medium (3–4 days)
+**Data Sources:** trade_outcomes, strategy_decisions
+**Stage:** Planned / data-gated
 
 **Why not now:** This story stays in the roadmap, but it should not activate until the system has enough `trade_outcomes` to support statistically meaningful calibration bins.
 
@@ -427,10 +427,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-2.2: Dynamic Strategy Weighting**
-**Value:** Stops allocating to strategies that aren't working in current regime  
-**Effort:** Medium (3–4 days)  
-**Data Sources:** trade_outcomes, strategy_decisions  
-**Stage:** Planned / data-gated  
+**Value:** Stops allocating to strategies that aren't working in current regime
+**Effort:** Medium (3–4 days)
+**Data Sources:** trade_outcomes, strategy_decisions
+**Stage:** Planned / data-gated
 
 **Acceptance Criteria:**
 - [ ] Rolling 30-day hit rate per sub-strategy (momentum, mean_reversion, factor)
@@ -557,10 +557,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-4.5: Proactive Macro News Intelligence**
-**Value:** Portfolio-level anticipation of macro shocks/tailwinds via proactive scanning and second-order reasoning  
-**Effort:** Large (8–12 days, phased delivery)  
-**Data Sources:** Existing macro module + Finnhub/AV/yfinance + scheduled scans + optional Brave/Tavily/Browser research  
-**Stage:** Planned  
+**Value:** Portfolio-level anticipation of macro shocks/tailwinds via proactive scanning and second-order reasoning
+**Effort:** Large (8–12 days, phased delivery)
+**Data Sources:** Existing macro module + Finnhub/AV/yfinance + scheduled scans + optional Brave/Tavily/Browser research
+**Stage:** Planned
 
 **Detailed plan:** `docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md`.
 
@@ -654,10 +654,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-7.7: Dashboard HTTPS Domain & Canonical Access**
-**Value:** One safe, canonical public dashboard URL with working operator login over HTTPS  
-**Effort:** Medium (1-2 days)  
-**Data Sources:** Same DB as agent (shared volume)  
-**Stage:** Delivered (2026-03-25)  
+**Value:** One safe, canonical public dashboard URL with working operator login over HTTPS
+**Effort:** Medium (1-2 days)
+**Data Sources:** Same DB as agent (shared volume)
+**Stage:** Delivered (2026-03-25)
 
 **Detailed plan:** `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md`
 
@@ -681,10 +681,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ### P2 — Medium (Calibration, Portfolio, Signals, Validation)
 
 **US-2.3: Moderator Effectiveness Analysis**
-**Value:** Understand which moderator adds value; informs cost optimisation  
-**Effort:** Small (2–3 days)  
-**Data Sources:** moderation_logs, trade_outcomes  
-**Stage:** Planned / data-gated  
+**Value:** Understand which moderator adds value; informs cost optimisation
+**Effort:** Small (2–3 days)
+**Data Sources:** moderation_logs, trade_outcomes
+**Stage:** Planned / data-gated
 
 **Acceptance Criteria:**
 - [ ] Track: trades GPT-4o blocked that would have lost (correct) vs made money (opportunity cost); same for Gemini
@@ -694,10 +694,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-3.2: Enhanced Regime Detection**
-**Value:** Regime-aware strategy selection improves hit rate  
-**Effort:** Medium (3–4 days)  
-**Data Sources:** Existing macro (VIX, S&P, yields)  
-**Stage:** Later / optional  
+**Value:** Regime-aware strategy selection improves hit rate
+**Effort:** Medium (3–4 days)
+**Data Sources:** Existing macro (VIX, S&P, yields)
+**Stage:** Later / optional
 
 **Acceptance Criteria:**
 - [ ] Continuous regime score (not binary BULL/BEAR/SIDEWAYS)
@@ -710,25 +710,25 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-3.3: Correlation-Aware Trade Screening**
-**Value:** Prevents positions that duplicate existing risk exposure  
-**Effort:** Small (2–3 days)  
-**Data Sources:** Historical returns from market_data_cache  
-**Stage:** Next after current week  
+**Value:** Prevents positions that duplicate existing risk exposure
+**Effort:** Small (2–3 days)
+**Data Sources:** Historical returns from market_data_cache
+**Stage:** Delivered
 
-**Why now:** This is one of the highest-value small follow-ons after the current week because it directly improves entry quality without adding much system complexity.
+**Status (2026-03-28):** Delivered as part of the entry-quality guard bundle.
 
 **Acceptance Criteria:**
-- [ ] Before BUY: correlation of candidate with each existing position
-- [ ] If avg correlation with portfolio > 0.6, flag "high correlation" to Claude and moderators
-- [ ] Soft signal in risk manager (existing 0.7 portfolio veto remains)
+- [x] Before BUY: correlation of candidate with each existing position
+- [x] If avg correlation with portfolio > 0.6, flag "high correlation" to Claude and moderators
+- [x] Soft signal in risk manager (existing 0.7 portfolio veto remains)
 
 ---
 
 **US-4.1: Volume-Weighted Signals**
-**Value:** Volume confirms price moves; zero-cost enhancement  
-**Effort:** Small (2–3 days)  
-**Data Sources:** Existing yfinance OHLCV (volume already fetched)  
-**Stage:** Delivered  
+**Value:** Volume confirms price moves; zero-cost enhancement
+**Effort:** Small (2–3 days)
+**Data Sources:** Existing yfinance OHLCV (volume already fetched)
+**Stage:** Delivered
 
 **Status (2026-03-22):** Delivered
 
@@ -740,26 +740,26 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-4.2: Earnings Calendar Integration**
-**Value:** Avoid buying before earnings; position for post-earnings drift  
-**Effort:** Medium (3–4 days)  
-**Data Sources:** yfinance earnings calendar (free)  
-**Stage:** Next after current week  
+**Value:** Avoid buying before earnings; position for post-earnings drift
+**Effort:** Medium (3–4 days)
+**Data Sources:** yfinance earnings calendar (free)
+**Stage:** Delivered
 
-**Why now:** This pairs naturally with US-3.3 as the next small bundle of entry-quality guards once the current posture and workflow stories are done.
+**Status (2026-03-28):** Delivered as part of the entry-quality guard bundle.
 
 **Acceptance Criteria:**
-- [ ] Fetch next earnings date per candidate
-- [ ] Flag "earnings imminent" if within 5 trading days
-- [ ] Post-earnings drift signal (beat estimates, within 10 days)
-- [ ] Config: `avoid_pre_earnings: true/false`
+- [x] Fetch next earnings date per candidate
+- [x] Flag "earnings imminent" if within 5 trading days
+- [x] Post-earnings drift signal (beat estimates, within 10 days)
+- [x] Config: `avoid_pre_earnings: true/false`
 
 ---
 
 **US-5.2: Parameter Sensitivity Analysis**
-**Value:** Focus tuning on parameters that matter  
-**Effort:** Medium (3–4 days)  
-**Data Sources:** Backtesting engine output  
-**Stage:** Later / optional  
+**Value:** Focus tuning on parameters that matter
+**Effort:** Medium (3–4 days)
+**Data Sources:** Backtesting engine output
+**Stage:** Later / optional
 
 **Acceptance Criteria:**
 - [ ] Vary RSI, MA periods, strategy weights, allocation limits
@@ -769,10 +769,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-6.1: Gradient-Boosted Trade Scoring**
-**Value:** Potentially +3–7% annual; requires 500+ trade outcomes  
-**Effort:** Large (investigation + implementation); investigate before committing  
-**Data Sources:** trade_outcomes, strategy_decisions, indicators, fundamentals  
-**Stage:** Later / optional  
+**Value:** Potentially +3–7% annual; requires 500+ trade outcomes
+**Effort:** Large (investigation + implementation); investigate before committing
+**Data Sources:** trade_outcomes, strategy_decisions, indicators, fundamentals
+**Stage:** Later / optional
 
 **Investigation (before building):**
 - [ ] Literature review; feature importance on trade data
@@ -972,10 +972,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ### P3 — Lower priority
 
 **US-4.3: Sector Rotation Signal**
-**Value:** Sector momentum over long term  
-**Effort:** Medium (3–5 days)  
-**Data Sources:** Sector ETFs via yfinance (XLK, XLF, etc.)  
-**Stage:** Later / optional  
+**Value:** Sector momentum over long term
+**Effort:** Medium (3–5 days)
+**Data Sources:** Sector ETFs via yfinance (XLK, XLF, etc.)
+**Stage:** Later / optional
 
 **Acceptance Criteria:**
 - [ ] Relative performance of 11 GICS sectors via ETF proxies
@@ -985,10 +985,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-6.2: Trade Journal Embeddings & Similarity Search**
-**Value:** "Have we seen this pattern before?" context  
-**Effort:** Medium (3–5 days)  
-**Data Sources:** Existing markdown trade journals  
-**Stage:** Planned  
+**Value:** "Have we seen this pattern before?" context
+**Effort:** Medium (3–5 days)
+**Data Sources:** Existing markdown trade journals
+**Stage:** Planned
 
 **Acceptance Criteria:**
 - [ ] Embeddings per journal entry; similarity search for new proposals
@@ -998,10 +998,10 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-6.3: Reinforcement Learning Investigation**
-**Value:** Uncertain; investigate only  
-**Effort:** Investigation (3–5 days)  
-**Data Sources:** Academic literature, backtesting results  
-**Stage:** Planned  
+**Value:** Uncertain; investigate only
+**Effort:** Investigation (3–5 days)
+**Data Sources:** Academic literature, backtesting results
+**Stage:** Planned
 
 **Investigation Criteria:**
 - [ ] Review FinRL-DeepSeek, CVaR-PPO; assess data and interpretability
@@ -1011,12 +1011,12 @@ Repositions the system from a conservative medium-term allocator toward an **act
 ---
 
 **US-3.4: Universal Opportunity Value (UOV) Ranking and Queueing**
-**Value:** Solves capital saturation; deterministic opportunity ranking and queue  
-**Effort:** Medium  
-**Data Sources:** strategy_decisions, moderation_logs, risk_decisions, sub-strategy, sentiment, instruments  
-**Stage:** Delivered  
+**Value:** Solves capital saturation; deterministic opportunity ranking and queue
+**Effort:** Medium
+**Data Sources:** strategy_decisions, moderation_logs, risk_decisions, sub-strategy, sentiment, instruments
+**Stage:** Delivered
 
-**Status (2026-03-03):** Delivered  
+**Status (2026-03-03):** Delivered
 
 **Delivered Scope:**
 - [x] UOV hybrid score (uov_raw), z-score (uov_z), stage penalties (uov_final), EWMA (uov_ewma)
@@ -1056,22 +1056,23 @@ Repositions the system from a conservative medium-term allocator toward an **act
 1. **US-8.1** — Open-Source Launch Preparation
 2. **US-7.3** — Execution Quality & Slippage Monitoring
 3. **US-7.2** — Partial Fill Resubmission
-4. **US-4.2** — Earnings Calendar
+4. **US-2.5** — Market Guidance Layer
 
 **Success criteria:**
 - **US-8.1** — repo can be made public without legal, CI, or contributor-experience gaps
 - **US-7.3** — decision-time price and slippage metrics exist before live trading posture changes
 - **US-7.2** — unfilled remainder can be resubmitted safely when the thesis still holds
-- **US-4.2** — earnings imminence and post-earnings context prevent low-quality entries
+- **US-2.5** — point-in-time guidance snapshots influence screening and are persisted for later review
 
 **Recently delivered:**
 - **US-1.9** — shared Slack/dashboard conversational workflow, confirmation gate, audit trail, and VPS signoff complete
 - **US-7.7** — no public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy
 - **US-7.5** — quick hardening slice shipped with tests and no broader backlog creep
+- **US-4.2** + **US-3.3** — entry-quality guard bundle shipped with earnings awareness, portfolio-overlap warnings, and soft risk advisories
 
 **Next after 8.1:**
 - **US-7.3** then **US-7.2** as the first execution-quality and fill-recovery track
-- **US-4.2** + **US-3.3** as the next small, useful entry-quality bundle
+- **US-2.5** + **US-2.6** as the next learning-loop and attribution bundle once the execution-quality track is stable
 - **US-1.11** once CI, branch governance, and the first post-8.1 execution-quality track are stable
 - **US-2.1** + **US-2.2** + **US-2.3** only once trade-outcome volume is sufficient
 
@@ -1136,11 +1137,11 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 All roadmap items integrate with the existing POC:
 
-1. **Database:** New tables via Alembic migrations; no breaking changes to existing schema.  
-2. **Pipeline:** New steps as post-cycle or pre-strategy hooks; orchestrator flow unchanged.  
-3. **Config:** New keys in settings.yaml with defaults; existing config unchanged.  
-4. **Tests:** New features use in-memory SQLite fixture pattern.  
-5. **Fallback:** Every feature has a disable switch and falls back to current behaviour.  
+1. **Database:** New tables via Alembic migrations; no breaking changes to existing schema.
+2. **Pipeline:** New steps as post-cycle or pre-strategy hooks; orchestrator flow unchanged.
+3. **Config:** New keys in settings.yaml with defaults; existing config unchanged.
+4. **Tests:** New features use in-memory SQLite fixture pattern.
+5. **Fallback:** Every feature has a disable switch and falls back to current behaviour.
 6. **Logging:** New computations logged to database for audit.
 
 The POC runs continuously and accumulates data while we add features in priority order.

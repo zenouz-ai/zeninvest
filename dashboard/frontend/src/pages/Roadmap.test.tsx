@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest'
 import {
   DELIVERED_COUNT,
   MILESTONES,
+  PARTIAL_COUNT,
   PIPELINE_COUNT,
   PROGRESS_PCT,
+  TOTAL_COUNT,
 } from '../data/roadmap'
 import Roadmap, { getTimelineSections, resolveRoadmapTab } from './Roadmap'
 
@@ -110,7 +112,8 @@ describe('timeline section grouping', () => {
   })
 
   it('preserves roadmap counts after the redesign', () => {
-    expect(DELIVERED_COUNT + PIPELINE_COUNT).toBe(MILESTONES.length)
-    expect(PROGRESS_PCT).toBe(Math.round((DELIVERED_COUNT / MILESTONES.length) * 100))
+    expect(DELIVERED_COUNT + PARTIAL_COUNT + PIPELINE_COUNT).toBe(TOTAL_COUNT)
+    expect(TOTAL_COUNT).toBe(MILESTONES.length)
+    expect(PROGRESS_PCT).toBe(Math.round((DELIVERED_COUNT / TOTAL_COUNT) * 100))
   })
 })

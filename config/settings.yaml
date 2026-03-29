@@ -36,6 +36,9 @@ risk:
   max_single_stock_pct: 20
   max_sector_pct: 40
   max_correlation: 0.7
+  correlation_warning_threshold: 0.6
+  correlation_warning_lookback_days: 60
+  correlation_warning_min_history_days: 20
   cautious_drawdown_pct: 30  # CAUTIOUS at 30% drawdown; practice-friendly (real money: consider 5/15)
   halt_drawdown_pct: 40     # HALTED at 40% drawdown
   daily_loss_halt_pct: 2
@@ -59,6 +62,9 @@ strategy:
   min_conviction: 70
   min_conviction_no_moderators: 78
   min_conviction_one_moderator: 70
+  avoid_pre_earnings: true
+  pre_earnings_window_trading_days: 5
+  post_earnings_drift_window_trading_days: 10
 
 moderation:
   require_consensus: true
@@ -74,6 +80,7 @@ data_providers:
   alpha_vantage_base_url: https://www.alphavantage.co/query
   macro_intelligence_enabled: true
   volume_signals_enabled: true   # US-4.1: compute OBV + 20-day volume ratio for signal confirmation
+  earnings_calendar_enabled: true
   sector_fallback_yfinance: true  # Use SPDR ETFs when Alpha Vantage SECTOR fails
   cache_ttl_hours:
     ohlcv_indicators: 4

@@ -76,6 +76,48 @@ def format_market_context(market_context: dict[str, Any]) -> str:
         if len(lines) > 1:
             sections.append("\n".join(lines))
 
+    earnings = market_context.get("earnings", {})
+    overlap = market_context.get("portfolio_overlap", {})
+    if earnings or overlap:
+        lines = ["## Entry Quality Guards"]
+        next_earnings = earnings.get("next_earnings_date")
+        if next_earnings:
+            days = earnings.get("trading_days_to_earnings")
+            imminent = "Yes" if earnings.get("earnings_imminent") else "No"
+            if days is not None:
+                lines.append(f"- Next Earnings: {next_earnings} ({days} trading days, imminent: {imminent})")
+            else:
+                lines.append(f"- Next Earnings: {next_earnings} (imminent: {imminent})")
+        recent_earnings = earnings.get("recent_earnings_date")
+        if recent_earnings:
+            surprise = earnings.get("recent_earnings_surprise_pct")
+            surprise_text = f"{surprise:.2f}%" if surprise is not None else "unknown"
+            lines.append(f"- Recent Earnings: {recent_earnings} (surprise: {surprise_text})")
+        if earnings.get("post_earnings_drift_active"):
+            drift_bias = earnings.get("post_earnings_drift_bias", "unknown")
+            drift_change = earnings.get("post_earnings_price_change_pct")
+            drift_change_text = f"{drift_change:.2f}%" if drift_change is not None else "unknown"
+            lines.append(f"- Post-Earnings Drift: {drift_bias} ({drift_change_text})")
+        avg_corr = overlap.get("avg_correlation")
+        max_corr = overlap.get("max_correlation")
+        if avg_corr is not None:
+            max_corr_text = f", max {max_corr:.2f}" if max_corr is not None else ""
+            high_flag = "Yes" if overlap.get("high_correlation_flag") else "No"
+            lines.append(
+                f"- Portfolio Overlap: avg {avg_corr:.2f}{max_corr_text} (high correlation: {high_flag})"
+            )
+        top_overlaps = overlap.get("top_overlaps") or []
+        if top_overlaps:
+            lines.append(
+                "- Top Overlaps: "
+                + ", ".join(
+                    f"{item.get('ticker', 'UNKNOWN')} {float(item.get('correlation', 0.0)):.2f}"
+                    for item in top_overlaps[:2]
+                )
+            )
+        if len(lines) > 1:
+            sections.append("\n".join(lines))
+
     # --- Market Conditions ---
     macro = market_context.get("macro", {})
     if macro:

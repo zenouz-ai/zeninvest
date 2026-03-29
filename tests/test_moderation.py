@@ -76,6 +76,25 @@ def sample_market_context():
             "sector": "Technology",
             "market_cap": 2800000000000,
         },
+        "earnings": {
+            "next_earnings_date": "2026-04-30",
+            "trading_days_to_earnings": 3,
+            "earnings_imminent": True,
+            "recent_earnings_date": "2026-01-30",
+            "recent_earnings_surprise_pct": 4.25,
+            "post_earnings_drift_active": True,
+            "post_earnings_drift_bias": "positive",
+            "post_earnings_price_change_pct": 3.5,
+        },
+        "portfolio_overlap": {
+            "avg_correlation": 0.66,
+            "max_correlation": 0.74,
+            "high_correlation_flag": True,
+            "top_overlaps": [
+                {"ticker": "MSFT_US_EQ", "correlation": 0.74},
+                {"ticker": "NVDA_US_EQ", "correlation": 0.58},
+            ],
+        },
         "macro": {
             "vix": 18.5,
             "market_regime": "BULL",
@@ -459,6 +478,9 @@ class TestContextFormatter:
         assert "Volume vs 20-day avg: 1.65x" in text
         assert "Fundamentals" in text
         assert "P/E: 28.5" in text
+        assert "Entry Quality Guards" in text
+        assert "Next Earnings: 2026-04-30" in text
+        assert "Portfolio Overlap: avg 0.66" in text
         assert "Market Conditions" in text
         assert "BULL" in text
         assert "VIX: 18.5" in text

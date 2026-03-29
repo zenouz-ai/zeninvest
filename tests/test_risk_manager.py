@@ -288,3 +288,23 @@ class TestEvaluateTrade:
             num_positions=5,
         ))
         assert verdict.verdict == "REJECT"
+
+    def test_entry_quality_advisories_appear_without_changing_approval(self, risk_mgr):
+        verdict = risk_mgr.evaluate_trade(**self._default_params(
+            entry_quality_context={
+                "earnings": {
+                    "earnings_imminent": True,
+                    "next_earnings_date": "2026-04-30",
+                    "trading_days_to_earnings": 3,
+                },
+                "portfolio_overlap": {
+                    "high_correlation_flag": True,
+                    "avg_correlation": 0.66,
+                    "top_overlaps": [{"ticker": "MSFT_US_EQ", "correlation": 0.74}],
+                },
+            },
+        ))
+        assert verdict.verdict == "APPROVE"
+        assert "earnings imminent" in verdict.reasoning.lower()
+        assert "high portfolio overlap" in verdict.reasoning.lower()
+        assert verdict.advisory_context is not None

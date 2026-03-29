@@ -30,6 +30,7 @@ uvicorn = {extras = ["standard"], version = "^0.41.0"}
 pydantic = ">=2.0.0"
 requests = "^2.32.5"
 slack-sdk = ">=3.27.0"
+lxml = ">=5.3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0.0"

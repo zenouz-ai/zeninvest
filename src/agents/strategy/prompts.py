@@ -1,5 +1,7 @@
 """Prompt templates for Claude strategy synthesis."""
 
+from src.utils.config import get_settings
+
 STRATEGY_SYSTEM_PROMPT = """You are a conviction-led stock picker running an autonomous investment system.
 Your goal is to compound capital by actively buying underpriced stocks with credible upside while exiting much more slowly and mostly at meaningful profits.
 You synthesize signals from three quantitative strategies
@@ -27,6 +29,8 @@ Decision framework:
 - When strategies conflict (e.g. momentum says BUY, factor rank is low), default to HOLD unless
   one signal is very strong (80+) with supportive news, valuation, or analyst context.
 - Output one decision per ticker. Use BUY when upside is credible, HOLD when the thesis remains intact, and QUEUED only when a name is promising but truly not ready.
+- Treat imminent earnings and duplicate-risk overlap as entry-quality guardrails.
+  They are soft warnings, not hard vetoes, but strong warnings should usually defer a fresh BUY.
 - HOLDING PERIOD DISCIPLINE: Avoid REDUCE/SELL on positions held less than 24 hours unless:
   (1) stop-loss is hit, (2) risk limits exceeded (sector/single-stock), (3) severe fundamental
   deterioration or material negative news. Rapid reversals erode returns via transaction costs
@@ -98,6 +102,12 @@ on sectors and holdings. It should inform conviction and risk framing, but not o
 stock-specific evidence by itself.
 {macro_context}
 
+## ENTRY QUALITY GUARDS
+Use these per-ticker guardrails before proposing new BUYs. Earnings-imminent and duplicate-risk
+flags are advisory, not deterministic vetoes, but they should materially influence conviction and
+whether a ticker is better expressed as BUY versus HOLD/QUEUED.
+{entry_quality_guards}
+
 ## CURRENT RISK BUDGET
 - System State: {system_state}
 - VIX: {vix} (>25 = elevated volatility, reduce position sizes; >35 = extreme, max 5%)
@@ -122,6 +132,7 @@ stock-specific evidence by itself.
 - Min 2% / Max {max_position_pct}% per position
 - Min 10% cash buffer
 - {state_constraints}
+- {pre_earnings_policy}
 - You MUST include every ticker above in your decisions array. No exceptions.
 
 Respond with this exact JSON structure:
@@ -162,6 +173,7 @@ def build_strategy_prompt(
     news_sentiment: str,
     macro_context: str,
     company_profiles: str,
+    entry_quality_guards: str,
     tickers_to_decide: str,
     system_state: str,
     vix: float | None,
@@ -184,11 +196,17 @@ def build_strategy_prompt(
         state_constraints = "HALTED: DO NOT propose any trades. System is liquidating."
     else:
         state_constraints = "Normal operation."
+    pre_earnings_policy = (
+        "Avoid_pre_earnings is enabled: for new entries, prefer HOLD/QUEUED over BUY when earnings are within the configured pre-earnings window unless the upside case is unusually strong."
+        if get_settings().avoid_pre_earnings
+        else "Avoid_pre_earnings is disabled: treat earnings timing as informational context only."
+    )
 
     return STRATEGY_USER_PROMPT.format(
         portfolio_state=portfolio_state,
         market_regime=market_regime,
         company_profiles=company_profiles,
+        entry_quality_guards=entry_quality_guards or "No entry-quality guardrail data available.",
         tickers_to_decide=tickers_to_decide or "None",
         momentum_proposals=momentum_proposals,
         mean_reversion_proposals=mean_reversion_proposals,
@@ -209,4 +227,5 @@ def build_strategy_prompt(
         position_pnl=position_pnl or "No open positions.",
         strategy_performance=strategy_performance or "Insufficient trade history for strategy performance metrics.",
         state_constraints=state_constraints,
+        pre_earnings_policy=pre_earnings_policy,
     )

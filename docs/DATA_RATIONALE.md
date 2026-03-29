@@ -522,4 +522,4 @@ Used for batch universe enrichment and Agentic Research. Limits: Brave Search 2,
 - [Architecture](ARCHITECTURE.md) — system diagrams and full pipeline flow
 - [Governance](GOVERNANCE.md) — risk rules that consume these data points
 - [Competitive Analysis](COMPETITIVE_ANALYSIS.md) — how our data choices compare to alternatives
-- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — delivered and planned data enhancements (volume delivered; earnings and sector rotation still planned)
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md) — delivered and planned data enhancements (volume and earnings delivered; sector rotation still planned)

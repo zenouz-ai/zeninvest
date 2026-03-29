@@ -36,6 +36,7 @@ class RiskVerdict:
     rules_checked: list[str] = field(default_factory=list)
     triggered_rules: list[str] = field(default_factory=list)
     reasoning: str = ""
+    advisory_context: dict[str, Any] | None = None
 
 
 class RiskManager:
@@ -462,6 +463,7 @@ class RiskManager:
         daily_loss_halt_until: datetime | None,
         num_positions: int,
         system_state: str,
+        entry_quality_context: dict[str, Any] | None = None,
         is_existing_winner: bool = False,
         cycle_id: str | None = None,
         conviction: int = 0,
@@ -538,6 +540,8 @@ class RiskManager:
         rules_checked = [r.rule_name for r in results]
         triggered = [r for r in results if not r.passed]
         triggered_names = [r.rule_name for r in triggered]
+        advisory_context = self._normalize_entry_quality_context(entry_quality_context)
+        advisory_suffix = self._format_advisories(advisory_context)
 
         # Hard reject if drawdown halt triggered
         drawdown_result = next((r for r in results if r.rule_name == "drawdown" and "HALT" in r.message), None)
@@ -550,7 +554,8 @@ class RiskManager:
                 adjusted_allocation_pct=None,
                 rules_checked=rules_checked,
                 triggered_rules=triggered_names,
-                reasoning=drawdown_result.message,
+                reasoning=self._append_advisories(drawdown_result.message, advisory_suffix),
+                advisory_context=advisory_context,
             )
             self._log_decision(verdict, cycle_id)
             return verdict
@@ -564,7 +569,8 @@ class RiskManager:
                 adjusted_allocation_pct=proposed_allocation_pct,
                 rules_checked=rules_checked,
                 triggered_rules=[],
-                reasoning="All risk checks passed",
+                reasoning=self._append_advisories("All risk checks passed", advisory_suffix),
+                advisory_context=advisory_context,
             )
             self._log_decision(verdict, cycle_id)
             return verdict
@@ -583,8 +589,12 @@ class RiskManager:
                     adjusted_allocation_pct=min_adjusted,
                     rules_checked=rules_checked,
                     triggered_rules=triggered_names,
-                    reasoning=f"Resized from {proposed_allocation_pct:.1f}% to {min_adjusted:.1f}%: " +
-                              "; ".join(r.message for r in triggered),
+                    reasoning=self._append_advisories(
+                        f"Resized from {proposed_allocation_pct:.1f}% to {min_adjusted:.1f}%: "
+                        + "; ".join(r.message for r in triggered),
+                        advisory_suffix,
+                    ),
+                    advisory_context=advisory_context,
                 )
                 self._log_decision(verdict, cycle_id)
                 return verdict
@@ -598,10 +608,59 @@ class RiskManager:
             adjusted_allocation_pct=None,
             rules_checked=rules_checked,
             triggered_rules=triggered_names,
-            reasoning="; ".join(r.message for r in triggered),
+            reasoning=self._append_advisories("; ".join(r.message for r in triggered), advisory_suffix),
+            advisory_context=advisory_context,
         )
         self._log_decision(verdict, cycle_id)
         return verdict
+
+    @staticmethod
+    def _append_advisories(reasoning: str, advisory_suffix: str) -> str:
+        if not advisory_suffix:
+            return reasoning
+        return f"{reasoning}. {advisory_suffix}"
+
+    @staticmethod
+    def _normalize_entry_quality_context(entry_quality_context: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not entry_quality_context:
+            return None
+        earnings = entry_quality_context.get("earnings") or {}
+        overlap = entry_quality_context.get("portfolio_overlap") or {}
+        if not earnings.get("earnings_imminent") and not overlap.get("high_correlation_flag"):
+            return None
+        return {
+            "earnings": earnings,
+            "portfolio_overlap": overlap,
+        }
+
+    @staticmethod
+    def _format_advisories(entry_quality_context: dict[str, Any] | None) -> str:
+        if not entry_quality_context:
+            return ""
+
+        advisories: list[str] = []
+        earnings = entry_quality_context.get("earnings") or {}
+        overlap = entry_quality_context.get("portfolio_overlap") or {}
+        if earnings.get("earnings_imminent"):
+            next_earnings = earnings.get("next_earnings_date", "unknown date")
+            days = earnings.get("trading_days_to_earnings")
+            if days is not None:
+                advisories.append(f"Advisory: earnings imminent in {days} trading days ({next_earnings})")
+            else:
+                advisories.append(f"Advisory: earnings imminent ({next_earnings})")
+        if overlap.get("high_correlation_flag"):
+            avg_corr = overlap.get("avg_correlation")
+            top_overlaps = overlap.get("top_overlaps") or []
+            counterparties = ", ".join(item.get("ticker", "") for item in top_overlaps[:2] if item.get("ticker"))
+            base = (
+                f"Advisory: high portfolio overlap (avg correlation {avg_corr:.2f})"
+                if avg_corr is not None
+                else "Advisory: high portfolio overlap"
+            )
+            if counterparties:
+                base += f" vs {counterparties}"
+            advisories.append(base)
+        return "; ".join(advisories)
 
     def _log_decision(self, verdict: RiskVerdict, cycle_id: str | None) -> None:
         """Log risk decision to database."""
@@ -618,6 +677,7 @@ class RiskManager:
                 rules_checked_json=json.dumps(verdict.rules_checked),
                 triggered_rules_json=json.dumps(verdict.triggered_rules),
                 reasoning=verdict.reasoning,
+                portfolio_state_json=json.dumps(verdict.advisory_context) if verdict.advisory_context else None,
             ))
             session.commit()
         except Exception as e:

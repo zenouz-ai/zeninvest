@@ -240,6 +240,18 @@ class Settings:
         return int(self.risk.get("min_holding_hours_before_reduce", 24))
 
     @property
+    def correlation_warning_threshold(self) -> float:
+        return float(self.risk.get("correlation_warning_threshold", 0.6))
+
+    @property
+    def correlation_warning_lookback_days(self) -> int:
+        return max(2, int(self.risk.get("correlation_warning_lookback_days", 60)))
+
+    @property
+    def correlation_warning_min_history_days(self) -> int:
+        return max(2, int(self.risk.get("correlation_warning_min_history_days", 20)))
+
+    @property
     def risk_parity_enabled(self) -> bool:
         return bool(self.risk.get("risk_parity_enabled", False))
 
@@ -314,6 +326,18 @@ class Settings:
     def min_conviction_one_moderator(self) -> int:
         return int(self.strategy["min_conviction_one_moderator"])
 
+    @property
+    def avoid_pre_earnings(self) -> bool:
+        return bool(self.strategy.get("avoid_pre_earnings", True))
+
+    @property
+    def pre_earnings_window_trading_days(self) -> int:
+        return max(1, int(self.strategy.get("pre_earnings_window_trading_days", 5)))
+
+    @property
+    def post_earnings_drift_window_trading_days(self) -> int:
+        return max(1, int(self.strategy.get("post_earnings_drift_window_trading_days", 10)))
+
     # --- Moderation ---
     @property
     def moderation(self) -> dict[str, Any]:
@@ -358,6 +382,11 @@ class Settings:
     def volume_signals_enabled(self) -> bool:
         """Whether to compute and expose OBV / volume ratio signals in indicators."""
         return bool(self.data_providers.get("volume_signals_enabled", True))
+
+    @property
+    def earnings_calendar_enabled(self) -> bool:
+        """Whether to fetch per-ticker earnings context from yfinance."""
+        return bool(self.data_providers.get("earnings_calendar_enabled", True))
 
     def cache_ttl_hours(self, data_type: str) -> int:
         """Cache TTL in hours for a data type (ohlcv_indicators, fundamentals, etc.)."""

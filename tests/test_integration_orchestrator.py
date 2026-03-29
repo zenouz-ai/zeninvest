@@ -1,5 +1,6 @@
 """End-to-end orchestrator integration coverage for US-7.4."""
 
+import json
 from types import SimpleNamespace
 from types import MethodType
 
@@ -389,3 +390,95 @@ def test_risk_parity_disabled_preserves_current_target_and_null_metadata(
     assert strategy_row.risk_parity_trailing_vol_pct is None
     assert strategy_row.risk_parity_applied is None
     assert risk_row.proposed_allocation_pct == 10.0
+
+
+def test_entry_quality_advisories_persist_through_dry_run_cycle(
+    orchestrator_test_harness,
+    orchestrator_db_session,
+):
+    orchestrator_test_harness.seed_state()
+    portfolio_data = {
+        "cash": 5_000.0,
+        "total_value": 10_000.0,
+        "invested": 5_000.0,
+        "positions": [
+            {
+                "ticker": "MSFT_US_EQ",
+                "quantity": 10.0,
+                "current_price": 250.0,
+                "value_gbp": 2_500.0,
+                "pnl_pct": 5.0,
+                "instrument": {"ticker": "MSFT_US_EQ"},
+            }
+        ],
+        "num_positions": 1,
+        "daily_pnl_pct": 0.0,
+        "total_return_pct": 0.0,
+        "alpha_pct": 0.0,
+    }
+    shared_closes = [100 + idx for idx in range(90)]
+    stocks_data = [
+        {
+            "ticker": "MSFT_US_EQ",
+            "name": "Microsoft Corp.",
+            "relative_strength_6m": 70.0,
+            "six_month_return": 0.16,
+            "ohlcv": {"close": shared_closes},
+            "indicators": {"current_price": 250.0, "close_prices": shared_closes},
+            "fundamentals": {"sector": "Technology", "industry": "Software", "market_cap": 2_500_000_000_000},
+        },
+        {
+            "ticker": "AAPL_US_EQ",
+            "name": "Apple Inc.",
+            "relative_strength_6m": 72.0,
+            "six_month_return": 0.18,
+            "ohlcv": {"close": shared_closes},
+            "indicators": {"current_price": 190.0, "close_prices": shared_closes},
+            "fundamentals": {"sector": "Technology", "industry": "Consumer Electronics", "market_cap": 2_800_000_000_000},
+            "earnings": {
+                "next_earnings_date": "2026-04-30",
+                "trading_days_to_earnings": 3,
+                "earnings_imminent": True,
+                "recent_earnings_date": "2026-01-30",
+                "recent_earnings_surprise_pct": 4.5,
+                "post_earnings_drift_active": True,
+                "post_earnings_drift_bias": "positive",
+                "post_earnings_price_change_pct": 3.2,
+            },
+            "portfolio_overlap": {
+                "avg_correlation": 0.74,
+                "max_correlation": 0.74,
+                "high_correlation_flag": True,
+                "top_overlaps": [{"ticker": "MSFT_US_EQ", "correlation": 0.74}],
+            },
+        },
+    ]
+    orchestrator = orchestrator_test_harness.build_orchestrator(
+        dry_run=True,
+        portfolio_data=portfolio_data,
+        stocks_data=stocks_data,
+        decisions=[
+            {
+                "ticker": "AAPL_US_EQ",
+                "action": "BUY",
+                "target_allocation_pct": 6.0,
+                "conviction": 84,
+                "primary_strategy": "momentum",
+                "reasoning": "Breakout with constructive earnings backdrop",
+            },
+        ],
+    )
+
+    result = orchestrator.run_cycle()
+
+    risk_row = orchestrator_db_session.query(RiskDecision).filter(
+        RiskDecision.cycle_id == result["cycle_id"],
+        RiskDecision.ticker == "AAPL_US_EQ",
+    ).one()
+    advisory_payload = json.loads(risk_row.portfolio_state_json)
+
+    assert result["status"] == "completed"
+    assert "earnings imminent" in risk_row.reasoning.lower()
+    assert "high portfolio overlap" in risk_row.reasoning.lower()
+    assert advisory_payload["earnings"]["earnings_imminent"] is True
+    assert advisory_payload["portfolio_overlap"]["high_correlation_flag"] is True

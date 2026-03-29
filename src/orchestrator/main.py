@@ -35,6 +35,7 @@ from src.agents.reporting.journal import generate_trade_journal
 from src.agents.reporting.performance_tracker import update_performance_metrics
 from src.agents.reporting.trade_outcome_tracker import update_trade_outcomes
 from src.agents.risk.risk_parity import RiskParitySizer
+from src.agents.risk.portfolio_overlap import analyze_candidate_portfolio_overlap, default_portfolio_overlap
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
 from src.data.database import get_session
@@ -2123,6 +2124,7 @@ class Orchestrator:
             # Build company profiles for top candidates
             all_stock_tickers = [s.get("ticker", "") for s in stocks_data if s.get("ticker")][:self.settings.max_candidates]
             company_profiles = self._build_company_profiles(stocks_data, all_stock_tickers)
+            entry_quality_guards = self._build_entry_quality_guard_summary(stocks_data, all_stock_tickers)
             uov_swap_context = self.opportunity_scorer.build_swap_context(existing_tickers)
 
             # Shared research executor for strategy + moderation (pipeline-wide budget)
@@ -2145,6 +2147,7 @@ class Orchestrator:
                 news_sentiment=news_summary,
                 macro_context=macro_context_summary,
                 company_profiles=company_profiles,
+                entry_quality_guards=entry_quality_guards,
                 system_state=current_state,
                 vix=vix,
                 cash_pct=cash_pct,
@@ -2512,6 +2515,7 @@ class Orchestrator:
                     strategy_assessment=strategy_result.get("market_assessment", ""),
                     sector=sector,
                 )
+                entry_quality_context = self._get_entry_quality_context(ticker, stocks_data)
 
                 mod_result = self.moderation_panel.review_trade(
                     trade_proposal=decision,
@@ -2594,6 +2598,7 @@ class Orchestrator:
                     daily_loss_halt_until=state_info.get("daily_loss_halt_until"),
                     num_positions=projected_num_positions,
                     system_state=current_state,
+                    entry_quality_context=entry_quality_context,
                     is_existing_winner=ticker in existing_tickers,
                     cycle_id=cycle_id,
                     conviction=conviction,
@@ -3468,6 +3473,10 @@ class Orchestrator:
         logger.info(f"Total stocks analyzed: {len(stocks_data)} "
                      f"(positions: {len(current_positions)}, "
                      f"candidates: {len(stocks_data) - len(current_positions)})")
+        self._annotate_portfolio_overlap(
+            stocks_data=stocks_data,
+            current_positions=current_positions,
+        )
         return stocks_data
 
     def _execute_trade(
@@ -4058,6 +4067,8 @@ class Orchestrator:
         stock_data = next((s for s in stocks_data if s.get("ticker") == ticker), {})
         indicators = stock_data.get("indicators", {})
         fundamentals = stock_data.get("fundamentals", {})
+        earnings = stock_data.get("earnings", {})
+        portfolio_overlap = stock_data.get("portfolio_overlap", {})
 
         # Find sub-strategy signals for this ticker
         momentum_signal = None
@@ -4110,6 +4121,8 @@ class Orchestrator:
         return {
             "indicators": indicators,
             "fundamentals": fundamentals,
+            "earnings": earnings,
+            "portfolio_overlap": portfolio_overlap,
             "macro": {
                 "vix": vix,
                 "market_regime": market_regime,
@@ -4130,6 +4143,17 @@ class Orchestrator:
             "analyst_data": analyst_data_map.get(ticker, {}),
             "news_sentiment": effective_news,
             "strategy_assessment": strategy_assessment,
+        }
+
+    def _get_entry_quality_context(
+        self,
+        ticker: str,
+        stocks_data: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        stock = next((item for item in stocks_data if item.get("ticker") == ticker), {})
+        return {
+            "earnings": stock.get("earnings", {}),
+            "portfolio_overlap": stock.get("portfolio_overlap", {}),
         }
 
     def _get_sector(self, ticker: str, stocks_data: list[dict]) -> str:
@@ -4207,6 +4231,102 @@ class Orchestrator:
                     "description": summary,
                 }
         return {"industry": "Unknown", "market_cap": None, "description": ""}
+
+    def _build_entry_quality_guard_summary(
+        self,
+        stocks_data: list[dict[str, Any]],
+        tickers: list[str],
+    ) -> str:
+        """Build per-ticker entry-quality guardrail text for the strategy prompt."""
+        if not tickers:
+            return "No entry-quality guardrail data available."
+
+        data_by_ticker = {str(stock.get("ticker", "")): stock for stock in stocks_data}
+        lines: list[str] = []
+        for ticker in tickers:
+            stock = data_by_ticker.get(ticker, {})
+            earnings = stock.get("earnings", {}) or {}
+            overlap = stock.get("portfolio_overlap", {}) or {}
+            segments: list[str] = []
+
+            next_earnings = earnings.get("next_earnings_date")
+            if next_earnings:
+                days = earnings.get("trading_days_to_earnings")
+                imminent = "imminent" if earnings.get("earnings_imminent") else "not imminent"
+                if days is not None:
+                    segments.append(f"earnings {next_earnings} ({days} trading days, {imminent})")
+                else:
+                    segments.append(f"earnings {next_earnings} ({imminent})")
+            else:
+                segments.append("earnings date unavailable")
+
+            recent_earnings = earnings.get("recent_earnings_date")
+            if recent_earnings:
+                surprise = earnings.get("recent_earnings_surprise_pct")
+                surprise_text = f"{surprise:.2f}%" if surprise is not None else "unknown"
+                drift_bias = earnings.get("post_earnings_drift_bias", "unknown")
+                drift_move = earnings.get("post_earnings_price_change_pct")
+                drift_move_text = f"{drift_move:.2f}%" if drift_move is not None else "unknown"
+                if earnings.get("post_earnings_drift_active"):
+                    segments.append(
+                        f"recent earnings {recent_earnings}, surprise {surprise_text}, drift {drift_bias} ({drift_move_text})"
+                    )
+                else:
+                    segments.append(f"recent earnings {recent_earnings}, surprise {surprise_text}")
+
+            avg_corr = overlap.get("avg_correlation")
+            if avg_corr is not None:
+                top_overlaps = overlap.get("top_overlaps") or []
+                top_text = ", ".join(
+                    f"{item.get('ticker', 'UNKNOWN')} {float(item.get('correlation', 0.0)):.2f}"
+                    for item in top_overlaps[:2]
+                )
+                flag_text = "high overlap" if overlap.get("high_correlation_flag") else "overlap ok"
+                corr_text = f"avg corr {avg_corr:.2f} ({flag_text})"
+                if top_text:
+                    corr_text += f" vs {top_text}"
+                segments.append(corr_text)
+            else:
+                segments.append("portfolio overlap unavailable")
+
+            lines.append(f"- {ticker}: " + " | ".join(segments))
+        return "\n".join(lines)
+
+    def _annotate_portfolio_overlap(
+        self,
+        *,
+        stocks_data: list[dict[str, Any]],
+        current_positions: list[dict[str, Any]],
+    ) -> None:
+        """Attach candidate-vs-portfolio overlap context to every analyzed ticker."""
+        if not stocks_data:
+            return
+
+        held_tickers = {
+            ticker
+            for position in current_positions
+            if (ticker := self._ticker_from_position(position))
+        }
+        close_prices_by_ticker = self._get_close_prices_by_ticker(stocks_data)
+
+        for stock in stocks_data:
+            ticker = str(stock.get("ticker", "")).strip().upper()
+            candidate_prices = close_prices_by_ticker.get(ticker, [])
+            position_histories = {
+                held_ticker: prices
+                for held_ticker, prices in close_prices_by_ticker.items()
+                if held_ticker in held_tickers and held_ticker != ticker
+            }
+            if candidate_prices and position_histories:
+                stock["portfolio_overlap"] = analyze_candidate_portfolio_overlap(
+                    candidate_prices,
+                    position_histories,
+                    threshold=self.settings.correlation_warning_threshold,
+                    lookback_days=self.settings.correlation_warning_lookback_days,
+                    min_history_days=self.settings.correlation_warning_min_history_days,
+                )
+            else:
+                stock["portfolio_overlap"] = default_portfolio_overlap()
 
     def _safe_moderation_to_dict(
         self,
