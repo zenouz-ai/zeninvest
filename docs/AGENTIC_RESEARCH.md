@@ -30,7 +30,7 @@ This project is **US-4.4** in the sophistication roadmap.
 
 The pipeline shares a single `ResearchExecutor` and `ResearchBudget` across strategy and moderation for pipeline-wide 35-call enforcement.
 
-Implementation checklist and rollout steps are maintained in [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md).
+Implementation checklist and rollout steps are maintained in [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](archive/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) (archived — all tasks delivered).
 
 ### Benefits
 
@@ -526,7 +526,7 @@ Remember: Focus on tail risks and second-order effects, not first-order thesis c
 
 The detailed execution checklist is intentionally maintained in a single location:
 
-- [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md)
+- [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](archive/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) (archived — all tasks delivered)
 
 High-level phases remain:
 

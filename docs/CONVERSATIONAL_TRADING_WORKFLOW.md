@@ -399,7 +399,7 @@ Use this sequence as the default delivery plan. Estimates assume one developer w
 | US-1.9-T9 | Cross-channel continuity | Slack<->Dashboard session continuation rules and conflict handling | T6, T8 | 1 day |
 | US-1.9-T10 | Research orchestration depth | Optional tool routing (committee-only vs deep), research log writes, budget-aware policy | US-4.4 maturity + T3 | 1-1.5 days |
 | US-1.9-T11 | Test suite + fixtures | Unit/integration tests for session lifecycle, confirm gate, APIs, Slack threading, concurrency | T1-T10 | 1.5-2 days |
-| US-1.9-T12 | Docs + runbooks | Update README, CLAUDE, ARCHITECTURE, DASHBOARD, GOVERNANCE, CHAT_AND_COMMANDS, DEPLOYMENT, LOCAL_SETUP | T1-T11 | 0.5-1 day |
+| US-1.9-T12 | Docs + runbooks | Update README, CLAUDE, ARCHITECTURE, DASHBOARD, GOVERNANCE, CONVERSATIONAL_TRADING_WORKFLOW, DEPLOYMENT, LOCAL_SETUP | T1-T11 | 0.5-1 day |
 
 Portfolio-rule user story note:
 
@@ -451,7 +451,7 @@ Portfolio-rule user story note:
 
 ## Related Documents
 
-- [Chat and Commands](CHAT_AND_COMMANDS.md) (US-1.5/US-1.6 tactical plan)
+- [Chat and Commands](archive/CHAT_AND_COMMANDS.md) (US-1.5/US-1.6 tactical plan — archived)
 - [Dashboard](DASHBOARD.md) (US-1.7 architecture and APIs)
 - [Agentic Research](AGENTIC_RESEARCH.md) (US-4.4 tool routing capabilities)
 - [Architecture](ARCHITECTURE.md) (system-wide data flow)

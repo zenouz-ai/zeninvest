@@ -677,8 +677,7 @@ poetry run alembic upgrade head
 
 ## Related Notes
 
-- [Deployment (VPS)](DEPLOYMENT.md)
-- [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md)
+- [Deployment (VPS)](DEPLOYMENT.md) (§13 covers dashboard deployment)
 - [Data Export Runbook](DATA_EXPORT_RUNBOOK.md)
 - [Architecture](ARCHITECTURE.md)
 - [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md)

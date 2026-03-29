@@ -33,7 +33,7 @@ isProject: false
 This document is the **routing-policy source of truth** for follow-up research decisions.
 
 - Architecture/tool schema source: [AGENTIC_RESEARCH.md](AGENTIC_RESEARCH.md)
-- Execution checklist source: [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md)
+- Execution checklist source: [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](archive/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) (archived)
 
 ## Implemented So Far
 

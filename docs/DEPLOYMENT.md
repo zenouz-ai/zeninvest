@@ -486,7 +486,7 @@ sudo systemctl start investment-agent-slack-listener.service
 
 Detailed rationale, verification commands, and the target architecture are documented in:
 
-- [VPS Runtime Stability Plan](VPS_RUNTIME_STABILITY_PLAN.md)
+- [VPS Runtime Stability Plan](archive/VPS_RUNTIME_STABILITY_PLAN.md) (archived — delivered as US-7.6)
 - [VPS Systemd Runbook](VPS_SYSTEMD_RUNBOOK.md)
 
 ### 4.7 Verify Service Operation

@@ -361,6 +361,5 @@ See handoff note (2026-03-19) for full VPS migration steps.
 
 - [SOPHISTICATION_ROADMAP.md](SOPHISTICATION_ROADMAP.md) — full feature backlog
 - [ARCHITECTURE.md](ARCHITECTURE.md) — pipeline and component overview
-- [DEPLOYMENT.md](DEPLOYMENT.md) — VPS deployment guide
-- [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md) — dashboard VPS deployment
+- [DEPLOYMENT.md](DEPLOYMENT.md) — VPS deployment guide (§13 covers dashboard)
 - [CLAUDE.md](../CLAUDE.md) — AI context file; documentation maintenance table
