@@ -191,6 +191,7 @@ export default function PublicOverview() {
             ['Portfolio', '/portfolio', 'Normalized holdings, allocation, and protection state.'],
             ['Runs', '/runs', 'Last 5 runs with high-level health.'],
             ['Opportunity', '/opportunity', '5 public-safe opportunity previews.'],
+            ['Insights', '/insights', 'Live market guidance, with attribution kept in preview mode.'],
             ['Order Mgmt', '/orders', 'Static preview only.'],
             ['Chat', '/chat', 'Static preview only.'],
             ['Evolution', '/evolution', 'Static preview only.'],

@@ -165,6 +165,16 @@ def format_market_context(market_context: dict[str, Any]) -> str:
         macro_action_plan = macro.get("macro_action_plan") or {}
         if macro_action_plan.get("summary"):
             lines.append(f"- Macro Action Plan: {macro_action_plan['summary'][:500]}")
+        guidance_summary = macro.get("guidance_summary")
+        if guidance_summary:
+            lines.append(f"- Market Guidance: {str(guidance_summary)[:500]}")
+        guidance_sector_label = macro.get("guidance_sector_label")
+        if guidance_sector_label:
+            rationale = str(macro.get("guidance_sector_rationale") or "").strip()
+            guidance_line = f"- Sector Guidance: {guidance_sector_label}"
+            if rationale:
+                guidance_line += f" — {rationale[:300]}"
+            lines.append(guidance_line)
         sections.append("\n".join(lines))
 
     # --- Sub-Strategy Signals ---

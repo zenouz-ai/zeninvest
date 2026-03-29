@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { runsApi, portfolioApi, eventsApi, statusApi, costsApi, dashboardApi, ordersApi, universeApi, systemApi, performanceApi, macroApi } from '../api/client'
-import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail, MacroSummary } from '../types'
+import { runsApi, portfolioApi, eventsApi, statusApi, costsApi, dashboardApi, ordersApi, universeApi, systemApi, performanceApi, macroApi, insightsApi } from '../api/client'
+import type { Run, PortfolioSnapshot, Event, Order, InstrumentDetail, MacroSummary, GuidanceSnapshot, StrategyChangeEpisode } from '../types'
 import { safeFormat } from '../utils/date'
 import { cleanTicker } from '../types'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
@@ -130,6 +130,10 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
 
   const fetchMacroSummary = useCallback(() => macroApi.summary().catch(() => null), [])
   const macroResult = useAsyncData<MacroSummary | null>(fetchMacroSummary)
+  const fetchGuidanceSummary = useCallback(() => insightsApi.getLatestGuidance().catch(() => null), [])
+  const guidanceResult = useAsyncData<GuidanceSnapshot | null>(fetchGuidanceSummary)
+  const fetchEpisodes = useCallback(() => insightsApi.listEpisodes().catch(() => []), [])
+  const episodeResult = useAsyncData<StrategyChangeEpisode[]>(fetchEpisodes)
 
   const fetchDailyCosts = useCallback(async () => {
     const raw = await costsApi.getDaily({ days: 31 })
@@ -170,6 +174,11 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const runFeed = runFeedResult.data ?? []
   const dailyCosts = dailyCostsResult.data ?? []
   const perf = perfResult.data
+  const latestGuidance = guidanceResult.data
+  const activeEpisodes = useMemo(
+    () => (episodeResult.data ?? []).filter((item) => item.status === 'confirmed').slice(0, 3),
+    [episodeResult.data]
+  )
 
   // Last run cost (depends on latestRun)
   const [lastRunCost, setLastRunCost] = useState<{ total_gbp: number } | null>(null)
@@ -247,9 +256,13 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
     ordersResult.refetch()
     runFeedResult.refetch()
     macroResult.refetch()
+    guidanceResult.refetch()
+    episodeResult.refetch()
     dailyCostsResult.refetch()
   }, [
     dailyCostsResult,
+    episodeResult,
+    guidanceResult,
     historicalEventsResult,
     latestRunResult,
     macroResult,
@@ -543,6 +556,50 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
             delta={monthlyDelta}
             deltaColor={monthlyDeltaColor}
           />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-panel border border-terminal-border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-terminal-text-dim">Market Guidance</div>
+                <div className="mt-1 text-base font-semibold text-terminal-text">Current Screening Tilt</div>
+              </div>
+              <Link to="/insights" className="text-xs text-cyan hover:underline">Open Insights</Link>
+            </div>
+            {latestGuidance ? (
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <StatusPill label={latestGuidance.regime} variant={latestGuidance.regime === 'RISK_OFF' ? 'alert' : latestGuidance.regime === 'RISK_ON' ? 'active' : 'dim'} dot />
+                  <StatusPill label={latestGuidance.status} variant={latestGuidance.status === 'active' ? 'live' : latestGuidance.status === 'stale' ? 'warning' : 'alert'} />
+                </div>
+                <p className="text-sm text-terminal-text-dim">{latestGuidance.prompt_summary ?? latestGuidance.rationale}</p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-terminal-text-dim">No guidance snapshot has been recorded yet.</p>
+            )}
+          </div>
+          <div className="rounded-panel border border-terminal-border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-wider text-terminal-text-dim">Strategy Attribution</div>
+                <div className="mt-1 text-base font-semibold text-terminal-text">Active Confirmed Episodes</div>
+              </div>
+              <Link to="/insights" className="text-xs text-cyan hover:underline">Open Insights</Link>
+            </div>
+            {activeEpisodes.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {activeEpisodes.map((episode) => (
+                  <div key={episode.id} className="text-sm text-terminal-text-dim">
+                    <span className="text-terminal-text">{episode.title}</span>
+                    <span className="ml-2 text-xs">since {safeFormat(episode.effective_start_at, 'MMM dd, HH:mm', '—')}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-terminal-text-dim">No confirmed strategy episodes are active yet.</p>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 border-t border-terminal-border/70 pt-3 md:flex-row md:items-center md:justify-between">

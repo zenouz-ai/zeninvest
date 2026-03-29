@@ -6,7 +6,7 @@ last_updated: 2026-03-29
 
 # Dashboard Deployment
 
-> VPS deployment plan for the 11-page monitoring dashboard (US-1.8 + US-7.7 + US-7.8).
+> VPS deployment plan for the 12-page monitoring dashboard (US-1.8 + US-7.7 + US-7.8).
 
 ## Purpose
 
@@ -175,7 +175,7 @@ Rollback:
 ## Security Note
 
 With the canonical HTTPS domain:
-- **Public vs operator split:** Anonymous access is limited to intentionally exposed `/api/public/*` read models and disabled preview surfaces. Public live routes cover roadmap docs, performance snapshot, universe, portfolio, runs, opportunity, costs, and World News / macro read models. Trading controls, events, chat execution, evolution planning, research, and all mutation endpoints remain operator-only.
+- **Public vs operator split:** Anonymous access is limited to intentionally exposed `/api/public/*` read models and disabled preview surfaces. Public live routes cover roadmap docs, performance snapshot, universe, portfolio, runs, opportunity, sanitized Insights guidance, costs, and World News / macro read models. Trading controls, events, chat execution, evolution planning, research, strategy-attribution review, and all mutation endpoints remain operator-only.
 - **Operator login:** Set these in `.env`:
   ```
   DASHBOARD_OPERATOR_USERNAME=<operator-username>
@@ -200,6 +200,8 @@ With the canonical HTTPS domain:
   - `/api/public/portfolio/history`
   - `/api/public/runs`
   - `/api/public/opportunity`
+  - `/api/public/insights/guidance/latest`
+  - `/api/public/insights/guidance/history`
   - `/api/public/macro/*`
 - **CORS:** Dashboard API restricts cross-origin requests via `dashboard.cors_origins` in `config/settings.yaml`. Default: `https://zeninvest.zenouz.ai` plus localhost dev origins. If you override it, keep the canonical HTTPS domain and localhost origins:
   ```yaml

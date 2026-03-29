@@ -12,6 +12,7 @@ describe('navigation', () => {
       'Runs',
       'World News',
       'Roadmap',
+      'Insights',
       'Opportunity',
       'Order Mgmt',
       'Chat',

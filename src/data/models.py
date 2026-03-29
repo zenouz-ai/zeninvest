@@ -524,6 +524,120 @@ class TradeOutcome(Base):
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
+class GuidanceSnapshot(Base):
+    """Point-in-time market guidance snapshot used by a cycle."""
+
+    __tablename__ = "guidance_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    cycle_id = Column(String(50), nullable=False, index=True)
+    mode = Column(String(20), nullable=False, default="active")
+    status = Column(String(20), nullable=False, default="active")  # active, stale, failed
+    regime = Column(String(20), nullable=False, default="NEUTRAL")
+    confidence_score = Column(Float, nullable=False, default=0.0)
+    freshness_hours = Column(Float, nullable=True)
+    rationale = Column(Text, nullable=True)
+    prompt_summary = Column(Text, nullable=True)
+    bias_payload_json = Column(Text, nullable=True)
+    evidence_summary_json = Column(Text, nullable=True)
+    raw_payload_json = Column(Text, nullable=True)
+
+
+class GuidanceSectorScore(Base):
+    """Per-sector guidance score attached to a guidance snapshot."""
+
+    __tablename__ = "guidance_sector_scores"
+    __table_args__ = (
+        UniqueConstraint("guidance_snapshot_id", "sector", name="uq_guidance_sector_scores_snapshot_sector"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    guidance_snapshot_id = Column(Integer, ForeignKey("guidance_snapshots.id", ondelete="CASCADE"), nullable=False, index=True)
+    sector = Column(String(100), nullable=False, index=True)
+    score = Column(Float, nullable=False, default=0.0)
+    label = Column(String(20), nullable=False, default="neutral")  # favored, neutral, avoid
+    rationale = Column(Text, nullable=True)
+    evidence_json = Column(Text, nullable=True)
+
+
+class CycleContextSnapshot(Base):
+    """Per-cycle context, guidance influence, and attribution metadata."""
+
+    __tablename__ = "cycle_context_snapshots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cycle_id = Column(String(50), nullable=False, unique=True, index=True)
+    run_type = Column(String(20), nullable=False, default="scheduled")
+    captured_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    repo_sha = Column(String(100), nullable=True)
+    config_hash = Column(String(64), nullable=True)
+    strategy_prompt_hash = Column(String(64), nullable=True)
+    strategy_fingerprint_hash = Column(String(64), nullable=True)
+    risk_fingerprint_hash = Column(String(64), nullable=True)
+    execution_fingerprint_hash = Column(String(64), nullable=True)
+    guidance_snapshot_id = Column(Integer, ForeignKey("guidance_snapshots.id", ondelete="SET NULL"), nullable=True, index=True)
+    guidance_mode = Column(String(20), nullable=True)
+    prompt_guidance_summary = Column(Text, nullable=True)
+    applied_screening_bias_json = Column(Text, nullable=True)
+    pre_guidance_candidate_count = Column(Integer, nullable=True)
+    post_guidance_candidate_count = Column(Integer, nullable=True)
+    pre_guidance_sector_distribution_json = Column(Text, nullable=True)
+    post_guidance_sector_distribution_json = Column(Text, nullable=True)
+    active_strategy_episode_ids_json = Column(Text, nullable=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class StrategyChangeEpisode(Base):
+    """Human-reviewed strategy change episode for observational attribution."""
+
+    __tablename__ = "strategy_change_episodes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    status = Column(String(20), nullable=False, default="proposed", index=True)  # proposed, confirmed, rejected
+    title = Column(String(200), nullable=False)
+    summary = Column(Text, nullable=False)
+    change_type = Column(String(30), nullable=False, index=True)
+    review_confidence = Column(Float, nullable=True)
+    commit_start_sha = Column(String(100), nullable=True)
+    commit_end_sha = Column(String(100), nullable=True)
+    effective_start_at = Column(DateTime, nullable=False, index=True)
+    effective_end_at = Column(DateTime, nullable=True, index=True)
+    confirmed_at = Column(DateTime, nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        index=True,
+    )
+
+
+class StrategyChangeEvidence(Base):
+    """Commit-level evidence for a proposed or confirmed strategy episode."""
+
+    __tablename__ = "strategy_change_evidence"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    episode_id = Column(Integer, ForeignKey("strategy_change_episodes.id", ondelete="CASCADE"), nullable=False, index=True)
+    commit_sha = Column(String(100), nullable=False, index=True)
+    committed_at = Column(DateTime, nullable=False, index=True)
+    author_name = Column(String(200), nullable=True)
+    title = Column(String(200), nullable=False)
+    summary = Column(Text, nullable=True)
+    affected_files_json = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class SlackCommandLog(Base):
     """Audit log for Slack-triggered trade commands (US-1.6)."""
 

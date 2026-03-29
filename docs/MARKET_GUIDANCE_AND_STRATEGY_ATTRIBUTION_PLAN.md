@@ -1,7 +1,7 @@
 ---
 tags: [market-guidance, learning-loop, strategy-attribution, roadmap]
-status: proposed
-last_updated: 2026-03-28
+status: current
+last_updated: 2026-03-29
 ---
 
 # Market Guidance and Strategy Attribution Plan
@@ -26,6 +26,8 @@ changes can be measured instead of guessed.
 - First rollout is **dashboard + DB first**.
 - The first pass includes a **best-effort backfill** over recent git history.
 - Attribution is **observational**, not causal.
+- Guidance ships **active immediately** with fail-open baseline screening when stale or unavailable.
+- Prompt hashing is based on the **static prompt template surface**, not the rendered per-cycle prompt.
 
 ## User Story 1: Market Guidance Layer
 
@@ -51,8 +53,7 @@ the cycle started and produces:
 - `macro_state`
 - `macro_signal_logs`
 - `macro_headlines`
-- `research_logs`
-- `strategy_decisions`
+- `strategy_decisions` (structured fields only)
 - `opportunity_score_snapshots`
 - `trade_outcomes`
 - `portfolio_snapshots`
@@ -86,18 +87,18 @@ This means each cycle context snapshot should persist:
 - `guidance_snapshot_id`
 - `guidance_mode`
 - `applied_screening_bias_json`
-- `candidate_sector_distribution_json`
+- `pre_guidance_sector_distribution_json`
+- `post_guidance_sector_distribution_json`
 - `pre_guidance_candidate_count`
 - `post_guidance_candidate_count`
 - `prompt_guidance_summary`
 
 ### V1 behavior
 
-- Guidance can change sector quotas, ranking, and candidate priority.
+- Guidance can change sector ordering, per-sector caps, and candidate priority.
 - Guidance can be injected into strategy and moderation prompts.
 - Guidance cannot veto risk-approved trades in v1.
-- V1 should ship with `shadow` support so baseline and guided screening can be
-  compared before guidance becomes default-active.
+- V1 supports both `active` and `shadow`, but the production default is `active`.
 
 ## User Story 2: Strategy Episode Attribution
 
@@ -158,18 +159,20 @@ Each confirmed strategy episode should support:
 
 ## Dashboard Surface
 
-Add a dedicated operator-only Insights surface with two tabs:
+Add an Insights surface with a public/private split:
 
 1. `Market Guidance`
    - latest guidance snapshot
    - sector heat map
    - guidance history and freshness
    - cycle influence audit
+   - public mode exposes a sanitized guidance-only view via `/api/public/insights/guidance/*`
 2. `Strategy Attribution`
    - proposed and confirmed strategy episodes
    - commit evidence
    - effective windows
    - pre/post impact summaries
+   - remains operator-only; public `/insights` shows preview-only messaging for this tab
 
 Keep existing pages lightweight:
 
@@ -178,12 +181,12 @@ Keep existing pages lightweight:
 
 ## Rollout Order
 
-1. Persist `cycle_context_snapshots` and guidance influence data.
-2. Build `guidance_snapshots` and `guidance_sector_scores` in shadow mode.
-3. Expose the first dashboard views for guidance history and influence audit.
-4. Add strategy episode ingestion and confirmation workflow.
-5. Run best-effort git backfill for the recent month.
-6. Expose attribution views after enough episode metadata exists.
+1. Persist `cycle_context_snapshots` with repo/config/prompt fingerprints at cycle start.
+2. Build and persist `guidance_snapshots` / `guidance_sector_scores` before screening each cycle.
+3. Apply active screening tilt and persist pre/post candidate distributions per cycle.
+4. Expose authenticated `/insights` views for guidance history and cycle influence audit.
+5. Add strategy episode ingestion, best-effort 30-day git backfill, and operator confirmation.
+6. Expose observational pre/post attribution summaries with low-sample and overlap warnings.
 
 ## Guardrails
 

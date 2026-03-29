@@ -1,6 +1,6 @@
 # Testing the Dashboard Backend
 
-## Full dashboard check (11 pages + full API)
+## Full dashboard check (12 pages + full API)
 
 Use this to confirm the full API and frontend are in place.
 
@@ -50,7 +50,7 @@ Then either:
 - **Option A — SPA via FastAPI:** From repo root, ensure backend is serving; open **http://localhost:8000**. FastAPI serves the built frontend from `dashboard/frontend/dist` when that folder exists.
 - **Option B — Dev server (proxies to backend):** From `dashboard/frontend`, run `npm run dev` and open **http://localhost:3000**.
 
-### 6. Verify all 11 pages
+### 6. Verify all 12 pages
 
 In the browser, confirm each route loads without errors:
 
@@ -63,6 +63,7 @@ In the browser, confirm each route loads without errors:
 | World News      | `/world-news`          | Macro regime, timeline, headline archive; public mode omits operator-only portfolio bias |
 | Roadmap         | `/roadmap`             | Project timeline, topic filter, Architecture tab |
 | Opportunity     | `/opportunity`         | Signed-out: capped preview examples; signed-in: full UOV queue and scores table |
+| Insights        | `/insights`            | Signed-out: sanitized market-guidance history; signed-in: full guidance + attribution review |
 | Order Management| `/orders`              | Signed-out: preview-only explainer; signed-in: stops, health, execution quality, adjustments |
 | Costs           | `/costs`               | Signed-out: aggregate totals only; signed-in: degradation badge, daily chart, monthly table |
 | Chat            | `/chat`                | Signed-out: preview-only demo transcript; signed-in: full operator console |

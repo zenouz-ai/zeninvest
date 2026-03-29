@@ -16,6 +16,7 @@ const PublicUniverse = lazy(() => import('./pages/PublicUniverse'))
 const PublicRuns = lazy(() => import('./pages/PublicRuns'))
 const PublicPortfolio = lazy(() => import('./pages/PublicPortfolio'))
 const PublicOpportunity = lazy(() => import('./pages/PublicOpportunity'))
+const PublicInsights = lazy(() => import('./pages/PublicInsights'))
 const PublicOrderManagement = lazy(() => import('./pages/PublicOrderManagement'))
 const PublicCosts = lazy(() => import('./pages/PublicCosts'))
 const PublicChat = lazy(() => import('./pages/PublicChat'))
@@ -24,6 +25,7 @@ const Opportunity = lazy(() => import('./pages/Opportunity'))
 const OrderManagement = lazy(() => import('./pages/OrderManagement'))
 const Costs = lazy(() => import('./pages/Costs'))
 const Roadmap = lazy(() => import('./pages/Roadmap'))
+const Insights = lazy(() => import('./pages/Insights'))
 const WorldNews = lazy(() => import('./pages/WorldNews'))
 const Chat = lazy(() => import('./pages/Chat'))
 const Evolution = lazy(() => import('./pages/Evolution'))
@@ -316,6 +318,7 @@ function DashboardShell() {
               }
             />
             <Route path="/roadmap" element={<Roadmap />} />
+            <Route path="/insights" element={authenticated ? <Insights /> : <PublicInsights />} />
             <Route
               path="/dashboard"
               element={(

@@ -99,6 +99,12 @@ macro:
   research_routing_mode: static_first    # static_first | followup_on_materiality | bounded_mini_research
   search_provider_policy: brave_primary_tavily_fallback  # Matches US-4.4 production default
 
+guidance:
+  enabled: true
+  mode: active   # active | shadow
+  trade_outcome_min_sample: 12
+  staleness_hours: 48
+
 universe:
   max_candidates: 40          # Max new stocks to screen per cycle (increased from 30)
   candidates_per_sector: 5    # Min candidates sampled from each sector

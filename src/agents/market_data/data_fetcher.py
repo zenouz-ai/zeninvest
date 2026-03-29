@@ -52,6 +52,7 @@ class DataFetcher:
         self.settings = get_settings()
         self._finnhub: FinnhubClient | None = finnhub
         self._alpha_vantage: AlphaVantageClient | None = alpha_vantage
+        self.last_screening_metadata: dict[str, Any] = {}
 
     @property
     def finnhub(self) -> FinnhubClient:
@@ -527,6 +528,7 @@ class DataFetcher:
         max_candidates: int | None = None,
         positions_count: int | None = None,
         cycle_id: str | None = None,
+        guidance: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Screen the instrument universe for diverse candidates.
 
@@ -550,6 +552,15 @@ class DataFetcher:
         session = get_session()
 
         try:
+            self.last_screening_metadata = {
+                "guidance_applied": False,
+                "fallback_used": False,
+                "pre_guidance_candidate_count": 0,
+                "post_guidance_candidate_count": 0,
+                "pre_guidance_sector_distribution": {},
+                "post_guidance_sector_distribution": {},
+                "applied_bias": {},
+            }
             # Cooldown cutoff: exclude instruments screened within the window
             # For intraday, use effective (capped at cycle_hours) so each cycle gets fresh pool
             cooldown_hours = getattr(
@@ -599,6 +610,10 @@ class DataFetcher:
                 [inst.ticker for inst in instruments],
             )
 
+            eligible_instruments = [inst for inst in instruments if inst.ticker not in exclude]
+            self.last_screening_metadata["pre_guidance_candidate_count"] = len(eligible_instruments)
+            self.last_screening_metadata["pre_guidance_sector_distribution"] = self._build_sector_distribution(eligible_instruments)
+
             # Bucket by market-cap tier and review/new status.
             # "New" = never reviewed; "review" = previously reviewed, but only once the
             # per-ticker cooldown has expired and the rolling 30-day cap has headroom.
@@ -643,13 +658,34 @@ class DataFetcher:
                 target_new = min(int(round(n * new_share)), len(new_bucket))
                 selected: list[Instrument] = []
                 if target_new > 0:
-                    selected.extend(self._sector_balanced_sample(new_bucket, target_new, settings.candidates_per_sector))
+                    selected.extend(
+                        self._sample_bucket_with_guidance(
+                            new_bucket,
+                            target_new,
+                            settings.candidates_per_sector,
+                            guidance=guidance,
+                        )
+                    )
                 remaining = n - len(selected)
                 if remaining > 0:
-                    selected.extend(self._sector_balanced_sample(review_bucket, remaining, settings.candidates_per_sector))
+                    selected.extend(
+                        self._sample_bucket_with_guidance(
+                            review_bucket,
+                            remaining,
+                            settings.candidates_per_sector,
+                            guidance=guidance,
+                        )
+                    )
                 if len(selected) < n:
                     leftover_new = [i for i in new_bucket if i not in selected]
-                    selected.extend(self._sector_balanced_sample(leftover_new, n - len(selected), settings.candidates_per_sector))
+                    selected.extend(
+                        self._sample_bucket_with_guidance(
+                            leftover_new,
+                            n - len(selected),
+                            settings.candidates_per_sector,
+                            guidance=guidance,
+                        )
+                    )
                 return selected[:n]
 
             # Sample within each tier using the configured fresh-vs-review split.
@@ -657,6 +693,10 @@ class DataFetcher:
             selected.extend(_sample_tier(large_new, large_review, n_large))
             selected.extend(_sample_tier(mid_new, mid_review, n_mid))
             selected.extend(_sample_tier(small_new, small_review, n_small))
+
+            if guidance and selected:
+                self.last_screening_metadata["guidance_applied"] = bool(guidance.get("enabled"))
+                self.last_screening_metadata["applied_bias"] = guidance
 
             if not selected:
                 logger.warning(
@@ -696,6 +736,8 @@ class DataFetcher:
                 }
                 for i in selected
             ]
+            self.last_screening_metadata["post_guidance_candidate_count"] = len(candidates)
+            self.last_screening_metadata["post_guidance_sector_distribution"] = self._build_sector_distribution(selected)
             
             # Log universe_updated event
             if DASHBOARD_AVAILABLE and log_event is not None:
@@ -757,6 +799,69 @@ class DataFetcher:
 
         finally:
             session.close()
+
+    @staticmethod
+    def _build_sector_distribution(instruments: list[Any]) -> dict[str, int]:
+        """Return a compact sector distribution for selected instruments."""
+        distribution: dict[str, int] = defaultdict(int)
+        for inst in instruments:
+            sector = str(getattr(inst, "sector", None) or (inst.get("sector") if isinstance(inst, dict) else "Unknown") or "Unknown")
+            distribution[sector] += 1
+        return dict(distribution)
+
+    def _sample_bucket_with_guidance(
+        self,
+        instruments: list[Instrument],
+        n: int,
+        per_sector: int,
+        guidance: dict[str, Any] | None,
+    ) -> list[Instrument]:
+        """Sample a tier bucket, optionally using active guidance."""
+        if not instruments or n <= 0:
+            return []
+        if not guidance or not guidance.get("enabled"):
+            return self._sector_balanced_sample(instruments, n, per_sector)
+
+        by_sector: dict[str, list[Instrument]] = defaultdict(list)
+        for inst in instruments:
+            by_sector[inst.sector or "Unknown"].append(inst)
+
+        favored = set(guidance.get("favored_sectors") or [])
+        avoid = set(guidance.get("avoid_sectors") or [])
+        ordered_sectors = sorted(
+            by_sector.keys(),
+            key=lambda sector: (
+                0 if sector in favored else 2 if sector in avoid else 1,
+                sector,
+            ),
+        )
+
+        selected: list[Instrument] = []
+        fallback_used = False
+        for sector in ordered_sectors:
+            pool = list(by_sector[sector])
+            random.shuffle(pool)
+            if sector in favored:
+                cap = per_sector + 1
+            elif sector in avoid:
+                cap = 1
+            else:
+                cap = per_sector
+            take = min(cap, len(pool), max(0, n - len(selected)))
+            selected.extend(pool[:take])
+            by_sector[sector] = pool[take:]
+            if len(selected) >= n:
+                break
+
+        if len(selected) < n:
+            fallback_used = True
+            leftover = [inst for pool in by_sector.values() for inst in pool if inst not in selected]
+            random.shuffle(leftover)
+            selected.extend(leftover[: max(0, n - len(selected))])
+
+        if fallback_used:
+            self.last_screening_metadata["fallback_used"] = True
+        return selected[:n]
 
     @staticmethod
     def _sector_balanced_sample(

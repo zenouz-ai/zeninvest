@@ -1742,7 +1742,7 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 ## 13. Dashboard VPS Deployment
 
-The web dashboard (activity feed, portfolio, run history, universe, commands, world news, costs, roadmap, and the authenticated Evolution Planner across 11 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-7.7 delivered in repo: the dashboard app is internal-only on the Docker network and the canonical production entrypoint is `https://zeninvest.zenouz.ai` via Cloudflare + Nginx. **CORS:** configure `dashboard.cors_origins` in `config/settings.yaml` with your production domain if you override defaults; the default posture already includes the canonical HTTPS domain plus localhost dev origins.
+The web dashboard (activity feed, portfolio, run history, universe, commands, world news, insights, costs, roadmap, and the authenticated Evolution Planner across 12 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-7.7 delivered in repo: the dashboard app is internal-only on the Docker network and the canonical production entrypoint is `https://zeninvest.zenouz.ai` via Cloudflare + Nginx. **CORS:** configure `dashboard.cors_origins` in `config/settings.yaml` with your production domain if you override defaults; the default posture already includes the canonical HTTPS domain plus localhost dev origins.
 
 ### Access Options
 
@@ -1770,7 +1770,7 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 
 **To rebuild after updates:** `git pull origin main` then `docker compose up -d --build` (or `docker compose up -d --build dashboard` for dashboard-only, `docker compose up -d --build investment-agent` for agent-only). See [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md#updating--rebuilding-the-dashboard).
 
-**Outcome:** Dashboard is running on VPS behind Nginx. The full 11-page dashboard surface is reachable on the canonical HTTPS domain `https://zeninvest.zenouz.ai`, while public access is intentionally constrained to sanitized `/api/public/*` read models and disabled preview surfaces where appropriate. Signed-out visitors can browse the full tab map, but operator pages, SSE activity, and protected APIs still require sign-in, while the FastAPI dashboard service remains internal-only on the Docker network.
+**Outcome:** Dashboard is running on VPS behind Nginx. The full 12-page dashboard surface is reachable on the canonical HTTPS domain `https://zeninvest.zenouz.ai`, while public access is intentionally constrained to sanitized `/api/public/*` read models and disabled preview surfaces where appropriate. Signed-out visitors can browse the full tab map, but operator pages, SSE activity, and protected APIs still require sign-in, while the FastAPI dashboard service remains internal-only on the Docker network.
 
 **Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use the **Dry Run** or **Live Run** buttons on Dashboard Home (Live Run requires confirmation), or `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live) / `... --dry-run` (dry).
 

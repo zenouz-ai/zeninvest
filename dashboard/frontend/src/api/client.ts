@@ -13,12 +13,14 @@ import type {
   EvolutionRun,
   Instrument,
   InstrumentDetail,
+  GuidanceSnapshot,
   MacroHeadline,
   MacroState,
   MacroSummary,
   Order,
   PortfolioSnapshot,
   PortfolioHistoryStart,
+  PublicGuidanceSnapshot,
   PublicMacroState,
   PublicOpportunityPreview,
   PublicPortfolioHistoryPoint,
@@ -26,8 +28,10 @@ import type {
   PublicRunSummary,
   PublicUniverseItem,
   Run,
+  CycleContextSnapshot,
   SlackCommand,
   StopLossCurrent,
+  StrategyChangeEpisode,
   UniverseBubbleItem,
 } from '../types'
 import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
@@ -144,10 +148,56 @@ export const publicApi = {
     const response = await api.get('/api/public/macro/summary')
     return response.data
   },
+  getGuidanceLatest: async (): Promise<PublicGuidanceSnapshot | null> => {
+    const response = await api.get('/api/public/insights/guidance/latest')
+    return response.data
+  },
+  getGuidanceHistory: async (days = 14): Promise<PublicGuidanceSnapshot[]> => {
+    const response = await api.get('/api/public/insights/guidance/history', { params: { days } })
+    return response.data
+  },
   getDoc: async (docKey: string): Promise<string> => {
     const response = await api.get(`/api/public/docs/${docKey}`, {
       responseType: 'text',
     })
+    return response.data
+  },
+}
+
+export const insightsApi = {
+  getLatestGuidance: async (): Promise<GuidanceSnapshot | null> => {
+    const response = await api.get('/api/insights/guidance/latest')
+    return response.data
+  },
+  getGuidanceHistory: async (days = 14): Promise<GuidanceSnapshot[]> => {
+    const response = await api.get('/api/insights/guidance/history', { params: { days } })
+    return response.data
+  },
+  getGuidanceCycleImpact: async (limit = 30): Promise<CycleContextSnapshot[]> => {
+    const response = await api.get('/api/insights/guidance/cycle-impact', { params: { limit } })
+    return response.data
+  },
+  listEpisodes: async (): Promise<StrategyChangeEpisode[]> => {
+    const response = await api.get('/api/insights/episodes')
+    return response.data
+  },
+  getEpisode: async (episodeId: number): Promise<StrategyChangeEpisode> => {
+    const response = await api.get(`/api/insights/episodes/${episodeId}`)
+    return response.data
+  },
+  backfillEpisodes: async (days = 30): Promise<StrategyChangeEpisode[]> => {
+    const response = await api.post('/api/insights/episodes/backfill', { days })
+    return response.data
+  },
+  confirmEpisode: async (
+    episodeId: number,
+    body?: { title?: string; summary?: string; effective_start_at?: string }
+  ): Promise<StrategyChangeEpisode> => {
+    const response = await api.post(`/api/insights/episodes/${episodeId}/confirm`, body ?? {})
+    return response.data
+  },
+  rejectEpisode: async (episodeId: number): Promise<StrategyChangeEpisode> => {
+    const response = await api.post(`/api/insights/episodes/${episodeId}/reject`, {})
     return response.data
   },
 }

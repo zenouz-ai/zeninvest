@@ -43,9 +43,7 @@ last_updated: 2026-03-29
 | Order | ID | Story | Why now | Success criteria |
 |-------|----|-------|---------|------------------|
 | 1 | US-8.1 | Open-Source Launch Preparation | Repo is now the highest-leverage next unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
-| 2 | US-2.5 | Market Guidance Layer | Reusable learning-loop layer now that execution telemetry exists and is auditable | Each cycle records explicit guidance snapshots that can influence screening and later review |
-| 3 | US-2.6 | Strategy Episode Attribution | Follows naturally once guidance/cycle context becomes first-class and reviewable | Repo/config/prompt fingerprints can be mapped to later outcomes and operator review |
-| 4 | US-1.11 | Branch-Based Evolution Runner | Remains gated behind posture/workflow/CI maturity, but is the next evolution story after launch and learning-loop work | Low-risk repo changes can be prepared in isolated branches with validation artifacts |
+| 2 | US-1.11 | Branch-Based Evolution Runner | Next evolution story now that learning-loop context and attribution are first-class | Low-risk repo changes can be prepared in isolated branches with validation artifacts |
 
 ---
 
@@ -100,15 +98,19 @@ last_updated: 2026-03-29
 
 ### Learning Loop & Attribution
 
-- `US-2.5` and `US-2.6` are now defined as the next learning-loop track after the current execution-quality bundle.
-- `US-2.5` must persist which guidance snapshot influenced each cycle so future analysis can reuse the evidence trail instead of inferring it later.
-- `US-2.6` must map repo/config/prompt changes onto cycle-level fingerprints so strategy shifts can be reviewed against later outcomes.
+- `US-2.5` and `US-2.6` are now delivered as one shared metadata track.
+- Shipped scope:
+  - `guidance_snapshots`, `guidance_sector_scores`, and `cycle_context_snapshots`
+  - active screening tilt with fail-open baseline fallback
+  - strategy/moderation guidance context injection
+  - git-backed `strategy_change_episodes` + `strategy_change_evidence`
+  - authenticated `/insights` route with `Market Guidance` and `Strategy Attribution` tabs
 
 ---
 
 ## Next After 8.1
 
-- `US-2.5` + `US-2.6` as the next learning-loop and attribution bundle now that the execution-quality and fill-recovery slice is shipped.
+- `US-1.11` as the next evolution story once CI, branch governance, and the post-launch posture are ready.
 - `US-2.1` + `US-2.2` + `US-2.3` only after trade-outcome volume is high enough to justify calibration work.
 
 ---

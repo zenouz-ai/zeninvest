@@ -445,6 +445,27 @@ class Settings:
             self.macro.get("search_provider_policy", "brave_primary_tavily_fallback")
         )
 
+    # --- Guidance ---
+    @property
+    def guidance(self) -> dict[str, Any]:
+        return self._config.get("guidance", {})
+
+    @property
+    def guidance_enabled(self) -> bool:
+        return bool(self.guidance.get("enabled", True))
+
+    @property
+    def guidance_mode(self) -> str:
+        return str(self.guidance.get("mode", "active"))
+
+    @property
+    def guidance_trade_outcome_min_sample(self) -> int:
+        return int(self.guidance.get("trade_outcome_min_sample", 12))
+
+    @property
+    def guidance_staleness_hours(self) -> int:
+        return int(self.guidance.get("staleness_hours", 48))
+
     # --- Universe Screening ---
     @property
     def universe(self) -> dict[str, Any]:

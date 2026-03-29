@@ -1,6 +1,7 @@
 """Prompt templates for Claude strategy synthesis."""
 
 from src.utils.config import get_settings
+from src.utils.fingerprints import stable_hash
 
 STRATEGY_SYSTEM_PROMPT = """You are a conviction-led stock picker running an autonomous investment system.
 Your goal is to compound capital by actively buying underpriced stocks with credible upside while exiting much more slowly and mostly at meaningful profits.
@@ -228,4 +229,15 @@ def build_strategy_prompt(
         strategy_performance=strategy_performance or "Insufficient trade history for strategy performance metrics.",
         state_constraints=state_constraints,
         pre_earnings_policy=pre_earnings_policy,
+    )
+
+
+def get_strategy_prompt_hash(model_name: str) -> str:
+    """Return a stable hash for the static strategy prompt surface."""
+    return stable_hash(
+        {
+            "model": model_name,
+            "system_prompt": STRATEGY_SYSTEM_PROMPT,
+            "user_prompt": STRATEGY_USER_PROMPT,
+        }
     )

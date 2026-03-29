@@ -24,6 +24,7 @@ from .routers import (
     docs,
     events,
     evolution,
+    insights,
     macro,
     moderation,
     opportunity,
@@ -115,6 +116,7 @@ app.include_router(macro.router, prefix="/api/macro", tags=["macro"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(commands.router, prefix="/api/commands", tags=["commands"])
 app.include_router(evolution.router, prefix="/api/evolution", tags=["evolution"])
+app.include_router(insights.router, prefix="/api/insights", tags=["insights"])
 
 
 @app.get("/health")

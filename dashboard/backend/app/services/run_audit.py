@@ -11,6 +11,8 @@ from sqlalchemy import func
 from src.data.database import get_session
 from src.data.models import (
     CostLog,
+    CycleContextSnapshot,
+    GuidanceSnapshot,
     Instrument,
     MacroHeadline,
     MacroState,
@@ -25,6 +27,7 @@ from src.data.models import (
     RiskDecision,
     StopLossAdjustment,
     StrategyDecision,
+    StrategyChangeEpisode,
     TradeOutcome,
 )
 from src.utils.logger import get_logger
@@ -50,6 +53,9 @@ DATASET_COUNT_MODELS: dict[str, tuple[type[Any], str | None]] = {
     "opportunity_queue": (OpportunityQueue, "updated_at"),
     "macro_state": (MacroState, "timestamp"),
     "macro_headlines": (MacroHeadline, "fetched_at"),
+    "guidance_snapshots": (GuidanceSnapshot, "timestamp"),
+    "cycle_context_snapshots": (CycleContextSnapshot, "captured_at"),
+    "strategy_change_episodes": (StrategyChangeEpisode, "effective_start_at"),
     "research_logs": (ResearchLog, "created_at"),
     "cost_logs": (CostLog, "timestamp"),
 }

@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from src.data.database import get_session
 from src.data.models import (
+    GuidanceSectorScore,
+    GuidanceSnapshot,
     Instrument,
     MacroHeadline,
     MacroState,
@@ -29,6 +31,7 @@ from ..schemas import (
     MacroHeadlineSchema,
     PerformanceMetricSchema,
     PublicCostDailySchema,
+    PublicGuidanceSnapshotSchema,
     PublicCostMonthlySchema,
     PublicMacroStateSchema,
     PublicOpportunityPreviewSchema,
@@ -134,6 +137,31 @@ def _sanitize_public_macro_state(row: MacroState) -> PublicMacroStateSchema:
         action_plan=safe_action_plan,
         sector_summary=row.sector_summary,
         economic_highlights=row.economic_highlights,
+    )
+
+
+def _public_guidance_snapshot(
+    row: GuidanceSnapshot,
+    sector_rows: list[GuidanceSectorScore],
+) -> PublicGuidanceSnapshotSchema:
+    return PublicGuidanceSnapshotSchema(
+        timestamp=row.timestamp,
+        mode=row.mode,
+        status=row.status,
+        regime=row.regime,
+        confidence_score=float(row.confidence_score or 0.0),
+        freshness_hours=row.freshness_hours,
+        rationale=row.rationale,
+        prompt_summary=row.prompt_summary,
+        sector_scores=[
+            {
+                "sector": sector_row.sector,
+                "label": sector_row.label,
+                "rationale": sector_row.rationale,
+            }
+            for sector_row in sector_rows
+            if sector_row.label != "neutral"
+        ][:6],
     )
 
 
@@ -602,5 +630,58 @@ async def get_public_macro_summary():
             "category_counts": category_counts,
             "last_updated": latest.timestamp.isoformat() if latest else None,
         }
+    finally:
+        session.close()
+
+
+@router.get("/insights/guidance/latest", response_model=PublicGuidanceSnapshotSchema | None)
+async def get_public_guidance_latest():
+    """Public-safe latest market guidance snapshot."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    session = get_session()
+    try:
+        row = session.query(GuidanceSnapshot).order_by(desc(GuidanceSnapshot.timestamp)).first()
+        if row is None:
+            return None
+        sector_rows = (
+            session.query(GuidanceSectorScore)
+            .filter(GuidanceSectorScore.guidance_snapshot_id == row.id)
+            .order_by(GuidanceSectorScore.score.desc(), GuidanceSectorScore.sector.asc())
+            .all()
+        )
+        return _public_guidance_snapshot(row, sector_rows)
+    finally:
+        session.close()
+
+
+@router.get("/insights/guidance/history", response_model=list[PublicGuidanceSnapshotSchema])
+async def get_public_guidance_history(
+    days: int = Query(default=14, ge=1, le=90),
+) -> list[PublicGuidanceSnapshotSchema]:
+    """Public-safe recent market guidance history."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    session = get_session()
+    try:
+        rows = (
+            session.query(GuidanceSnapshot)
+            .filter(GuidanceSnapshot.timestamp >= cutoff)
+            .order_by(desc(GuidanceSnapshot.timestamp))
+            .all()
+        )
+        output: list[PublicGuidanceSnapshotSchema] = []
+        for row in rows:
+            sector_rows = (
+                session.query(GuidanceSectorScore)
+                .filter(GuidanceSectorScore.guidance_snapshot_id == row.id)
+                .order_by(GuidanceSectorScore.score.desc(), GuidanceSectorScore.sector.asc())
+                .all()
+            )
+            output.append(_public_guidance_snapshot(row, sector_rows))
+        return output
     finally:
         session.close()

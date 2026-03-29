@@ -14,6 +14,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Runs', to: '/runs', public: true, mobileLabel: 'Run History' },
   { label: 'World News', to: '/world-news', public: true },
   { label: 'Roadmap', to: '/roadmap', public: true },
+  { label: 'Insights', to: '/insights', public: true, inMoreMenu: true },
   { label: 'Opportunity', to: '/opportunity', public: true, inMoreMenu: true },
   { label: 'Order Mgmt', to: '/orders', public: true, inMoreMenu: true },
   { label: 'Chat', to: '/chat', public: true, inMoreMenu: true },

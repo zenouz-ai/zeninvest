@@ -717,3 +717,136 @@ class MacroSummarySchema(BaseModel):
     headline_count_7d: int = 0
     category_counts: dict[str, int] = {}
     last_updated: str | None = None
+
+
+class GuidanceSectorScoreSchema(BaseModel):
+    """Guidance sector tilt for one snapshot."""
+
+    sector: str
+    score: float
+    label: str
+    rationale: str | None = None
+    evidence: list[str] = []
+
+
+class PublicGuidanceSectorScoreSchema(BaseModel):
+    """Public-safe guidance sector tilt."""
+
+    sector: str
+    label: str
+    rationale: str | None = None
+
+
+class PublicGuidanceSnapshotSchema(BaseModel):
+    """Sanitized market guidance snapshot for anonymous viewers."""
+
+    timestamp: datetime
+    mode: str
+    status: str
+    regime: str
+    confidence_score: float
+    freshness_hours: float | None = None
+    rationale: str | None = None
+    prompt_summary: str | None = None
+    sector_scores: list[PublicGuidanceSectorScoreSchema] = []
+
+
+class GuidanceSnapshotSchema(BaseModel):
+    """Persisted guidance snapshot used by a cycle."""
+
+    id: int
+    cycle_id: str
+    timestamp: datetime
+    mode: str
+    status: str
+    regime: str
+    confidence_score: float
+    freshness_hours: float | None = None
+    rationale: str | None = None
+    prompt_summary: str | None = None
+    bias_payload: dict[str, Any] = {}
+    evidence_summary: dict[str, Any] = {}
+    sector_scores: list[GuidanceSectorScoreSchema] = []
+
+
+class CycleContextSnapshotSchema(BaseModel):
+    """Per-cycle context and guidance-attribution metadata."""
+
+    cycle_id: str
+    run_type: str
+    captured_at: datetime
+    repo_sha: str | None = None
+    config_hash: str | None = None
+    strategy_prompt_hash: str | None = None
+    strategy_fingerprint_hash: str | None = None
+    risk_fingerprint_hash: str | None = None
+    execution_fingerprint_hash: str | None = None
+    guidance_snapshot_id: int | None = None
+    guidance_mode: str | None = None
+    prompt_guidance_summary: str | None = None
+    applied_screening_bias: dict[str, Any] = {}
+    pre_guidance_candidate_count: int | None = None
+    post_guidance_candidate_count: int | None = None
+    pre_guidance_sector_distribution: dict[str, int] = {}
+    post_guidance_sector_distribution: dict[str, int] = {}
+    active_strategy_episode_ids: list[int] = []
+
+
+class EpisodeImpactSummarySchema(BaseModel):
+    """Observational pre/post summary for one confirmed episode."""
+
+    window_1d_cycles: int
+    window_7d_cycles: int
+    window_30d_cycles: int
+    pre_cycle_count: int
+    post_cycle_count: int
+    screening_conversion_delta: float
+    low_sample_warning: bool
+    overlap_warning: bool
+    observational_only: bool = True
+
+
+class StrategyChangeEvidenceSchema(BaseModel):
+    """Commit evidence attached to a strategy episode."""
+
+    id: int
+    commit_sha: str
+    committed_at: datetime
+    author_name: str | None = None
+    title: str
+    summary: str | None = None
+    affected_files: list[str] = []
+
+
+class StrategyChangeEpisodeSchema(BaseModel):
+    """Strategy change episode summary/detail schema."""
+
+    id: int
+    status: str
+    title: str
+    summary: str
+    change_type: str
+    review_confidence: float = 0.0
+    commit_start_sha: str | None = None
+    commit_end_sha: str | None = None
+    effective_start_at: datetime
+    effective_end_at: datetime | None = None
+    confirmed_at: datetime | None = None
+    rejected_at: datetime | None = None
+    notes: str | None = None
+    evidence: list[StrategyChangeEvidenceSchema] = []
+    impact_summary: EpisodeImpactSummarySchema | None = None
+
+
+class EpisodeBackfillRequestSchema(BaseModel):
+    """Optional override for git backfill window."""
+
+    days: int = Field(default=30, ge=1, le=90)
+
+
+class EpisodeReviewRequestSchema(BaseModel):
+    """Operator review payload for confirm/reject."""
+
+    title: str | None = Field(default=None, min_length=3, max_length=200)
+    summary: str | None = Field(default=None, min_length=3, max_length=5000)
+    effective_start_at: datetime | None = None

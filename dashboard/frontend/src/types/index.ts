@@ -378,6 +378,109 @@ export interface PublicMacroState {
   economic_highlights: string | null
 }
 
+export interface GuidanceSectorScore {
+  sector: string
+  score: number
+  label: 'favored' | 'neutral' | 'avoid'
+  rationale: string | null
+  evidence: string[]
+}
+
+export interface PublicGuidanceSectorScore {
+  sector: string
+  label: 'favored' | 'neutral' | 'avoid'
+  rationale: string | null
+}
+
+export interface PublicGuidanceSnapshot {
+  timestamp: string
+  mode: 'active' | 'shadow'
+  status: string
+  regime: string
+  confidence_score: number
+  freshness_hours: number | null
+  rationale: string | null
+  prompt_summary: string | null
+  sector_scores: PublicGuidanceSectorScore[]
+}
+
+export interface GuidanceSnapshot {
+  id: number
+  cycle_id: string
+  timestamp: string
+  mode: 'active' | 'shadow'
+  status: string
+  regime: string
+  confidence_score: number
+  freshness_hours: number | null
+  rationale: string | null
+  prompt_summary: string | null
+  bias_payload: Record<string, unknown>
+  evidence_summary: Record<string, unknown>
+  sector_scores: GuidanceSectorScore[]
+}
+
+export interface CycleContextSnapshot {
+  cycle_id: string
+  run_type: string
+  captured_at: string
+  repo_sha: string | null
+  config_hash: string | null
+  strategy_prompt_hash: string | null
+  strategy_fingerprint_hash: string | null
+  risk_fingerprint_hash: string | null
+  execution_fingerprint_hash: string | null
+  guidance_snapshot_id: number | null
+  guidance_mode: string | null
+  prompt_guidance_summary: string | null
+  applied_screening_bias: Record<string, unknown>
+  pre_guidance_candidate_count: number | null
+  post_guidance_candidate_count: number | null
+  pre_guidance_sector_distribution: Record<string, number>
+  post_guidance_sector_distribution: Record<string, number>
+  active_strategy_episode_ids: number[]
+}
+
+export interface EpisodeImpactSummary {
+  window_1d_cycles: number
+  window_7d_cycles: number
+  window_30d_cycles: number
+  pre_cycle_count: number
+  post_cycle_count: number
+  screening_conversion_delta: number
+  low_sample_warning: boolean
+  overlap_warning: boolean
+  observational_only: boolean
+}
+
+export interface StrategyChangeEvidence {
+  id: number
+  commit_sha: string
+  committed_at: string
+  author_name: string | null
+  title: string
+  summary: string | null
+  affected_files: string[]
+}
+
+export interface StrategyChangeEpisode {
+  id: number
+  status: 'proposed' | 'confirmed' | 'rejected'
+  title: string
+  summary: string
+  change_type: string
+  review_confidence: number
+  commit_start_sha: string | null
+  commit_end_sha: string | null
+  effective_start_at: string
+  effective_end_at: string | null
+  confirmed_at: string | null
+  rejected_at: string | null
+  notes: string | null
+  evidence?: StrategyChangeEvidence[]
+  impact_summary?: EpisodeImpactSummary | null
+}
+
 // --- Slack Trade Commands ---
 
 export interface SlackCommand {

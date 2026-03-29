@@ -20,6 +20,8 @@ import click
 from src.agents.execution.order_manager import OrderManager
 from src.agents.execution.stop_loss_manager import StopLossManager
 from src.agents.execution.t212_client import T212Client, calculate_quantity
+from src.agents.attribution import StrategyAttributionService
+from src.agents.guidance import GuidanceService
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.brave_enrichment import (
     get_news_sentiment_fallback,
@@ -38,10 +40,13 @@ from src.agents.risk.risk_parity import RiskParitySizer
 from src.agents.risk.portfolio_overlap import analyze_candidate_portfolio_overlap, default_portfolio_overlap
 from src.agents.risk.risk_manager import RiskManager
 from src.agents.strategy.engine import StrategyEngine
+from src.agents.strategy.prompts import get_strategy_prompt_hash
 from src.data.database import get_session
 from src.data.models import (
     Base,
     CostLog,
+    CycleContextSnapshot,
+    GuidanceSnapshot,
     Instrument,
     MacroHeadline,
     MacroState,
@@ -57,12 +62,15 @@ from src.data.models import (
     RiskDecision,
     StopLossAdjustment,
     StrategyDecision,
+    StrategyChangeEpisode,
+    StrategyChangeEvidence,
     TradeOutcome,
 )
 from src.orchestrator.state_machine import StateMachine
 from src.runtime import RuntimeLockHeldError, acquire_runtime_lock
 from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
+from src.utils.fingerprints import get_repo_sha, stable_hash
 from src.utils.logger import get_logger
 from src.utils.scheduling import is_within_regular_market_session
 from src.utils.ticker_utils import t212_to_yf
@@ -123,6 +131,8 @@ class Orchestrator:
         "portfolio_snapshot",
         "market_data_cache",
         "news_sentiment_cache",
+        "guidance_snapshots",
+        "cycle_context_snapshots",
         "stop_loss_maintenance",
         "trade_outcomes",
         "performance_metrics",
@@ -145,12 +155,72 @@ class Orchestrator:
         self.risk_parity_sizer = RiskParitySizer()
         self.opportunity_scorer = OpportunityScorer()
         self.opportunity_optimizer = OpportunityOptimizer()
+        self.guidance_service = GuidanceService()
+        self.attribution_service = StrategyAttributionService()
 
         self._t212_client: T212Client | None = None
         self._order_manager: OrderManager | None = None
         self._stop_loss_manager: StopLossManager | None = None
         self._last_screened_candidate_count = 0
         self._last_screening_skipped_no_data = 0
+
+    def _build_cycle_fingerprints(self) -> dict[str, str]:
+        """Build stable version fingerprints for cycle attribution."""
+        raw_config = getattr(self.settings, "_config", {})
+        repo_sha = get_repo_sha()
+        config_hash = stable_hash(raw_config)
+        strategy_prompt_hash = get_strategy_prompt_hash(self.settings.strategy_model)
+        strategy_fingerprint_hash = stable_hash(
+            {
+                "repo_sha": repo_sha,
+                "config_hash": config_hash,
+                "strategy_prompt_hash": strategy_prompt_hash,
+                "strategy": raw_config.get("strategy", {}),
+                "guidance_mode": self.settings.guidance_mode,
+                "strategy_model": self.settings.strategy_model,
+            }
+        )
+        risk_fingerprint_hash = stable_hash(
+            {
+                "repo_sha": repo_sha,
+                "risk": raw_config.get("risk", {}),
+            }
+        )
+        execution_fingerprint_hash = stable_hash(
+            {
+                "repo_sha": repo_sha,
+                "trading": raw_config.get("trading", {}),
+                "order_management": raw_config.get("order_management", {}),
+                "opportunity": raw_config.get("opportunity", {}),
+            }
+        )
+        return {
+            "repo_sha": repo_sha,
+            "config_hash": config_hash,
+            "strategy_prompt_hash": strategy_prompt_hash,
+            "strategy_fingerprint_hash": strategy_fingerprint_hash,
+            "risk_fingerprint_hash": risk_fingerprint_hash,
+            "execution_fingerprint_hash": execution_fingerprint_hash,
+        }
+
+    def _upsert_cycle_context_snapshot(self, cycle_id: str, **fields: Any) -> None:
+        """Create or update a cycle context snapshot."""
+        session = get_session()
+        try:
+            row = session.query(CycleContextSnapshot).filter(CycleContextSnapshot.cycle_id == cycle_id).first()
+            if row is None:
+                row = CycleContextSnapshot(cycle_id=cycle_id)
+                session.add(row)
+                session.flush()
+            for key, value in fields.items():
+                if hasattr(row, key):
+                    setattr(row, key, value)
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            logger.warning("Failed to persist cycle context for %s: %s", cycle_id, exc, exc_info=True)
+        finally:
+            session.close()
 
     @property
     def t212_client(self) -> T212Client:
@@ -1606,6 +1676,15 @@ class Orchestrator:
         cycle_start_time = datetime.now(timezone.utc)
         cycle_run_type = "scheduled" if scheduled_cycle_id else ("manual" if not self.dry_run else "dry_run")
         cycle_audit_baselines = self._capture_audit_baselines(self._CYCLE_AUDIT_DATASETS)
+        cycle_fingerprints = self._build_cycle_fingerprints()
+        active_episode_ids = self.attribution_service.resolve_active_episode_ids(cycle_started_at=cycle_start_time)
+        self._upsert_cycle_context_snapshot(
+            cycle_id,
+            run_type=cycle_run_type,
+            captured_at=cycle_start_time,
+            active_strategy_episode_ids_json=json.dumps(active_episode_ids),
+            **cycle_fingerprints,
+        )
         if DASHBOARD_AVAILABLE and ensure_run_record is not None:
             try:
                 ensure_run_record(
@@ -1647,6 +1726,7 @@ class Orchestrator:
         opportunity_evaluations: list[dict[str, Any]] = []
         stocks_data: list[dict[str, Any]] = []
         per_ticker_news: dict[str, str] = {}
+        guidance_snapshot: dict[str, Any] | None = None
         current_failure_stage = "run_cycle"
         current_failure_ticker: str | None = None
 
@@ -1973,6 +2053,19 @@ class Orchestrator:
                 vix = None
                 market_regime = "SIDEWAYS"
 
+            guidance_snapshot = self.guidance_service.build_cycle_guidance(
+                cycle_id=cycle_id,
+                cycle_started_at=cycle_start_time,
+            )
+            if guidance_snapshot:
+                macro["guidance"] = guidance_snapshot
+                self._upsert_cycle_context_snapshot(
+                    cycle_id,
+                    guidance_snapshot_id=guidance_snapshot.get("id"),
+                    guidance_mode=guidance_snapshot.get("mode"),
+                    prompt_guidance_summary=guidance_snapshot.get("prompt_summary"),
+                )
+
             original_positions = portfolio_data.get("positions", [])
             original_existing_tickers = {t for p in original_positions if (t := self._ticker_from_position(p))}
             pre_strategy_cleanup_tickers = self._execute_pre_strategy_cleanup_sells(
@@ -2016,6 +2109,16 @@ class Orchestrator:
                 exclude_tickers=existing_tickers,
                 system_state=current_state,
                 cycle_id=cycle_id,
+                guidance=(guidance_snapshot or {}).get("bias_payload"),
+            )
+            screening_meta = dict(self.data_fetcher.last_screening_metadata or {})
+            self._upsert_cycle_context_snapshot(
+                cycle_id,
+                applied_screening_bias_json=json.dumps(screening_meta, default=str),
+                pre_guidance_candidate_count=screening_meta.get("pre_guidance_candidate_count"),
+                post_guidance_candidate_count=screening_meta.get("post_guidance_candidate_count"),
+                pre_guidance_sector_distribution_json=json.dumps(screening_meta.get("pre_guidance_sector_distribution", {})),
+                post_guidance_sector_distribution_json=json.dumps(screening_meta.get("post_guidance_sector_distribution", {})),
             )
 
             # --- STEP 4: Run strategies ---
@@ -2177,6 +2280,31 @@ class Orchestrator:
                             f"{implication.get('rationale', '')}"
                         )
 
+            guidance_context = (guidance_snapshot or {}) if guidance_snapshot else (macro.get("guidance") or {})
+            if guidance_context:
+                news_parts.append("\n### Market Guidance")
+                news_parts.append(
+                    str(
+                        guidance_context.get("prompt_summary")
+                        or guidance_context.get("rationale")
+                        or "Guidance generated with no compact summary."
+                    )
+                )
+                favored = [
+                    item.get("sector")
+                    for item in guidance_context.get("sector_scores", [])
+                    if item.get("label") == "favored"
+                ][:3]
+                avoid = [
+                    item.get("sector")
+                    for item in guidance_context.get("sector_scores", [])
+                    if item.get("label") == "avoid"
+                ][:3]
+                if favored:
+                    news_parts.append("Favored sectors: " + ", ".join([sector for sector in favored if sector]))
+                if avoid:
+                    news_parts.append("Avoid sectors: " + ", ".join([sector for sector in avoid if sector]))
+
             analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
             news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
             macro_context_summary = "No persisted proactive macro state available."
@@ -2193,6 +2321,15 @@ class Orchestrator:
                 action_plan = macro_state.get("action_plan", {})
                 if action_plan.get("summary"):
                     macro_context_lines.append(f"Action plan: {action_plan['summary']}")
+                if guidance_context:
+                    macro_context_lines.append(
+                        "Guidance: "
+                        + str(
+                            guidance_context.get("prompt_summary")
+                            or guidance_context.get("rationale")
+                            or "No guidance summary available."
+                        )
+                    )
                 macro_context_summary = "\n".join(macro_context_lines)[:1500]
 
             # Build company profiles for top candidates
@@ -3417,6 +3554,7 @@ class Orchestrator:
         exclude_tickers: set[str] | None = None,
         system_state: str = "ACTIVE",
         cycle_id: str | None = None,
+        guidance: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Fetch analysis data for current positions + screened universe candidates.
 
@@ -3466,6 +3604,7 @@ class Orchestrator:
                 exclude_tickers=all_exclude,
                 positions_count=len(current_positions),
                 cycle_id=cycle_id,
+                guidance=guidance,
             )
             self._last_screened_candidate_count = len(candidates)
             self.data_fetcher.mark_instruments_screened(
@@ -4186,11 +4325,20 @@ class Orchestrator:
 
         macro_intel = macro.get("macro_intelligence", {})
         proactive_macro = macro.get("macro_state", {})
+        guidance_context = macro.get("guidance", {}) or {}
         sector_headwind = (
             get_sector_headwind(macro_intel, sector) if macro_intel.get("enabled") else None
         )
         economic_highlights = macro_intel.get("economic_highlights", "")
         sector_summary = macro_intel.get("sector_summary", "")
+        guidance_sector = next(
+            (
+                item
+                for item in guidance_context.get("sector_scores", [])
+                if item.get("sector") == sector
+            ),
+            None,
+        )
 
         return {
             "indicators": indicators,
@@ -4208,6 +4356,9 @@ class Orchestrator:
                 "proactive_confidence": proactive_macro.get("confidence_score"),
                 "proactive_top_signals": proactive_macro.get("top_signals", []),
                 "macro_action_plan": proactive_macro.get("action_plan", {}),
+                "guidance_summary": guidance_context.get("prompt_summary"),
+                "guidance_sector_label": guidance_sector.get("label") if guidance_sector else None,
+                "guidance_sector_rationale": guidance_sector.get("rationale") if guidance_sector else None,
             },
             "sub_strategies": {
                 "momentum": momentum_signal,

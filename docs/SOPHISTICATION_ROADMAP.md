@@ -16,7 +16,7 @@ This document tracks every planned and delivered enhancement to the investment a
 
 ## Roadmap overview (authoritative planning model)
 
-**At a glance:** Delivered **34** · Pipeline **17** · Total **51** · Delivered Progress **67%**
+**At a glance:** Delivered **36** · Pipeline **15** · Total **51** · Delivered Progress **71%**
 
 ### Priority rules
 
@@ -30,9 +30,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | Order | Story | Why it matters now | Success criteria |
 |------|-------|--------------------|------------------|
 | 1 | **US-8.1** Open-Source Launch Preparation | Repo is now the highest-leverage unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
-| 2 | **US-2.5** Market Guidance Layer | Next reusable learning-loop layer now that execution telemetry exists and is auditable | Each cycle records explicit guidance snapshots that can influence screening and later review |
-| 3 | **US-2.6** Strategy Episode Attribution | Follows naturally once guidance and cycle fingerprints are explicit | Repo/config/prompt changes can be reviewed against later outcomes instead of memory |
-| 4 | **US-1.11** Branch-Based Evolution Runner | Still gated, but it is the next evolution story after launch and learning-loop work | Low-risk repo changes can be prepared with validation artifacts and reviewable scope |
+| 2 | **US-1.11** Branch-Based Evolution Runner | The next evolution story now that learning-loop context and attribution are live | Low-risk repo changes can be prepared with validation artifacts and reviewable scope |
 
 ### Near-term umbrella tracks
 
@@ -44,7 +42,7 @@ This document tracks every planned and delivered enhancement to the investment a
 | **Open-Source Launch Readiness** | `US-8.1` | **Active now** | Community readiness matters, but it follows the production and workflow work above |
 | **Execution Quality & Fill Recovery** | delivered `US-7.3` + `US-7.2` | **Delivered** | Market-order telemetry, threshold alerting, open partial visibility, and one guarded retry path are now in place |
 | **Entry Quality Guards** | `US-4.2` + `US-3.3` | **Delivered** | Earnings-aware and duplicate-risk-aware BUY review is now carried through strategy, moderation, and risk reasoning |
-| **Learning Loop & Attribution** | `US-2.5` + `US-2.6` | **Soon after the current execution-quality track** | Turns existing macro/micro/git history into reusable guidance and measured strategy-change evidence instead of ad hoc interpretation |
+| **Learning Loop & Attribution** | delivered `US-2.5` + delivered `US-2.6` | **Delivered** | Cycles now persist guidance influence and repo-linked episode context instead of relying on ad hoc interpretation |
 | **Calibration & Adaptation** | `US-2.1`, `US-2.2`, `US-2.3` | **Data-gated** | Useful only once trade-outcome volume is high enough to justify the math |
 | **Research / Advanced optional work** | `US-2.4`, `US-3.2`, `US-4.3`, `US-5.2`, `US-6.1`, `US-6.2`, `US-6.3` | **Later / optional** | Valid ideas, but not materially more urgent than current posture, workflow, launch, and learning-loop work |
 
@@ -75,8 +73,8 @@ This document tracks every planned and delivered enhancement to the investment a
 | **US-2.2** | Dynamic Strategy Weighting | Rolling hit rate per sub-strategy; weights adjusted by performance, floor/cap | Stops allocating to strategies that are not working once the trade sample is large enough | **Data-gated** |
 | **US-2.3** | Moderator Effectiveness | Track correct blocks vs opportunity cost per moderator; monthly value-add vs cost | Useful spend governance once trade-outcome volume supports the analysis | **Data-gated** |
 | **US-2.4** | Nemotron Integration Investigation | Investigate NVIDIA Nemotron 3 Super as candidate risk scorer using shadow-mode evaluation, provider/cost comparison, and promotion gates | Potential cost/latency gains, but not on the critical path while posture and workflow work remain open | **Later / optional** |
-| **US-2.5** | Market Guidance Layer | Point-in-time guidance snapshots from macro, micro, and outcome data that tilt screening and enrich committee context, with explicit per-cycle influence audit. See `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`. | Converts accumulated run data into reusable forward guidance without adding hidden execution authority | **Planned / soon** |
-| **US-2.6** | Strategy Episode Attribution | Git-backed, human-reviewed strategy-change episodes mapped onto cycle/version fingerprints so repo changes can be evaluated against later outcomes. See `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`. | Measures whether prompt/config/logic changes actually improved the system instead of relying on memory | **Planned / soon** |
+| **US-2.5** | Market Guidance Layer | Point-in-time guidance snapshots from macro, micro, and outcome data now tilt screening, enrich committee context, and persist explicit per-cycle influence audit via `guidance_snapshots`, `guidance_sector_scores`, and `cycle_context_snapshots`. See `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`. | Converts accumulated run data into reusable forward guidance without adding hidden execution authority | **Delivered (2026-03-29)** |
+| **US-2.6** | Strategy Episode Attribution | Git-backed, human-reviewed strategy-change episodes now map onto cycle/version fingerprints with authenticated dashboard review and observational impact summaries. See `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`. | Measures whether prompt/config/logic changes actually improved the system instead of relying on memory | **Delivered (2026-03-29)** |
 | **US-3.1** | Risk-Parity Position Sizing | Size positions inversely to trailing volatility; equal risk contribution | Reduces volatility without reducing returns; strong academic evidence | **Delivered** |
 | **US-3.2** | Enhanced Regime Detection | Continuous regime score (VIX, S&P, yields); regime-aware strategy weighting | Useful later, but not more urgent than current posture, execution, and entry-quality work | **Later / optional** |
 | **US-3.3** | Correlation-Aware Screening | Flag BUY candidates with high avg correlation to portfolio | Reduces duplicate risk exposure by surfacing duplicate-risk overlap before BUY execution | **Delivered** |
@@ -253,16 +251,16 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 **Value:** Turns accumulated macro, micro, and outcome data into reusable forward guidance for future cycles
 **Effort:** Medium-Large (5-8 days)
 **Data Sources:** `macro_state`, `macro_signal_logs`, `macro_headlines`, `research_logs`, `strategy_decisions`, `opportunity_score_snapshots`, `trade_outcomes`, `portfolio_snapshots`, `instruments`
-**Stage:** Planned / soon after the current execution and entry-quality bundle
+**Stage:** Delivered (2026-03-29)
 
 **Detailed plan:** `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`.
 
 **Acceptance Criteria:**
-- [ ] Point-in-time `guidance_snapshots` persisted daily or per-cycle with regime, confidence, freshness, rationale, and supporting evidence
-- [ ] Per-sector `guidance_sector_scores` persisted with `favored` / `neutral` / `avoid` labels and tilt values
-- [ ] Market guidance can operate in `shadow` or `active` mode, with v1 limited to screening tilt plus committee context only
-- [ ] Each cycle records which guidance snapshot was active, what screening bias was applied, and how candidate selection changed
-- [ ] Dashboard surfaces guidance history, sector rationale, and cycle influence audit so future analysis can reuse the evidence trail
+- [x] Point-in-time `guidance_snapshots` persisted per cycle with regime, confidence, freshness, rationale, and supporting evidence
+- [x] Per-sector `guidance_sector_scores` persisted with `favored` / `neutral` / `avoid` labels and tilt values
+- [x] Market guidance operates in `active` or `shadow` mode, with v1 limited to screening tilt plus committee context only
+- [x] Each cycle records which guidance snapshot was active, what screening bias was applied, and how candidate selection changed
+- [x] Dashboard surfaces guidance history, sector rationale, and cycle influence audit via authenticated `/insights`
 
 **Integration:** Extends screening and prompt context, but does not add new execution vetoes in v1. The critical requirement is that guidance influence is persisted per cycle so later analysis can answer what changed, when, and with what effect.
 
@@ -272,16 +270,16 @@ This table is a historical impact/feasibility view of the backlog, not the curre
 **Value:** Measures whether repo, prompt, and config changes improved behaviour instead of relying on memory or commit-message guesswork
 **Effort:** Medium (4-6 days)
 **Data Sources:** Git history on `main`, cycle IDs, `trade_outcomes`, `performance_metrics`, `strategy_decisions`, `orders`, config and prompt fingerprints
-**Stage:** Planned / soon after the current execution and entry-quality bundle
+**Stage:** Delivered (2026-03-29)
 
 **Detailed plan:** `docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`.
 
 **Acceptance Criteria:**
-- [ ] Reviewed `strategy_change_episodes` persist title, summary, type, commit range, effective timestamp, confidence, and review status
-- [ ] `cycle_context_snapshots` persist repo SHA, config hash, prompt hash, strategy/risk/execution fingerprints, and active strategy episode IDs
-- [ ] First pass performs a best-effort backfill across recent `main` commits to reconstruct the last month of strategy-affecting changes
-- [ ] Dashboard shows episode history and pre/post impact windows with low-sample and overlap warnings
-- [ ] Attribution is explicitly observational and requires human confirmation before an episode becomes canonical
+- [x] Reviewed `strategy_change_episodes` persist title, summary, type, commit range, effective timestamp, confidence, and review status
+- [x] `cycle_context_snapshots` persist repo SHA, config hash, prompt hash, strategy/risk/execution fingerprints, and active strategy episode IDs
+- [x] First pass performs a best-effort backfill across recent `main` commits to reconstruct the last month of strategy-affecting changes
+- [x] Dashboard shows episode history and pre/post impact windows with low-sample and overlap warnings
+- [x] Attribution is explicitly observational and requires human confirmation before an episode becomes canonical
 
 **Integration:** Adds the repo-linked audit layer that lets future improvements be judged against real outcomes. It should be built alongside the Market Guidance Layer so guidance influence and strategy-change attribution share the same cycle-level metadata.
 
@@ -613,11 +611,11 @@ Repositions the system from a conservative medium-term allocator toward an **act
 **Value:** Full operational visibility — activity feed, universe, run history, portfolio, opportunity, order management, costs
 **Effort:** Large (8–12 days for backend + instrumentation + frontend + deploy)
 **Data Sources:** Existing DB; new `events_log` (optionally `runs`); backend reads agent tables read-only (no duplicate tables)
-**Stage:** Complete (full API; base 8-page MVP later extended to the current 11-page authenticated operator surface)
+**Stage:** Complete (full API; base 8-page MVP later extended to the current 12-page authenticated operator surface)
 
 **Detailed plan:** `docs/DASHBOARD.md`.
 
-**Status (2026-03-29):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built and stable. Agent instrumentation complete. US-1.8 implemented the Docker service, multi-stage frontend build, and SPA fallback; US-7.7 moved the canonical operator entrypoint to `https://zeninvest.zenouz.ai` behind Cloudflare + Nginx; and US-7.8 expanded the anonymous layer into a safe public demo surface. The original 8-page dashboard MVP was later extended with Commands, World News, and the authenticated Evolution Planner, producing the current **11-page** dashboard surface. Signed-out visitors now see the full product navigation, but each anonymous tab is intentionally either a sanitized live projection (Overview, Universe, Portfolio, Runs, Opportunity, Costs, World News, Roadmap) or a disabled preview surface (Order Management, Chat, Evolution). **Current API surface:** decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system, commands, chat-session scaffolding, `/api/evolution/*`, refresh-aware status, order health, a private refresh trigger, and dedicated `/api/public/*` read models for the public demo routes. Status includes system state (ACTIVE/CAUTIOUS/HALTED), paused, next/last refresh metadata, and refresh schedules. The intraday broker/data refresh lane now runs around weekday cycles and once on each weekend day at 17:00 America/New_York, syncing Trading 212 order truth, writing fresh portfolio snapshots, warming held/pending/queued market data, and maintaining stop/profit-lock state between full cycles. Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only; deep-linkable via `/universe/:ticker`. **UX Phases 1–3 (delivered 2026-03-18/19):** AlertBanner (multi-source alert aggregation), independent section loading (`useAsyncData`), Pause/Resume/Force Sell controls, FreshnessIndicator, PnlDisplay with directional arrows (▲/▼), focus-trapped modals, skeleton loading screens, position sparklines, decision pipeline waterfall, nav consolidation (`Roadmap` stays primary; desktop `More` holds 6 secondary pages), mobile card layouts, responsive column hiding, URL state sync. Dashboard surfaces now poll every 30s across Universe, Portfolio, Order Management, World News, and Costs. 28/28 UX audit findings resolved (score 6.5→9.0/10). Design: ZENOUZ.ai brand — bg #06060a, positive #00ffa3, negative #ff4466, accent #00d4ff, violet #6332ff.
+**Status (2026-03-29):** Backend (FastAPI + SSE + event logger) and frontend (React + Vite + Tailwind) are built and stable. Agent instrumentation complete. US-1.8 implemented the Docker service, multi-stage frontend build, and SPA fallback; US-7.7 moved the canonical operator entrypoint to `https://zeninvest.zenouz.ai` behind Cloudflare + Nginx; and US-7.8 expanded the anonymous layer into a safe public demo surface. The original 8-page dashboard MVP was later extended with Commands, World News, the authenticated Evolution Planner, and the public/private Insights surface, producing the current **12-page** dashboard surface. Signed-out visitors now see the full product navigation, but each anonymous tab is intentionally either a sanitized live projection (Overview, Universe, Portfolio, Runs, Opportunity, Insights guidance, Costs, World News, Roadmap) or a disabled preview surface (Order Management, Chat, Evolution, private Strategy Attribution review). **Current API surface:** decisions, moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system, commands, chat-session scaffolding, `/api/evolution/*`, `/api/insights/*`, refresh-aware status, order health, a private refresh trigger, and dedicated `/api/public/*` read models for the public demo routes. Status includes system state (ACTIVE/CAUTIOUS/HALTED), paused, next/last refresh metadata, and refresh schedules. The intraday broker/data refresh lane now runs around weekday cycles and once on each weekend day at 17:00 America/New_York, syncing Trading 212 order truth, writing fresh portfolio snapshots, warming held/pending/queued market data, and maintaining stop/profit-lock state between full cycles. Universe table shows `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, and `UOV (ewma)` per ticker, where `Sold` is computed from executed and dry-run SELL orders only; deep-linkable via `/universe/:ticker`. **UX Phases 1–3 (delivered 2026-03-18/19):** AlertBanner (multi-source alert aggregation), independent section loading (`useAsyncData`), Pause/Resume/Force Sell controls, FreshnessIndicator, PnlDisplay with directional arrows (▲/▼), focus-trapped modals, skeleton loading screens, position sparklines, decision pipeline waterfall, nav consolidation (`Roadmap` stays primary; desktop `More` holds 7 secondary pages), mobile card layouts, responsive column hiding, URL state sync. Dashboard surfaces now poll every 30s across Universe, Portfolio, Order Management, World News, and Costs. 28/28 UX audit findings resolved (score 6.5→9.0/10). Design: ZENOUZ.ai brand — bg #06060a, positive #00ffa3, negative #ff4466, accent #00d4ff, violet #6332ff.
 
 **Phase 1 Acceptance Criteria:**
 - [x] FastAPI backend: REST runs/universe/portfolio/orders; SSE `/events/stream`
@@ -633,7 +631,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - [x] Deployment: US-1.8 implemented (Docker, port 8000); deploy to VPS per `docs/DASHBOARD_DEPLOYMENT.md`
 - [x] Phase 1.5 Analytics Lite: Decision Explorer, run diff, next-run countdown, P&L
 - [x] Full API: decisions (incl. pipeline waterfall), moderation, risk, opportunity, outcomes, stop-loss, performance, costs, api-usage, system (state, trigger, pause, resume); status returns state and paused
-- [x] Base 8-page MVP delivered, later extended with Commands, World News, and Evolution Planner into the current 11-page dashboard surface with a narrow anonymous read-only layer
+- [x] Base 8-page MVP delivered, later extended with Commands, World News, Evolution Planner, and Insights into the current 12-page dashboard surface with a narrow anonymous read-only layer
 - [x] Design: ZENOUZ.ai brand — bg #06060a, gain #00ffa3, loss #ff4466, accent #00d4ff, violet #6332ff
 - [x] UX Phase 1: AlertBanner, independent section loading, always-visible positions + activity, merged top cards, PAUSED badge
 - [x] UX Phase 2: Force Sell, FreshnessIndicator, PnlDisplay (▲/▼), focus-trapped modals, chart colour alignment, keyboard-accessible tables
@@ -1090,17 +1088,14 @@ Repositions the system from a conservative medium-term allocator toward an **act
 
 **Canonical order as of 2026-03-29:**
 1. **US-8.1** — Open-Source Launch Preparation
-2. **US-2.5** — Market Guidance Layer
-3. **US-2.6** — Strategy Episode Attribution
-4. **US-1.11** — Branch-Based Evolution Runner
+2. **US-1.11** — Branch-Based Evolution Runner
 
 **Success criteria:**
 - **US-8.1** — repo can be made public without legal, CI, or contributor-experience gaps
-- **US-2.5** — point-in-time guidance snapshots influence screening and are persisted for later review
-- **US-2.6** — repo/config/prompt fingerprints can be mapped cleanly onto later outcomes
 - **US-1.11** — low-risk changes can be prepared in isolated branches with validation artifacts
 
 **Recently delivered:**
+- **US-2.5** + **US-2.6** — active guidance snapshots, sector tilts, cycle-context fingerprints, git-backed episodes, authenticated `/insights` review surfaces, and operator confirm/reject flow
 - **US-1.9** — shared Slack/dashboard conversational workflow, confirmation gate, audit trail, and VPS signoff complete
 - **US-1.10** — Evolution Planner Phase 1 shipped with authenticated planning, clarification loop, repo context, validation matrix, and audited blocked approvals
 - **US-7.7** — no public raw `:8000`, canonical HTTPS domain, operator auth works behind proxy
@@ -1109,8 +1104,7 @@ Repositions the system from a conservative medium-term allocator toward an **act
 - **US-4.2** + **US-3.3** — entry-quality guard bundle shipped with earnings awareness, portfolio-overlap warnings, and soft risk advisories
 
 **Next after 8.1:**
-- **US-2.5** + **US-2.6** as the next learning-loop and attribution bundle now that the execution-quality track is shipped
-- **US-1.11** once CI, branch governance, and the first post-8.1 execution-quality track are stable
+- **US-1.11** once CI, branch governance, and the post-launch posture are stable
 - **US-2.1** + **US-2.2** + **US-2.3** only once trade-outcome volume is sufficient
 
 **Explicitly not near-term right now:**
