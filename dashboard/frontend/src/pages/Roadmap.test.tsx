@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest'
 import {
   DELIVERED_COUNT,
   MILESTONES,
-  PARTIAL_COUNT,
   PIPELINE_COUNT,
   PROGRESS_PCT,
   TOTAL_COUNT,
@@ -40,6 +39,11 @@ describe('Roadmap page rendering', () => {
     expect(markup).toContain('data-testid="timeline-board"')
     expect(markup).toContain('Short-cycle roadmap by work stream')
     expect(markup).toContain('Safety first, evidence before adaptation')
+    expect(markup).toContain('Delivered')
+    expect(markup).toContain('Pipeline')
+    expect(markup).toContain('Total')
+    expect(markup).toContain('Delivered Progress')
+    expect(markup).not.toContain('<div class="text-sm text-terminal-text-dim">Partial</div>')
     expect(markup).not.toContain('data-testid="roadmap-detail-view"')
     expect(markup).not.toContain('gantt')
   })
@@ -112,8 +116,14 @@ describe('timeline section grouping', () => {
   })
 
   it('preserves roadmap counts after the redesign', () => {
-    expect(DELIVERED_COUNT + PARTIAL_COUNT + PIPELINE_COUNT).toBe(TOTAL_COUNT)
+    expect(DELIVERED_COUNT + PIPELINE_COUNT).toBe(TOTAL_COUNT)
     expect(TOTAL_COUNT).toBe(MILESTONES.length)
     expect(PROGRESS_PCT).toBe(Math.round((DELIVERED_COUNT / TOTAL_COUNT) * 100))
+    expect(DELIVERED_COUNT).toBe(31)
+    expect(PIPELINE_COUNT).toBe(19)
+    expect(TOTAL_COUNT).toBe(50)
+    expect(PROGRESS_PCT).toBe(62)
+    expect(MILESTONES.find((milestone) => milestone.id === 'US-1.10')?.status).toBe('delivered')
+    expect(MILESTONES.find((milestone) => milestone.id === 'US-1.10')?.name).toBe('Evolution Planner Phase 1')
   })
 })

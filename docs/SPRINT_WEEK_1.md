@@ -2,7 +2,7 @@
 tags: [sprint, planning, week-1, delivery, zeninvest]
 status: active
 created: 2026-03-21
-last_updated: 2026-03-28
+last_updated: 2026-03-29
 ---
 
 # Sprint Plan — Week 1 (ZenInvest)
@@ -27,6 +27,7 @@ last_updated: 2026-03-28
 | US-7.5 | Quick Hardening Slice | Delivered | Off-hours order annotations, HALTED auto-recovery, peak inflation detection, DB constraints, dashboard visibility |
 | US-3.3 | Correlation-Aware Screening | Delivered | Candidate-vs-portfolio overlap warnings now reach strategy, moderation, and risk reasoning without changing the hard veto |
 | US-4.2 | Earnings Calendar | Delivered | Earnings imminence and post-earnings drift context now flow through screening, prompting, moderation, and soft risk advisories |
+| US-1.10 | Evolution Planner Phase 1 | Delivered | Authenticated planner-only slice is shipped; `US-1.11`–`US-1.14` now represent the remaining execution and promotion pipeline |
 
 ---
 
@@ -67,6 +68,15 @@ last_updated: 2026-03-28
 
 - `US-8.1` is now the lead current-week item after the production posture and operator-workflow work above.
 - `US-7.7` is already delivered and now acts as a practical prerequisite for a clean community/operator posture.
+
+### Zen Evolution Engine
+
+- `US-1.10 Evolution Planner Phase 1` is delivered.
+- Remaining scope is explicitly separated into pipeline stories:
+  - `US-1.11` branch execution
+  - `US-1.12` policy-gated promotion
+  - `US-1.13` low-risk auto-promotion
+  - `US-1.14` system-initiated improvements
 
 ### Entry Quality Guards
 

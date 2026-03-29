@@ -1,7 +1,7 @@
 ---
 tags: [evolution, dashboard, planning, governance]
 status: current
-last_updated: 2026-03-28
+last_updated: 2026-03-29
 ---
 
 # Zen Evolution Engine
@@ -18,9 +18,9 @@ The design goal is **semi-autonomous software evolution with hard control gates*
 - The system can preserve an audit trail across requests, clarifications, plans, approvals, and later promotion records.
 - High-risk financial changes remain gated by policy.
 
-## Phase 1 Scope (Partially Delivered)
+## Phase 1 Scope (Delivered)
 
-The first delivered slice is **planner-only**:
+The delivered `US-1.10 Evolution Planner Phase 1` slice is **planner-only**:
 
 - authenticated dashboard-first operator workflow
 - natural-language request intake
@@ -31,7 +31,7 @@ The first delivered slice is **planner-only**:
 - clarifying-question loop
 - full request/message/plan/run/artifact audit trail
 
-Delivery audit on 2026-03-28 confirmed that the shipped slice is real and working, but still narrower than the broader "software evolution" label suggests:
+Delivery audit on 2026-03-28 confirmed that the shipped slice is real and working, but still intentionally narrower than the broader software-evolution track:
 
 - targeted backend planner tests pass
 - dashboard frontend production build passes
@@ -46,6 +46,15 @@ Phase 1 intentionally **does not**:
 - run build workers
 - run deployments
 - auto-promote changes
+
+The remaining scope is now represented only by later pipeline stories:
+
+- `US-1.11` Branch-Based Evolution Runner
+- `US-1.12` Policy-Gated Promotion
+- `US-1.13` Low-Risk Auto-Promotion
+- `US-1.14` System-Initiated Improvements
+
+This project no longer uses a partial roadmap status. Delivered slices are marked delivered, and unfinished work stays in separate pipeline stories.
 
 ## Policy Model
 

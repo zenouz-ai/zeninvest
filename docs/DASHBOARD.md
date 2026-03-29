@@ -404,7 +404,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 ### Page 11: Evolution Planner
 
 **Purpose:**
-- Separate, authenticated operator workflow for policy-constrained software evolution (`US-1.10`)
+- Separate, authenticated operator workflow for policy-constrained software evolution (`US-1.10 Evolution Planner Phase 1`, with `US-1.11`–`US-1.14` remaining in pipeline)
 - Accepts natural-language change requests and turns them into a structured plan, risk class, validation matrix, repo context, and auditable run history
 
 **Current Phase 1 behavior:**

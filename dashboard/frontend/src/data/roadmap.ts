@@ -18,7 +18,7 @@ export const TOPICS = [
 
 export type Topic = (typeof TOPICS)[number]
 
-export type MilestoneStatus = 'delivered' | 'partial' | 'pipeline'
+export type MilestoneStatus = 'delivered' | 'pipeline'
 export type Priority = 'P0' | 'P1' | 'P2' | 'P3'
 export type Effort = 'S' | 'M' | 'L' | 'M-L'
 export type Horizon = 'Next' | 'Soon' | 'Later'
@@ -200,19 +200,19 @@ export const MILESTONES: Milestone[] = [
   },
   {
     id: 'US-1.10',
-    name: 'Evolution Planner',
+    name: 'Evolution Planner Phase 1',
     topic: 'Foundation',
-    status: 'partial',
+    status: 'delivered',
     start: '2026-03-25',
     end: '2026-03-25',
     effort: 'M',
     priority: 'P1',
-    description: 'Phase 1 planner-only slice is shipped: authenticated request intake, deterministic intent normalization, static repo-context mapping, risk classification, validation matrix, clarification loop, and audit trail. Branch execution, code changes, build workers, and deploy authority remain future work.',
+    description: 'Delivered planner-only slice: authenticated request intake, deterministic intent normalization, static repo-context mapping, risk classification, validation matrix, clarification loop, and audit trail, with code and deploy authority explicitly left to follow-on phases.',
     architectureComponents: ['Dashboard', 'FastAPI', 'Evolution Engine'],
     track: 'Zen Evolution Engine',
     legacyIds: ['US-1.10', 'US-1.11', 'US-1.12', 'US-1.13', 'US-1.14'],
     materiality: 'crucial',
-    successCriteria: 'Operators can create a scoped, auditable Phase 1 plan without granting code or deploy authority; deeper repo analysis, branch execution, and promotion stay for follow-on phases.',
+    successCriteria: 'Operators can create a scoped, auditable Phase 1 plan without granting code or deploy authority; branch execution and promotion remain in the follow-on pipeline stories.',
   },
   {
     id: 'US-1.11',
@@ -223,7 +223,7 @@ export const MILESTONES: Milestone[] = [
     priority: 'P1',
     horizon: 'Later',
     timeboxDays: 2,
-    description: 'Future isolated branch runner for scoped code edits, validation artifacts, semantic change summaries, and review-ready PRs with no direct writes to main.',
+    description: 'What remains after Phase 1: an isolated branch runner for scoped code edits, validation artifacts, semantic change summaries, and review-ready PRs with no direct writes to main.',
     architectureComponents: ['Evolution Engine', 'Git', 'CI', 'Dashboard'],
     track: 'Zen Evolution Engine',
     legacyIds: ['US-1.10', 'US-1.11', 'US-1.12', 'US-1.13', 'US-1.14'],
@@ -239,7 +239,7 @@ export const MILESTONES: Milestone[] = [
     priority: 'P1',
     horizon: 'Later',
     timeboxDays: 2,
-    description: 'Add manual build/deploy approvals, environment protections, versioned deployment records, and rollback metadata while keeping high-risk financial changes fully gated.',
+    description: 'What remains after Phase 1 and branch execution: manual build/deploy approvals, environment protections, versioned deployment records, and rollback metadata while keeping high-risk financial changes fully gated.',
     architectureComponents: ['Evolution Engine', 'CI', 'Docker', 'Dashboard'],
     track: 'Zen Evolution Engine',
     legacyIds: ['US-1.10', 'US-1.11', 'US-1.12', 'US-1.13', 'US-1.14'],
@@ -255,7 +255,7 @@ export const MILESTONES: Milestone[] = [
     priority: 'P2',
     horizon: 'Later',
     timeboxDays: 1,
-    description: 'Allow policy-approved low-risk docs and dashboard polish to auto-promote only after the manual promotion flow proves reliable.',
+    description: 'What remains after manual promotion: allow policy-approved low-risk docs and dashboard polish to auto-promote only after the manual promotion flow proves reliable.',
     architectureComponents: ['Evolution Engine', 'Dashboard', 'CI'],
     track: 'Zen Evolution Engine',
     legacyIds: ['US-1.10', 'US-1.11', 'US-1.12', 'US-1.13', 'US-1.14'],
@@ -271,7 +271,7 @@ export const MILESTONES: Milestone[] = [
     priority: 'P2',
     horizon: 'Later',
     timeboxDays: 1,
-    description: 'Suggest-first autonomous cleanup, tests, docs, and low-risk UX improvements using the same branch, validation, and approval gates as operator-requested changes.',
+    description: 'What remains in the final stage: suggest-first autonomous cleanup, tests, docs, and low-risk UX improvements using the same branch, validation, and approval gates as operator-requested changes.',
     architectureComponents: ['Evolution Engine', 'Dashboard', 'CI'],
     track: 'Zen Evolution Engine',
     legacyIds: ['US-1.10', 'US-1.11', 'US-1.12', 'US-1.13', 'US-1.14'],
@@ -730,7 +730,6 @@ export const MILESTONES: Milestone[] = [
 ]
 
 export const DELIVERED_COUNT = MILESTONES.filter((milestone) => milestone.status === 'delivered').length
-export const PARTIAL_COUNT = MILESTONES.filter((milestone) => milestone.status === 'partial').length
 export const PIPELINE_COUNT = MILESTONES.filter((milestone) => milestone.status === 'pipeline').length
 export const TOTAL_COUNT = MILESTONES.length
 export const PROGRESS_PCT = Math.round((DELIVERED_COUNT / TOTAL_COUNT) * 100)

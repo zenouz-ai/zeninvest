@@ -6,8 +6,8 @@ import {
   TOPICS,
   PROJECT_START,
   DELIVERED_COUNT,
-  PARTIAL_COUNT,
   PIPELINE_COUNT,
+  TOTAL_COUNT,
   PROGRESS_PCT,
   type Horizon,
   type Milestone,
@@ -243,7 +243,7 @@ export function getTimelineSections(milestones: Milestone[] = MILESTONES): Timel
       topic,
       columns: {
         Delivered: items
-          .filter((milestone) => milestone.status === 'delivered' || milestone.status === 'partial')
+          .filter((milestone) => milestone.status === 'delivered')
           .sort(sortDelivered),
         Next: items
           .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Next')
@@ -268,7 +268,7 @@ function formatDeliveredDateRange(milestone: Milestone): string {
 }
 
 function formatMilestoneWindow(milestone: Milestone): string {
-  if (milestone.status === 'delivered' || milestone.status === 'partial') return formatDeliveredDateRange(milestone)
+  if (milestone.status === 'delivered') return formatDeliveredDateRange(milestone)
   if (milestone.timeboxDays) return `${milestone.timeboxDays} day${milestone.timeboxDays === 1 ? '' : 's'}`
   return 'TBD'
 }
@@ -289,13 +289,11 @@ function priorityPillVariant(priority: Milestone['priority']): PillVariant {
 
 function milestoneStatusLabel(milestone: Milestone): string {
   if (milestone.status === 'delivered') return 'Delivered'
-  if (milestone.status === 'partial') return 'Partial'
   return milestone.horizon ?? 'Planned'
 }
 
 function milestoneStatusVariant(milestone: Milestone): PillVariant {
   if (milestone.status === 'delivered') return 'active'
-  if (milestone.status === 'partial') return 'warning'
   return timelinePillVariant(milestone.horizon ?? 'Later')
 }
 
@@ -448,7 +446,7 @@ function TimelineTabContent() {
               <SectionHeader
                 eyebrow="Work Stream"
                 title={section.topic}
-                subtitle={`${section.columns.Delivered.filter((milestone) => milestone.status === 'delivered').length} delivered • ${section.columns.Delivered.filter((milestone) => milestone.status === 'partial').length} partial • ${plannedCount} planned in compact 1-2 day increments.`}
+                subtitle={`${section.columns.Delivered.length} delivered • ${plannedCount} planned in compact 1-2 day increments.`}
               />
               <div className="text-xs uppercase tracking-[0.18em] text-terminal-text-dim">
                 Sequence cues show the order inside each planning bucket.
@@ -492,7 +490,7 @@ function TimelineTabContent() {
 
 function MilestoneDetailCard({ milestone }: { milestone: Milestone }) {
   const statusLabel = milestoneStatusLabel(milestone)
-  const windowLabel = milestone.status === 'delivered' || milestone.status === 'partial'
+  const windowLabel = milestone.status === 'delivered'
     ? formatDeliveredDateRange(milestone)
     : `${formatMilestoneWindow(milestone)} · ${milestone.horizon ?? 'Planned'}`
 
@@ -632,9 +630,9 @@ function RoadmapTabContent({
         const items = filtered
           .filter((milestone) => milestone.topic === topic)
           .sort((a, b) => (
-            (a.status === 'delivered' || a.status === 'partial') && b.status === 'pipeline'
+            a.status === 'delivered' && b.status === 'pipeline'
               ? -1
-              : a.status === 'pipeline' && (b.status === 'delivered' || b.status === 'partial')
+              : a.status === 'pipeline' && b.status === 'delivered'
                 ? 1
                 : a.status === 'pipeline' && b.status === 'pipeline'
                   ? sortPipeline(a, b)
@@ -649,7 +647,7 @@ function RoadmapTabContent({
               <SectionHeader
                 eyebrow="Topic"
                 title={topic}
-                subtitle={`${items.filter((milestone) => milestone.status === 'delivered').length} delivered • ${items.filter((milestone) => milestone.status === 'partial').length} partial • ${items.filter((milestone) => milestone.status === 'pipeline').length} planned`}
+                subtitle={`${items.filter((milestone) => milestone.status === 'delivered').length} delivered • ${items.filter((milestone) => milestone.status === 'pipeline').length} planned`}
               />
             </div>
 
@@ -947,12 +945,12 @@ export default function Roadmap() {
           <div className="text-2xl font-bold text-gain">{DELIVERED_COUNT}</div>
         </div>
         <div className="card">
-          <div className="text-sm text-terminal-text-dim">Partial</div>
-          <div className="text-2xl font-bold text-warning">{PARTIAL_COUNT}</div>
-        </div>
-        <div className="card">
           <div className="text-sm text-terminal-text-dim">Pipeline</div>
           <div className="text-2xl font-bold">{PIPELINE_COUNT}</div>
+        </div>
+        <div className="card">
+          <div className="text-sm text-terminal-text-dim">Total</div>
+          <div className="text-2xl font-bold text-terminal-text">{TOTAL_COUNT}</div>
         </div>
         <div className="card">
           <div className="text-sm text-terminal-text-dim">Delivered Progress</div>
