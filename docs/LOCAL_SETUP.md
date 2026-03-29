@@ -1,7 +1,9 @@
 ---
+title: Local Setup and Live Run Guide
 tags: [setup, local, macos, testing]
-status: current
-last_updated: 2026-03-16
+status: active
+last_updated: 2026-03-29
+related: [DEPLOYMENT.md]
 ---
 
 # Local Setup and Live Run Guide
@@ -675,8 +677,7 @@ poetry run alembic upgrade head
 
 ## Related Notes
 
-- [Deployment (VPS)](DEPLOYMENT.md)
-- [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md)
+- [Deployment (VPS)](DEPLOYMENT.md) (§13 covers dashboard deployment)
 - [Data Export Runbook](DATA_EXPORT_RUNBOOK.md)
 - [Architecture](ARCHITECTURE.md)
 - [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md)

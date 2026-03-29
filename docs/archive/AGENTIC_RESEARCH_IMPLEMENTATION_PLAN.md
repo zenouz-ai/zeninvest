@@ -1,12 +1,13 @@
 ---
 tags: [agentic-research, implementation, us-4.4]
 status: delivered
-last_updated: 2026-03-27
+last_updated: 2026-03-29
+archived: true
 ---
 
 # US-4.4 Agentic Research — Implementation Plan
 
-> Step-by-step execution checklist. Architecture and canonical naming live in [AGENTIC_RESEARCH.md](AGENTIC_RESEARCH.md). Routing policy details live in [FOLLOWUP_RESEARCH_ROUTING_PLAN.md](FOLLOWUP_RESEARCH_ROUTING_PLAN.md).
+> **Archived 2026-03-29:** All tasks delivered. Architecture and canonical reference: [AGENTIC_RESEARCH.md](AGENTIC_RESEARCH.md). Routing policy: [FOLLOWUP_RESEARCH_ROUTING_PLAN.md](FOLLOWUP_RESEARCH_ROUTING_PLAN.md).
 
 ## Canonical Identifiers Used In This Plan
 

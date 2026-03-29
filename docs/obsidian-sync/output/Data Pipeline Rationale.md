@@ -1,7 +1,7 @@
 ---
 tags: [investment-agent, data, pipeline, rationale]
 status: active
-last_updated: 2026-03-18
+last_updated: 2026-03-29
 ---
 
 # Data Pipeline Rationale
@@ -45,7 +45,7 @@ Only paths 1–4 matter for decision quality.
 
 **Alpha Vantage** — broad market sentiment + per-ticker sentiment. `extract_per_ticker_news()` parses ticker_sentiments for per-stock summaries. 2 API calls/cycle, cached 4h.
 
-**Agentic Research** (US-4.4) — Brave (primary) + Tavily (fallback) + SEC EDGAR (free). 5 tools, 35 calls/cycle max across all committee members. Deduped by (ticker, tool, query).
+**Agentic Research** (US-4.4) — Brave (primary) + Tavily (fallback) + SEC EDGAR (free). 5 tools: web_search, news_search, sector_search, sec_search, macro_search. 35 calls/cycle max across all committee members. Deduped by (ticker, tool, query). All three pipeline members (Strategy, Skeptic, Risk) have full tool-use loops with per-member caps (20/8/7).
 
 ## Three Strategies, Fixed Weights
 
@@ -75,6 +75,9 @@ At $3–7/month, paid APIs are cheaper than local GPU infra ($200+/month cloud G
 - **2026-03-06** — Added company profiles (industry + business_summary) to Claude prompt.
 - **2026-03-06** — Added macro intelligence (sector performance + economic headlines).
 - **2026-03-13** — Expanded seed from ~160 to ~6900 (T212-derived). Bulk enrichment via yfinance.
+- **2026-03-20** — Agentic research (US-4.4): 5 tools across all 3 committee members, shared pipeline budget.
+- **2026-03-25** — Volume signals (US-4.1): OBV + 20-day volume ratio in indicator output; surfaced in momentum/mean-reversion scoring and moderator context.
+- **2026-03-27** — Correlation screening enhancements (US-3.3) and earnings calendar integration (US-4.2) on roadmap for future data enrichment.
 
 ## Related Notes
 

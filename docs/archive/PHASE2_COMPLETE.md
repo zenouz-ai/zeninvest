@@ -1,4 +1,6 @@
-# Phase 2 Complete: Agent Instrumentation ✅
+> **Archived 2026-03-29:** Historical phase completion marker. Dashboard instrumentation is live. See dashboard/backend/README.md.
+
+# Phase 2 Complete: Agent Instrumentation
 
 ## What Was Done
 

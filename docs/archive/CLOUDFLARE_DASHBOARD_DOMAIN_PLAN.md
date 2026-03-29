@@ -1,10 +1,13 @@
 ---
 tags: [dashboard, deployment, cloudflare, nginx, docker, security]
-status: delivered
+status: archived
 last_updated: 2026-03-29
+archived: true
 ---
 
 # Cloudflare Domain Rollout for `zeninvest.zenouz.ai`
+
+> **Archived 2026-03-29:** Content consolidated into [DEPLOYMENT.md](DEPLOYMENT.md) section 13. This file is kept for historical reference.
 
 ## Summary
 

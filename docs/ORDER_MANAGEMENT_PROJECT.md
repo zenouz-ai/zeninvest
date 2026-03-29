@@ -1,7 +1,10 @@
 ---
+title: Order Management
 tags: [order-management, stop-loss, trailing, limit-orders]
-status: delivered
+status: active
 last_updated: 2026-03-29
+user_stories: [US-3.5]
+related: [GOVERNANCE.md]
 ---
 
 # Order Management

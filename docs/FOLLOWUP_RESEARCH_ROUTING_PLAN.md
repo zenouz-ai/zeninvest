@@ -1,5 +1,10 @@
 ---
+title: Follow-up Research Routing Plan
 name: Follow-up Research Routing
+status: active
+last_updated: 2026-03-29
+user_stories: [US-4.4]
+related: [AGENTIC_RESEARCH.md]
 overview: Implement and validate follow-up routing (skip vs single-call vs mini-research) with 12-question benchmark, provider comparisons, and production policy guidance.
 todos:
   - id: create-followup-dataset
@@ -28,7 +33,7 @@ isProject: false
 This document is the **routing-policy source of truth** for follow-up research decisions.
 
 - Architecture/tool schema source: [AGENTIC_RESEARCH.md](AGENTIC_RESEARCH.md)
-- Execution checklist source: [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md)
+- Execution checklist source: [AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md](archive/AGENTIC_RESEARCH_IMPLEMENTATION_PLAN.md) (archived)
 
 ## Implemented So Far
 

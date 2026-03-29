@@ -1,5 +1,7 @@
 # Investment Agent — Comprehensive Audit Report
 
+> **See also:** [AUDIT_INDEX.md](AUDIT_INDEX.md) (cross-reference), [TRADING_SYSTEM_AUDIT.md](TRADING_SYSTEM_AUDIT.md) (execution safety), [AGENT_LOGIC_AUDIT.md](AGENT_LOGIC_AUDIT.md) (LLM pipeline), [FORMAL_VERIFICATION_AUDIT.md](FORMAL_VERIFICATION_AUDIT.md) (state machines)
+
 **Date:** 2026-03-17
 **Scope:** Full codebase audit — execution, orchestration, strategy, moderation, risk, market data, opportunity, notifications, dashboard, testing
 **Codebase:** ~29,500 lines Python across 29 test files (324 tests after audit remediation)

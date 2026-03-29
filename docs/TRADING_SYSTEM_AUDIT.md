@@ -1,5 +1,7 @@
 # Trading System Production Audit
 
+> **See also:** [AUDIT_INDEX.md](AUDIT_INDEX.md) (cross-reference), [AUDIT_REPORT.md](AUDIT_REPORT.md) (architectural), [AGENT_LOGIC_AUDIT.md](AGENT_LOGIC_AUDIT.md) (LLM pipeline), [FORMAL_VERIFICATION_AUDIT.md](FORMAL_VERIFICATION_AUDIT.md) (state machines)
+
 **Date:** 2026-03-19
 **Scope:** Full codebase audit covering execution, risk, data layer, LLM pipeline, notifications, testing, and operational resilience.
 **Auditor:** Claude Opus 4.6 (automated deep audit)

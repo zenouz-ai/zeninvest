@@ -13,17 +13,23 @@ The dashboard backend foundation is complete. This includes:
 
 ## Quick Start
 
-### 1. Run Database Migration
+### 1. Install Dependencies and Migrate
 
 ```bash
+poetry install
 poetry run alembic upgrade head
 ```
-
-This creates the `events_log` and `runs` tables in the existing database.
 
 ### 2. Start the Server
 
 ```bash
+# Recommended (module syntax):
+poetry run python -m dashboard.backend
+
+# Alternative (uvicorn directly):
+poetry run uvicorn dashboard.backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Alternative (script file):
 poetry run python dashboard/backend/run_server.py
 ```
 
@@ -35,10 +41,6 @@ The API will be available at:
 ### 3. Test Endpoints
 
 ```bash
-# Test all endpoints
-poetry run python dashboard/backend/test_endpoints.py
-
-# Or use curl
 curl http://localhost:8000/health
 curl http://localhost:8000/api/runs/
 curl http://localhost:8000/api/universe/
@@ -50,12 +52,14 @@ curl http://localhost:8000/api/events/
 ### 4. Test SSE Stream
 
 ```bash
-# In one terminal, start the server
-poetry run python dashboard/backend/run_server.py
-
-# In another terminal, connect to SSE stream
 curl -N http://localhost:8000/api/events/stream
 ```
+
+### Troubleshooting
+
+- **ModuleNotFoundError**: Run `poetry install`
+- **Port 8000 in use**: Use `--port 8001` with uvicorn
+- **PYTHONPATH issues**: See [START_SERVER.md](START_SERVER.md) for detailed solutions
 
 ## API Endpoints
 

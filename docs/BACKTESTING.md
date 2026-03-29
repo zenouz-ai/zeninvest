@@ -1,7 +1,10 @@
 ---
+title: Backtesting Engine
 tags: [backtesting, validation, testing]
-status: current
-last_updated: 2026-03-10
+status: active
+last_updated: 2026-03-29
+user_stories: [US-5.1]
+related: [ARCHITECTURE.md]
 ---
 
 # Backtesting Engine

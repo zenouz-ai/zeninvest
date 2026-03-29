@@ -249,7 +249,7 @@ Each has a 2,000 calls/month limit (config: `search_api_limits`). Omit if not us
 
 **Costs (as of 2026-03):** Brave Search $5/1k requests (free $5 credits/month); Brave Answers $4/1k queries + token costs (free $5 credits/month); Tavily pay-as-you-go $0.008/credit (2,000 calls ≈ $16) or Project plan $30/month for 4,000 credits.
 
-**Delivered (US-1.6 — Slack natural language trade commands):** Inbound Slack requires `SLACK_APP_TOKEN` (xapp-…) and `SLACK_BOT_TOKEN` (xoxb-…), plus the long-running `slack_trade_listener` process or container. In Docker deployments, `docker compose up -d --build` now starts a dedicated `slack-listener` service for always-on Slack access. Large orders enter an explicit confirmation flow before execution. See `docs/CHAT_AND_COMMANDS.md`.
+**Delivered (US-1.6 — Slack natural language trade commands):** Inbound Slack requires `SLACK_APP_TOKEN` (xapp-…) and `SLACK_BOT_TOKEN` (xoxb-…), plus the long-running `slack_trade_listener` process or container. In Docker deployments, `docker compose up -d --build` now starts a dedicated `slack-listener` service for always-on Slack access. Large orders enter an explicit confirmation flow before execution. See `docs/CONVERSATIONAL_TRADING_WORKFLOW.md`.
 
 Secure the file:
 
@@ -486,7 +486,7 @@ sudo systemctl start investment-agent-slack-listener.service
 
 Detailed rationale, verification commands, and the target architecture are documented in:
 
-- [VPS Runtime Stability Plan](VPS_RUNTIME_STABILITY_PLAN.md)
+- [VPS Runtime Stability Plan](archive/VPS_RUNTIME_STABILITY_PLAN.md) (archived — delivered as US-7.6)
 - [VPS Systemd Runbook](VPS_SYSTEMD_RUNBOOK.md)
 
 ### 4.7 Verify Service Operation
@@ -1742,7 +1742,20 @@ Then on the VPS: `docker compose up -d --build` or `sudo systemctl restart inves
 
 ## 13. Dashboard VPS Deployment
 
-The web dashboard (activity feed, portfolio, run history, universe, commands, world news, insights, costs, roadmap, and the authenticated Evolution Planner across 12 pages) is deployed alongside the agent on the VPS. **Full plan and checklist:** `docs/DASHBOARD_DEPLOYMENT.md`. **Status:** US-7.7 delivered in repo: the dashboard app is internal-only on the Docker network and the canonical production entrypoint is `https://zeninvest.zenouz.ai` via Cloudflare + Nginx. **CORS:** configure `dashboard.cors_origins` in `config/settings.yaml` with your production domain if you override defaults; the default posture already includes the canonical HTTPS domain plus localhost dev origins.
+> US-1.8 + US-7.7 + US-7.8 delivered. Previously documented in separate `DASHBOARD_DEPLOYMENT.md` and `CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md` files (now archived into this section).
+
+The 12-page dashboard is deployed alongside the agent on the VPS. The canonical production entrypoint is `https://zeninvest.zenouz.ai` via Cloudflare + Nginx. The FastAPI dashboard service is internal-only on the Docker network. **CORS:** `dashboard.cors_origins` in `config/settings.yaml` defaults to the canonical HTTPS domain plus localhost dev origins.
+
+### Docker Architecture
+
+| Service | Dockerfile | Purpose | Entry point |
+|---------|-----------|---------|-------------|
+| `investment-agent` | `Dockerfile.agent` | Python-only — runs scheduler | `alembic upgrade head && python -m src.scheduler.scheduler` |
+| `slack-listener` | `Dockerfile.agent` | Python-only — Slack Socket Mode | `alembic upgrade head && python -m src.agents.notifications.slack_trade_listener` |
+| `dashboard` | `Dockerfile` | Multi-stage (Node + Python) — builds frontend, runs FastAPI | `python -m dashboard.backend.server` |
+| `nginx` | `nginx:alpine` | Public ingress, TLS termination, canonical host enforcement | `/etc/nginx/conf.d/default.conf` |
+
+All three app services share the same SQLite DB via `./data` volume. The `dashboard` service is internal-only and reachable publicly only through `nginx` on `80/443`. Frontend uses relative `/api/*` paths (same-origin).
 
 ### Access Options
 
@@ -1750,29 +1763,66 @@ The web dashboard (activity feed, portfolio, run history, universe, commands, wo
 |--------|--------|-------|
 | **Cloudflare + domain** (recommended) | `https://zeninvest.zenouz.ai` | Canonical HTTPS URL, safe operator login, internal-only origin via Nginx reverse proxy. |
 | **VPS IP** | `http://YOUR_VPS_IP:8000` | Rollback/emergency posture only; not part of the target production ingress. |
-| **GitHub Pages** | Not suitable | Frontend must call VPS API; mixed content (HTTPS→HTTP) blocked. |
+
+### Cloudflare and TLS
+
+Cloudflare settings:
+- Proxied `A` record: `zeninvest` -> VPS public IP
+- SSL/TLS mode: `Full (strict)`, `Always Use HTTPS` enabled
+- HSTS and Cloudflare Tunnel deferred
+
+Origin cert on VPS:
+```bash
+mkdir -p /home/deploy_invest_ai/certs/zeninvest.zenouz.ai
+chmod 700 /home/deploy_invest_ai/certs/zeninvest.zenouz.ai
+# Place origin.crt and origin.key, then:
+chmod 644 /home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.crt
+chmod 600 /home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.key
+```
 
 ### Prerequisites
 
-- Dashboard code on branch (e.g. `main` or `feature/dashboard-full-spec`)
 - `config/settings.yaml`: `dashboard.enabled: true`, `dashboard.events_enabled: true`
 - Agent already running in Docker on VPS
 
 ### Deployment Steps (run on VPS)
 
-From the project directory (e.g. `/home/deploy/investment-agent`):
+```bash
+cd /home/deploy/investment-agent
+git pull origin main
+sudo ufw allow 80/tcp && sudo ufw allow 443/tcp && sudo ufw delete allow 8000/tcp || true && sudo ufw reload
+docker compose up -d --build
+docker compose exec nginx nginx -t
+```
 
-1. Pull latest: `git pull origin main` (or your deployment branch)
-2. Install the Cloudflare Origin CA cert/key at `/home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.crt` and `/home/deploy_invest_ai/certs/zeninvest.zenouz.ai/origin.key` with restrictive permissions
-3. Update firewall: `sudo ufw allow 80/tcp`, `sudo ufw allow 443/tcp`, `sudo ufw delete allow 8000/tcp`, then `sudo ufw reload`
-4. Build and run: `docker compose up -d --build` (builds agent from `Dockerfile.agent`, dashboard from `Dockerfile`, nginx from `nginx:alpine`)
-5. Verify: `docker compose exec nginx nginx -t`, `docker compose ps`, then open `https://zeninvest.zenouz.ai` in a browser
+**To rebuild after updates:** `git pull origin main && docker compose up -d --build` (or `--build dashboard` for dashboard-only).
 
-**To rebuild after updates:** `git pull origin main` then `docker compose up -d --build` (or `docker compose up -d --build dashboard` for dashboard-only, `docker compose up -d --build investment-agent` for agent-only). See [DASHBOARD_DEPLOYMENT.md](DASHBOARD_DEPLOYMENT.md#updating--rebuilding-the-dashboard).
+### Authentication and Public/Operator Split
 
-**Outcome:** Dashboard is running on VPS behind Nginx. The full 12-page dashboard surface is reachable on the canonical HTTPS domain `https://zeninvest.zenouz.ai`, while public access is intentionally constrained to sanitized `/api/public/*` read models and disabled preview surfaces where appropriate. Signed-out visitors can browse the full tab map, but operator pages, SSE activity, and protected APIs still require sign-in, while the FastAPI dashboard service remains internal-only on the Docker network.
+- **Public routes** (`/api/public/*`): sanitized read-only views (Overview, Universe, Portfolio, Runs, Opportunity, Costs, World News, Roadmap). Order Management, Chat, and Evolution are disabled preview surfaces.
+- **Operator routes**: require signed session cookie over HTTPS. Login blocked on plain HTTP except `DASHBOARD_INSECURE_DEV_MODE=true` (localhost only).
+- **Env vars** for auth:
+  ```
+  DASHBOARD_OPERATOR_USERNAME=<operator-username>
+  DASHBOARD_OPERATOR_PASSWORD_HASH=<pbkdf2 hash>
+  DASHBOARD_SESSION_SECRET=<random-hex-secret>
+  DASHBOARD_INSECURE_DEV_MODE=false
+  ```
+  Generate hash: `poetry run python -c "from dashboard.backend.app.services.auth import hash_password; print(hash_password('your-password'))"`
 
-**Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use the **Dry Run** or **Live Run** buttons on Dashboard Home (Live Run requires confirmation), or `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live) / `... --dry-run` (dry).
+### Verification
+
+- `http://zeninvest.zenouz.ai` returns `301` to `https://`
+- `https://zeninvest.zenouz.ai/health` returns `200`
+- `/api/public/*` loads anonymously; protected routes return `401/403`
+- SSE activity feed works through the proxied domain
+- Raw `http://YOUR_VPS_IP:8000` is blocked by firewall
+
+### Rollback
+
+If HTTPS ingress fails: remove/disable `nginx` service, re-publish `dashboard` on `8000:8000`, reopen `8000/tcp`. Restore canonical HTTPS as soon as possible.
+
+**Run History** shows `runs` table entries (one per cycle). **One-off cycle:** use Dry Run / Live Run buttons on Dashboard Home, or `docker exec -it investment-agent poetry run python -m src.orchestrator.main`.
 
 ---
 
@@ -1824,8 +1874,8 @@ From the project directory (e.g. `/home/deploy/investment-agent`):
 
 ## Related Notes
 
-- [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md) — dashboard-specific Docker and VPS setup
 - [Data Export Runbook](DATA_EXPORT_RUNBOOK.md) — exporting VPS data for local analysis
 - [Local Setup](LOCAL_SETUP.md) — local development and Mac environment setup
 - [Governance](GOVERNANCE.md) — operational controls, incident response, audit trail
 - [Architecture](ARCHITECTURE.md) — system diagrams and pipeline flow
+- [VPS Systemd Runbook](VPS_SYSTEMD_RUNBOOK.md) — alternative non-Docker deployment path (not active)

@@ -1,10 +1,13 @@
 ---
 tags: [us-1.9, validation, signoff, chat, dashboard, slack]
-status: delivered
-last_updated: 2026-03-28
+status: archived
+last_updated: 2026-03-29
+archived: true
 ---
 
 # US-1.9 Validation Signoff
+
+> **Archived 2026-03-29:** Delivery evidence for US-1.9. See [CONVERSATIONAL_TRADING_WORKFLOW.md](CONVERSATIONAL_TRADING_WORKFLOW.md) for the active spec.
 
 Repeatable signoff checklist and evidence log for closing `US-1.9` Conversational Trading Workflow.
 

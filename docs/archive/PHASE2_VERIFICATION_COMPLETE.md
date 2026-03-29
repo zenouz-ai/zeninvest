@@ -1,4 +1,6 @@
-# Phase 2 Verification - ✅ COMPLETE
+> **Archived 2026-03-29:** Historical verification snapshot. Phase 2 instrumentation delivered. See dashboard/backend/README.md.
+
+# Phase 2 Verification - COMPLETE
 
 ## Verification Results
 

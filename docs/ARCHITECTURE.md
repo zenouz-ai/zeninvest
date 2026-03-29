@@ -1,7 +1,9 @@
 ---
+title: Solution Architecture
 tags: [architecture, pipeline, database, diagrams]
-status: current
-last_updated: 2026-03-27
+status: active
+last_updated: 2026-03-29
+related: [GOVERNANCE.md, AUDIT_INDEX.md, DEPLOYMENT.md]
 ---
 
 # Solution Architecture
@@ -299,7 +301,7 @@ systemd
 - Slack command handling is bounded by a worker pool rather than one thread per message
 - the API runs as a single `uvicorn` process (`reload=False`, `workers=1`)
 
-See [VPS Runtime Stability Plan](VPS_RUNTIME_STABILITY_PLAN.md) and [VPS Systemd Runbook](VPS_SYSTEMD_RUNBOOK.md).
+See [VPS Runtime Stability Plan](archive/VPS_RUNTIME_STABILITY_PLAN.md) (archived — delivered as US-7.6) and [VPS Systemd Runbook](VPS_SYSTEMD_RUNBOOK.md).
 
 ## Risk-Parity Position Sizing (US-3.1)
 
@@ -799,9 +801,9 @@ graph TB
 
 For the full prioritised backlog and detailed user story specifications, see [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md). Key delivered extensions that interact with the architecture above:
 
-- **Chat & Notifications (US-1.5/1.6)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. Events: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`. **Inbound Slack trade commands (US-1.6):** Socket Mode listener → `CommandGateway` → one of 3 execution paths: `SingleTickerRunner` for `REVIEW` and strategy-triggered trades, `DirectTradeRunner` for plain BUY/SELL commands, or `CancelCommandRunner` for `cancel buy|sell|stop sell ...`. Bot self-message filtering via `auth.test` user_id. REVIEW replies include full per-moderator verdicts (GPT-4o Skeptic + Gemini Risk with scores and reasoning), while direct trades and cancel commands keep a lighter execution/audit path. See [Chat & Commands](CHAT_AND_COMMANDS.md).
+- **Chat & Notifications (US-1.5/1.6)** — Slack webhook + SMTP email alerts with fail-open behaviour and `notification_logs` audit trail. Events: `trade_instruction_approved`, `trade_execution_result`, `cycle_run_summary`, `state_transition`, `critical_cycle_failure`, `order_adjustment`, `trade_without_stop`. **Inbound Slack trade commands (US-1.6):** Socket Mode listener → `CommandGateway` → one of 3 execution paths: `SingleTickerRunner` for `REVIEW` and strategy-triggered trades, `DirectTradeRunner` for plain BUY/SELL commands, or `CancelCommandRunner` for `cancel buy|sell|stop sell ...`. Bot self-message filtering via `auth.test` user_id. REVIEW replies include full per-moderator verdicts (GPT-4o Skeptic + Gemini Risk with scores and reasoning), while direct trades and cancel commands keep a lighter execution/audit path. See [Conversational Trading Workflow](CONVERSATIONAL_TRADING_WORKFLOW.md).
 - **Backtesting Engine (US-5.1)** — daily replay engine, paper broker, walk-forward validation, promotion report. See [Backtesting](BACKTESTING.md).
-- **Dashboard (US-1.7/1.8 + US-1.10 extension)** — FastAPI REST API + SSE stream, React frontend (11 current pages including the authenticated Evolution Planner workspace). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md), [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md), and [Zen Evolution Engine](ZEN_EVOLUTION_ENGINE.md).
+- **Dashboard (US-1.7/1.8 + US-1.10 extension)** — FastAPI REST API + SSE stream, React frontend (11 current pages including the authenticated Evolution Planner workspace). The Roadmap tab displays this architecture with roadmap-to-component mapping. See [Dashboard](DASHBOARD.md), [Deployment](DEPLOYMENT.md) §13, and [Zen Evolution Engine](ZEN_EVOLUTION_ENGINE.md).
 - **Zen Evolution Engine (`US-1.10` delivered, `US-1.11`–`US-1.14` pipeline)** — Separate change-management workflow domain for operator-requested natural-language system changes. Delivered Phase 1 is planner-only: scoped plan, risk class, validation matrix, repo context, clarification loop, and auditable blocked build/deploy approvals. Remaining pipeline work covers branch execution, promotion gates, low-risk auto-promotion, and later system-initiated improvements. See [Zen Evolution Engine](ZEN_EVOLUTION_ENGINE.md).
 - **Agentic Research (US-4.4)** — *Delivered.* All three members (Strategy, GPT-4o Skeptic, Gemini Risk) have tool-use loops with 5 tools (web_search, news_search, sector_search, sec_search, macro_search). Pipeline shares a single ResearchExecutor/ResearchBudget for pipeline-wide cap enforcement. Dashboard displays per-ticker research trail: which member used which tool, queries, results, cache hits, latency, and cost. `GET /api/research/ticker/{ticker}` provides historical research per ticker. Universe table includes a `Research` column. See [Agentic Research](AGENTIC_RESEARCH.md).
 - **Nemotron Integration Investigation (US-2.4)** — *Investigation only.* Candidate risk/moderation model evaluated via smoke testing and shadow-mode comparison before any promotion to live committee roles. See [Nemotron Investigation](Nemotron_3_Super_Integration_Investigation.md).
@@ -815,7 +817,7 @@ For the full prioritised backlog and detailed user story specifications, see [So
 - [Governance](GOVERNANCE.md) — risk rules, cost controls, audit trail
 - [Deployment](DEPLOYMENT.md) — VPS setup, Docker, monitoring
 - [Dashboard](DASHBOARD.md) — web dashboard design and implementation
-- [Chat & Commands](CHAT_AND_COMMANDS.md) — notifications and planned inbound commands
+- [Conversational Trading Workflow](CONVERSATIONAL_TRADING_WORKFLOW.md) — chat sessions, notifications, trade commands
 - [Backtesting](BACKTESTING.md) — engine, walk-forward validation, promotion report
 - [Agentic Research](AGENTIC_RESEARCH.md) — canonical architecture, conventions, and implementation state
 - [Follow-up Routing Plan](FOLLOWUP_RESEARCH_ROUTING_PLAN.md) — routing policy (materiality + complexity gates)

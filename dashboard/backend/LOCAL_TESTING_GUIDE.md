@@ -168,9 +168,48 @@ After completing all steps, you should have:
 ✅ At least one Run record in `/api/runs/` (if Run creation succeeded)  
 ✅ Additional events (`decision_made`, `universe_updated`, etc.) depending on cycle activity  
 
-## Next Steps
+---
 
-Once verification is complete:
-1. Commit the debug logging improvements
-2. Consider running a live cycle (without `--dry-run`) to test with real data
-3. Move on to Phase 3: Frontend development
+## Quick Verification Checklist
+
+> Consolidated from the former VERIFY_INSTRUMENTATION.md.
+
+### Check Database Directly (Most Reliable)
+
+```bash
+poetry run python -c "
+from src.data.database import get_session
+from dashboard.backend.app.database import EventsLog, Run
+s = get_session()
+try:
+    runs = s.query(Run).order_by(Run.started_at.desc()).limit(3).all()
+    print(f'Runs: {len(runs)}')
+    for r in runs:
+        print(f'  {r.cycle_id}: {r.status}')
+    events = s.query(EventsLog).order_by(EventsLog.timestamp.desc()).limit(10).all()
+    print(f'\nEvents: {len(events)}')
+    for e in events:
+        print(f'  {e.event_type} from {e.source}')
+finally:
+    s.close()
+"
+```
+
+### Expected Events Per Cycle
+
+| Event Type | Source | Count | When |
+|------------|--------|-------|------|
+| `run_started` | orchestrator | 1 | Cycle begins |
+| `universe_updated` | screener | 1 | After screening |
+| `decision_made` | strategy | ~4-15 | Each strategy decision |
+| `decision_made` | moderation | ~3-5 | Each moderation result |
+| `decision_made` | risk | ~3-5 | Each risk check |
+| `run_completed` | orchestrator | 1 | Cycle finishes |
+
+**Total: ~12-25 events per cycle**
+
+### Check Config
+
+```bash
+poetry run python -c "from src.utils.config import get_settings; s=get_settings(); print('Enabled:', s.dashboard_enabled, 'Events:', s.dashboard_events_enabled)"
+```

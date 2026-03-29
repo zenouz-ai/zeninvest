@@ -398,12 +398,12 @@ Files to check on every feature:
 | `docs/DATA_RATIONALE.md` | New data sources, removed data points, changed data flow |
 | `docs/SOPHISTICATION_ROADMAP.md` | Features completed (move to "done"), new user stories added |
 | `docs/COMPETITIVE_ANALYSIS.md` | Positioning changes, new differentiators, market landscape updates |
-| `docs/CHAT_AND_COMMANDS.md` | Chat alerts, command interface scope, Slack trade commands |
+| `docs/CONVERSATIONAL_TRADING_WORKFLOW.md` | Chat sessions, command interface, Slack trade commands |
 | `docs/ORDER_MANAGEMENT_PROJECT.md` | Stop-loss and limit order management: current design, config, future sophistication |
 | `docs/BACKTESTING.md` | Backtesting scope, engine design, validation assumptions, walk-forward validation, promotion report |
 | `docs/DATA_EXPORT_RUNBOOK.md` | VPS-to-local data export procedure, integrity checks |
 | `docs/DASHBOARD.md` | Dashboard architecture, phases, data alignment, frontend/backend design |
-| `docs/DASHBOARD_DEPLOYMENT.md` | Dashboard VPS deployment: canonical HTTPS ingress, rollback posture, firewall |
+| `docs/AUDIT_INDEX.md` | Cross-reference of all audit findings (agent logic, formal verification, trading system, production) |
 | `docs/AGENTIC_RESEARCH.md` | Agentic research: independent tool access, implementation plan, phase breakdown |
 | `docs/WORLD_NEWS_DASHBOARD.md` | World News dashboard tab: headline archival, macro regime display, API endpoints, categorisation |
 | `dashboard/frontend/src/data/roadmap.ts` | Features delivered or added to pipeline — the dashboard Roadmap page reads milestone status from this file |
@@ -456,7 +456,7 @@ Files to check on every feature:
 
 ## Known issues (2026-03-27)
 
-1. **Dashboard VPS deployment** — US-1.8 + US-7.7 delivered; deployment checklist in `docs/DASHBOARD_DEPLOYMENT.md`. Canonical production access is `https://zeninvest.zenouz.ai` behind Cloudflare + nginx. Raw public `:8000` exposure is not part of the target posture and should only exist temporarily during an explicit rollback. Activity feed SSE uses relative URL when the SPA is same-origin; authenticated deployments use fetch-stream + session cookies.
+1. **Dashboard VPS deployment** — US-1.8 + US-7.7 delivered; deployment checklist in `docs/DEPLOYMENT.md` §13. Canonical production access is `https://zeninvest.zenouz.ai` behind Cloudflare + nginx. Raw public `:8000` exposure is not part of the target posture and should only exist temporarily during an explicit rollback. Activity feed SSE uses relative URL when the SPA is same-origin; authenticated deployments use fetch-stream + session cookies.
 2. **Dry-run state mutation** — Fixed (commit `e5e6f46`). Dry-run no longer mutates drawdown state or skips screening.
 3. **Duplicate Run per scheduled cycle** — Fixed. Scheduler now passes `scheduled_cycle_id` to orchestrator; one Run per cycle (scheduler creates, orchestrator updates).
 4. **Finnhub timeouts in cloud VMs** — Finnhub API calls may time out in VPS/cloud environments due to network latency. Pipeline handles gracefully: analyst recommendations and insider sentiment are missing but cycle completes. See AGENTS.md.
@@ -465,4 +465,4 @@ Files to check on every feature:
 7. **Formal verification audit (2026-03-21)** — `docs/FORMAL_VERIFICATION_AUDIT.md`: State machine completeness, race conditions, invariants, crash recovery, DB atomicity. 3 Critical + 7 Warning + 8 Info findings. Phase 1 fixes: scheduler `max_instances=1` on all jobs (prevents concurrent cycles), resume warns about HALTED/CAUTIOUS state. Phase 2 fixes: `trade_without_stop` alert notification (P2-5); OpportunityQueue `queue_status` field with QUEUED→EXECUTING→EXECUTED lifecycle + orphan reconciliation at cycle start (P2-6); portfolio re-query before BUY phase after SELL/REDUCE (P2-4); decision chain integrity check at cycle end (P2-3). 18 new tests. Phase 3 quick slice is now delivered via US-7.5: HALTED auto-recovery, off-hours order annotations, peak inflation detection, and DB CHECK constraints. 12 invariants verified.
 8. **Code review production-readiness fixes (2026-03-22)** — Fixed. Orders health endpoint (`/api/orders/health`) now catches `EnvironmentError`/T212 failures gracefully and returns `live_fetch_error` instead of crashing. Orchestrator `float()` type-safety hardened for T212 cash dict values (nested `.get()` could return `None`). Risk-parity config validated: `lookback_days >= 2`, `vol_floor >= 0`, `target_vol > vol_floor` (clamped with warning). Risk-parity `_risk_load` guards against negative sqrt input. Fallback path rounding inconsistency fixed. Dashboard orders health test mocks corrected.
 
-When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, `docs/DASHBOARD.md`, and `docs/DASHBOARD_DEPLOYMENT.md` synchronized.
+When touching the dashboard track, keep `README.md`, `docs/ARCHITECTURE.md`, `docs/SOPHISTICATION_ROADMAP.md`, and `docs/DASHBOARD.md` synchronized (dashboard deployment is now in `docs/DEPLOYMENT.md` §13).

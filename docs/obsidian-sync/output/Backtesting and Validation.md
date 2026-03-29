@@ -1,7 +1,7 @@
 ---
 tags: [investment-agent, backtesting, validation, walk-forward]
 status: active
-last_updated: 2026-03-18
+last_updated: 2026-03-29
 ---
 
 # Backtesting and Validation

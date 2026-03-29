@@ -1,12 +1,13 @@
 ---
 tags: [operations, vps, systemd, stability, hardening]
-status: current
-last_updated: 2026-03-24
+status: archived
+last_updated: 2026-03-29
+archived: true
 ---
 
 # VPS Runtime Stability Plan
 
-> Diagnosis, remediation plan, delivered implementation, and operating model for preventing duplicate or runaway services on a small VPS.
+> **Archived 2026-03-29:** All hardening measures delivered (US-7.6). Runtime locks, bounded workers, and cycle guards are now part of the active codebase. See [DEPLOYMENT.md](DEPLOYMENT.md) for current operational guidance.
 
 ## Purpose
 

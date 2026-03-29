@@ -1,7 +1,9 @@
 ---
+title: Governance, Security & Cost Controls
 tags: [governance, security, risk, cost-controls, audit]
-status: current
+status: active
 last_updated: 2026-03-29
+related: [ARCHITECTURE.md, AUDIT_INDEX.md, TRADING_SYSTEM_AUDIT.md]
 ---
 
 # Governance, Security & Cost Controls

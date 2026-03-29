@@ -1,7 +1,9 @@
 ---
+title: Data Export Runbook
 tags: [operations, export, vps, analysis]
-status: current
-last_updated: 2026-03-10
+status: active
+last_updated: 2026-03-29
+related: [DEPLOYMENT.md]
 ---
 
 # Data Export Runbook
@@ -116,7 +118,6 @@ When analysing results, ensure all layers are used:
 
 ## Related Notes
 
-- [Deployment (VPS)](DEPLOYMENT.md)
-- [Dashboard Deployment](DASHBOARD_DEPLOYMENT.md)
+- [Deployment (VPS)](DEPLOYMENT.md) (§13 covers dashboard deployment)
 - [Governance & Audit Trail](GOVERNANCE.md)
 

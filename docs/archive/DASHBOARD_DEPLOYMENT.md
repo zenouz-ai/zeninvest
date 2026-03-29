@@ -1,12 +1,13 @@
 ---
 tags: [dashboard, deployment, vps, docker]
-status: delivered
+status: archived
 last_updated: 2026-03-29
+archived: true
 ---
 
 # Dashboard Deployment
 
-> VPS deployment plan for the 12-page monitoring dashboard (US-1.8 + US-7.7 + US-7.8).
+> **Archived 2026-03-29:** Content consolidated into [DEPLOYMENT.md](DEPLOYMENT.md) section 13. This file is kept for historical reference.
 
 ## Purpose
 

@@ -1,12 +1,13 @@
 ---
 tags: [notifications, slack, commands, chat]
-status: current
-last_updated: 2026-03-25
+status: archived
+last_updated: 2026-03-29
+archived: true
 ---
 
 # Chat Interface and Trade Commands
 
-> Outbound trade alerts (delivered) and inbound natural-language Slack commands (delivered + hardened).
+> **Archived 2026-03-29:** Legacy pre-unification spec for US-1.5 (outbound alerts) and US-1.6 (inbound commands). The current canonical design is [CONVERSATIONAL_TRADING_WORKFLOW.md](CONVERSATIONAL_TRADING_WORKFLOW.md), which unifies both into a multi-turn session-based workflow (US-1.9).
 
 ## Purpose
 
