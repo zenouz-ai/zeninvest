@@ -1,8 +1,12 @@
 ---
+title: Nemotron 3 Super Integration Investigation
 tags: [nemotron, investigation, moderation, cost-optimization]
-status: in-progress
-last_updated: 2026-03-16
+status: archive
+last_updated: 2026-03-29
+user_stories: [US-2.4]
 ---
+
+> **Archived:** Investigation stalled; no active integration plan. See [SOPHISTICATION_ROADMAP.md](SOPHISTICATION_ROADMAP.md) US-2.4.
 
 # Nemotron 3 Super Integration Investigation
 

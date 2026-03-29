@@ -1,7 +1,9 @@
 ---
+title: Market Guidance and Strategy Attribution Plan
 tags: [market-guidance, learning-loop, strategy-attribution, roadmap]
-status: current
+status: delivered
 last_updated: 2026-03-29
+user_stories: [US-2.5, US-2.6]
 ---
 
 # Market Guidance and Strategy Attribution Plan

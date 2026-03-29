@@ -1,12 +1,16 @@
 ---
 tags: [dashboard, macro, world-news, headlines]
 status: delivered
-last_updated: 2026-03-23
+last_updated: 2026-03-29
 ---
 
 # World News Dashboard Tab
 
-> Persistent macro-economic headline archive and regime display for the dashboard.
+> **Status:** Active | **User stories:** US-1.7.4 (delivered)
+> **Depends on:** [PROACTIVE_MACRO_NEWS_INTELLIGENCE.md](PROACTIVE_MACRO_NEWS_INTELLIGENCE.md) for backend system design and MacroState/MacroSignalLog schema.
+> **Related:** [DASHBOARD.md](DASHBOARD.md)
+
+Persistent macro-economic headline archive and regime display for the dashboard.
 
 ## Purpose
 

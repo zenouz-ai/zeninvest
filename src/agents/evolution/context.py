@@ -75,8 +75,8 @@ _AREA_CONTEXT: dict[str, dict[str, Any]] = {
     "notifications_reporting": {
         "docs": [
             {
-                "title": "Chat and Commands",
-                "path": "docs/CHAT_AND_COMMANDS.md",
+                "title": "Conversational Trading Workflow",
+                "path": "docs/CONVERSATIONAL_TRADING_WORKFLOW.md",
                 "reason": "Operator-facing notifications, command audit trail, and messaging behavior.",
             },
         ],
@@ -128,9 +128,9 @@ _AREA_CONTEXT: dict[str, dict[str, Any]] = {
                 "reason": "Current VPS/Docker Compose deployment posture and operational runbooks.",
             },
             {
-                "title": "Dashboard Deployment",
-                "path": "docs/DASHBOARD_DEPLOYMENT.md",
-                "reason": "Dashboard-specific production access model and runtime assumptions.",
+                "title": "Audit Index",
+                "path": "docs/AUDIT_INDEX.md",
+                "reason": "Cross-reference of all audit findings and remediation status.",
             },
         ],
         "code_areas": [

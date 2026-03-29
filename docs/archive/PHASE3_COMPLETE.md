@@ -1,4 +1,6 @@
-# Phase 3 Frontend - ✅ COMPLETE
+> **Archived 2026-03-29:** Historical phase completion marker. Frontend now has 11 pages with full ZENOUZ.ai brand. See dashboard/frontend/README.md.
+
+# Phase 3 Frontend - COMPLETE
 
 ## What Was Built
 

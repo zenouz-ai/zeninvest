@@ -1,3 +1,5 @@
+> **Archived 2026-03-29:** Superseded by TESTING.md and QUICK_START.md. Moved to docs/archive/.
+
 # Quick Test Guide
 
 ## The file isn't synced yet?

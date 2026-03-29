@@ -1,7 +1,9 @@
 ---
+title: Solution Architecture
 tags: [architecture, pipeline, database, diagrams]
-status: current
-last_updated: 2026-03-27
+status: active
+last_updated: 2026-03-29
+related: [GOVERNANCE.md, AUDIT_INDEX.md, DEPLOYMENT.md]
 ---
 
 # Solution Architecture

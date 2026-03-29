@@ -1,7 +1,9 @@
 ---
+title: Data Pipeline Rationale
 tags: [data, pipeline, indicators, fundamentals, rationale]
-status: current
-last_updated: 2026-03-27
+status: active
+last_updated: 2026-03-29
+related: [ARCHITECTURE.md]
 ---
 
 # Data Pipeline Rationale

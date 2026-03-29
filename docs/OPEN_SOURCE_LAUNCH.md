@@ -1,8 +1,10 @@
 ---
+title: Open-Source Launch Preparation
 tags: [open-source, launch, zeninvest, community, ci, legal, us-8.1]
-status: planned
+status: active
 created: 2026-03-21
-last_updated: 2026-03-21
+last_updated: 2026-03-29
+user_stories: [US-8.1]
 ---
 
 # US-8.1 Open-Source Launch Preparation
@@ -10,7 +12,7 @@ last_updated: 2026-03-21
 > **Status:** Planned | **Priority:** P0 (prerequisite for repo going public) | **Effort:** Medium (2–3 days)
 > Sprint delivery: Day 8 — see `docs/SPRINT_WEEK_1.md`.
 > Roadmap entry: `docs/SOPHISTICATION_ROADMAP.md` § US-8.1 (Open-Source / Community).
-> Related Week 1 handoff: `docs/CLOUDFLARE_DASHBOARD_DOMAIN_PLAN.md` captures the delivered canonical community/operator entrypoint at `https://zeninvest.zenouz.ai`.
+> Related: `docs/DEPLOYMENT.md` §13 covers the delivered canonical community/operator entrypoint at `https://zeninvest.zenouz.ai`.
 
 ## Purpose
 

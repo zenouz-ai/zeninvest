@@ -1,12 +1,12 @@
 ---
 tags: [operations, vps, systemd, runbook]
-status: current
-last_updated: 2026-03-24
+status: reference
+last_updated: 2026-03-29
 ---
 
 # VPS Systemd Runbook
 
-> Alternative non-Docker operating path. Use this only if you intentionally choose `systemd` instead of Docker Compose for production.
+> **Status: Reference** — Alternative non-Docker operating path. Current production uses Docker Compose (see [DEPLOYMENT.md](DEPLOYMENT.md)). Use this only if you intentionally choose `systemd` instead.
 
 ## Target Architecture
 

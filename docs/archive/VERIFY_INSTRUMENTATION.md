@@ -1,3 +1,5 @@
+> **Archived 2026-03-29:** Content merged into dashboard/backend/LOCAL_TESTING_GUIDE.md "Quick Verification Checklist" section.
+
 # Verify Dashboard Instrumentation
 
 ## Quick Check After Running a Cycle

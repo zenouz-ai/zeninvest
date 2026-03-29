@@ -1,7 +1,10 @@
 ---
+title: Conversational Trading Workflow
 tags: [chat, slack, dashboard, conversational, trading, workflow]
-status: current
-last_updated: 2026-03-28
+status: active
+last_updated: 2026-03-29
+user_stories: [US-1.9]
+related: [ARCHITECTURE.md]
 ---
 
 # Conversational Trading Workflow (Unified Spec)

@@ -1,7 +1,9 @@
 ---
+title: Zen Evolution Engine
 tags: [evolution, dashboard, planning, governance]
-status: current
+status: active
 last_updated: 2026-03-29
+user_stories: [US-1.10, US-1.11, US-1.12, US-1.13, US-1.14]
 ---
 
 # Zen Evolution Engine

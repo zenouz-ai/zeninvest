@@ -1,7 +1,10 @@
 ---
+title: Agentic Research
 tags: [agentic-research, tool-use, committee]
-status: current
-last_updated: 2026-03-16
+status: active
+last_updated: 2026-03-29
+user_stories: [US-4.4]
+related: [FOLLOWUP_RESEARCH_ROUTING_PLAN.md]
 ---
 
 # Agentic Research

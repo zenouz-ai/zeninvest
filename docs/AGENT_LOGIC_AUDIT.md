@@ -1,5 +1,7 @@
 # Agent Logic Audit Report
 
+> **See also:** [AUDIT_INDEX.md](AUDIT_INDEX.md) (cross-reference), [AUDIT_REPORT.md](AUDIT_REPORT.md) (architectural), [TRADING_SYSTEM_AUDIT.md](TRADING_SYSTEM_AUDIT.md) (execution safety), [FORMAL_VERIFICATION_AUDIT.md](FORMAL_VERIFICATION_AUDIT.md) (state machines)
+
 **Date:** 2026-03-20
 **Scope:** Strategy Engine, Moderation Panel, Risk Manager, Opportunity Scorer/Optimizer, Execution layer, Orchestrator pipeline flow
 **Auditor:** Claude Opus 4.6 (automated code audit)

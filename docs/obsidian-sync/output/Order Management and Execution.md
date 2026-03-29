@@ -1,7 +1,7 @@
 ---
 tags: [investment-agent, orders, execution, stop-loss, trailing]
 status: active
-last_updated: 2026-03-26
+last_updated: 2026-03-29
 ---
 
 # Order Management and Execution
@@ -17,9 +17,11 @@ Post-trade order lifecycle: initial stop-loss, ATR-based reassessment, trailing 
 
 ## Execution Flow
 
-1. **Before SELL/REDUCE:** cancel conflicting stop-loss orders (T212 reserves shares for pending stops). If cancellation fails, SELL is aborted. For `liquidate_all()`, cancellation is fail-open.
-2. **After BUY:** place GTC stop-loss. Optimistic placement — placed even when order status is "pending" (market BUYs may fill shortly).
-3. **BUY sizing:** autonomous BUYs enforce the £500 minimum ticket, prefer whole-share quantities with a small overspend tolerance, and only fall back to fractional shares when a whole-share order cannot satisfy policy.
+1. **Write-before-execute** — live market orders are recorded with status "submitting" before the T212 API call. If the process crashes mid-call, the order record still exists for reconciliation.
+2. **No retry on POST/DELETE** — mutating T212 requests are never automatically retried (T212 has no idempotency keys). A single `place_market_order` call is issued. Only safe methods (GET) are retried. This prevents double-submission on timeout.
+3. **Before SELL/REDUCE:** cancel conflicting stop-loss orders (T212 reserves shares for pending stops). If cancellation fails, SELL is aborted. For `liquidate_all()`, cancellation is fail-open.
+4. **After BUY:** place GTC stop-loss. Optimistic placement — placed even when order status is "pending" (market BUYs may fill shortly).
+5. **BUY sizing:** autonomous BUYs enforce the £500 minimum ticket, prefer whole-share quantities with a small overspend tolerance, and only fall back to fractional shares when a whole-share order cannot satisfy policy.
 4. **Each cycle post-execution:**
    - `place_missing_stops()` — covers positions without a pending stop
    - `reassess_stops()` — ATR-based: 14-day ATR × multiplier, clamped to [3%, 15%]. Only tightens by default. Skip if change < 0.5%.
@@ -35,9 +37,23 @@ Post-trade order lifecycle: initial stop-loss, ATR-based reassessment, trailing 
 - **Ticker normalisation** — plain symbols (e.g. "AAPL") auto-mapped to T212 instrument IDs ("AAPL_US_EQ") before execution.
 - **Execution retry** — 2 retries with 5s backoff for transient T212 failures.
 
+## Execution Quality Telemetry (US-7.3)
+
+Every order now tracks:
+- **decision_price** — price at the moment strategy decided to act
+- **filled_quantity** and **remaining_quantity** — partial fill visibility
+- **slippage_bps** — side-adjusted so positive always means worse execution for the operator (BUY: fill > decision, SELL: fill < decision)
+- **price** field is treated as realised average fill price for live orders (null until fill is confirmed)
+
+Dashboard surfaces execution quality: decision/fill/slippage/remainder columns plus open partial-fill visibility.
+
+## Partial Fill Recovery (US-7.2)
+
+Conservative approach: if a BUY partially fills and the live remainder disappears (broker-cancelled), the order is marked "cancelled" while preserving filled and remaining quantities. One later approved BUY cycle may retry the exact stored remainder, but only for autonomous/strategy-driven market BUYs — never for direct/manual orders.
+
 ## Order Status
 
-Derived from T212 API: FILLED/PARTIALLY_FILLED → filled, NEW/CONFIRMED → pending, REJECTED/CANCELLED → failed. Don't assume filled on 200 OK. At cycle start, `sync_order_status_from_t212()` reconciles pending → filled.
+Derived from T212 API: FILLED/PARTIALLY_FILLED → filled, NEW/CONFIRMED → pending, REJECTED/CANCELLED → failed. Don't assume filled on 200 OK. At cycle start, `sync_orders_with_t212()` reconciles pending → filled, updates fill telemetry, and reconciles stale local rows.
 
 Pending semantics: MARKET + pending = accepted but not yet executed (common outside market hours). STOP + pending = working protective order, expected to stay pending for days.
 

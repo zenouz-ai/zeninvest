@@ -1,7 +1,9 @@
 ---
+title: Local Setup and Live Run Guide
 tags: [setup, local, macos, testing]
-status: current
-last_updated: 2026-03-16
+status: active
+last_updated: 2026-03-29
+related: [DEPLOYMENT.md]
 ---
 
 # Local Setup and Live Run Guide

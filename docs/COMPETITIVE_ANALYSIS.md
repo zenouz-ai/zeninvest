@@ -1,7 +1,8 @@
 ---
+title: Competitive Analysis
 tags: [strategy, competitive-analysis, positioning]
-status: current
-last_updated: 2026-03-13
+status: active
+last_updated: 2026-03-29
 ---
 
 # Competitive Analysis

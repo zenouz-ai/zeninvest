@@ -1,3 +1,5 @@
+> **Archived 2026-03-29:** Point-in-time diagnostic. Useful diagnostic tips merged into TESTING.md. See dashboard/backend/README.md.
+
 # Dashboard Status Check
 
 ## Current Status: ✅ Phase 2 Instrumentation Complete

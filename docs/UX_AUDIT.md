@@ -1,3 +1,10 @@
+---
+title: UX Audit
+status: active
+last_updated: 2026-03-29
+user_stories: [US-1.7.1, US-1.7.2, US-1.7.3]
+---
+
 # UX Audit: ZENOUZ.ai Investment Agent Dashboard
 
 **Date:** 2026-03-18

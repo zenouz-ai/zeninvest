@@ -1,5 +1,7 @@
 # Formal Verification Audit — Investment Agent
 
+> **See also:** [AUDIT_INDEX.md](AUDIT_INDEX.md) (cross-reference), [AUDIT_REPORT.md](AUDIT_REPORT.md) (architectural), [TRADING_SYSTEM_AUDIT.md](TRADING_SYSTEM_AUDIT.md) (execution safety), [AGENT_LOGIC_AUDIT.md](AGENT_LOGIC_AUDIT.md) (LLM pipeline)
+
 **Date:** 2026-03-21
 **Scope:** Decision pipeline integrity, state machine, race conditions, invariants, edge cases, crash recovery
 **Method:** Systematic audit following formal verification principles — state machines, invariants, proof obligations

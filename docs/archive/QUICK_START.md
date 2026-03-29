@@ -1,3 +1,5 @@
+> **Archived 2026-03-29:** Content merged into dashboard/backend/README.md Quick Start section.
+
 # Quick Start Guide - Dashboard Backend
 
 ## Step 1: Install Dependencies

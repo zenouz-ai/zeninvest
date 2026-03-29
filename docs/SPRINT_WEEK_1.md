@@ -1,4 +1,5 @@
 ---
+title: Sprint Plan — Week 1
 tags: [sprint, planning, week-1, delivery, zeninvest]
 status: active
 created: 2026-03-21

@@ -1,7 +1,7 @@
 ---
 tags: [investment-agent, career, cv, portfolio-project]
 status: active
-last_updated: 2026-03-18
+last_updated: 2026-03-29
 ---
 
 # Investment Agent — CV Impact
@@ -36,9 +36,9 @@ My L&G experience shows RAG architecture (Azure OpenAI, medical document summari
 
 ### 4. Full-Stack AI Product (end-to-end)
 
-Not just a model or notebook — a complete product: Python backend, FastAPI REST API + SSE streaming, React dashboard (11-page authenticated surface, ZENOUZ.ai brand), Docker Compose deployment, APScheduler, SQLite with Alembic migrations, Slack/Email notifications. Deployed on VPS.
+Not just a model or notebook — a complete product: Python backend, FastAPI REST API + SSE streaming, React dashboard (11-page authenticated surface, ZENOUZ.ai brand), Docker Compose deployment, APScheduler, SQLite with Alembic migrations, Slack/Email notifications, conversational trading via Slack NL commands (US-1.9), and an evolution planner workspace for natural-language change planning (US-1.10). Deployed on VPS at a canonical HTTPS domain (US-7.7) with a safe public demo dashboard (US-7.8).
 
-**CV angle:** "Delivered a full-stack AI product: Python pipeline, FastAPI API, React dashboard, Docker deployment, real-time notifications — demonstrating end-to-end product delivery from ML to production."
+**CV angle:** "Delivered a full-stack AI product: Python pipeline, FastAPI API, React dashboard, conversational trading interface, Docker deployment, HTTPS domain, real-time notifications — demonstrating end-to-end product delivery from ML to production."
 
 ### 5. Quantitative Finance Domain (broadens sector reach)
 
@@ -48,9 +48,9 @@ My CV is strong in insurance/financial services. This project adds quantitative 
 
 ### 6. Evidence-Based Engineering Culture
 
-The project embodies the "measure before you build" philosophy: 721 collected tests, backtesting with promotion reports (fail-closed — weak evidence blocks deployment), experiment reproducibility (seed + config), and a sophistication roadmap that gates features on data availability. This mirrors how I run teams at L&G.
+The project embodies the "measure before you build" philosophy: 700+ tests, backtesting with promotion reports (fail-closed — weak evidence blocks deployment), experiment reproducibility (seed + config), and a sophistication roadmap (36 stories delivered out of 51 total) that gates features on data availability. This mirrors how I run teams at L&G.
 
-**CV angle:** "Applied evidence-based engineering: 703 automated tests, walk-forward backtesting with quantitative promotion gates, and a data-gated sophistication roadmap — the same discipline I bring to enterprise AI delivery."
+**CV angle:** "Applied evidence-based engineering: 700+ automated tests, walk-forward backtesting with quantitative promotion gates, and a data-gated sophistication roadmap (36 delivered user stories) — the same discipline I bring to enterprise AI delivery."
 
 ## Gaps This Project Fills
 
@@ -74,9 +74,9 @@ The project embodies the "measure before you build" philosophy: 721 collected te
 ## Suggested CV Bullets
 
 > **Autonomous Investment Agent** (Personal Project)
-> - Designed and deployed a multi-LLM autonomous trading agent (Claude + GPT-4o + Gemini) with adversarial consensus decision-making, 11 deterministic risk rules, and agentic research capabilities across 5 tools
-> - Built end-to-end: Python pipeline, FastAPI API, React dashboard (11-page authenticated surface), Docker deployment, Slack/Email alerting — 703 automated tests, backtesting with walk-forward validation
-> - Implemented AI governance as architecture: cost-aware degradation, drawdown state machine, defense-in-depth pipeline where no LLM can override deterministic risk controls
+> - Designed and deployed a multi-LLM autonomous trading agent (Claude + GPT-4o + Gemini) with adversarial consensus decision-making, 11 deterministic risk rules, and agentic research capabilities across 5 tools — 36 user stories delivered across 51 planned
+> - Built end-to-end: Python pipeline, FastAPI API, React dashboard (11-page authenticated surface), conversational Slack trading, evolution planner, Docker deployment, HTTPS domain with public demo — 700+ automated tests, backtesting with walk-forward validation
+> - Implemented AI governance as architecture: cost-aware degradation, drawdown state machine with auto-recovery, execution quality telemetry, defense-in-depth pipeline where no LLM can override deterministic risk controls
 
 ## Tech Stack for CV Keywords
 

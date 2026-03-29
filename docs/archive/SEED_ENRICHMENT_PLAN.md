@@ -1,3 +1,5 @@
+> **Archived 2026-03-29:** Delivered — 5,477/5,493 US equities enriched via bulk_enrich_instruments.py and backfill_industry_summary.py. See CLAUDE.md rule 5 for current enrichment architecture.
+
 # Plan: Update ~6,900 Seed Instruments with Sector and Market Cap
 
 ## Problem

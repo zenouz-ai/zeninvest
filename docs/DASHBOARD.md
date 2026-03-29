@@ -1,7 +1,10 @@
 ---
+title: Dashboard System
 tags: [dashboard, frontend, api]
-status: current
+status: active
 last_updated: 2026-03-29
+user_stories: [US-1.7]
+related: [ARCHITECTURE.md, DEPLOYMENT.md]
 ---
 
 # Dashboard System
@@ -112,7 +115,7 @@ Next: continue migrating the 12-page surface to use these primitives in place of
 
 ### Deployment (delivered)
 
-See `docs/DASHBOARD_DEPLOYMENT.md` — the dashboard app stays internal-only on the Compose network while nginx serves the canonical HTTPS domain `https://zeninvest.zenouz.ai`. Activity feed (SSE) uses relative URL. CORS origins are configurable via `dashboard.cors_origins` in `config/settings.yaml`. Authentication is session-based for operator routes, with explicit anonymous read-only routes under `/api/public/*`.
+See `docs/DEPLOYMENT.md` §13 — the dashboard app stays internal-only on the Compose network while nginx serves the canonical HTTPS domain `https://zeninvest.zenouz.ai`. Activity feed (SSE) uses relative URL. CORS origins are configurable via `dashboard.cors_origins` in `config/settings.yaml`. Authentication is session-based for operator routes, with explicit anonymous read-only routes under `/api/public/*`.
 
 ### Stabilisation (done)
 
@@ -984,7 +987,7 @@ Dashboard event logging must **never** block or slow the pipeline. Use async or 
 
 - **CLAUDE.md** — Architecture rules, database models, configuration
 - **README.md** — Quick commands including dashboard deployment
-- **docs/DASHBOARD_DEPLOYMENT.md** — Deployment checklist, Docker setup, VPS access
+- **docs/DEPLOYMENT.md** §13 — Dashboard deployment checklist, Docker setup, VPS access
 - **docs/ARCHITECTURE.md** — Data flow, pipeline stages, component interactions
 - **docs/SOPHISTICATION_ROADMAP.md** — Feature backlog, user stories (US-1.7, US-1.8)
 - **docs/GOVERNANCE.md** — Audit trail, control actions, kill switches
