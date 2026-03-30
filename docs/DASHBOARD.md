@@ -386,7 +386,7 @@ Strategy (Claude) → conviction 0.8, action BUY
 
 **Timeline tab:**
 - Custom hybrid roadmap board: one section per work stream, with consistent card sizes for readability
-- Columns: `Delivered`, `Next`, `Soon`, `Later`
+- Columns: `Delivered`, `Pipeline`, `Future` (3-column layout for active clarity; Pipeline = committed work, Future = deferred backlog)
 - Delivered stories show factual completion dates; planned stories show compact `1 day` / `2 days` timeboxes
 - No Mermaid or fake date-width bars for future work
 

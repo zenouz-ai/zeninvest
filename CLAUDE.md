@@ -413,7 +413,7 @@ Files to check on every feature:
 
 **Test count:** Update `README.md` status line (`N tests passing`) whenever tests are added or removed.
 
-**Dashboard roadmap:** The Roadmap & Architecture page (`dashboard/frontend/src/pages/Roadmap.tsx`) renders milestones from `dashboard/frontend/src/data/roadmap.ts`. When a user story is delivered, move it from `status: 'pipeline'` to `status: 'delivered'` with `start`/`end` dates. When a new pipeline story is added, append it to `MILESTONES` with `horizon` (`Next` / `Soon` / `Later`) and `timeboxDays` (`1` or `2`) so the default Timeline board stays readable and reflects the team’s short-cycle delivery pace. The architecture Mermaid diagram in `Roadmap.tsx` should also be updated when new pipeline components are added.
+**Dashboard roadmap:** The Roadmap & Architecture page (`dashboard/frontend/src/pages/Roadmap.tsx`) renders milestones from `dashboard/frontend/src/data/roadmap.ts`. When a user story is delivered, move it from `status: 'pipeline'` to `status: 'delivered'` with `start`/`end` dates. When a new pipeline story is added, append it to `MILESTONES` with `horizon` (`'Pipeline'` / `'Future'`) and `timeboxDays` (`1` or `2`) so the default Timeline board reflects priorities cleanly. `Pipeline` work is active/committed; `Future` work is deferred backlog. The architecture Mermaid diagram in `Roadmap.tsx` should also be updated when new pipeline components are added.
 
 ## Project Evolution Context
 

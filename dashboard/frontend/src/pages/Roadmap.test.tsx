@@ -86,7 +86,7 @@ describe('timeline section grouping', () => {
     const seen = new Set<string>()
 
     for (const section of sections) {
-      for (const column of ['Delivered', 'Next', 'Soon', 'Later'] as const) {
+      for (const column of ['Delivered', 'Pipeline', 'Future'] as const) {
         for (const milestone of section.columns[column]) {
           expect(seen.has(milestone.id)).toBe(false)
           seen.add(milestone.id)
@@ -107,9 +107,9 @@ describe('timeline section grouping', () => {
     expect(foundation?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-1.9')
     expect(foundation?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-1.7.1')
     expect(foundation?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-1.7.2')
-    expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.4')
-    expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.2')
-    expect(calibration?.columns.Later.map((milestone) => milestone.id)).toContain('US-2.1')
+    expect(calibration?.columns.Future.map((milestone) => milestone.id)).toContain('US-2.4')
+    expect(calibration?.columns.Future.map((milestone) => milestone.id)).toContain('US-2.2')
+    expect(calibration?.columns.Future.map((milestone) => milestone.id)).toContain('US-2.1')
     expect(hardening?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-7.5')
     expect(hardening?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-7.8')
     expect(hardening?.columns.Delivered.map((milestone) => milestone.id)).toContain('US-7.3')

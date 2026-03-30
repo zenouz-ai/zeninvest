@@ -41,8 +41,8 @@ type ArchitectureStage = {
   blocks: ArchitectureBlock[]
 }
 
-const TIMELINE_COLUMNS: TimelineColumnId[] = ['Delivered', 'Next', 'Soon', 'Later']
-const HORIZON_ORDER: Horizon[] = ['Next', 'Soon', 'Later']
+const TIMELINE_COLUMNS: TimelineColumnId[] = ['Delivered', 'Pipeline', 'Future']
+const HORIZON_ORDER: Horizon[] = ['Pipeline', 'Future']
 
 const ARCHITECTURE_CONTROL_PLANE = [
   {
@@ -228,8 +228,8 @@ function sortDelivered(a: Milestone, b: Milestone): number {
 }
 
 function sortPipeline(a: Milestone, b: Milestone): number {
-  const aHorizon = HORIZON_ORDER.indexOf(a.horizon ?? 'Later')
-  const bHorizon = HORIZON_ORDER.indexOf(b.horizon ?? 'Later')
+  const aHorizon = HORIZON_ORDER.indexOf(a.horizon ?? 'Future')
+  const bHorizon = HORIZON_ORDER.indexOf(b.horizon ?? 'Future')
   if (aHorizon !== bHorizon) return aHorizon - bHorizon
   if ((a.activeOrder ?? 999) !== (b.activeOrder ?? 999)) return (a.activeOrder ?? 999) - (b.activeOrder ?? 999)
   if ((a.timeboxDays ?? 2) !== (b.timeboxDays ?? 2)) return (a.timeboxDays ?? 2) - (b.timeboxDays ?? 2)
@@ -245,14 +245,11 @@ export function getTimelineSections(milestones: Milestone[] = MILESTONES): Timel
         Delivered: items
           .filter((milestone) => milestone.status === 'delivered')
           .sort(sortDelivered),
-        Next: items
-          .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Next')
+        Pipeline: items
+          .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Pipeline')
           .sort(sortPipeline),
-        Soon: items
-          .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Soon')
-          .sort(sortPipeline),
-        Later: items
-          .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Later')
+        Future: items
+          .filter((milestone) => milestone.status === 'pipeline' && milestone.horizon === 'Future')
           .sort(sortPipeline),
       },
     }
@@ -275,8 +272,7 @@ function formatMilestoneWindow(milestone: Milestone): string {
 
 function timelinePillVariant(column: TimelineColumnId): PillVariant {
   if (column === 'Delivered') return 'active'
-  if (column === 'Next') return 'live'
-  if (column === 'Soon') return 'warning'
+  if (column === 'Pipeline') return 'live'
   return 'dim'
 }
 
@@ -294,18 +290,15 @@ function milestoneStatusLabel(milestone: Milestone): string {
 
 function milestoneStatusVariant(milestone: Milestone): PillVariant {
   if (milestone.status === 'delivered') return 'active'
-  return timelinePillVariant(milestone.horizon ?? 'Later')
+  return timelinePillVariant(milestone.horizon ?? ('Future' as const))
 }
 
 function timelineCardClass(column: TimelineColumnId): string {
   if (column === 'Delivered') {
     return 'border-emerald/45 bg-emerald/8'
   }
-  if (column === 'Next') {
+  if (column === 'Pipeline') {
     return 'border-cyan/45 bg-cyan/8'
-  }
-  if (column === 'Soon') {
-    return 'border-warning/45 bg-warning/10'
   }
   return 'border-terminal-border bg-terminal-surface/60'
 }
@@ -438,7 +431,7 @@ function TimelineTabContent() {
       </Panel>
 
       {sections.map((section) => {
-        const plannedCount = section.columns.Next.length + section.columns.Soon.length + section.columns.Later.length
+        const plannedCount = section.columns.Pipeline.length + section.columns.Future.length
 
         return (
           <Panel key={section.topic}>
@@ -453,7 +446,7 @@ function TimelineTabContent() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-3">
               {TIMELINE_COLUMNS.map((column) => {
                 const items = section.columns[column]
                 return (
