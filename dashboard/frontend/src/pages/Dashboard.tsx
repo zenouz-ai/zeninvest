@@ -15,6 +15,7 @@ import { FreshnessIndicator } from '../components/FreshnessIndicator'
 import type { SseConnectionState } from '../hooks/useSSE'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { PnlCurrency, PnlValue } from '../components/PnlDisplay'
+import { EpisodeCard } from '../components/EpisodeCard'
 
 function formatCountdown(isoString: string): string {
   const target = new Date(isoString)
@@ -590,14 +591,16 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
             {activeEpisodes.length > 0 ? (
               <div className="mt-3 space-y-2">
                 {activeEpisodes.map((episode) => (
-                  <div key={episode.id} className="text-sm text-terminal-text-dim">
-                    <span className="text-terminal-text">{episode.title}</span>
-                    <span className="ml-2 text-xs">since {safeFormat(episode.effective_start_at, 'MMM dd, HH:mm', '—')}</span>
-                  </div>
+                  <Link to="/insights" key={episode.id} className="block no-underline">
+                    <EpisodeCard episode={episode} />
+                  </Link>
                 ))}
+                <Link to="/insights" className="text-xs text-cyan-400 hover:text-cyan-300 inline-block mt-2">
+                  View all episodes →
+                </Link>
               </div>
             ) : (
-              <p className="mt-3 text-sm text-terminal-text-dim">No confirmed strategy episodes are active yet.</p>
+              <p className="mt-3 text-sm text-terminal-text-dim">No strategy changes deployed this week</p>
             )}
           </div>
         </div>

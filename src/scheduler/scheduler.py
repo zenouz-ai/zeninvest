@@ -210,6 +210,8 @@ def _run_intraday_refresh() -> None:
                         session.close()
                 except Exception as ex:
                     logger.warning(f"Failed to update refresh Run record to failed (fail-open): {ex}", exc_info=True)
+
+
             except Exception:
                 pass
     finally:
@@ -404,6 +406,21 @@ def _run_daily_snapshot() -> None:
         logger.error(f"Daily report failed: {e}")
 
 
+def _run_strategy_episode_scan() -> None:
+    """Scan recent git history and auto-publish strategy change episodes."""
+    from src.agents.attribution.service import StrategyAttributionService
+    logger.info("Starting strategy episode git scan (7-day lookback)...")
+    try:
+        svc = StrategyAttributionService()
+        episode_list = svc.backfill_recent_episodes(days=7, auto_confirm=True)
+        if episode_list:
+            titles = [ep["title"] for ep in episode_list]
+            logger.info(f"Strategy scan published {len(episode_list)} episodes: {titles}")
+        else:
+            logger.info("Strategy scan: no new episodes detected")
+    except Exception as e:
+        logger.error(f"Strategy episode scan failed: {e}", exc_info=True)
+
 def _run_weekly_report() -> None:
     """Generate weekly report."""
     from src.agents.reporting.weekly_report import generate_weekly_report
@@ -585,6 +602,18 @@ def create_scheduler() -> BlockingScheduler:
             misfire_grace_time=3600,
             max_instances=1,
         )
+
+    # Daily strategy episode git scan: 02:00 UTC (off-market, low load)
+    scheduler.add_job(
+        _run_strategy_episode_scan,
+        "cron",
+        hour=2,
+        minute=0,
+        id="strategy_episode_scan",
+        replace_existing=True,
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
 
     return scheduler
 

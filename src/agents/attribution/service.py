@@ -44,8 +44,22 @@ class EpisodeCandidate:
 class StrategyAttributionService:
     """Backfill and manage strategy change episodes."""
 
-    def backfill_recent_episodes(self, *, days: int = 30) -> list[dict[str, Any]]:
-        """Scan recent git history and persist proposed episodes."""
+    def backfill_recent_episodes(
+        self,
+        *,
+        days: int = 30,
+        auto_confirm: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Scan recent git history and persist episodes.
+
+        Args:
+            days: Git history lookback window (days).
+            auto_confirm: If True, episodes are persisted with status='confirmed'.
+                If False, status='proposed'.
+
+        Returns:
+            List of persisted episodes with {id, title, status}.
+        """
         candidates = self._scan_git(days=days)
         persisted: list[dict[str, Any]] = []
         session = get_session()
@@ -55,8 +69,9 @@ class StrategyAttributionService:
                 last = candidate.commits[-1]
                 if self._episode_exists(session, first["sha"], last["sha"]):
                     continue
+                status = "confirmed" if auto_confirm else "proposed"
                 episode = StrategyChangeEpisode(
-                    status="proposed",
+                    status=status,
                     title=self._build_title(candidate),
                     summary=self._build_summary(candidate),
                     change_type=candidate.change_type,
@@ -64,6 +79,7 @@ class StrategyAttributionService:
                     commit_start_sha=first["sha"],
                     commit_end_sha=last["sha"],
                     effective_start_at=first["committed_at"],
+                    confirmed_at=datetime.now(timezone.utc) if auto_confirm else None,
                     notes="Observational attribution only.",
                     metadata_json=json.dumps(
                         {

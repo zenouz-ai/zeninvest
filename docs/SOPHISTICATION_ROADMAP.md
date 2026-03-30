@@ -71,6 +71,7 @@ Delivered stories are condensed here. Full acceptance criteria lived in earlier 
 | **US-3.3** | Correlation-Aware Screening | 2026-03-28 | — |
 | **US-3.4** | UOV Ranking & Queueing | 2026-03-03 | — |
 | **US-3.5** | Intelligent Order Management | 2026-03-08 | [ORDER_MANAGEMENT_PROJECT.md](ORDER_MANAGEMENT_PROJECT.md) |
+| **US-3.5a** | Tiered Profit-Lock Floors | 2026-03-30 | [ORDER_MANAGEMENT_PROJECT.md](ORDER_MANAGEMENT_PROJECT.md) |
 | **US-3.6** | Active Swing Rotation Strategy | 2026-03-12 | — |
 | **US-4.1** | Volume-Weighted Signals | 2026-03-22 | — |
 | **US-4.2** | Earnings Calendar | 2026-03-28 | — |
@@ -89,6 +90,8 @@ Delivered stories are condensed here. Full acceptance criteria lived in earlier 
 | **US-7.7** | Dashboard HTTPS Domain | 2026-03-25 | [DEPLOYMENT.md](DEPLOYMENT.md) §13 |
 | **US-7.8** | Safe Public Demo Dashboard | 2026-03-29 | — |
 | **US-8.1** | Open-Source Launch Preparation | 2026-03-30 | [OPEN_SOURCE_LAUNCH.md](OPEN_SOURCE_LAUNCH.md) |
+
+Operational update (2026-03-30): the US-2.6 attribution pipeline now includes daily automated git scanning (02:00 UTC) with auto-confirmed episode publication for dashboard visibility.
 
 ---
 

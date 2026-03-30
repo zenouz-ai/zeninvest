@@ -88,6 +88,7 @@ poetry run python -m src.orchestrator.main --reset-peak   # Reset peak to curren
 poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ  # Force sell
 poetry run python -m src.orchestrator.main --report       # Generate daily report
 poetry run python -m src.orchestrator.main --uov-diagnostic  # Run with UOV in shadow mode, emit scores for calibration
+poetry run python scripts/audit_performance_data.py       # Audit performance data quality inputs/outputs
 ```
 
 ### Backtesting
@@ -175,6 +176,7 @@ npm run build  # Production build (outputs to dist/)
 | Daily snapshot | 21:30 UTC daily | Portfolio snapshot + daily report |
 | Weekly report | Friday 22:00 UTC | End-of-week summary |
 | Instrument refresh | Sunday 12:00 UTC | Update tradable universe from T212 |
+| Strategy episode scan | 02:00 UTC daily | Auto-scans git strategy/risk/execution changes and auto-confirms new attribution episodes |
 
 Set `cycle_frequency: intraday`, `schedule_mode: market_session`, `schedule_timezone: America/New_York`, and `cycle_times_local: ["10:00", "12:30", "15:15"]` in `config/settings.yaml` for DST-aware regular-session scheduling. Use `standard` for the original 2-cycle fixed-UTC cadence.
 
@@ -416,6 +418,7 @@ Execution behavior:
 
 - **Market orders** — BUY, SELL, REDUCE (partial sell) via T212 market order API
 - **Stop-loss orders** — Automatically placed after BUY executions using Claude's `stop_loss_pct` (GTC validity)
+- **Tiered profit-lock floors** — Under `order_management.profit_lock_tiers`, winners progressively ratchet minimum locked profit floors (for example `+8% gain -> +5% lock`). Tiered floors are integrated with ATR and trailing logic by taking the tighter protective stop.
 - **£500 BUY floor + whole-share preference** — BUY and limit-BUY paths are lifted to `min_order_value_gbp` when the requested trade value is below the floor, provided enough cash remains after the cash-floor guard. Autonomous BUY sizing prefers whole shares with a small configurable overspend tolerance and only falls back to fractional shares when a whole-share order cannot satisfy policy. If there is not enough spendable cash to place the minimum order, the BUY is skipped. SELL, REDUCE, and protective stop-loss orders are allowed below the floor so small holdings can still be exited/protected. REDUCE is intentionally rare and currently restricted to 50% profit trims; if a trim would leave a holding below the cleanup threshold, execution converts it to a full SELL.
 - **REDUCE floor safeguard** — If a REDUCE would leave a position below £500, execution is automatically converted to a full SELL
 - **Slow, profit-driven exits** — Ordinary autonomous SELLs require meaningful unrealized profit (`sell_min_profit_pct`, default `15%`) and a `gain_realization` trigger, while `hard_exit` is reserved for severe thesis breaks or risk events. REDUCE is intentionally rare: only `25%` or `50%` profit trims are allowed, and only after the configured gain thresholds are reached. Residual holdings below `small_position_cleanup_value_gbp` (default `£200`) are liquidated immediately in a pre-strategy deterministic pass, using the broker-reported live quantity and skipping the strategy/moderation/risk LLM path for that cleanup ticker
