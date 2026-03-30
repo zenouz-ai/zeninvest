@@ -1606,15 +1606,15 @@ class TestFxAwareQuantity:
     def test_buy_with_price_gbp_uses_gbp_for_quantity(self, db_session):
         """BUY quantity prefers whole shares while still using price_gbp for sizing."""
         manager = OrderManager(client=MagicMock(), dry_run=True)
-        # USD price $232, GBP equivalent £179 (≈ GBP/USD 0.772)
+        # USD price $235, GBP equivalent £184 (≈ GBP/USD 1.28)
         result = manager.execute_market_order(
             ticker="MPC_US_EQ",
             action="BUY",
             target_amount_gbp=500.0,
-            current_price=232.0,  # USD (native)
-            price_gbp=179.0,      # GBP equivalent
+            current_price=235.0,  # USD (native)
+            price_gbp=184.0,      # GBP equivalent
         )
-        # 3 shares would cost £537 (>5% overspend), so the whole-share policy uses 2.
+        # 3 shares would cost £552 (>10% overspend limit), so the whole-share policy uses 2.
         assert result["status"] == "dry_run"
         assert result["quantity"] == 2.0
         orders = db_session.query(Order).all()

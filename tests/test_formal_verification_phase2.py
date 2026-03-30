@@ -165,9 +165,9 @@ class TestOpportunityQueueStatus:
             cycle_id="cycle_1",
             approved_buys=approved,
             scores_by_ticker=scores,
-            existing_tickers={f"POS{j}_US_EQ" for j in range(15)},
+            existing_tickers={f"POS{j}_US_EQ" for j in range(20)},
             cash_pct=20.0,
-            num_positions=15,
+            num_positions=20,
         )
 
         row = db_session.query(OpportunityQueue).filter_by(ticker="LIFE_US_EQ").first()

@@ -60,9 +60,9 @@ def test_optimizer_promotes_persistent_queue_on_second_cycle():
         cycle_id="cycle_1",
         approved_buys=approved,
         scores_by_ticker=scores,
-        existing_tickers={f"POS{i}_US_EQ" for i in range(15)},
+        existing_tickers={f"POS{i}_US_EQ" for i in range(20)},
         cash_pct=20.0,
-        num_positions=15,
+        num_positions=20,
     )
     assert "GOOG_US_EQ" not in first["execution_order"]
     assert any(q["ticker"] == "GOOG_US_EQ" for q in first["queued_candidates"])
@@ -113,9 +113,9 @@ def test_optimizer_queue_ttl_expires_after_max_cycles():
             cycle_id=f"cycle_{i}",
             approved_buys=approved,
             scores_by_ticker=scores,
-            existing_tickers={f"POS{j}_US_EQ" for j in range(15)},  # Full capacity
+            existing_tickers={f"POS{j}_US_EQ" for j in range(20)},  # Full capacity
             cash_pct=20.0,
-            num_positions=15,
+            num_positions=20,
         )
         if any(
             d["ticker"] == "SLOW_US_EQ" and d["reason"] == "queue_ttl_expired"
@@ -158,9 +158,9 @@ def test_optimizer_capacity_gated_rejection():
         cycle_id="cycle_1",
         approved_buys=approved,
         scores_by_ticker=scores,
-        existing_tickers={f"POS{j}_US_EQ" for j in range(15)},
+        existing_tickers={f"POS{j}_US_EQ" for j in range(20)},
         cash_pct=20.0,
-        num_positions=15,
+        num_positions=20,
     )
 
     # Cycle 2: still at capacity — should be capacity_gated
@@ -168,9 +168,9 @@ def test_optimizer_capacity_gated_rejection():
         cycle_id="cycle_2",
         approved_buys=approved,
         scores_by_ticker=scores,
-        existing_tickers={f"POS{j}_US_EQ" for j in range(15)},
+        existing_tickers={f"POS{j}_US_EQ" for j in range(20)},
         cash_pct=20.0,
-        num_positions=15,
+        num_positions=20,
     )
 
     assert "CAP_US_EQ" in result["rejection_details"]
