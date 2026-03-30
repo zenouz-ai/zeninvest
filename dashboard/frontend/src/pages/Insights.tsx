@@ -117,7 +117,7 @@ export default function Insights() {
                   <StatusPill label={guidanceLatest.status} variant={guidanceLatest.status === 'active' ? 'live' : guidanceLatest.status === 'stale' ? 'warning' : 'alert'} />
                   <StatusPill label={`${Math.round(guidanceLatest.confidence_score * 100)}% confidence`} variant="dim" />
                 </div>
-                <p className="text-sm text-terminal-text">{guidanceLatest.prompt_summary ?? guidanceLatest.rationale}</p>
+                <p className="text-sm text-terminal-text">{guidanceLatest.prompt_summary ?? guidanceLatest.rationale ?? 'No summary available for this guidance snapshot.'}</p>
                 <div className="grid gap-3 md:grid-cols-3">
                   {guidanceLatest.sector_scores
                     .filter((item) => item.label !== 'neutral')
@@ -154,16 +154,22 @@ export default function Insights() {
                   </tr>
                 </thead>
                 <tbody>
-                  {cycleImpact.map((item) => (
-                    <tr key={item.cycle_id} className="border-t border-terminal-border">
-                      <td className="py-3 pr-4 font-mono text-xs text-terminal-text">{item.cycle_id}</td>
-                      <td className="py-3 pr-4 text-terminal-text-dim">{item.prompt_guidance_summary ?? item.guidance_mode ?? 'baseline'}</td>
-                      <td className="py-3 pr-4 text-terminal-text-dim">
-                        {item.pre_guidance_candidate_count ?? 0} → {item.post_guidance_candidate_count ?? 0}
-                      </td>
-                      <td className="py-3 pr-4 text-terminal-text-dim">{item.active_strategy_episode_ids.join(', ') || '—'}</td>
+                  {cycleImpact.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-4 text-sm text-terminal-text-dim">No cycles captured yet.</td>
                     </tr>
-                  ))}
+                  ) : (
+                    cycleImpact.map((item) => (
+                      <tr key={item.cycle_id} className="border-t border-terminal-border">
+                        <td className="py-3 pr-4 font-mono text-xs text-terminal-text">{item.cycle_id}</td>
+                        <td className="py-3 pr-4 text-terminal-text-dim">{item.prompt_guidance_summary ?? item.guidance_mode ?? 'baseline'}</td>
+                        <td className="py-3 pr-4 text-terminal-text-dim">
+                          {item.pre_guidance_candidate_count ?? 0} → {item.post_guidance_candidate_count ?? 0}
+                        </td>
+                        <td className="py-3 pr-4 text-terminal-text-dim">{item.active_strategy_episode_ids.join(', ') || '—'}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -172,6 +178,9 @@ export default function Insights() {
           <Panel>
             <SectionHeader eyebrow="HISTORY" title="Recent Guidance History" subtitle={`Snapshots persisted: ${guidanceHistory.length}`} />
             <div className="mt-4 space-y-3">
+              {guidanceHistory.length === 0 && (
+                <p className="text-sm text-terminal-text-dim">No guidance snapshots in the last 14 days.</p>
+              )}
               {guidanceHistory.map((item) => (
                 <div key={item.id} className="rounded-panel border border-terminal-border p-3">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -212,27 +221,33 @@ export default function Insights() {
             </div>
             <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
               <div className="space-y-3">
-                {episodes.map((episode) => (
-                  <button
-                    key={episode.id}
-                    type="button"
-                    onClick={async () => setSelectedEpisode(await insightsApi.getEpisode(episode.id))}
-                    className={`w-full text-left rounded-panel border p-3 transition-colors ${
-                      selectedEpisode?.id === episode.id
-                        ? 'border-cyan/30 bg-cyan/10'
-                        : 'border-terminal-border hover:bg-white/5'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-medium text-terminal-text">{episode.title}</span>
-                      <StatusPill
-                        label={episode.status}
-                        variant={episode.status === 'confirmed' ? 'active' : episode.status === 'rejected' ? 'alert' : 'warning'}
-                      />
-                    </div>
-                    <p className="mt-2 text-sm text-terminal-text-dim">{episode.summary}</p>
-                  </button>
-                ))}
+                {episodes.length === 0 ? (
+                  <p className="py-4 text-sm text-terminal-text-dim">
+                    No strategy episodes tracked yet. Click &quot;Backfill Last 30d&quot; to scan recent git history for strategy-affecting commits.
+                  </p>
+                ) : (
+                  episodes.map((episode) => (
+                    <button
+                      key={episode.id}
+                      type="button"
+                      onClick={async () => setSelectedEpisode(await insightsApi.getEpisode(episode.id))}
+                      className={`w-full text-left rounded-panel border p-3 transition-colors ${
+                        selectedEpisode?.id === episode.id
+                          ? 'border-cyan/30 bg-cyan/10'
+                          : 'border-terminal-border hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium text-terminal-text">{episode.title}</span>
+                        <StatusPill
+                          label={episode.status}
+                          variant={episode.status === 'confirmed' ? 'active' : episode.status === 'rejected' ? 'alert' : 'warning'}
+                        />
+                      </div>
+                      <p className="mt-2 text-sm text-terminal-text-dim">{episode.summary}</p>
+                    </button>
+                  ))
+                )}
               </div>
               <div className="rounded-panel border border-terminal-border p-4">
                 {selectedEpisode ? (

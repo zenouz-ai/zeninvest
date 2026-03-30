@@ -30,6 +30,7 @@ _PATH_ALLOWLIST = (
     "src/utils/config.py",
     "src/agents/strategy/prompts.py",
     "config/settings.yaml",
+    "src/data/models.py",
 )
 
 

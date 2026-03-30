@@ -406,13 +406,13 @@ def _run_daily_snapshot() -> None:
         logger.error(f"Daily report failed: {e}")
 
 
-def _run_strategy_episode_scan() -> None:
+def _run_strategy_episode_scan(days: int = 7) -> None:
     """Scan recent git history and auto-publish strategy change episodes."""
     from src.agents.attribution.service import StrategyAttributionService
-    logger.info("Starting strategy episode git scan (7-day lookback)...")
+    logger.info(f"Starting strategy episode git scan ({days}-day lookback)...")
     try:
         svc = StrategyAttributionService()
-        episode_list = svc.backfill_recent_episodes(days=7, auto_confirm=True)
+        episode_list = svc.backfill_recent_episodes(days=days, auto_confirm=True)
         if episode_list:
             titles = [ep["title"] for ep in episode_list]
             logger.info(f"Strategy scan published {len(episode_list)} episodes: {titles}")
@@ -420,6 +420,20 @@ def _run_strategy_episode_scan() -> None:
             logger.info("Strategy scan: no new episodes detected")
     except Exception as e:
         logger.error(f"Strategy episode scan failed: {e}", exc_info=True)
+
+
+def _seed_episodes_if_empty() -> None:
+    """On first startup, backfill 30 days of git history if no episodes exist."""
+    from src.data.database import get_session
+    from src.data.models import StrategyChangeEpisode
+    session = get_session()
+    try:
+        count = session.query(StrategyChangeEpisode).count()
+    finally:
+        session.close()
+    if count == 0:
+        logger.info("No strategy episodes found — running initial 30-day backfill")
+        _run_strategy_episode_scan(days=30)
 
 def _run_weekly_report() -> None:
     """Generate weekly report."""
@@ -647,6 +661,8 @@ def run_scheduler() -> None:
     logger.info("Scheduled jobs:")
     for job in scheduler.get_jobs():
         logger.info(f"  - {job.id}: {job.trigger}")
+
+    _seed_episodes_if_empty()
 
     try:
         scheduler.start()
