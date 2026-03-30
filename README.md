@@ -3,11 +3,30 @@
 [![CI](https://github.com/KayvanNejabati/Investment-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/KayvanNejabati/Investment-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+<p align="center">
+  <img src="branding/ZenInvest.png" alt="ZenInvest" width="820" />
+</p>
+
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
 **Status:** POC — **1011 pytest cases currently pass**, with the dashboard frontend production build clean. Coverage now includes the delivered learning-loop bundle: **US-2.5 Market Guidance Layer** (persisted `guidance_snapshots`, `guidance_sector_scores`, active screening tilt, per-cycle influence audit, and a public/private Insights surface) and **US-2.6 Strategy Episode Attribution** (persisted `cycle_context_snapshots`, deterministic repo/config/prompt fingerprints, git-backed strategy episodes, operator confirmation flow, and observational pre/post summaries). Deployment-ready for VPS. **Current production control plane remains Docker Compose.** See [Deployment](docs/DEPLOYMENT.md) §13, [Market Guidance & Strategy Attribution Plan](docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md), and [Zen Evolution Engine](docs/ZEN_EVOLUTION_ENGINE.md).
 
 **Active roadmap order:** `US-8.1` Open-Source Launch Preparation -> `US-1.11` Branch-Based Evolution Runner. `US-2.5` + `US-2.6` are now delivered as the learning-loop and attribution bundle, `US-7.3` + `US-7.2` remain the delivered execution-quality gate, `US-4.2` + `US-3.3` remain the delivered entry-quality guard bundle, and `US-1.11+` remain gated behind the posture/workflow/CI sequence above as the remaining Zen Evolution Engine pipeline. See [`docs/SOPHISTICATION_ROADMAP.md`](docs/SOPHISTICATION_ROADMAP.md), [`docs/SPRINT_WEEK_1.md`](docs/SPRINT_WEEK_1.md), and [`docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`](docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md).
+
+<details>
+<summary><strong>ZenInvest Promo</strong></summary>
+
+Promotional visual for the ZenInvest product and brand direction.
+
+<p align="center">
+  <img src="branding/ZenInvest_Promo.png" alt="ZenInvest promotional poster" width="760" />
+</p>
+
+</details>
+
+## Brand Assets
+
+For the full visual system, logo rules, color tokens, and usage guidelines, see [Brand Guide](branding/BRAND.md).
 
 ## Architecture
 
