@@ -4,13 +4,13 @@ trading:
   min_order_value_gbp: 500       # Minimum BUY order-value floor
   min_reduce_pct_of_position: 25  # Skip REDUCE below this % of position
   reduce_tiers_pct: [50]  # REDUCE is intentionally rare: only 50% trims are allowed
-  sell_min_profit_pct: 15  # Ordinary autonomous SELL requires at least this unrealized gain unless hard-exit
+  sell_min_profit_pct: 10  # Ordinary autonomous SELL requires at least this unrealized gain unless hard-exit
   reduce_25_min_profit_pct: 25  # REDUCE 25% only when unrealized gain reaches this threshold
   reduce_50_min_profit_pct: 40  # REDUCE 50% only when unrealized gain reaches this threshold
   buy_whole_shares_preferred: true  # Prefer integer-share autonomous buys
-  buy_whole_share_max_overspend_pct: 5  # Allow modest overspend to land on a whole-share quantity
+  buy_whole_share_max_overspend_pct: 10  # Allow modest overspend to land on a whole-share quantity
   buy_fractional_fallback_enabled: true  # Use fractional shares only when whole-share buy cannot satisfy rules
-  take_profit_full_sell_pct: 15  # Legacy compatibility threshold retained for reporting/backward compatibility
+  take_profit_full_sell_pct: 10  # Legacy compatibility threshold retained for reporting/backward compatibility
   small_position_cleanup_enabled: true  # Liquidate residual holdings immediately before strategy runs
   small_position_cleanup_value_gbp: 200  # Full SELL any holding below this value without strategy/moderation/risk
   base_url: https://demo.trading212.com/api/v0
@@ -23,7 +23,7 @@ trading:
   market_days: [0, 1, 2, 3, 4]  # Mon-Fri
   skip_market_holidays: true     # Skip analysis cycles on NYSE holidays
   cycle_timeout_seconds: 1800    # Max seconds per cycle before timeout (30 min default)
-  max_positions: 15
+  max_positions: 20
   min_position_pct: 2
   max_position_pct: 15
   cash_floor_pct: 10
@@ -108,9 +108,9 @@ guidance:
 universe:
   max_candidates: 40          # Max new stocks to screen per cycle (increased from 30)
   candidates_per_sector: 5    # Min candidates sampled from each sector
-  large_cap_pct: 0.60         # candidates from large cap ($10B+)
+  large_cap_pct: 0.50         # candidates from large cap ($10B+)
   mid_cap_pct: 0.30           # from mid cap ($2B-$10B)
-  small_cap_pct: 0.10         # from small cap ($300M-$2B)
+  small_cap_pct: 0.20         # from small cap ($300M-$2B)
   large_cap_min: 10000000000  # $10B
   mid_cap_min: 2000000000     # $2B
   small_cap_min: 300000000    # $300M
@@ -189,7 +189,7 @@ intraday_refresh:
 
 order_management:
   enabled: true
-  default_stop_loss_pct: -15       # Default stop-loss % when placing missing stops (no ATR or no decision)
+  default_stop_loss_pct: -10       # Default stop-loss % when placing missing stops (no ATR or no decision)
   resubmit_partial_fills: true     # Retry eligible cancelled partial BUY remainders once when a later cycle still approves the BUY
   reassess_stops: true            # Reassess stop-losses each cycle based on ATR
   execution_quality:
@@ -201,6 +201,19 @@ order_management:
     enabled: true                 # Software-based trailing stops (cancel + replace)
     default_trail_pct: 10.0       # Trail distance as % below high-water mark
     min_profit_pct: 20.0          # Only trail positions with unrealised P&L > this %
+  profit_lock_tiers:
+    enabled: true                 # Tiered profit-lock floors integrated with ATR/trailing stops
+    tiers:
+      - unrealized_gain_pct: 5.0
+        min_lock_pct: 2.0
+      - unrealized_gain_pct: 8.0
+        min_lock_pct: 5.0
+      - unrealized_gain_pct: 15.0
+        min_lock_pct: 10.0
+      - unrealized_gain_pct: 25.0
+        min_lock_pct: 15.0
+      - unrealized_gain_pct: 50.0
+        min_lock_pct: 25.0
   limit_orders:
     enabled: true                 # Allow limit orders for dip-buy entries
     default_offset_pct: 2.0       # Default % below current price for limit buys

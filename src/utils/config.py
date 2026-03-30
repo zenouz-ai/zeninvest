@@ -388,6 +388,11 @@ class Settings:
         """Whether to fetch per-ticker earnings context from yfinance."""
         return bool(self.data_providers.get("earnings_calendar_enabled", True))
 
+    @property
+    def sector_fallback_yfinance(self) -> bool:
+        """Use SPDR ETFs via yfinance when Alpha Vantage SECTOR API fails."""
+        return bool(self.data_providers.get("sector_fallback_yfinance", True))
+
     def cache_ttl_hours(self, data_type: str) -> int:
         """Cache TTL in hours for a data type (ohlcv_indicators, fundamentals, etc.)."""
         defaults = {
@@ -528,7 +533,7 @@ class Settings:
     @property
     def max_reviews_per_30_days(self) -> int:
         """Maximum autonomous reviews for a ticker in a rolling 30-day window."""
-        return int(self.universe.get("max_reviews_per_30_days", 5))
+        return int(self.universe.get("max_reviews_per_30_days", 10))
 
     @property
     def data_fallback_web_search_enabled(self) -> bool:
@@ -565,15 +570,15 @@ class Settings:
 
     @property
     def opportunity_immediate_threshold_z(self) -> float:
-        return float(self.opportunity.get("immediate_threshold_z", 1.0))
+        return float(self.opportunity.get("immediate_threshold_z", 0.0))
 
     @property
     def opportunity_queue_threshold_z(self) -> float:
-        return float(self.opportunity.get("queue_threshold_z", 0.2))
+        return float(self.opportunity.get("queue_threshold_z", -0.15))
 
     @property
     def opportunity_queue_ttl_cycles(self) -> int:
-        return int(self.opportunity.get("queue_ttl_cycles", 3))
+        return int(self.opportunity.get("queue_ttl_cycles", 6))
 
     @property
     def opportunity_swap_delta_z(self) -> float:
@@ -742,7 +747,7 @@ class Settings:
     @property
     def default_stop_loss_pct(self) -> float:
         """Default stop-loss % when placing missing stops (no ATR or no decision)."""
-        return float(self.order_management.get("default_stop_loss_pct", -15.0))
+        return float(self.order_management.get("default_stop_loss_pct", -10.0))
 
     @property
     def resubmit_partial_fills(self) -> bool:
@@ -787,6 +792,51 @@ class Settings:
     def trailing_stop_min_profit_pct(self) -> float:
         ts = self.order_management.get("trailing_stops", {})
         return float(ts.get("min_profit_pct", 20.0)) if isinstance(ts, dict) else 20.0
+
+    @property
+    def _profit_lock_tiers_config(self) -> dict[str, Any]:
+        raw = self.order_management.get("profit_lock_tiers", {})
+        return raw if isinstance(raw, dict) else {}
+
+    @property
+    def profit_lock_tiers_enabled(self) -> bool:
+        return bool(self._profit_lock_tiers_config.get("enabled", False)) and bool(self.profit_lock_tiers)
+
+    @property
+    def profit_lock_tiers(self) -> list[dict[str, float | str]]:
+        rows = self._profit_lock_tiers_config.get("tiers", [])
+        if not isinstance(rows, list):
+            return []
+
+        parsed: list[dict[str, float | str]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                gain = float(row.get("unrealized_gain_pct"))
+                lock = float(row.get("min_lock_pct"))
+            except (TypeError, ValueError):
+                continue
+            # Guardrail: lock floor must be meaningful and below trigger gain.
+            if gain < 0 or lock <= 0 or lock >= gain:
+                continue
+            parsed.append({
+                "unrealized_gain_pct": gain,
+                "min_lock_pct": lock,
+                "rule_label": f"{gain:g}%->{lock:g}%",
+            })
+
+        return sorted(parsed, key=lambda tier: float(tier["unrealized_gain_pct"]))
+
+    def profit_lock_tier_for_gain(self, unrealized_gain_pct: float) -> dict[str, float | str] | None:
+        applicable: dict[str, float | str] | None = None
+        for tier in self.profit_lock_tiers:
+            threshold = float(tier["unrealized_gain_pct"])
+            if unrealized_gain_pct >= threshold:
+                applicable = tier
+            else:
+                break
+        return applicable
 
     @property
     def limit_orders_enabled(self) -> bool:

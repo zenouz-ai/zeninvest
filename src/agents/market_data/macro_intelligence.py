@@ -256,7 +256,7 @@ def get_macro_intelligence(
 
     # Fallback to yfinance SPDR ETFs when Alpha Vantage fails (rate limit, error)
     sector_errors: list[str] = [e for e in [sector_data.get("error")] if e]
-    if not sectors and get_settings().data_providers.get("sector_fallback_yfinance", True):
+    if not sectors and get_settings().sector_fallback_yfinance:
         fallback = get_sector_performance_yfinance()
         if fallback.get("sectors"):
             sectors = fallback["sectors"]

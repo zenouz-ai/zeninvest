@@ -65,11 +65,16 @@ class StopLossManager:
 
             stock = data_by_ticker.get(ticker, {})
             atr = self._extract_atr(stock)
-            if atr is None or atr <= 0:
-                logger.debug(f"No ATR for {ticker}, skipping reassessment")
+            atr_stop: float | None = None
+            if atr is not None and atr > 0:
+                atr_stop = self._compute_volatility_stop(current_price, atr)
+
+            tier_meta, tier_stop = self._tiered_stop_for_position(pos, current_price)
+            if atr_stop is None and tier_stop is None:
+                logger.debug(f"No ATR or tiered stop for {ticker}, skipping reassessment")
                 continue
 
-            new_stop = self._compute_volatility_stop(current_price, atr)
+            new_stop = max(candidate for candidate in [atr_stop, tier_stop] if candidate is not None)
             old_stop_info = pending_stops.get(ticker)
             old_stop_price = float(old_stop_info["stopPrice"]) if old_stop_info else None
 
@@ -88,6 +93,12 @@ class StopLossManager:
             if old_stop_price and abs(new_stop - old_stop_price) / old_stop_price < 0.005:
                 continue
 
+            trigger_reason = "volatility_adjust"
+            if atr_stop is not None and tier_stop is not None:
+                trigger_reason = "volatility_and_tier_lock"
+            elif tier_stop is not None:
+                trigger_reason = "tier_profit_lock"
+
             result = self._replace_stop(
                 ticker=ticker,
                 quantity=quantity,
@@ -95,8 +106,11 @@ class StopLossManager:
                 current_price=current_price,
                 old_stop_info=old_stop_info,
                 adjustment_type="reassess",
-                trigger_reason="volatility_adjust",
+                trigger_reason=trigger_reason,
                 atr_value=atr,
+                tier_gain_trigger_pct=float(tier_meta["unrealized_gain_pct"]) if tier_meta else None,
+                tier_min_lock_pct=float(tier_meta["min_lock_pct"]) if tier_meta else None,
+                tier_rule_label=str(tier_meta["rule_label"]) if tier_meta else None,
                 cycle_id=cycle_id,
             )
             results.append(result)
@@ -207,7 +221,9 @@ class StopLossManager:
             old_stop_info = pending_stops.get(ticker)
             old_stop_price = float(old_stop_info["stopPrice"]) if old_stop_info else None
             profit_lock = (profit_lock_context or {}).get(ticker, {})
-            required_stop = float(profit_lock.get("required_stop_price", 0) or 0)
+            required_stop_from_context = float(profit_lock.get("required_stop_price", 0) or 0)
+            tier_meta, tier_stop = self._tiered_stop_for_position(pos, current_price)
+            required_stop = max(required_stop_from_context, tier_stop or 0)
             if required_stop > 0 and new_stop < required_stop:
                 new_stop = round(required_stop, 2)
 
@@ -226,6 +242,9 @@ class StopLossManager:
                     high_water_mark=hwm,
                     trigger_reason="trailing_ratchet_invalid",
                     status="skipped",
+                    tier_gain_trigger_pct=float(tier_meta["unrealized_gain_pct"]) if tier_meta else None,
+                    tier_min_lock_pct=float(tier_meta["min_lock_pct"]) if tier_meta else None,
+                    tier_rule_label=str(tier_meta["rule_label"]) if tier_meta else None,
                     cycle_id=cycle_id,
                 )
                 continue
@@ -243,6 +262,9 @@ class StopLossManager:
                         high_water_mark=hwm,
                         trigger_reason="hwm_update_no_ratchet",
                         status="skipped",
+                        tier_gain_trigger_pct=float(tier_meta["unrealized_gain_pct"]) if tier_meta else None,
+                        tier_min_lock_pct=float(tier_meta["min_lock_pct"]) if tier_meta else None,
+                        tier_rule_label=str(tier_meta["rule_label"]) if tier_meta else None,
                         cycle_id=cycle_id,
                     )
                 continue
@@ -256,6 +278,9 @@ class StopLossManager:
                 adjustment_type="trailing",
                 trigger_reason="trailing_ratchet",
                 high_water_mark=hwm,
+                tier_gain_trigger_pct=float(tier_meta["unrealized_gain_pct"]) if tier_meta else None,
+                tier_min_lock_pct=float(tier_meta["min_lock_pct"]) if tier_meta else None,
+                tier_rule_label=str(tier_meta["rule_label"]) if tier_meta else None,
                 cycle_id=cycle_id,
             )
             results.append(result)
@@ -529,6 +554,9 @@ class StopLossManager:
         trigger_reason: str,
         atr_value: float | None = None,
         high_water_mark: float | None = None,
+        tier_gain_trigger_pct: float | None = None,
+        tier_min_lock_pct: float | None = None,
+        tier_rule_label: str | None = None,
         cycle_id: str | None = None,
     ) -> dict[str, Any]:
         """Cancel old stop first, then place new stop with emergency fallback.
@@ -603,6 +631,9 @@ class StopLossManager:
             t212_cancelled_order_id=cancelled_order_id,
             t212_new_order_id=str(new_order_id) if new_order_id else None,
             status=status,
+            tier_gain_trigger_pct=tier_gain_trigger_pct,
+            tier_min_lock_pct=tier_min_lock_pct,
+            tier_rule_label=tier_rule_label,
             cycle_id=cycle_id,
         )
 
@@ -621,6 +652,9 @@ class StopLossManager:
             "atr": atr_value,
             "trigger_reason": trigger_reason,
             "status": status,
+            "tier_gain_trigger_pct": tier_gain_trigger_pct,
+            "tier_min_lock_pct": tier_min_lock_pct,
+            "tier_rule_label": tier_rule_label,
         }
 
     def _get_pending_stops(self) -> dict[str, dict[str, Any]]:
@@ -703,6 +737,9 @@ class StopLossManager:
         trigger_reason: str | None = None,
         t212_cancelled_order_id: str | None = None,
         t212_new_order_id: str | None = None,
+        tier_gain_trigger_pct: float | None = None,
+        tier_min_lock_pct: float | None = None,
+        tier_rule_label: str | None = None,
     ) -> None:
         """Persist a StopLossAdjustment record."""
         session = get_session()
@@ -721,6 +758,9 @@ class StopLossManager:
                 t212_cancelled_order_id=t212_cancelled_order_id,
                 t212_new_order_id=t212_new_order_id,
                 status=status,
+                tier_gain_trigger_pct=tier_gain_trigger_pct,
+                tier_min_lock_pct=tier_min_lock_pct,
+                tier_rule_label=tier_rule_label,
             ))
             session.commit()
         except Exception as e:
@@ -740,3 +780,34 @@ class StopLossManager:
             except (TypeError, ValueError):
                 return None
         return None
+
+    @staticmethod
+    def _extract_unrealized_gain_pct(position: dict[str, Any]) -> float | None:
+        wallet = position.get("walletImpact") or {}
+        total_cost = wallet.get("totalCost")
+        unrealized = wallet.get("unrealizedProfitLoss")
+        try:
+            total_cost_f = float(total_cost)
+            unrealized_f = float(unrealized)
+        except (TypeError, ValueError):
+            return None
+        if total_cost_f <= 0:
+            return None
+        return (unrealized_f / total_cost_f) * 100
+
+    def _tiered_stop_for_position(
+        self,
+        position: dict[str, Any],
+        current_price: float,
+    ) -> tuple[dict[str, float | str] | None, float | None]:
+        if not self.settings.profit_lock_tiers_enabled:
+            return None, None
+        gain_pct = self._extract_unrealized_gain_pct(position)
+        if gain_pct is None:
+            return None, None
+        tier = self.settings.profit_lock_tier_for_gain(gain_pct)
+        if not tier:
+            return None, None
+        min_lock_pct = float(tier["min_lock_pct"])
+        stop_price = round(current_price * (1 - min_lock_pct / 100), 2)
+        return tier, stop_price

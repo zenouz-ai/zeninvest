@@ -2,7 +2,7 @@
 title: Order Management
 tags: [order-management, stop-loss, trailing, limit-orders]
 status: active
-last_updated: 2026-03-29
+last_updated: 2026-03-30
 user_stories: [US-3.5]
 related: [GOVERNANCE.md]
 ---
@@ -13,7 +13,7 @@ related: [GOVERNANCE.md]
 
 ## Purpose
 
-Manage post-trade order lifecycle — initial stop-loss placement, ATR-based reassessment, software trailing stops, and limit dip-buy orders. All adjustments are audited and gated by config switches. Autonomous exits are intentionally slower than entries: BUY remains active, while ordinary SELL and REDUCE actions are profit-gated upstream before order management executes them.
+Manage post-trade order lifecycle — initial stop-loss placement, ATR-based reassessment, tiered profit-lock floors, software trailing stops, and limit dip-buy orders. All adjustments are audited and gated by config switches. Autonomous exits are intentionally slower than entries: BUY remains active, while ordinary SELL and REDUCE actions are profit-gated upstream before order management executes them.
 
 ## Scope
 
@@ -21,10 +21,11 @@ Order management covers:
 
 1. **Initial stop-loss** — GTC stop placed after every BUY using Claude's `stop_loss_pct`.
 2. **ATR-based stop reassessment** — Recalculate stop levels each cycle from 14-day ATR; cancel/replace when changed.
-3. **Trailing stops** — Software-based: high-water mark (HWM), stop at `HWM × (1 - trail_pct/100)`; cancel + replace (T212 has no native trailing stop).
-4. **Limit dip-buy orders** — When strategy outputs `entry_type: "limit_dip"`, place limit BUY below current price instead of market.
-5. **Execution-quality telemetry** — For market orders, persist decision price, realised average fill price, fill/remainder quantities, and side-adjusted slippage in basis points.
-6. **Partial-fill recovery** — Preserve unfilled market-order remainder and allow one conservative BUY-only retry when a later approved cycle still covers it.
+3. **Tiered profit-lock floors** — When unrealized gain crosses configured thresholds, enforce a minimum locked-profit stop floor.
+4. **Trailing stops** — Software-based: high-water mark (HWM), stop at `HWM × (1 - trail_pct/100)`; cancel + replace (T212 has no native trailing stop).
+5. **Limit dip-buy orders** — When strategy outputs `entry_type: "limit_dip"`, place limit BUY below current price instead of market.
+6. **Execution-quality telemetry** — For market orders, persist decision price, realised average fill price, fill/remainder quantities, and side-adjusted slippage in basis points.
+7. **Partial-fill recovery** — Preserve unfilled market-order remainder and allow one conservative BUY-only retry when a later approved cycle still covers it.
 
 All adjustments are persisted to `stop_loss_adjustments` and (where applicable) emitted as `order_adjustment` Slack notifications. Feature is gated by `order_management.enabled`; each sub-feature has its own switch.
 
@@ -64,6 +65,14 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 - **Guard:** If the computed new stop ≥ current price (price has fallen below HWM-stop level), the ratchet is skipped and recorded as `status=skipped, trigger_reason=trailing_ratchet_invalid`.
 - **Min profit gate:** Trailing stops are gated by `min_profit_pct: 20` — trailing only activates when the position is in profit by at least 20%. When enabled (`trailing_stops.enabled: true`), positions below this threshold do not get trailing adjustments.
 
+### Tiered profit-lock floors
+
+- Tier floors are configured under `order_management.profit_lock_tiers` as `{unrealized_gain_pct, min_lock_pct}` rules.
+- At each cycle, StopLossManager derives the currently applicable tier by selecting the highest threshold less than or equal to the position's unrealized gain.
+- Tier floor stop price is `current_price × (1 - min_lock_pct/100)`.
+- Reassessment and trailing both enforce tier floors by taking the tighter protective stop.
+- Effective floor precedence: `max(atr_stop, tier_floor, profit_lock_required_stop)` where applicable.
+
 ### Limit dip-buy
 
 - Limit price = `current_price × (1 - offset_pct/100)` (default from config).
@@ -73,7 +82,7 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 ### Data model
 
 - **Order** — All orders (market, limit, stop); `order_type` = market | limit | stop.
-- **StopLossAdjustment** — `ticker`, `cycle_id`, `adjustment_type` (reassess | trailing | limit_order), `old_stop_price`, `new_stop_price`, `current_price`, `high_water_mark`, `atr_value`, `trigger_reason`, `t212_cancelled_order_id`, `t212_new_order_id`, `status`.
+- **StopLossAdjustment** — `ticker`, `cycle_id`, `adjustment_type` (reassess | trailing | limit_order), `old_stop_price`, `new_stop_price`, `current_price`, `high_water_mark`, `atr_value`, `tier_gain_trigger_pct`, `tier_min_lock_pct`, `tier_rule_label`, `trigger_reason`, `t212_cancelled_order_id`, `t212_new_order_id`, `status`.
 
 ---
 
@@ -82,12 +91,20 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 ```yaml
 order_management:
   enabled: true
-  default_stop_loss_pct: -15   # Used when placing missing stops (no ATR or no decision)
+  default_stop_loss_pct: -10   # Used when placing missing stops (no ATR or no decision)
   reassess_stops: true
   trailing_stops:
     enabled: true
     default_trail_pct: 10.0
     min_profit_pct: 20   # Trailing only activates when position is in profit by at least 20%
+  profit_lock_tiers:
+    enabled: true
+    tiers:
+      - { unrealized_gain_pct: 5.0, min_lock_pct: 2.0 }
+      - { unrealized_gain_pct: 8.0, min_lock_pct: 5.0 }
+      - { unrealized_gain_pct: 15.0, min_lock_pct: 10.0 }
+      - { unrealized_gain_pct: 25.0, min_lock_pct: 15.0 }
+      - { unrealized_gain_pct: 50.0, min_lock_pct: 25.0 }
   limit_orders:
     enabled: true
     default_offset_pct: 2.0

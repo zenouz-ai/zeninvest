@@ -49,6 +49,8 @@ def mock_settings():
     settings.min_stop_distance_pct = 3.0
     settings.max_stop_distance_pct = 15.0
     settings.only_tighten_stops = True
+    settings.profit_lock_tiers_enabled = False
+    settings.profit_lock_tier_for_gain = MagicMock(return_value=None)
     return settings
 
 
@@ -169,6 +171,62 @@ class TestReassessStops:
         assert results[0]["new_stop_price"] == 96.0
         assert results[0]["old_stop_price"] == 80.0
 
+    def test_reassess_uses_tiered_floor_without_atr(self, manager, db_session):
+        manager.settings.profit_lock_tiers_enabled = True
+        manager.settings.profit_lock_tier_for_gain = MagicMock(
+            return_value={
+                "unrealized_gain_pct": 8.0,
+                "min_lock_pct": 5.0,
+                "rule_label": "8%->5%",
+            }
+        )
+
+        results = manager.reassess_stops(
+            positions=[
+                {
+                    "ticker": "AAPL_US_EQ",
+                    "quantity": 10,
+                    "currentPrice": 100.0,
+                    "walletImpact": {"totalCost": 1000.0, "unrealizedProfitLoss": 120.0},
+                }
+            ],
+            stocks_data=[{"ticker": "AAPL_US_EQ", "indicators": {}}],
+            cycle_id="tier_only",
+        )
+
+        assert len(results) == 1
+        assert results[0]["new_stop_price"] == 95.0
+        assert results[0]["trigger_reason"] == "tier_profit_lock"
+        assert results[0]["tier_rule_label"] == "8%->5%"
+
+    def test_reassess_uses_tighter_of_atr_and_tier(self, manager, db_session):
+        manager.settings.profit_lock_tiers_enabled = True
+        manager.settings.profit_lock_tier_for_gain = MagicMock(
+            return_value={
+                "unrealized_gain_pct": 8.0,
+                "min_lock_pct": 5.0,
+                "rule_label": "8%->5%",
+            }
+        )
+
+        results = manager.reassess_stops(
+            positions=[
+                {
+                    "ticker": "AAPL_US_EQ",
+                    "quantity": 10,
+                    "currentPrice": 100.0,
+                    "walletImpact": {"totalCost": 1000.0, "unrealizedProfitLoss": 120.0},
+                }
+            ],
+            stocks_data=[{"ticker": "AAPL_US_EQ", "indicators": {"atr_14": 2.0}}],
+            cycle_id="tier_plus_atr",
+        )
+
+        # ATR stop would be 96.0, tier floor is 95.0 -> keep tighter 96.0
+        assert len(results) == 1
+        assert results[0]["new_stop_price"] == 96.0
+        assert results[0]["trigger_reason"] == "volatility_and_tier_lock"
+
 
 class TestTrailingStops:
     def test_no_op_when_disabled(self, manager):
@@ -237,6 +295,52 @@ class TestTrailingStops:
         )
         # HWM=110, trail=5% -> stop=104.5, same as existing -> no ratchet
         assert len(results) == 0
+
+    def test_trailing_honors_tiered_floor(self, manager, db_session):
+        manager.settings.profit_lock_tiers_enabled = True
+        manager.settings.profit_lock_tier_for_gain = MagicMock(
+            return_value={
+                "unrealized_gain_pct": 8.0,
+                "min_lock_pct": 5.0,
+                "rule_label": "8%->5%",
+            }
+        )
+
+        # HWM=105, trail=5% => 99.75; tier floor at price 100 => 95.00.
+        # Existing stop is 94, so trailing should ratchet to 99.75.
+        db_session.add(StopLossAdjustment(
+            timestamp=datetime.now(timezone.utc),
+            ticker="AAPL_US_EQ",
+            adjustment_type="trailing",
+            high_water_mark=105.0,
+            new_stop_price=94.0,
+            status="dry_run",
+        ))
+        db_session.add(Order(
+            timestamp=datetime.now(timezone.utc),
+            ticker="AAPL_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-10,
+            stop_price=94.0,
+            status="dry_run",
+        ))
+        db_session.commit()
+
+        results = manager.apply_trailing_stops(
+            positions=[
+                {
+                    "ticker": "AAPL_US_EQ",
+                    "quantity": 10,
+                    "currentPrice": 100.0,
+                    "walletImpact": {"totalCost": 1000.0, "unrealizedProfitLoss": 250.0},
+                }
+            ],
+            cycle_id="trailing_tier_floor",
+        )
+        assert len(results) == 1
+        assert results[0]["new_stop_price"] == 99.75
+        assert results[0]["tier_rule_label"] == "8%->5%"
 
 
 class TestLimitBuy:
@@ -474,7 +578,7 @@ class TestSettingsProperties:
         assert settings.order_management_enabled is False
         assert settings.reassess_stops_enabled is False
         assert settings.trailing_stops_enabled is False
-        assert settings.default_stop_loss_pct == -15.0
+        assert settings.default_stop_loss_pct == -10.0
         assert settings.trailing_stop_default_trail_pct == 10.0
         assert settings.trailing_stop_min_profit_pct == 20.0
         assert settings.limit_orders_enabled is False
@@ -484,6 +588,9 @@ class TestSettingsProperties:
         assert settings.min_stop_distance_pct == 3.0
         assert settings.max_stop_distance_pct == 15.0
         assert settings.only_tighten_stops is True
+        assert settings.profit_lock_tiers_enabled is False
+        assert settings.profit_lock_tiers == []
+        assert settings.profit_lock_tier_for_gain(10.0) is None
 
     def test_reads_from_config(self):
         from src.utils.config import Settings
@@ -503,6 +610,13 @@ class TestSettingsProperties:
                 "min_stop_distance_pct": 2.0,
                 "max_stop_distance_pct": 20.0,
                 "only_tighten_stops": False,
+                "profit_lock_tiers": {
+                    "enabled": True,
+                    "tiers": [
+                        {"unrealized_gain_pct": 8.0, "min_lock_pct": 5.0},
+                        {"unrealized_gain_pct": 15.0, "min_lock_pct": 10.0},
+                    ],
+                },
             },
         })
         assert settings.order_management_enabled is True
@@ -518,3 +632,31 @@ class TestSettingsProperties:
         assert settings.min_stop_distance_pct == 2.0
         assert settings.max_stop_distance_pct == 20.0
         assert settings.only_tighten_stops is False
+        assert settings.profit_lock_tiers_enabled is True
+        assert len(settings.profit_lock_tiers) == 2
+        tier = settings.profit_lock_tier_for_gain(12.0)
+        assert tier is not None
+        assert tier["unrealized_gain_pct"] == 8.0
+
+    def test_profit_lock_tier_config_sanitizes_invalid_rows(self):
+        from src.utils.config import Settings
+        settings = Settings(config={
+            "trading": {}, "risk": {}, "strategy": {},
+            "moderation": {}, "models": {}, "data_providers": {},
+            "cost_limits": {"anthropic_daily_gbp": 1, "openai_daily_gbp": 1,
+                            "google_daily_gbp": 1, "total_monthly_gbp": 50,
+                            "alert_threshold_pct": 80},
+            "order_management": {
+                "profit_lock_tiers": {
+                    "enabled": True,
+                    "tiers": [
+                        {"unrealized_gain_pct": 10, "min_lock_pct": 11},  # invalid lock >= gain
+                        {"unrealized_gain_pct": -1, "min_lock_pct": 1},   # invalid gain
+                        {"unrealized_gain_pct": 20, "min_lock_pct": 12},  # valid
+                    ],
+                },
+            },
+        })
+        assert settings.profit_lock_tiers_enabled is True
+        assert len(settings.profit_lock_tiers) == 1
+        assert settings.profit_lock_tiers[0]["unrealized_gain_pct"] == 20.0

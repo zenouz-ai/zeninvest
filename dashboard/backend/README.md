@@ -83,7 +83,7 @@ curl -N http://localhost:8000/api/events/stream
 
 ### Stop Loss
 - `GET /api/stop-loss/current` — Current live stop rows per ticker, merged from broker orders, stop adjustments, and positions without stops; includes profit-lock fields
-- `GET /api/stop-loss/adjustments` — Stop-loss adjustment history
+- `GET /api/stop-loss/adjustments` — Stop-loss adjustment history (including tiered profit-lock metadata when applicable)
 
 ### Events
 - `GET /api/events/` — Event log history (pagination, filtering by type/source/date)

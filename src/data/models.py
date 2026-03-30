@@ -495,6 +495,9 @@ class StopLossAdjustment(Base):
     current_price = Column(Float, nullable=True)
     high_water_mark = Column(Float, nullable=True)
     atr_value = Column(Float, nullable=True)
+    tier_gain_trigger_pct = Column(Float, nullable=True)
+    tier_min_lock_pct = Column(Float, nullable=True)
+    tier_rule_label = Column(String(50), nullable=True)
     trigger_reason = Column(String(100), nullable=True)  # volatility_adjust, trailing_ratchet, limit_dip
     t212_cancelled_order_id = Column(String(100), nullable=True)
     t212_new_order_id = Column(String(100), nullable=True)

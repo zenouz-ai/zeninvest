@@ -420,6 +420,9 @@ class StopLossAdjustmentSchema(BaseModel):
     new_stop_price: float | None
     current_price: float | None
     high_water_mark: float | None
+    tier_gain_trigger_pct: float | None = None
+    tier_min_lock_pct: float | None = None
+    tier_rule_label: str | None = None
     trigger_reason: str | None
     status: str
 

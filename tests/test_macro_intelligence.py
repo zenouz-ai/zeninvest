@@ -193,7 +193,7 @@ def test_get_macro_intelligence_uses_yfinance_fallback_when_av_fails() -> None:
     with patch("src.agents.market_data.macro_intelligence.yf.download", return_value=df), patch(
         "src.agents.market_data.macro_intelligence.get_settings"
     ) as mock_settings:
-        mock_settings.return_value.data_providers = {"sector_fallback_yfinance": True}
+        mock_settings.return_value.sector_fallback_yfinance = True
         result = get_macro_intelligence(av, fh, enabled=True)
 
     assert result["enabled"] is True
