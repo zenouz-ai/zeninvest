@@ -445,10 +445,10 @@ Files to check on every feature:
 - **US-7.7** Dashboard HTTPS Domain & Canonical Access — canonical `https://zeninvest.zenouz.ai` behind Cloudflare + nginx, internal-only dashboard app, no public raw `:8000`, proxy-safe operator auth
 - **US-7.8** Safe Public Demo Dashboard — full public tab map, dedicated sanitized `/api/public/*` read models, preview-only private workflow tabs, ingress header/rate-limit hardening, and CI security checks
 - **US-7.5** Quick Hardening Slice — off-hours order warning notes, HALTED auto-recovery after 3 clean live cycles, peak inflation detection, DB CHECK constraints, and dashboard/API visibility for the new hardening signals
+- **US-8.1** Open-Source Launch Preparation — MIT LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, GitHub issue/PR templates, CI workflow (pytest + mypy), README badges
 
 **Week 1 sprint (in-progress — see `docs/SPRINT_WEEK_1.md` for full detail):**
 - **US-1.9** Conversational Trading Workflow MVP — current highest-priority open operator workflow item
-- **US-8.1** Open-Source Launch Prep — nested dir, remotes, LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, CI (Day 8)
 
 **Deferred (await data or later sprint):**
 - Calibration (US-2.1, US-2.2) — requires ~50 trades

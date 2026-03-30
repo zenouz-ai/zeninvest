@@ -1,5 +1,8 @@
 # Investment Agent
 
+[![CI](https://github.com/KayvanNejabati/Investment-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/KayvanNejabati/Investment-agent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
 
 **Status:** POC — **1011 pytest cases currently pass**, with the dashboard frontend production build clean. Coverage now includes the delivered learning-loop bundle: **US-2.5 Market Guidance Layer** (persisted `guidance_snapshots`, `guidance_sector_scores`, active screening tilt, per-cycle influence audit, and a public/private Insights surface) and **US-2.6 Strategy Episode Attribution** (persisted `cycle_context_snapshots`, deterministic repo/config/prompt fingerprints, git-backed strategy episodes, operator confirmation flow, and observational pre/post summaries). Deployment-ready for VPS. **Current production control plane remains Docker Compose.** See [Deployment](docs/DEPLOYMENT.md) §13, [Market Guidance & Strategy Attribution Plan](docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md), and [Zen Evolution Engine](docs/ZEN_EVOLUTION_ENGINE.md).
@@ -456,3 +459,15 @@ This is a **POC (v1.0)** designed to validate the architecture and begin collect
 6. **Phase 6:** ML-assisted improvements (only if justified by accumulated evidence)
 
 See [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) for full details, timelines, and priority matrix.
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding guidelines, and the PR process.
+
+## Security
+
+To report a security vulnerability, please follow our [Security Policy](SECURITY.md). **Do not open a public GitHub issue for security reports.**
+
+## License
+
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.

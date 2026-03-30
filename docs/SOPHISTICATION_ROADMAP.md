@@ -2,7 +2,7 @@
 title: Sophistication Roadmap
 tags: [roadmap, planning, user-stories, priorities]
 status: active
-last_updated: 2026-03-29
+last_updated: 2026-03-30
 related: [ARCHITECTURE.md, GOVERNANCE.md, AUDIT_INDEX.md]
 ---
 
@@ -15,7 +15,7 @@ related: [ARCHITECTURE.md, GOVERNANCE.md, AUDIT_INDEX.md]
 
 ## Overview
 
-**At a glance:** Delivered **36** · Pipeline **15** · Total **51** · Progress **71%**
+**At a glance:** Delivered **37** · Pipeline **14** · Total **51** · Progress **73%**
 
 ### Priority rules
 
@@ -28,8 +28,7 @@ related: [ARCHITECTURE.md, GOVERNANCE.md, AUDIT_INDEX.md]
 
 | Order | Story | Why now |
 |-------|-------|---------|
-| 1 | **US-8.1** Open-Source Launch Preparation | Highest-leverage unblocker after workflow delivery |
-| 2 | **US-1.11** Branch-Based Evolution Runner | Next evolution story now that learning-loop context and attribution are live |
+| 1 | **US-1.11** Branch-Based Evolution Runner | Next evolution story now that learning-loop context, attribution, and CI are live |
 
 ### Near-term umbrella tracks
 
@@ -38,7 +37,7 @@ related: [ARCHITECTURE.md, GOVERNANCE.md, AUDIT_INDEX.md]
 | **Production Access & Safety** | US-7.8, US-7.7, US-7.5, US-7.3, US-7.2 | Delivered |
 | **Conversational Operator Workflow** | US-1.6, US-1.9 | Delivered |
 | **Zen Evolution Engine** | US-1.10 (Phase 1); US-1.11–1.14 gated | Phase 1 delivered |
-| **Open-Source Launch** | US-8.1 | Active now |
+| **Open-Source Launch** | US-8.1 | Delivered |
 | **Execution Quality & Fill Recovery** | US-7.3, US-7.2 | Delivered |
 | **Entry Quality Guards** | US-4.2, US-3.3 | Delivered |
 | **Learning Loop & Attribution** | US-2.5, US-2.6 | Delivered |
@@ -47,7 +46,7 @@ related: [ARCHITECTURE.md, GOVERNANCE.md, AUDIT_INDEX.md]
 
 ---
 
-## Delivered stories (36)
+## Delivered stories (37)
 
 Delivered stories are condensed here. Full acceptance criteria lived in earlier revisions of this file and in the feature-specific docs linked below.
 
@@ -89,6 +88,7 @@ Delivered stories are condensed here. Full acceptance criteria lived in earlier 
 | **US-7.6** | VPS Runtime Stability | 2026-03-24 | [DEPLOYMENT.md](DEPLOYMENT.md) |
 | **US-7.7** | Dashboard HTTPS Domain | 2026-03-25 | [DEPLOYMENT.md](DEPLOYMENT.md) §13 |
 | **US-7.8** | Safe Public Demo Dashboard | 2026-03-29 | — |
+| **US-8.1** | Open-Source Launch Preparation | 2026-03-30 | [OPEN_SOURCE_LAUNCH.md](OPEN_SOURCE_LAUNCH.md) |
 
 ---
 
@@ -126,7 +126,7 @@ Fully functional autonomous trading agent on Trading 212 Practice API with a mul
 
 **Value:** Community-ready infrastructure enabling the repo to go public as ZenInvest by Zenouz.ai
 **Effort:** Medium (2–3 days)
-**Stage:** Active now (P0)
+**Stage:** Delivered (2026-03-30)
 **Detailed plan:** [OPEN_SOURCE_LAUNCH.md](OPEN_SOURCE_LAUNCH.md)
 
 **Phase A — Repo hygiene:** Remove nested `Investment-agent/` subdirectory; remove `old-origin` remote; confirm `origin → https://github.com/zenouz-ai/zeninvest.git`.
@@ -136,11 +136,11 @@ Fully functional autonomous trading agent on Trading 212 Practice API with a mul
 **Phase C — GitHub infrastructure:** Issue/PR templates, `.github/workflows/ci.yml` (pytest + mypy, `INVESTMENT_AGENT_USE_INMEMORY_DB=1`).
 
 **Acceptance Criteria:**
-- [ ] No nested `Investment-agent/` directory; all tests pass
-- [ ] `git remote -v` shows only `origin → https://github.com/zenouz-ai/zeninvest.git`
-- [ ] `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` present
-- [ ] `.github/` issue templates, PR template, and CI workflow present
-- [ ] CI runs pytest + mypy on push/PR to main; green without external API keys
+- [x] No nested `Investment-agent/` directory; all tests pass
+- [x] `git remote -v` shows only `origin → https://github.com/zenouz-ai/zeninvest.git`
+- [x] `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` present
+- [x] `.github/` issue templates, PR template, and CI workflow present
+- [x] CI runs pytest + mypy on push/PR to main; green without external API keys
 
 ---
 

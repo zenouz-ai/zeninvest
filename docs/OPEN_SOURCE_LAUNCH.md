@@ -3,13 +3,13 @@ title: Open-Source Launch Preparation
 tags: [open-source, launch, zeninvest, community, ci, legal, us-8.1]
 status: active
 created: 2026-03-21
-last_updated: 2026-03-29
+last_updated: 2026-03-30
 user_stories: [US-8.1]
 ---
 
 # US-8.1 Open-Source Launch Preparation
 
-> **Status:** Planned | **Priority:** P0 (prerequisite for repo going public) | **Effort:** Medium (2–3 days)
+> **Status:** Delivered (2026-03-30) | **Priority:** P0 (prerequisite for repo going public) | **Effort:** Medium (2–3 days)
 > Sprint delivery: Day 8 — see `docs/SPRINT_WEEK_1.md`.
 > Roadmap entry: `docs/SOPHISTICATION_ROADMAP.md` § US-8.1 (Open-Source / Community).
 > Related: `docs/DEPLOYMENT.md` §13 covers the delivered canonical community/operator entrypoint at `https://zeninvest.zenouz.ai`.

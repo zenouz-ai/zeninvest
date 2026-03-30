@@ -3,7 +3,7 @@ title: Sprint Plan — Week 1
 tags: [sprint, planning, week-1, delivery, zeninvest]
 status: active
 created: 2026-03-21
-last_updated: 2026-03-29
+last_updated: 2026-03-30
 ---
 
 # Sprint Plan — Week 1 (ZenInvest)
@@ -38,13 +38,13 @@ last_updated: 2026-03-29
 |-------|----|-------|---------|------------------|
 | 1 | US-7.3 | Execution Quality & Slippage Monitoring | Market-order telemetry and operator visibility were the smallest materially useful pre-live gate | Decision-time price, slippage rollups, threshold alerting, and open partial-fill visibility are live |
 | 2 | US-7.2 | Partial Fill Resubmission | Fill recovery only mattered once telemetry existed and could be shown safely | BUY-only remainder retry is gated, audited, and never bypasses the normal committee path |
+| 3 | US-8.1 | Open-Source Launch Preparation | Highest-leverage unblocker before public repo visibility | Repo has LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, issue/PR templates, and CI workflow |
 
 ## Current Delivery Order
 
 | Order | ID | Story | Why now | Success criteria |
 |-------|----|-------|---------|------------------|
-| 1 | US-8.1 | Open-Source Launch Preparation | Repo is now the highest-leverage next unblocker after workflow delivery | Repo can be made public without legal, CI, or contributor-experience gaps |
-| 2 | US-1.11 | Branch-Based Evolution Runner | Next evolution story now that learning-loop context and attribution are first-class | Low-risk repo changes can be prepared in isolated branches with validation artifacts |
+| 1 | US-1.11 | Branch-Based Evolution Runner | Next evolution story now that CI, branch governance, and learning-loop context are ready | Low-risk repo changes can be prepared in isolated branches with validation artifacts |
 
 ---
 
@@ -77,8 +77,8 @@ last_updated: 2026-03-29
 
 ### Open-Source Launch Readiness
 
-- `US-8.1` is now the lead current-week item after the production posture and operator-workflow work above.
-- `US-7.7` is already delivered and now acts as a practical prerequisite for a clean community/operator posture.
+- `US-8.1` is delivered (2026-03-30): MIT LICENSE, CONTRIBUTING.md, CODE_OF_CONDUCT.md, SECURITY.md, GitHub issue/PR templates, CI workflow (pytest + mypy).
+- Operator manual steps remain: `git remote remove old-origin` locally + VPS, and the repo Private → Public flip.
 
 ### Zen Evolution Engine
 
@@ -111,7 +111,7 @@ last_updated: 2026-03-29
 
 ## Next After 8.1
 
-- `US-1.11` as the next evolution story once CI, branch governance, and the post-launch posture are ready.
+- `US-1.11` is the next evolution story now that CI, branch governance, and the post-launch posture are ready.
 - `US-2.1` + `US-2.2` + `US-2.3` only after trade-outcome volume is high enough to justify calibration work.
 
 ---
