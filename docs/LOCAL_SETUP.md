@@ -524,6 +524,17 @@ print(get_cost_summary(days=1))
 
 ## Emergency Controls
 
+### Additional CLI Commands
+
+```bash
+poetry run python -m src.orchestrator.main --performance      # Performance summary
+poetry run python -m src.orchestrator.main --dashboard        # Console dashboard snapshot
+poetry run python -m src.orchestrator.main --report           # Generate daily report
+poetry run python -m src.orchestrator.main --reset-peak       # Clear incorrect peak / CAUTIOUS latch
+poetry run python -m src.orchestrator.main --uov-diagnostic   # UOV shadow diagnostics
+poetry run python scripts/audit_performance_data.py           # Performance data audit helper
+```
+
 ### Pause All Trading
 
 ```bash

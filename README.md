@@ -7,22 +7,9 @@
   <img src="branding/ZenInvest.png" alt="ZenInvest" width="820" />
 </p>
 
-Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data, with a [sophistication roadmap](docs/SOPHISTICATION_ROADMAP.md) for systematic improvement based on evidence.
+Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data and improve through evidence-backed iterations.
 
-**Status:** POC — **1011 pytest cases currently pass**, with the dashboard frontend production build clean. Coverage now includes the delivered learning-loop bundle: **US-2.5 Market Guidance Layer** (persisted `guidance_snapshots`, `guidance_sector_scores`, active screening tilt, per-cycle influence audit, and a public/private Insights surface) and **US-2.6 Strategy Episode Attribution** (persisted `cycle_context_snapshots`, deterministic repo/config/prompt fingerprints, git-backed strategy episodes, operator confirmation flow, and observational pre/post summaries). Deployment-ready for VPS. **Current production control plane remains Docker Compose.** See [Deployment](docs/DEPLOYMENT.md) §13, [Market Guidance & Strategy Attribution Plan](docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md), and [Zen Evolution Engine](docs/ZEN_EVOLUTION_ENGINE.md).
-
-**Active roadmap order:** `US-8.1` Open-Source Launch Preparation -> `US-1.11` Branch-Based Evolution Runner. `US-2.5` + `US-2.6` are now delivered as the learning-loop and attribution bundle, `US-7.3` + `US-7.2` remain the delivered execution-quality gate, `US-4.2` + `US-3.3` remain the delivered entry-quality guard bundle, and `US-1.11+` remain gated behind the posture/workflow/CI sequence above as the remaining Zen Evolution Engine pipeline. See [`docs/SOPHISTICATION_ROADMAP.md`](docs/SOPHISTICATION_ROADMAP.md), [`docs/SPRINT_WEEK_1.md`](docs/SPRINT_WEEK_1.md), and [`docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md`](docs/MARKET_GUIDANCE_AND_STRATEGY_ATTRIBUTION_PLAN.md).
-
-<details>
-<summary><strong>ZenInvest Promo</strong></summary>
-
-Promotional visual for the ZenInvest product and brand direction.
-
-<p align="center">
-  <img src="branding/ZenInvest_Promo.png" alt="ZenInvest promotional poster" width="760" />
-</p>
-
-</details>
+**Status:** POC, **1011 pytest cases currently pass**, and the dashboard frontend production build is clean. Deployment posture remains Docker Compose on VPS. For roadmap and recent delivered work, see [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md), [Sprint Week 1](docs/SPRINT_WEEK_1.md), and [Zen Evolution Engine](docs/ZEN_EVOLUTION_ENGINE.md).
 
 ## Brand Assets
 
@@ -45,6 +32,10 @@ Orchestrator (configurable: intraday = 10:00/12:30/15:15 America/New_York, stand
 ```
 
 **State Machine:** ACTIVE → CAUTIOUS (>30% drawdown, configurable) → HALTED (>40% drawdown, liquidate all)
+
+<p align="center">
+  <img src="branding/ZenInvest_Promo.png" alt="ZenInvest promotional poster" width="760" />
+</p>
 
 ## Setup
 
@@ -71,17 +62,14 @@ poetry run alembic upgrade head
 
 ### Configuration
 
-Edit `config/settings.yaml` for trading parameters, risk limits, cost budgets, and model selection.
+Tune parameters in `config/settings.yaml`.
 
-Key settings:
-- **Trading:** `cycle_frequency` (intraday | standard), `schedule_mode`, cycle times, position limits, cash floor
-- **Risk:** drawdown thresholds, VIX limits, sector caps, correlation limits, risk-parity overlay (`risk_parity_enabled`, `risk_parity_lookback_days`, `risk_parity_vol_floor`, `risk_parity_target_vol`)
-- **Universe:** candidate count, sector balance, market-cap tiers, screening cooldown
-- **Opportunity:** UOV mode (`shadow|active`), thresholds (`immediate_threshold_z`, `queue_threshold_z`), EWMA half-life, queue TTL, swap delta
-- **Data Providers:** `macro_intelligence_enabled`, `volume_signals_enabled`, per-source cache TTLs
-- **Notifications:** channel routes, retries/timeouts, dedup window, dry-run alert policy
-- **Cost:** daily per-provider budgets, monthly total cap
-- **Models:** Claude Sonnet (strategy), GPT-4o + Gemini Flash (moderation)
+Most commonly adjusted keys:
+- **Trading:** `cycle_frequency`, scheduling times/timezone, `max_positions`, `cash_floor_pct`
+- **Risk:** drawdown thresholds, concentration caps, volatility gates
+- **Models/Budgets:** strategy/moderation model IDs and provider cost limits
+
+Full settings guide: [Local Setup](docs/LOCAL_SETUP.md) and [Architecture](docs/ARCHITECTURE.md).
 
 ## Usage
 
@@ -98,28 +86,21 @@ poetry run python -m src.orchestrator.main
 ### CLI commands
 
 ```bash
-poetry run python -m src.orchestrator.main --status       # System status
-poetry run python -m src.orchestrator.main --performance  # Performance metrics summary
-poetry run python -m src.orchestrator.main --dashboard   # Dashboard: portfolio, metrics, costs, positions
-poetry run python -m src.orchestrator.main --pause        # Pause trading
-poetry run python -m src.orchestrator.main --resume       # Resume trading
-poetry run python -m src.orchestrator.main --reset-peak   # Reset peak to current, clear CAUTIOUS if incorrect
-poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ  # Force sell
-poetry run python -m src.orchestrator.main --report       # Generate daily report
-poetry run python -m src.orchestrator.main --uov-diagnostic  # Run with UOV in shadow mode, emit scores for calibration
-poetry run python scripts/audit_performance_data.py       # Audit performance data quality inputs/outputs
+poetry run python -m src.orchestrator.main --status        # System status
+poetry run python -m src.orchestrator.main --pause         # Pause trading
+poetry run python -m src.orchestrator.main --resume        # Resume trading
+poetry run python -m src.orchestrator.main --reset-peak    # Clear incorrect peak / CAUTIOUS latch
+poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
 ```
+
+Extended command reference: [Local Setup](docs/LOCAL_SETUP.md).
 
 ### Backtesting
 
 ```bash
-# Run with real data (fetches from yfinance if data/backtest/ empty; caches to CSV)
 poetry run python -m src.backtesting.main --config backtests/default.yaml
 poetry run python -m src.backtesting.main --config backtests/default.yaml --walk-forward
-
-# Synthetic data (no network, fast sanity check)
 poetry run python -m src.backtesting.main --synthetic --output-dir backtests/results/run1
-poetry run python -m src.backtesting.main --scenario bull --synthetic
 ```
 
 See [Backtesting](docs/BACKTESTING.md) (includes walk-forward validation and promotion report) for details.
@@ -130,7 +111,7 @@ See [Backtesting](docs/BACKTESTING.md) (includes walk-forward validation and pro
 poetry run python -m src.scheduler.scheduler
 ```
 
-### Dashboard (Phase 1 + Phase 1.5 Analytics Lite)
+### Dashboard
 
 Run the backend from the project root (so `src` and `dashboard` are importable):
 
@@ -141,34 +122,13 @@ poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
 # API at http://localhost:8000, OpenAPI docs at http://localhost:8000/docs
 ```
 
-**Endpoints:**
-- `GET /api/runs/`, `GET /api/runs/diff`, `GET /api/runs/cycle/{cycle_id}`, `POST /api/runs/trigger`, `POST /api/runs/trigger-live` — Run history and dry/live cycle trigger
-- `GET /api/status/` — Next run, next refresh, cycle_frequency, local refresh schedule, system state (ACTIVE/CAUTIOUS/HALTED), paused, HALTED auto-recovery progress, last refresh status, and current peak-inflation warning note when active
-- `GET /api/universe/`, `GET /api/universe/{ticker}` — Universe and instrument detail
-- `GET /api/portfolio/`, `GET /api/portfolio/history` — Portfolio snapshot and history
-- `GET /api/public/universe`, `GET /api/public/portfolio`, `GET /api/public/portfolio/history`, `GET /api/public/runs`, `GET /api/public/opportunity`, `GET /api/public/insights/guidance/latest`, `GET /api/public/insights/guidance/history` — Public sanitized demo feeds for anonymous dashboard pages
-- `GET /api/orders/`, `GET /api/orders/health`, `GET /api/orders/execution-quality` — Order history, broker-sync health, unresolved failures, pending local-vs-live reconciliation, and market-order execution-quality rollups with open partial-fill visibility
-- `GET /api/events/`, `GET /api/events/stream` — Event log and SSE stream
-- `GET /api/decisions/`, `GET /api/decisions/waterfall`, `GET /api/decisions/{cycle_id}`, `GET /api/decisions/ticker/{ticker}` — Strategy decisions and pipeline waterfall
-- `GET /api/moderation/{cycle_id}`, `GET /api/moderation/ticker/{ticker}` — Moderation logs
-- `GET /api/risk/{cycle_id}` — Risk decisions
-- `GET /api/opportunity/config/`, `GET /api/opportunity/scores/`, `GET /api/opportunity/scores/{cycle_id}`, `GET /api/opportunity/queue/`, `GET /api/opportunity/history/{ticker}` — UOV config, scores and queue
-- `GET /api/outcomes/`, `GET /api/outcomes/stats` — Trade outcomes and aggregate stats
-- `GET /api/stop-loss/current`, `GET /api/stop-loss/adjustments` — Stop-loss levels and adjustment history
-- `GET /api/performance/metrics`, `GET /api/performance/history` — Performance metrics
-- `GET /api/public/macro/state`, `GET /api/public/macro/state/history`, `GET /api/public/macro/headlines`, `GET /api/public/macro/summary` — Public read-only World News / macro archive
-- `GET /api/costs/daily`, `GET /api/costs/monthly`, `GET /api/costs/degradation` — Cost breakdown and degradation
-- `GET /api/api-usage/daily` — API call counts and error rates
-- `GET /api/system/state`, `POST /api/system/trigger-cycle`, `POST /api/system/trigger-refresh`, `POST /api/system/pause`, `POST /api/system/resume` — System state and controls, including HALTED recovery streak/target, refresh trigger, and any active peak-inflation warning note
-- `GET /api/commands/`, `GET /api/commands/stats` — Slack trade command audit log (filter by ticker, action, status)
-- `GET /api/chat/sessions`, `POST /api/chat/sessions`, `GET /api/chat/sessions/{id}`, `GET /api/chat/sessions/{id}/turns`, `GET /api/chat/sessions/{id}/actions`, `GET /api/chat/sessions/{id}/spend`, `POST /api/chat/sessions/{id}/turns`, `POST /api/chat/sessions/{id}/actions/{action_id}/confirm`, `POST /api/chat/sessions/{id}/actions/{action_id}/reject`, `POST /api/chat/sessions/{id}/end`, `DELETE /api/chat/sessions/{id}` — Shared Slack/dashboard conversational trading session APIs for `US-1.9`, including paginated history, spend summaries, and archive support. Turn submits return refreshed session detail synchronously; confirm/reject requests require `expected_version` and return `409` with the latest action payload if the proposal changed.
-- `GET /api/evolution/requests`, `POST /api/evolution/requests`, `GET /api/evolution/requests/{id}`, `GET /api/evolution/requests/{id}/plan`, `POST /api/evolution/requests/{id}/messages`, `GET /api/evolution/requests/{id}/runs`, `GET /api/evolution/requests/{id}/artifacts`, `POST /api/evolution/requests/{id}/approve-build`, `POST /api/evolution/requests/{id}/approve-deploy`, `GET /api/evolution/requests/{id}/deployments` — Zen Evolution Engine Phase 1 planner workflow (approvals intentionally blocked and audited in `US-1.10`)
+Key routes include runs, status, universe, portfolio, orders, decisions, opportunity, outcomes, costs, macro, chat, and evolution workflows. Full API details are in OpenAPI (`/docs`) and [Dashboard Documentation](docs/DASHBOARD.md).
 
-**Configuration:** Set `dashboard.enabled: true` and `dashboard.events_enabled: true` in `config/settings.yaml`.
+Enable via `dashboard.enabled: true` and `dashboard.events_enabled: true` in `config/settings.yaml`.
 
 ### Dashboard Frontend
 
-**Brand:** `ZENOUZ.ai` is the company brand, `ZenInvest` is the product, and the authenticated dashboard home is titled `ZenInvest Agent`. The frontend uses the Graph Theory Z logo family, a cyan→emerald brand gradient, a dark base (`#06060a`), Syne for hero headings/KPIs, Outfit for body/UI copy, and JetBrains Mono for data labels. The shared page header across dashboard tabs includes a right-aligned hybrid bold Z mark inside a subtle glass panel. See `/branding/BRAND.md` for the full brand guide.
+Brand and design system details: [Brand Guide](branding/BRAND.md).
 
 ```bash
 cd dashboard/frontend
@@ -178,13 +138,7 @@ npm run dev    # Dev server on http://localhost:3000 (proxies API)
 npm run build  # Production build (outputs to dist/)
 ```
 
-**Pages:** Dashboard Home (alert banner on all pages; system state badge with distinct PAUSED colour; Pause/Resume toggle; Dry Run/Live Run/**Refresh** buttons; compact 5-card operator hero — next cycle, next refresh, portfolio value, performance 30d, monthly summary; rounded hero portfolio value; labeled snapshot/refresh freshness row; subtle cycle/refresh audit health line; always-visible cycle summary, positions snapshot with P&L bars and sparklines, real-time activity feed; independent section loading via `useAsyncData`; skeleton loading screens; follow-up refetch after manual refresh; AlertBanner now also surfaces HALTED auto-recovery progress, active peak-inflation warnings, and execution-quality threshold breaches when present), Stock Universe (searchable, sortable-by-column table with `Investigated`, `Reviews`, `Decisions`, `Holding`, `Sold`, `UOV (ewma)` columns plus expandable rows with pipeline waterfall visualisation and committee reasoning and **full LLM outputs** — strategy reasoning, exit conditions, news/market/portfolio text, raw JSON; all moderators’ verdicts and reasoning; risk reasoning and triggered rules; deep-linkable via `/universe/:ticker`; auto-refreshes every 30s). The Universe `Sold` metric is computed from both executed and dry-run SELL orders (SELL quantities stored as negative; the dashboard reports `abs(sum(quantity))`), and the detail panel shows whether any live BUY/SELL executions exist in Trading 212 for the ticker. Additional pages: Run History (timeline, run diff view, including `refresh` runs and per-run dataset audit details; public mode shows capped sanitized runs), Portfolio (positions with inline sparklines, P&L chart, sector allocation, public sanitized mode when signed out, Force Sell only after operator sign-in, auto-refresh every 30s from the latest snapshot), Opportunity Pipeline (UOV scores and queue; public mode shows capped sanitized examples), Insights (market guidance snapshots, sector tilts, cycle influence audit, and operator strategy-attribution review; public mode exposes sanitized market guidance while keeping attribution preview-only), Order Management (broker-sync health, active vs archived unresolved failures, separate history/live sync warnings with timestamps, execution-quality rollups, open partial-fill visibility, recent orders with decision/fill/slippage/remainder columns, stop-loss levels, adjustment history, and scheduled refresh summary; public page is preview-only), Chat (`/chat`, with `/commands` retained as a backward-compatible alias: chat-first conversational operator console with session rail, live thread, planner-led mode chips, agent activity rail, evidence panels, degraded-turn warnings, pending proposal/action rail, research trace, session spend, and a secondary **Legacy Slack Audit** tab that is not the full conversation archive and auto-refreshes while open; public page is preview-only), World News (macro regime + headline archive + action plan; public read-only when signed out; auto-refresh every 30s), Costs (daily/monthly cost charts, degradation; public page shows aggregate totals only), Roadmap (default **Timeline** board with 3-column layout: Delivered / Pipeline / Future, near-uniform story cards grouped by priority, plus a secondary detailed roadmap tab and a custom staged architecture map), and Evolution (authenticated operator-only natural-language change planning, clarification loop, validation matrix, repo context, and audit trail for `US-1.10`; public page is preview-only). 12 pages total. Anonymous surface: the full tab map is visible, but each page is intentionally either a sanitized live view (Overview, Universe, Portfolio, Runs, Opportunity, Insights, Costs, World News, Roadmap) or a disabled preview surface (Order Management, Chat, Evolution, private Strategy Attribution detail inside Insights). Operator-only pages and controls remain authenticated. Navigation: primary 5 pages for signed-in operators (`Dashboard`, `Universe`, `Portfolio`, `Runs`, `Roadmap`) + `More` dropdown for secondary pages, while signed-out visitors also see the full product navigation. UX: skeleton loading screens, mobile card layouts, responsive column hiding, `aria-expanded`/`aria-live` accessibility, focus-trapped modals, directional P&L arrows (▲/▼) for colour-blind safety. All 28 UX audit findings resolved (score 9.0/10). See `docs/UX_AUDIT.md` for full audit.
-
-**Dashboard roadmap data:** `docs/SOPHISTICATION_ROADMAP.md` is the planning source of truth. The Roadmap page reads synchronized milestone data from `dashboard/frontend/src/data/roadmap.ts`, which should be updated alongside the master roadmap whenever priority, status, or grouping changes. Pipeline items should carry `horizon` (`'Pipeline'` for committed work / `'Future'` for deferred backlog) and `timeboxDays` (`1` or `2`), and grouped work should use `track`, `legacyIds`, `materiality`, `gate`, and `activeOrder` so the dashboard reflects the same planning model as the docs.
-
-**Testing the dashboard:** Ensure `dashboard.enabled: true` in `config/settings.yaml`. Start the backend: `poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000`. Run the endpoint check: `poetry run python dashboard/backend/test_endpoints.py`. Then run the frontend (`npm run dev` in `dashboard/frontend` or open `http://localhost:8000` after `npm run build`). See `dashboard/backend/TESTING.md` for the full 12-page and API check.
-
-**Docker:** `docker compose up -d` runs the scheduler, always-on Slack listener, the internal-only `dashboard` service, and the public `nginx` ingress. Production access is now the canonical HTTPS domain `https://zeninvest.zenouz.ai` via Cloudflare + Nginx; public raw `:8000` exposure is intentionally removed. Anonymous users can browse the full dashboard information architecture, but only sanitized read models or disabled preview surfaces are exposed publicly; operator pages and controls still require sign-in and are intentionally blocked over plain HTTP unless you are tunnelling to localhost in dev mode. The Nginx service expects a Cloudflare Origin CA cert/key at `/home/deploy_invest_ai/certs/zeninvest.zenouz.ai/`; see `docs/DEPLOYMENT.md` §13. Use the **Dry Run** or **Live Run** buttons only after operator sign-in, or: `docker exec -it investment-agent poetry run python -m src.orchestrator.main` (live); add `--dry-run` for dry-run.
+Frontend includes authenticated operator views and sanitized public views across Dashboard, Universe, Portfolio, Runs, Opportunity, Insights, Order Management, Chat, World News, Costs, Roadmap, and Evolution. For full IA/UX details, see [Dashboard Documentation](docs/DASHBOARD.md) and [UX Audit](docs/UX_AUDIT.md).
 
 **Schedule (configurable):**
 
@@ -201,23 +155,11 @@ Set `cycle_frequency: intraday`, `schedule_mode: market_session`, `schedule_time
 
 ### Docker
 
-Two Dockerfiles: `Dockerfile.agent` (Python-only, reused for the scheduler and the always-on Slack listener) and `Dockerfile` (multi-stage Node + Python, builds the frontend and runs the dashboard). The `investment-agent` and `slack-listener` services use `Dockerfile.agent`; the `dashboard` service uses `Dockerfile`; the public HTTPS ingress uses `nginx:alpine` with repo-managed config under `deploy/nginx/conf.d/`. This avoids building the frontend twice and halves memory usage during builds on low-RAM VPS instances.
+Compose stack runs scheduler, Slack listener, dashboard, and nginx ingress. Production is served at `https://zeninvest.zenouz.ai` with internal-only dashboard app exposure.
 
 ```bash
 # Build and run all services (scheduler + Slack listener + dashboard + nginx ingress)
 docker compose up -d --build
-
-# Rebuild only the dashboard app (e.g. after frontend changes)
-docker compose up -d --build dashboard
-
-# Rebuild only the scheduler (e.g. after strategy/risk changes)
-docker compose up -d --build investment-agent
-
-# Rebuild only the always-on Slack listener
-docker compose up -d --build slack-listener
-
-# Recreate the nginx ingress after config changes
-docker compose up -d --force-recreate nginx
 
 # View logs
 docker compose logs -f investment-agent
@@ -238,28 +180,13 @@ docker exec -it investment-agent poetry run python -m src.orchestrator.main
 docker exec -it investment-agent poetry run python -m src.orchestrator.main --dry-run
 ```
 
-## Chat Notifications (US-1.5 Delivered)
+Deployment details: [Deployment Guide](docs/DEPLOYMENT.md).
 
-Outbound chat interface v1 is live with persistent audit logging.
+## Chat Notifications
 
-- **Delivered (US-1.6):** Inbound Slack natural language trade commands now support 4 explicit modes:
-  - `review` — e.g. `REVIEW MSFT`, strategy/moderation/risk analysis only, no execution
-  - `direct_trade` — plain `BUY AAPL`, `SELL 10 TSLA`, `BUY £500 NVDA`; bypasses strategy, moderation, and risk and goes straight to quote lookup, preflight checks, confirmation, and execution
-  - `strategy_trade` — e.g. `review Apple and buy`, `buy Apple and trigger strategy`; runs the full single-ticker committee path first, then executes the user-requested trade
-  - `cancel` — e.g. `cancel buy Apple`, `cancel sell TSLA`, `cancel stop sell NVDA, Microsoft`; resolves one or more tickers and cancels matching pending Trading 212 orders without triggering strategy
-  Direct trades keep existing broker-side safety rails such as cash/position preflight, order deduplication, min-order handling, stop-cancel preflight for SELL, and large-order confirmation. Strategy-triggered trades preserve moderation/risk behavior and `force` overrides. Cancel commands are immediate and keep a per-message audit trail with target tickers, target order class, and cancellation result details in `SlackCommandLog`. Explicit GBP orders remain FX-aware for `_US_EQ` / OTC names, so `BUY £550 ENGGY` targets the requested GBP amount instead of dividing by the native USD quote. Regex-first parsing now covers direct, strategy-triggered, and cancel commands, with Claude fallback for ambiguous phrasing. **Dashboard Chat page** (`/chat`, legacy `/commands` alias) surfaces execution mode, cancel metadata, and expanded result payloads. CLI: `poetry run python -m src.agents.notifications.slack_trade_listener`. Docker deployment includes an always-on `slack-listener` service so Slack access survives deploys and reboots. See [Conversational Trading Workflow](docs/CONVERSATIONAL_TRADING_WORKFLOW.md).
-- **US-1.9 conversational workflow delivered:** shared conversational trading sessions now span Slack threads and the dashboard Chat console (`/chat`, legacy `/commands` alias), with `chat_actions`, `chat_research_logs`, and `chat_workflow_steps`; explicit confirm/reject/expiry flow; versioned confirm/reject APIs that require `expected_version` and return `409` with the latest action payload on conflicts; portfolio-rule previews, stop updates, cancel proposals, session-level spend attribution, and persistent intent-detection cache reuse for successful LLM fallback parses. The agentic beta path adds planner-led routing, evidence blocks, citations, related-ticker scans, committee views, and a transparent step-by-step workflow rail. Turn submissions return refreshed session state synchronously, while SSE continues to broadcast chat updates. The `Legacy Slack Audit` tab remains a secondary one-shot audit view, not the full conversation archive, and now auto-refreshes while open. Execution remains explicitly confirmed and deterministic even when the chat path uses LLM planning or grounded research. Slack/dash routing hardening normalizes bullet/list-prefixed thread messages before routing, keeps explicit threaded commands on the deterministic preview path, supports 2-3 name compare prompts, and allows `compare X and Y, then buy £20 of the stronger one` to stage a confirm-gated preview instead of executing directly. `SlackCommandLog` remains the legacy one-shot audit trail. Local automated validation, schema verification, and VPS signoff completed on 2026-03-28. See [US-1.9 Validation Signoff](docs/archive/signoffs/US19_VALIDATION_SIGNOFF.md).
-- Channels (outbound): Slack webhook + SMTP email
-- Event types:
-  - `trade_instruction_approved`
-  - `trade_execution_result`
-  - `cycle_run_summary`
-  - `state_transition`
-  - `critical_cycle_failure`
-  - `order_adjustment`
-- Audit table: `notification_logs` (`sent|failed|skipped|deduped`)
+Outbound alerting is enabled via Slack webhook + SMTP email with fail-open delivery and persistent `notification_logs` audit rows. Inbound Slack commands support review, direct trade, strategy-triggered trade, and cancel flows.
 
-Default low-noise routing profile:
+Default low-noise routing:
 - `trade_instruction_approved` -> Slack
 - `trade_execution_result` -> Slack + Email
 - `cycle_run_summary` -> Slack
@@ -268,115 +195,32 @@ Default low-noise routing profile:
 - `order_adjustment` -> Slack
 - `include_dry_run_alerts: false`
 
+Full conversational workflow and command semantics: [Conversational Trading Workflow](docs/CONVERSATIONAL_TRADING_WORKFLOW.md).
+
 ### Slack + Email hookup (VPS)
 
-1. Set `.env` values:
+Set notification env vars in `.env`, restart the compose stack, and verify delivery in `notification_logs`.
 
-```env
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-ALERT_EMAIL_FROM=alerts@yourdomain.com
-ALERT_EMAIL_TO=ops@yourdomain.com
-SMTP_HOST=smtp.sendgrid.net
-SMTP_PORT=587
-SMTP_USER=apikey
-SMTP_PASS=SG_xxx
-SMTP_USE_TLS=true
-```
-
-2. Restart container:
-
-```bash
-docker compose down
-docker compose up -d --build
-```
-
-3. Verify effective config:
-
-```bash
-docker compose exec investment-agent python -c "
-from src.utils.config import get_settings
-s=get_settings()
-print(s.notification_include_dry_run_alerts, s.notification_routes.get('cycle_run_summary'))
-"
-```
-
-4. Verify email/slack send attempts:
-
-```bash
-docker compose exec investment-agent python -c "
-from sqlalchemy import text
-from src.data.database import get_session
-s=get_session()
-rows=s.execute(text(\"\"\"
-SELECT timestamp,event_type,channel,status,attempt_number,error_message
-FROM notification_logs
-ORDER BY id DESC
-LIMIT 20
-\"\"\")).fetchall()
-print(*rows, sep='\n')
-s.close()
-"
-```
+Complete setup and verification commands: [Deployment Guide](docs/DEPLOYMENT.md) and [VPS Systemd Runbook](docs/VPS_SYSTEMD_RUNBOOK.md).
 
 ## Testing
 
 ```bash
-poetry run pytest -v                          # All tests
-poetry run pytest tests/test_risk_manager.py  # Risk agent (43 tests)
-poetry run pytest tests/test_execution.py     # Execution (52 tests)
-poetry run pytest tests/test_strategy.py      # Strategy (17 tests)
-poetry run pytest tests/test_moderation.py    # Moderation (21 tests)
-poetry run pytest tests/test_cost_tracker.py  # Cost tracker (16 tests)
-poetry run pytest tests/test_screening_cooldown.py  # Screening + seed universe (10 tests)
-poetry run pytest tests/test_opportunity_scorer.py tests/test_opportunity_optimizer.py  # UOV scoring + optimizer (5 tests)
-poetry run pytest tests/test_notifications_service.py tests/test_notifications_providers.py tests/test_notifications_formatters.py tests/test_notifications_integration.py  # Notifications (20 tests)
+poetry run pytest -v
 ```
+
+For focused test commands by subsystem, see [Local Setup](docs/LOCAL_SETUP.md).
 
 ## Project Structure
 
-```
-src/
-├── orchestrator/       # Main control loop + state machine
-├── agents/
-│   ├── market_data/    # yfinance, Finnhub, Alpha Vantage, per-ticker news, universe screener, seed universe
-│   ├── strategy/       # Momentum, mean reversion, factor, Claude synthesis
-│   ├── moderation/     # GPT-4o + Gemini investment committee (full data + strategy assessment)
-│   ├── risk/           # Hard rules with VETO power
-│   ├── opportunity/    # UOV scorer + optimizer (ranking, queueing, swap suggestions)
-│   ├── execution/      # T212 client + order manager: market, stop-loss, dedup
-│   ├── notifications/  # Slack/email alerts, routing/retries/dedup, notification logging
-│   └── reporting/      # Trade journals, daily/weekly reports, performance tracker, trade outcome tracker
-├── data/               # SQLAlchemy models, Alembic migrations
-├── scheduler/          # APScheduler with persistent job store
-├── backtesting/        # Engine, paper broker, io (yfinance fetch + CSV cache), walk-forward, promotion report
-└── utils/              # Config, logger, cost tracker
-docs/                   # Project documentation
-├── AGENTIC_RESEARCH.md          # Agentic research: design, tool definitions, phases
-├── ARCHITECTURE.md              # System architecture and component diagrams
-├── AUDIT_INDEX.md               # Cross-reference of all audit findings
-├── BACKTESTING.md               # Backtesting engine, walk-forward validation, promotion report
-├── COMPETITIVE_ANALYSIS.md      # Assessment vs professional quant systems
-├── CONVERSATIONAL_TRADING_WORKFLOW.md  # US-1.9 unified multi-turn Slack/dashboard chat
-├── DASHBOARD.md                 # Web dashboard architecture, phases, frontend/backend design
-├── DATA_EXPORT_RUNBOOK.md       # VPS-to-local data export with integrity checks
-├── DATA_RATIONALE.md            # Every data point's purpose and keep/remove verdict
-├── DEPLOYMENT.md                # VPS deployment, Docker, dashboard, HTTPS (consolidated)
-├── GOVERNANCE.md                # Governance framework, 9 risk rules, cost controls, audit trail
-├── LOCAL_SETUP.md               # Local setup guide (Trading 212 Practice)
-├── ORDER_MANAGEMENT_PROJECT.md  # Stop-loss, trailing stops, limit dip-buy: design and config
-├── PRESENTATION.md              # Project presentation and summary
-├── SOPHISTICATION_ROADMAP.md    # Prioritised improvement roadmap
-├── archive/                     # Archived plans and historical docs
-└── obsidian-sync/               # Obsidian vault distillation
-notebooks/
-├── diagnostics.ipynb       # Component diagnostics: every pipeline step (Config → Backtesting → Walk-Forward) with expected outputs
-├── research_api_investigation.ipynb  # Phase 0 baseline: provider/API capability + SEC EDGAR validation
-├── research_api_decision_framework.ipynb  # Phase 0.2: routing policy benchmark (difficulty gating, action mode, provider policy)
-├── enriched_instruments.ipynb  # Inspect enriched instrument data (sector, market_cap, industry, summary)
-├── brave_api_smoke.py      # Manual smoke test for Brave Search + Answers APIs (requires API keys)
-├── brave_tavily_comparison.py  # Compare Brave vs Tavily extraction (sector, market_cap)
-└── enrichment_benchmark.py # Benchmark BRAVE_SEARCH vs BRAVE_ANSWERS vs TAVILY: cost, time, accuracy
-```
+High-level layout:
+- `src/` — orchestrator, agents, data, scheduler, utilities
+- `dashboard/` — backend API + frontend UI
+- `docs/` — architecture, deployment, governance, roadmap, feature docs
+- `tests/` — unit/integration coverage
+- `notebooks/` — diagnostics and research notebooks
+
+Detailed structure and component responsibilities: [Architecture](docs/ARCHITECTURE.md).
 
 ## Documentation
 
@@ -411,53 +255,29 @@ notebooks/
 
 ## Cycle Output
 
-Each cycle returns a JSON result with:
-- **trades** — executed trades with industry, market cap, business description, reasoning, allocation, moderation/risk verdicts, stop-loss
-- **rejected_stocks** — stocks considered but not traded, tagged by the stage that blocked them (`strategy_hold`, `moderation_blocked`, `risk_reject`, `opportunity_queue`, `opportunity_filtered`) with company metadata, rejection reason, and UOV diagnostics (`uov_ewma`, `uov_z`) for opportunity stages
-- **opportunity_ranking** — per-ticker UOV scores (`uov_raw`, `uov_z`, `uov_final`, `uov_ewma`) persisted each cycle
-- **queued_candidates** — BUY opportunities held in the UOV queue when not executed immediately
-- **swap_candidates** — non-executing suggestions where a candidate's UOV materially exceeds weakest held position
-- **cost_summary** — LLM spend for the cycle
+Each cycle records trades, rejected candidates by pipeline stage, UOV rankings/queue outcomes, and per-cycle cost summaries. This supports quick operator review and long-term diagnostics.
 
-This enables immediate post-cycle review and long-term analysis of missed opportunities.
+Data model and run semantics: [Architecture](docs/ARCHITECTURE.md) and [Governance](docs/GOVERNANCE.md).
 
 ### Universal Opportunity Value (UOV)
 
-The orchestrator computes a cross-cycle UOV for each assessed ticker:
-- `uov_raw` — weighted hybrid score from sub-strategy signals, conviction, moderation/risk outputs, sentiment proxy, and market-cap proxy
-- `uov_z` — cross-sectional z-score of `uov_raw` within the cycle
-- `uov_final` — `uov_z` plus deterministic stage penalties (HOLD/BLOCKED/REJECT/RESIZE)
-- `uov_ewma` — smoothed cross-cycle score (`half-life = 6 cycles` by default)
+UOV blends strategy, moderation/risk, and market context signals into per-ticker scores (`uov_raw`, `uov_z`, `uov_final`, `uov_ewma`) used for ranking and queueing.
 
-Execution behavior:
-- `mode: shadow` — compute/log UOV and queue state but preserve legacy BUY execution ordering
-- `mode: active` — rank approved BUYs by `uov_ewma`, execute top opportunities first, queue remaining candidates, and emit conservative swap suggestions (no autonomous SELLs)
+Modes:
+- `shadow` — compute/log only
+- `active` — rank BUY execution and manage queue/swap suggestions
 
 ## Order Types
 
-- **Market orders** — BUY, SELL, REDUCE (partial sell) via T212 market order API
-- **Stop-loss orders** — Automatically placed after BUY executions using Claude's `stop_loss_pct` (GTC validity)
-- **Tiered profit-lock floors** — Under `order_management.profit_lock_tiers`, winners progressively ratchet minimum locked profit floors (for example `+8% gain -> +5% lock`). Tiered floors are integrated with ATR and trailing logic by taking the tighter protective stop.
-- **£500 BUY floor + whole-share preference** — BUY and limit-BUY paths are lifted to `min_order_value_gbp` when the requested trade value is below the floor, provided enough cash remains after the cash-floor guard. Autonomous BUY sizing prefers whole shares with a small configurable overspend tolerance and only falls back to fractional shares when a whole-share order cannot satisfy policy. If there is not enough spendable cash to place the minimum order, the BUY is skipped. SELL, REDUCE, and protective stop-loss orders are allowed below the floor so small holdings can still be exited/protected. REDUCE is intentionally rare and currently restricted to 50% profit trims; if a trim would leave a holding below the cleanup threshold, execution converts it to a full SELL.
-- **REDUCE floor safeguard** — If a REDUCE would leave a position below £500, execution is automatically converted to a full SELL
-- **Slow, profit-driven exits** — Ordinary autonomous SELLs require meaningful unrealized profit (`sell_min_profit_pct`, default `15%`) and a `gain_realization` trigger, while `hard_exit` is reserved for severe thesis breaks or risk events. REDUCE is intentionally rare: only `25%` or `50%` profit trims are allowed, and only after the configured gain thresholds are reached. Residual holdings below `small_position_cleanup_value_gbp` (default `£200`) are liquidated immediately in a pre-strategy deterministic pass, using the broker-reported live quantity and skipping the strategy/moderation/risk LLM path for that cleanup ticker
-- **Order deduplication** — 5-minute window prevents double-execution
-- **Stale pending SELL cleanup** — If a later live cycle flips a ticker from an earlier pending market `SELL` to `HOLD`/`QUEUED`, the orchestrator cancels the stale pending broker order so the latest view wins
-- **Moderation fail-open serialization** — moderator `MODIFY` extras are normalized defensively; malformed `modifications` payloads are ignored instead of crashing the cycle or Slack single-ticker review path
-- **Broker error detail preservation** — failed market and stop orders now keep the Trading 212 HTTP status/body snippet in the recorded error so alerts can distinguish issues like minimum order value vs reserved-share conflicts
-- **Ticker normalization** — plain symbols returned by strategy (e.g. `AAPL`) are normalized to T212 instrument IDs (e.g. `AAPL_US_EQ`) before execution when an unambiguous mapping exists
+Execution supports market BUY/SELL/REDUCE, auto stop-loss placement, trailing/tiered profit-lock behavior, limit dip-buy paths, order deduplication, and stale pending-order cleanup.
+
+Detailed mechanics and policy constraints: [Order Management](docs/ORDER_MANAGEMENT_PROJECT.md).
 
 ## Universe Screening
 
-Each cycle discovers new candidates beyond existing positions:
-- **Curated seed universe** — Derived from T212 instrument list (~6900 US equities, 100% tradeable). Regenerate with `poetry run python scripts/generate_seed_from_t212.py --from-db`. Bulk enrich sector/market_cap/industry/summary: `poetry run python scripts/bulk_enrich_instruments.py`. Backfill industry/summary for already-enriched: `poetry run python scripts/backfill_industry_summary.py`. Used as fallback when instruments table lacks enriched data.
-- **Sector-balanced sampling** — minimum 3 candidates per sector to avoid concentration
-- **Market-cap tiers** — 70% large cap ($10B+), 20% mid cap ($2B-$10B), 10% small cap ($300M-$2B)
-- **Screening cooldown & mix** — stocks are stamped with `last_screened_at` after each screen and excluded for a cooldown window (default effective intraday cooldown `4h` via `effective_screening_cooldown_override`), allowing the next intraday cycle to revisit the prior pool. Autonomous re-reviews are also rate-limited per ticker: at least `review_cooldown_days` (default `2`) between reviews and at most `max_reviews_per_30_days` (default `10`) in a rolling 30-day window. Slack single-ticker reviews bypass this screener gate. Within the eligible pool, `get_screened_universe()` targets a configurable share of fresh (never-reviewed) tickers via `uninvestigated_target_pct` (default ~50%).
-- **Data availability filtering** — tickers that fail yfinance OHLCV fetch are permanently flagged `data_available=False` and excluded from all future screens
-- **Metadata enrichment** — sector, market_cap, industry, and business summary back-filled from yfinance into instruments table (~5,477 deployed). Strategy prompt falls back to Instrument when yfinance returns sparse data.
-- **Company profiles** — `longBusinessSummary` from yfinance is included in the Claude strategy prompt so it can reason about competitive moats, regulatory exposure, and news impact
-- Skipped in CAUTIOUS mode (no new positions allowed)
+Screening uses a curated T212 seed universe with sector-balanced and market-cap-tiered sampling, cooldown/review gates, and metadata enrichment fallbacks. In CAUTIOUS mode, new BUYs are blocked by risk policy.
+
+Methodology and rationale: [Data Rationale](docs/DATA_RATIONALE.md) and [Architecture](docs/ARCHITECTURE.md).
 
 ## Cost Management
 

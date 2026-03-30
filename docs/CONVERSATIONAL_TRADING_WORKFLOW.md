@@ -23,6 +23,24 @@ Define a single implementation plan for a dialogue-driven trading workflow that 
 This document is the canonical design for cross-channel conversational trade operations.
 Current implementation state: `US-1.9` is delivered in both repo and VPS operation and has been extended with an **agentic beta** path. Shared Slack/dashboard sessions, action and research ledgers, explicit confirm/reject/expiry, chat SSE events, Slack thread continuity, dashboard-to-Slack reply mirroring for Slack-backed sessions, and the chat-first dashboard console at `/chat` (with `/commands` retained as a backward-compatible alias) are implemented. The beta path adds a planner-led route selector, evidence-driven replies, related-ticker scans, hidden specialist opinions folded into one assistant voice, and a persisted `chat_workflow_steps` trace so the operator can see what the agent is doing step by step without exposing chain-of-thought. Recent hardening also added explicit degraded-turn warnings, deterministic `help_or_explain` fast-path handling, stricter compare / committee subject resolution, typed session context persistence, cross-session inheritance for same-user dashboard sessions, optimistic action-version checks on explicit confirm/reject APIs, Slack bullet/list normalization before routing, deterministic precedence for explicit threaded commands, timezone-safe pending-action expiry checks, deterministic compare support for 2-3 explicit names plus confirm-gated follow-ons such as `compare Amazon and Alphabet, then buy £20 of the stronger one`, and persistent intent-detection cache reuse for successful LLM fallback parses. The secondary `Legacy Slack Audit` tab is intentionally not the full conversation archive; it remains the one-shot `SlackCommandLog` view and now auto-refreshes while open. Chat-triggered LLM calls and paid research calls continue to carry `chat_session_id` / `chat_turn_id` attribution so session-level operator spend can be measured directly. Local automated validation, schema verification, and VPS signoff completed on 2026-03-28. See `docs/US19_VALIDATION_SIGNOFF.md`.
 
+## US-1.6 Command Modes (Deterministic)
+
+Inbound Slack trade commands support four explicit execution modes:
+
+- `review` — analysis only (strategy + moderation + risk), no order execution
+- `direct_trade` — direct broker path (quote/preflight/confirm/execute), bypasses strategy/moderation/risk
+- `strategy_trade` — single-ticker committee path first, then executes requested action if approved
+- `cancel` — cancels matching pending broker orders for one or more tickers
+
+Examples:
+
+- `review MSFT`
+- `buy AAPL`
+- `buy Apple and trigger strategy`
+- `cancel stop sell NVDA, Microsoft`
+
+All command results are audit logged; conversational sessions and command activity are linked through shared chat/session metadata and legacy `SlackCommandLog` compatibility surfaces.
+
 ## Validation and signoff
 
 `US-1.9` is delivered. The repeatable signoff artifact is `docs/US19_VALIDATION_SIGNOFF.md`, which records:

@@ -4,13 +4,14 @@ This file provides context to AI assistants (Claude Code, Codex, Cursor, etc.) w
 
 ## What This Project Is
 
-Autonomous investment agent that trades via the Trading 212 Practice API using a multi-LLM pipeline. Pipeline: Data → Universe Screen → Strategy (Claude) → Moderation (GPT-4o + Gemini) → Risk (hard rules, VETO) → Opportunity (UOV rank/queue) → Execution (T212) → Journal.
+Autonomous investment agent that trades via the Trading 212 Practice API using a multi-LLM pipeline:
+
+Data -> Universe Screen -> Strategy (Claude) -> Moderation (GPT-4o + Gemini) -> Risk (hard rules, VETO) -> Opportunity (UOV rank/queue) -> Execution (T212) -> Order Management -> Journal.
 
 **Scheduling architecture:** Configurable via `cycle_frequency` in `config/settings.yaml`:
 - **intraday** (default): 3 DST-aware market-session cycles at 10:00, 12:30, and 15:15 in `America/New_York` — more timely decisions, uses deferred Finnhub/AV and tiered caching to stay within API limits.
 - **intraday refresh lane**: lightweight broker/data refreshes at 09:50, 10:10, 12:20, 12:40, and 15:05/15:25 America/New_York on market days, plus weekend refreshes Sat/Sun 17:00 America/New_York. Syncs broker order truth, writes fresh portfolio snapshots, warms held/pending/queued market data, runs deterministic stop/profit-lock maintenance without screening new names, and persists per-run dataset audit rows.
 - **standard**: 2 cycles at 07:00, 19:00 UTC — original 12-hour cadence.
-Pipeline: Data → Universe Screen → Strategy (Claude) → Moderation (GPT-4o + Gemini) → Risk (hard rules, VETO) → Opportunity (UOV rank/queue) → Execution (T212) → Order Management (stop-loss reassessment, trailing stops, limit orders) → Journal.
 
 ## Quick Commands
 

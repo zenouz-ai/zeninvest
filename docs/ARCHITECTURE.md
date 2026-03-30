@@ -14,6 +14,19 @@ related: [GOVERNANCE.md, AUDIT_INDEX.md, DEPLOYMENT.md]
 
 This document is the single source of truth for the investment agent's technical architecture. It covers the data flow from external APIs through the multi-LLM pipeline to execution, the state machine and cost degradation chain, the database schema, the dashboard backend, and the moderation consensus logic. All diagrams (ASCII and Mermaid) live here.
 
+## Repository Layout (High-Level)
+
+Use this as the structural map when navigating the codebase:
+
+- `src/` — orchestrator loop, agents, scheduler, DB models/migrations, utilities
+- `dashboard/backend/` — FastAPI routes/services for runs, orders, events, chat, evolution
+- `dashboard/frontend/` — React/Vite operator UI and public/sanitized surfaces
+- `docs/` — architecture, deployment, governance, roadmap, feature specifications
+- `tests/` — unit and integration suites (in-memory DB during pytest)
+- `scripts/` and `notebooks/` — operational scripts, diagnostics, and research notebooks
+
+For command-level setup and operations, see `docs/LOCAL_SETUP.md` and `docs/DEPLOYMENT.md`.
+
 ## System Overview (ASCII)
 
 ```
