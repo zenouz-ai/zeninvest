@@ -39,6 +39,8 @@ def test_intraday_refresh_skips_when_cycle_lock_is_held(monkeypatch) -> None:
 
 
 def test_intraday_refresh_updates_snapshot_and_warms_market_data(monkeypatch) -> None:
+    monkeypatch.setenv("T212_API_KEY", "ci_test_key")
+    monkeypatch.setenv("T212_API_SECRET", "ci_test_secret")
     monkeypatch.setattr(orchestrator_module, "DASHBOARD_AVAILABLE", False)
     monkeypatch.setattr(orchestrator_module, "StateMachine", _FakeStateMachine)
     monkeypatch.setattr(orchestrator_module, "acquire_runtime_lock", lambda *args, **kwargs: _FakeLock())
