@@ -211,7 +211,7 @@ class OrderManager:
                         "warning_note": note,
                     },
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         if not self.settings.allow_off_hours_orders:
@@ -358,7 +358,7 @@ class OrderManager:
                                 "reason": "conflicting_stop_before_sell",
                             },
                         )
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass  # Fail-open
 
             except Exception as e:
@@ -1077,9 +1077,9 @@ class OrderManager:
                             "warning_note": warning_note,
                         },
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Fail-open
-            
+
             return {
                 "status": "dry_run",
                 "order_id": order.id,
@@ -1142,7 +1142,7 @@ class OrderManager:
                             ),
                         },
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Fail-open
 
             result = self.client.place_market_order(ticker, quantity)
@@ -1227,7 +1227,7 @@ class OrderManager:
                             "warning_note": warning_note,
                         },
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Fail-open
 
             return {

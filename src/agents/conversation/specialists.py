@@ -239,7 +239,7 @@ class ChatSpecialistEngine:
         for candidate in candidate_texts:
             try:
                 payload = json.loads(candidate)
-            except Exception:
+            except Exception:  # nosec B112
                 continue
             if isinstance(payload, dict):
                 return dict(payload)

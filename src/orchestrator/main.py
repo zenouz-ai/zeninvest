@@ -347,7 +347,7 @@ class Orchestrator:
                     "audit_summary": audit_summary,
                 },
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     def _execution_quality_alert_payload(self, *, days: int) -> dict[str, Any] | None:
@@ -775,7 +775,7 @@ class Orchestrator:
                     started_at=refresh_start_time,
                     status="running",
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         if DASHBOARD_AVAILABLE and log_event is not None and not scheduled_refresh_id:
@@ -800,7 +800,7 @@ class Orchestrator:
                         )
                     except Exception as e:
                         logger.debug(f"Failed to create refresh Run record (fail-open): {e}", exc_info=True)
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         def _finalize_refresh(status: str) -> dict[str, Any]:
@@ -929,7 +929,7 @@ class Orchestrator:
                             session.close()
                     except Exception as e:
                         logger.warning(f"Failed to update refresh Run record (fail-open): {e}", exc_info=True)
-                except Exception:
+                except Exception:  # nosec B110
                     pass
             self._emit_degraded_run_event(
                 cycle_id=cycle_id,
@@ -942,7 +942,7 @@ class Orchestrator:
                     from dashboard.backend.app.services.event_logger import flush_events
 
                     flush_events(timeout_seconds=2.0)
-                except Exception:
+                except Exception:  # nosec B110
                     pass
             return result
 
@@ -1125,7 +1125,7 @@ class Orchestrator:
                             "multiplier": self.settings.peak_inflation_multiplier,
                         },
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass
         return note
 
@@ -1170,7 +1170,7 @@ class Orchestrator:
                             "drawdown_pct": drawdown_pct,
                         },
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass
             return "HALTED"
 
@@ -1693,7 +1693,7 @@ class Orchestrator:
                     started_at=cycle_start_time,
                     status="running",
                 )
-            except Exception:
+            except Exception:  # nosec B110
                 pass
         if DASHBOARD_AVAILABLE and log_event is not None and not scheduled_cycle_id:
             try:
@@ -1719,7 +1719,7 @@ class Orchestrator:
                         logger.debug(f"Created Run record for cycle {cycle_id}")
                     except Exception as e:
                         logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # Fail-open
 
         strategy_decisions: list[dict[str, Any]] = []
@@ -1853,7 +1853,7 @@ class Orchestrator:
                             session.close()
                     except Exception as e:
                         logger.warning(f"Failed to update Run record (fail-open): {e}", exc_info=True)
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Fail-open
             self._emit_degraded_run_event(
                 cycle_id=cycle_id,
@@ -1866,9 +1866,9 @@ class Orchestrator:
                 try:
                     from dashboard.backend.app.services.event_logger import flush_events
                     flush_events(timeout_seconds=2.0)
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Fail-open
-            
+
             return result
 
         # Cycle-level timeout (audit fix M-7) — prevents indefinite hangs from LLM calls
@@ -2399,7 +2399,7 @@ class Orchestrator:
                                 "reasoning": decision.get("reasoning", "")[:500],  # Truncate for storage
                             },
                         )
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Fail-open
 
             # Compute portfolio return series for correlation check (audit fix H-3)
@@ -2762,7 +2762,7 @@ class Orchestrator:
                                 "gemini_reasoning": mod_result.gemini_reasoning[:500] if mod_result.gemini_reasoning else None,
                             },
                         )
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass  # Fail-open
 
                 if mod_result.consensus == "BLOCKED":
@@ -2835,7 +2835,7 @@ class Orchestrator:
                                 "adjusted_allocation_pct": risk_verdict.adjusted_allocation_pct,
                             },
                         )
-                    except Exception:
+                    except Exception:  # nosec B110
                         pass  # Fail-open
 
                 if risk_verdict.verdict == "REJECT":
@@ -4860,7 +4860,7 @@ class Orchestrator:
                     return instrument_id
             if len(found) == 1:
                 return found[0]
-        except Exception:
+        except Exception:  # nosec B110
             pass
         finally:
             session.close()

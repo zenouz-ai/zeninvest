@@ -219,7 +219,7 @@ def _normalize_to_date(value: Any) -> date | None:
     if hasattr(value, "to_pydatetime"):
         try:
             return value.to_pydatetime().date()
-        except Exception:
+        except Exception:  # nosec B110
             pass
     if isinstance(value, str):
         try:

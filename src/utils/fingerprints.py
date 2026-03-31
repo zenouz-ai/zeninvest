@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ def stable_hash(payload: Any) -> str:
 def get_repo_sha() -> str:
     """Return the current git HEAD SHA, or 'unknown' when unavailable."""
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 B607
             ["git", "rev-parse", "HEAD"],
             cwd=_REPO_ROOT,
             capture_output=True,

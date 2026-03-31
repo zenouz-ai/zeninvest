@@ -113,7 +113,7 @@ def _get_instrument_label(session: Session, ticker: str) -> tuple[str | None, di
         if risk.triggered_rules_json:
             try:
                 risk_full["triggered_rules"] = json.loads(risk.triggered_rules_json) if isinstance(risk.triggered_rules_json, str) else risk.triggered_rules_json
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
     # Research logs for this cycle + ticker
@@ -272,7 +272,7 @@ async def get_universe_bubble(
                     qty = float(pos.get("quantity", 0.0))
                     if t:
                         holdings[t] = holdings.get(t, 0.0) + qty
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         # Total sold quantity per ticker (positive = shares sold).

@@ -208,7 +208,7 @@ class SlackTradeListener:
             logger.info("Slack listener shutting down gracefully...")
             try:
                 self._socket_client.close()
-            except Exception:
+            except Exception:  # nosec B110
                 pass
             self._executor.shutdown(wait=False, cancel_futures=False)
             logger.info("Slack listener stopped.")

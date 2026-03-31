@@ -532,11 +532,11 @@ class ConversationOrchestrator:
     def close(self) -> None:
         try:
             self.data_fetcher.close()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         try:
             self.order_manager.close()
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     def _classify_intent(

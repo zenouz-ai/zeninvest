@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import subprocess
+import subprocess  # nosec B404
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -287,7 +287,7 @@ class StrategyAttributionService:
     def _scan_git(self, *, days: int) -> list[EpisodeCandidate]:
         since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 B607
                 [
                     "git",
                     "log",

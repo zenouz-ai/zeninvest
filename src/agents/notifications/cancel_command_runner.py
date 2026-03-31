@@ -133,5 +133,5 @@ class CancelCommandRunner:
         if self._order_manager is not None:
             try:
                 self._order_manager.close()
-            except Exception:
+            except Exception:  # nosec B110
                 pass

@@ -109,7 +109,7 @@ def _run_intraday_refresh() -> None:
                     session.close()
             except Exception as e:
                 logger.debug(f"Failed to create refresh Run record (fail-open): {e}", exc_info=True)
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     logger.info("Scheduled intraday refresh starting...")
@@ -169,7 +169,7 @@ def _run_intraday_refresh() -> None:
                         session.close()
                 except Exception as e:
                     logger.warning(f"Failed to update refresh Run record (fail-open): {e}", exc_info=True)
-            except Exception:
+            except Exception:  # nosec B110
                 pass
     except Exception as e:
         logger.error(f"Scheduled intraday refresh failed: {e}")
@@ -212,7 +212,7 @@ def _run_intraday_refresh() -> None:
                     logger.warning(f"Failed to update refresh Run record to failed (fail-open): {ex}", exc_info=True)
 
 
-            except Exception:
+            except Exception:  # nosec B110
                 pass
     finally:
         orchestrator.close()
@@ -269,7 +269,7 @@ def _run_analysis_cycle() -> None:
                     session.close()
             except Exception as e:
                 logger.debug(f"Failed to create Run record (fail-open): {e}", exc_info=True)
-        except Exception:
+        except Exception:  # nosec B110
             pass  # Fail-open: dashboard logging must not block
     
     logger.info("Scheduled analysis cycle starting...")
@@ -328,7 +328,7 @@ def _run_analysis_cycle() -> None:
                         session.close()
                 except Exception as e:
                     logger.warning(f"Failed to update Run record to completed (fail-open): {e}", exc_info=True)
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # Fail-open
         
     except Exception as e:
@@ -376,7 +376,7 @@ def _run_analysis_cycle() -> None:
                         session.close()
                 except Exception as ex:
                     logger.warning(f"Failed to update Run record to failed (fail-open): {ex}", exc_info=True)
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # Fail-open
         
         notifications.emit_critical_cycle_failure(

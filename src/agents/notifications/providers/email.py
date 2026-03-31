@@ -39,7 +39,8 @@ class EmailProvider(NotificationProvider):
         if not self.is_configured:
             raise RuntimeError("SMTP settings not configured")
         # Narrow types for mypy: is_configured guarantees these are set
-        assert self.host is not None and self.sender is not None and self.recipient is not None
+        if self.host is None or self.sender is None or self.recipient is None:
+            raise RuntimeError("SMTP settings incomplete")
 
         msg = EmailMessage()
         msg["Subject"] = message.subject

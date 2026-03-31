@@ -333,7 +333,7 @@ class NotificationService:
                                     "latency_ms": latency_ms,
                                 },
                             )
-                        except Exception:
+                        except Exception:  # nosec B110
                             pass  # Fail-open
                     
                     break

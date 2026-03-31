@@ -22,7 +22,7 @@ def _drop_index_if_exists(connection, index_name: str) -> None:
     """Drop index only if it exists (SQLite-compatible)."""
     try:
         connection.execute(sa.text(f"DROP INDEX IF EXISTS {index_name}"))
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
 
@@ -35,11 +35,11 @@ def upgrade() -> None:
     _drop_index_if_exists(conn, "ix_notification_logs_event_type_timestamp")
     try:
         op.drop_index(op.f('ix_trade_outcomes_sell_order_id'), table_name='trade_outcomes')
-    except Exception:
+    except Exception:  # nosec B110
         pass
     try:
         conn.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_trade_outcomes_sell_order_id ON trade_outcomes(sell_order_id)"))
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     # Dashboard tables (IF NOT EXISTS so safe when tables were already created by dashboard init)

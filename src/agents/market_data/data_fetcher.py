@@ -792,7 +792,7 @@ class DataFetcher:
                         message=msg,
                         metadata=meta,
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass  # Fail-open
             
             return candidates

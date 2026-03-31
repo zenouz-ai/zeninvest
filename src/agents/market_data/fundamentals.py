@@ -75,7 +75,7 @@ def get_fundamentals(ticker_symbol: str) -> dict[str, Any]:
                 previous = float(quarterly_income.loc["Net Income"].iloc[1])
                 if previous != 0:
                     earnings_momentum = (recent - previous) / abs(previous)
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
         return {
