@@ -232,6 +232,16 @@ npm run build
 
 The frontend toolchain is pinned to `node >=20 <21`. Newer major Node versions are not part of the supported local toolchain.
 
+### Dashboard Backend Runtime
+
+Run the backend from the project root so both `src` and `dashboard` are importable:
+
+```bash
+poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
+```
+
+If you start uvicorn from a subdirectory, you may hit `ModuleNotFoundError: No module named 'src'`.
+
 ## Diagnostics Notebook
 
 The notebook at `notebooks/diagnostics.ipynb` tests every pipeline component independently and is useful for validating your setup before running live cycles.
