@@ -2,7 +2,7 @@
 title: Sophistication Roadmap
 tags: [roadmap, planning, user-stories, priorities]
 status: active
-last_updated: 2026-03-30
+last_updated: 2026-04-06
 related: [ARCHITECTURE.md, GOVERNANCE.md, AUDIT_INDEX.md]
 ---
 
@@ -16,6 +16,8 @@ related: [ARCHITECTURE.md, GOVERNANCE.md, AUDIT_INDEX.md]
 ## Overview
 
 **At a glance:** Delivered **37** · Pipeline **14** · Total **51** · Progress **73%**
+
+Counts above are synchronized with the canonical machine-readable roadmap in `dashboard/frontend/src/data/roadmap.ts`.
 
 ### Priority rules
 

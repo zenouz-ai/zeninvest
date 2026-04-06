@@ -283,13 +283,18 @@ notifications:
     cycle_run_summary: ["slack"]
     state_transition: ["slack", "email"]
     critical_cycle_failure: ["slack", "email"]
+    order_adjustment: ["slack"]
+    trade_without_stop: ["slack", "email"]
+    execution_quality_alert: ["slack"]
   timeout_seconds: 5
   max_retries: 2
   dedup_window_seconds: 300
   include_dry_run_alerts: false
   command_gateway:
-    enabled: false
+    enabled: true
 ```
+
+This is the current low-noise production routing posture: routine decision summaries stay in Slack, while execution failures, missing-stop alerts, and state transitions also escalate to email.
 
 ### 3.5 Build and Start
 

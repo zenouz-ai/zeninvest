@@ -1,101 +1,132 @@
-# Investment Agent
+# ZenInvest
 
 [![CI](https://github.com/KayvanNejabati/Investment-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/KayvanNejabati/Investment-agent/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/pytest-1043%20cases-00c853.svg)](#quick-start)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 <p align="center">
   <img src="branding/ZenInvest.png" alt="ZenInvest" width="820" />
 </p>
 
-Autonomous investment agent that trades via the Trading 212 API (Practice/Demo mode) using a multi-LLM strategy pipeline. Currently deployed as a **Proof of Concept (v1.0)** to gather live performance data and improve through evidence-backed iterations.
+**Autonomous multi-LLM investment committee that researches, debates, and trades — with hard safety guardrails humans can trust.**
 
-**Status:** POC, **1011 pytest cases currently pass**, and the dashboard frontend production build is clean. Deployment posture remains Docker Compose on VPS. For roadmap and recent delivered work, see [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md), [Sprint Week 1](docs/SPRINT_WEEK_1.md), and [Zen Evolution Engine](docs/ZEN_EVOLUTION_ENGINE.md).
+**Problem.** Markets move faster than any solo operator can reliably track. Signal is buried under filings, headlines, sector rotation, macro shocks, and the emotional bias that comes with discretionary decision-making.
 
-## Brand Assets
+**Solution.** ZenInvest is ZENOUZ.ai's autonomous investment committee: Claude leads strategy, GPT-4o challenges assumptions, Gemini scores independent risk, and deterministic Python guardrails retain final veto power over capital at risk.
 
-For the full visual system, logo rules, color tokens, and usage guidelines, see [Brand Guide](branding/BRAND.md).
-
-## Architecture
-
-```
-Orchestrator (configurable: intraday = 10:00/12:30/15:15 America/New_York, standard = 07:00/19:00 UTC)
-  ├── Market Data Agent    → yfinance + Finnhub + Alpha Vantage (per-ticker news)
-  ├── Universe Screener    → Sector-balanced, cap-tiered candidate discovery
-  ├── Strategy Agent       → Momentum + Mean Reversion + Factor → Claude Sonnet synthesis
-  ├── Moderation Panel     → GPT-4o (skeptic) + Gemini (risk assessor) → consensus
-  ├── Risk Agent           → Hard rules, VETO power, never overridden by LLMs
-  ├── Opportunity Agent    → Universal Opportunity Value (UOV) scoring + ranked BUY queue
-  ├── Execution Agent      → Trading 212 API: market orders + stop-loss + dedup
-  ├── Refresh Lane         → T212 sync + fresh snapshots + held-book stop/profit-lock maintenance
-  ├── Notification Agent   → Slack webhook + SMTP email alerts + notification_logs audit trail
-  └── Journal & Reporting  → Per-trade journals, daily + weekly reports
-```
-
-**State Machine:** ACTIVE → CAUTIOUS (>30% drawdown, configurable) → HALTED (>40% drawdown, liquidate all)
+**Why Us.** This repo is not a single-model trading bot. It combines agentic research with real-time web tools, proactive macro intelligence, cost-aware graceful degradation, and a full audit trail across decisions, risk checks, orders, dashboard views, and Slack workflows.
 
 <p align="center">
   <img src="branding/ZenInvest_Promo.png" alt="ZenInvest promotional poster" width="760" />
 </p>
 
-## Setup
+**Status:** Proof of Concept (`v1.0`) with **1043 pytest cases** in the suite, Docker Compose deployment on VPS, and canonical HTTPS access at `https://zeninvest.zenouz.ai`. Delivery status lives in [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md), [dashboard/frontend/src/data/roadmap.ts](dashboard/frontend/src/data/roadmap.ts), and [Zen Evolution Engine](docs/ZEN_EVOLUTION_ENGINE.md).
+
+## How It Works
+
+```text
+Orchestrator (configurable: intraday = 10:00/12:30/15:15 America/New_York, standard = 07:00/19:00 UTC)
+  ├── Market Data Agent    → yfinance + Finnhub + Alpha Vantage + macro intelligence
+  ├── Universe Screener    → sector-balanced, cap-tiered candidate discovery
+  ├── Strategy Agent       → momentum + mean reversion + factor + Claude synthesis
+  ├── Moderation Panel     → GPT-4o skeptic + Gemini risk assessor
+  ├── Risk Agent           → deterministic Python guardrails with VETO power
+  ├── Opportunity Agent    → UOV scoring, queueing, and BUY prioritisation
+  ├── Execution Agent      → Trading 212 market/limit/stop order workflows
+  ├── Refresh Lane         → broker sync, stop maintenance, freshness updates
+  ├── Notification Agent   → Slack + email alerts with fail-open delivery
+  └── Journal & Reporting  → runs, trade journals, costs, outcomes, reports
+```
+
+Each cycle starts with market and macro context, screens a fresh candidate set, synthesizes a thesis, debates it across multiple LLMs, applies deterministic risk rules, ranks opportunities, executes via Trading 212, and records the entire chain for later review.
+
+The refresh lane keeps the system grounded in broker truth between full strategy cycles by syncing orders, warming held-name data, and maintaining protective stops without screening new instruments.
+
+**State Machine:** `ACTIVE -> CAUTIOUS -> HALTED`
+
+### Key Differentiators
+
+- Multi-LLM adversarial committee, not a single-model autopilot
+- Agentic research with 5 tools and per-member budgets across the committee
+- 9 deterministic risk rules that no LLM can override
+- Cost-aware graceful degradation: `FULL -> NO_GEMINI -> NO_GPT4O -> NO_STRATEGY -> HALTED`
+- Proactive macro intelligence with `RISK_ON` / `RISK_OFF` / `NEUTRAL` regime detection
+- Real-time operator dashboard, live activity feed, and Slack conversational trading
+- Walk-forward backtesting and promotion-oriented validation tooling
+
+## API Ecosystem
+
+| API | Role | Why It Matters |
+|-----|------|----------------|
+| **Trading 212** | Order execution on Practice/Demo | Safe autonomous trading with market, limit, stop-loss, and cancel workflows |
+| **Anthropic Claude** | Strategy synthesis | Primary decision-maker for conviction, thesis construction, and tool-using research |
+| **OpenAI GPT-4o** | Skeptical moderation | Challenges assumptions and reduces confirmation bias before execution |
+| **Google Gemini** | Risk assessment | Adds an independent third view on risk, fragility, and downside scenarios |
+| **yfinance** | OHLCV, indicators, fundamentals | Free, reliable baseline market data for screening, signals, and company context |
+| **Finnhub** | Analyst recs, insider sentiment, macro headlines | Adds qualitative and headline-driven context that raw prices miss |
+| **Alpha Vantage** | News sentiment, sector performance | Brings ticker-level sentiment extraction and sector rotation signals |
+| **Brave Search** | Primary web research provider | Powers real-time agentic research when the committee needs live web context |
+| **Tavily** | Fallback web research provider | Adds redundancy and structured extraction when Brave is unavailable or insufficient |
+| **SEC EDGAR** | Filing search | Gives the strategy and moderators direct access to primary-source filings for thesis validation |
+
+## Agentic Research
+
+ZenInvest gives all three committee members independent tool-use loops. Strategy, Skeptic, and Risk can each call `web_search`, `news_search`, `sector_search`, `sec_search`, and `macro_search` before finalising a verdict.
+
+Research is budgeted, not unbounded: per-cycle caps are `20` calls for Strategy, `8` for Skeptic, `7` for Risk, with a shared pipeline-wide ceiling of `35` calls. Brave is primary, Tavily is fallback, and SEC EDGAR stays free for filing-heavy workflows. Shared monthly search limits are also enforced across research and enrichment: Brave Search `2000`, Brave Answers `2000`, Tavily `1000`.
+
+Every tool invocation is logged with member, query, provider, cache hit, latency, summary, and cost so operators can inspect exactly how research influenced a decision from the dashboard or API.
+
+Deep dive: [Agentic Research](docs/AGENTIC_RESEARCH.md)
+
+## Proactive Macro Intelligence
+
+Macro intelligence runs on its own schedule, derives a live market regime (`RISK_ON`, `RISK_OFF`, or `NEUTRAL`), and injects that state into strategy and moderation prompts before trades are sized or approved.
+
+The result is visible operationally in the dashboard's World News experience: regime history, macro headlines, sector snapshots, and action-plan context are all persisted rather than treated as ephemeral prompt text.
+
+Architecture details: [Architecture](docs/ARCHITECTURE.md) and [Proactive Macro News Intelligence](docs/PROACTIVE_MACRO_NEWS_INTELLIGENCE.md)
+
+## Dashboard & Operator Interface
+
+ZenInvest ships with a 12-page dashboard surface spanning Dashboard, Universe, Runs, Portfolio, Opportunity, Insights, Order Management, Costs, Chat, World News, Roadmap, and Evolution. The React frontend and FastAPI backend expose portfolio state, orders, decisions, opportunity queue, costs, world-news context, roadmap visibility, and real-time SSE activity from the running system.
+
+Operator routes are authenticated; public routes are intentionally sanitized. Slack extends the same control surface into conversational trading with multi-turn review, confirm, reject, cancel, and strategy-triggered trade flows backed by audited session history and a planner-led chat console.
+
+Interface docs: [Dashboard](docs/DASHBOARD.md), [Conversational Trading Workflow](docs/CONVERSATIONAL_TRADING_WORKFLOW.md), and [Zen Evolution Engine](docs/ZEN_EVOLUTION_ENGINE.md)
+
+## Quick Start
 
 ### Prerequisites
 
-- Python 3.11+
+- Python `3.11+`
 - [Poetry](https://python-poetry.org/docs/#installation)
-- API keys: Trading 212, Anthropic, OpenAI, Google AI, Finnhub, Alpha Vantage
+- Core API keys in a project-root `.env` copied from `config/.env.example`
 
-### Installation
+### Install
 
 ```bash
-# Clone and install
-git clone <repo-url> && cd investment-agent
+git clone <repo-url> && cd Investment-agent
 poetry install
-
-# Configure environment
 cp config/.env.example .env
-# Edit .env with your API keys
-
-# Initialize database
 poetry run alembic upgrade head
 ```
 
-### Configuration
-
-Tune parameters in `config/settings.yaml`.
-
-Most commonly adjusted keys:
-- **Trading:** `cycle_frequency`, scheduling times/timezone, `max_positions`, `cash_floor_pct`
-- **Risk:** drawdown thresholds, concentration caps, volatility gates
-- **Models/Budgets:** strategy/moderation model IDs and provider cost limits
-
-Full settings guide: [Local Setup](docs/LOCAL_SETUP.md) and [Architecture](docs/ARCHITECTURE.md).
-
-## Usage
-
-### Run a single cycle
+### Run a Dry Cycle
 
 ```bash
-# Dry run (no real trades)
 poetry run python -m src.orchestrator.main --dry-run
-
-# Live cycle
-poetry run python -m src.orchestrator.main
 ```
 
-### CLI commands
+### Run the Scheduler
 
 ```bash
-poetry run python -m src.orchestrator.main --status        # System status
-poetry run python -m src.orchestrator.main --pause         # Pause trading
-poetry run python -m src.orchestrator.main --resume        # Resume trading
-poetry run python -m src.orchestrator.main --reset-peak    # Clear incorrect peak / CAUTIOUS latch
-poetry run python -m src.orchestrator.main --force-sell AAPL_US_EQ
+poetry run python -m src.scheduler.scheduler
 ```
 
-Extended command reference: [Local Setup](docs/LOCAL_SETUP.md).
+Full setup, env vars, frontend tooling, and troubleshooting: [Local Setup](docs/LOCAL_SETUP.md)
 
-### Backtesting
+## Backtesting
 
 ```bash
 poetry run python -m src.backtesting.main --config backtests/default.yaml
@@ -103,213 +134,90 @@ poetry run python -m src.backtesting.main --config backtests/default.yaml --walk
 poetry run python -m src.backtesting.main --synthetic --output-dir backtests/results/run1
 ```
 
-See [Backtesting](docs/BACKTESTING.md) (includes walk-forward validation and promotion report) for details.
+Backtesting guide: [Backtesting](docs/BACKTESTING.md)
 
-### Run the scheduler (continuous)
-
-```bash
-poetry run python -m src.scheduler.scheduler
-```
-
-### Dashboard
-
-Run the backend from the project root (so `src` and `dashboard` are importable):
-
-```bash
-# Start the dashboard API server (local dev)
-poetry run uvicorn dashboard.backend.app.main:app --host 127.0.0.1 --port 8000
-
-# API at http://localhost:8000, OpenAPI docs at http://localhost:8000/docs
-```
-
-Key routes include runs, status, universe, portfolio, orders, decisions, opportunity, outcomes, costs, macro, chat, and evolution workflows. Full API details are in OpenAPI (`/docs`) and [Dashboard Documentation](docs/DASHBOARD.md).
-
-Enable via `dashboard.enabled: true` and `dashboard.events_enabled: true` in `config/settings.yaml`.
-
-### Dashboard Frontend
-
-Brand and design system details: [Brand Guide](branding/BRAND.md).
-
-```bash
-cd dashboard/frontend
-nvm use    # Node 20 LTS (see dashboard/frontend/.nvmrc)
-npm install
-npm run dev    # Dev server on http://localhost:3000 (proxies API)
-npm run build  # Production build (outputs to dist/)
-```
-
-Frontend includes authenticated operator views and sanitized public views across Dashboard, Universe, Portfolio, Runs, Opportunity, Insights, Order Management, Chat, World News, Costs, Roadmap, and Evolution. For full IA/UX details, see [Dashboard Documentation](docs/DASHBOARD.md) and [UX Audit](docs/UX_AUDIT.md).
-
-**Schedule (configurable):**
+## Schedule
 
 | Job | When | Notes |
 |-----|------|-------|
-| Analysis cycles | Mon–Fri, from configured schedule mode | `intraday`: `10:00`, `12:30`, `15:15` America/New_York (DST-aware; resolves to `14:00`, `16:30`, `19:15` UTC during US EDT). `standard`: `07:00`, `19:00` UTC (2 cycles). |
-| Intraday refresh lane | Mon–Fri `09:50`, `10:10`, `12:20`, `12:40`, `15:05`, `15:25` America/New_York; Sat/Sun `17:00` America/New_York | Broker truth sync, portfolio snapshot refresh, held/pending/queued market-data warming, deterministic stop/profit-lock maintenance, and dashboard freshness updates. |
-| Daily snapshot | 21:30 UTC daily | Portfolio snapshot + daily report |
-| Weekly report | Friday 22:00 UTC | End-of-week summary |
-| Instrument refresh | Sunday 12:00 UTC | Update tradable universe from T212 |
-| Strategy episode scan | 02:00 UTC daily | Auto-scans git strategy/risk/execution changes and auto-confirms new attribution episodes |
+| Analysis cycles | Mon-Fri | `intraday`: `10:00`, `12:30`, `15:15` America/New_York; `standard`: `07:00`, `19:00` UTC |
+| Refresh lane | Mon-Fri around analysis cycles + weekend refresh | Broker truth sync, data freshness, stop maintenance, pending-order cleanup |
+| Daily snapshot | `21:30 UTC` | Portfolio snapshot plus daily report |
+| Weekly report | `Friday 22:00 UTC` | End-of-week summary |
+| Instrument refresh | `Sunday 12:00 UTC` | Tradable universe refresh from Trading 212 |
+| Strategy episode scan | `02:00 UTC daily` | Auto-publishes git-backed strategy attribution episodes |
 
-Set `cycle_frequency: intraday`, `schedule_mode: market_session`, `schedule_timezone: America/New_York`, and `cycle_times_local: ["10:00", "12:30", "15:15"]` in `config/settings.yaml` for DST-aware regular-session scheduling. Use `standard` for the original 2-cycle fixed-UTC cadence.
+Scheduling architecture and config semantics: [Architecture](docs/ARCHITECTURE.md)
 
-### Docker
-
-Compose stack runs scheduler, Slack listener, dashboard, and nginx ingress. Production is served at `https://zeninvest.zenouz.ai` with internal-only dashboard app exposure.
+## Docker
 
 ```bash
-# Build and run all services (scheduler + Slack listener + dashboard + nginx ingress)
 docker compose up -d --build
-
-# View logs
 docker compose logs -f investment-agent
-docker compose logs -f slack-listener
 docker compose logs -f dashboard
+docker compose logs -f slack-listener
 docker compose logs -f nginx
-
-# Verify nginx config inside the ingress container
-docker compose exec nginx nginx -t
-
-# Dashboard at https://zeninvest.zenouz.ai in production
-# Activity feed: Dashboard Home page; Run History: runs table (one row per cycle; scheduled cycles use single Run, no duplicates)
-
-# One-off live cycle (in addition to scheduler)
-docker exec -it investment-agent poetry run python -m src.orchestrator.main
-
-# One-off dry-run cycle
-docker exec -it investment-agent poetry run python -m src.orchestrator.main --dry-run
 ```
 
-Deployment details: [Deployment Guide](docs/DEPLOYMENT.md).
+Production deployment, ingress, notifications, and VPS operations: [Deployment](docs/DEPLOYMENT.md)
 
-## Chat Notifications
+## Safety Guardrails
 
-Outbound alerting is enabled via Slack webhook + SMTP email with fail-open delivery and persistent `notification_logs` audit rows. Inbound Slack commands support review, direct trade, strategy-triggered trade, and cancel flows.
+These rules are deterministic Python and remain final even when every LLM agrees. Current defaults below come from `config/settings.yaml` and are configurable:
 
-Default low-noise routing:
-- `trade_instruction_approved` -> Slack
-- `trade_execution_result` -> Slack + Email
-- `cycle_run_summary` -> Slack
-- `state_transition` -> Slack + Email
-- `critical_cycle_failure` -> Slack + Email
-- `order_adjustment` -> Slack
-- `include_dry_run_alerts: false`
+- No single stock above `20%` of portfolio
+- No single sector above `40%`
+- Portfolio average pairwise correlation below `0.7`
+- `30%` drawdown triggers `CAUTIOUS`; `40%` triggers `HALTED` and liquidation
+- `VIX > 25` caps new positions at `8%`; `VIX > 35` caps them at `5%`
+- Daily loss above `2%` blocks new buys for `24h`
+- Cash floor always stays at or above `10%`
+- Minimum `5` positions once invested
+- `CAUTIOUS` mode blocks new `BUY` actions unless adding to an existing winner, and caps size at `8%`
 
-Full conversational workflow and command semantics: [Conversational Trading Workflow](docs/CONVERSATIONAL_TRADING_WORKFLOW.md).
-
-### Slack + Email hookup (VPS)
-
-Set notification env vars in `.env`, restart the compose stack, and verify delivery in `notification_logs`.
-
-Complete setup and verification commands: [Deployment Guide](docs/DEPLOYMENT.md) and [VPS Systemd Runbook](docs/VPS_SYSTEMD_RUNBOOK.md).
-
-## Testing
-
-```bash
-poetry run pytest -v
-```
-
-For focused test commands by subsystem, see [Local Setup](docs/LOCAL_SETUP.md).
-
-## Project Structure
-
-High-level layout:
-- `src/` — orchestrator, agents, data, scheduler, utilities
-- `dashboard/` — backend API + frontend UI
-- `docs/` — architecture, deployment, governance, roadmap, feature docs
-- `tests/` — unit/integration coverage
-- `notebooks/` — diagnostics and research notebooks
-
-Detailed structure and component responsibilities: [Architecture](docs/ARCHITECTURE.md).
-
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md) — system design, component diagrams, data flow
-- [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — prioritised user stories for systematic improvement
-- [Competitive Analysis](docs/COMPETITIVE_ANALYSIS.md) — honest assessment vs professional quant systems
-- [Governance](docs/GOVERNANCE.md) — 9 risk rules, security guardrails, cost controls, audit trail
-- [Data Rationale](docs/DATA_RATIONALE.md) — every data point's purpose, decision path, and keep/remove verdict
-- [Deployment](docs/DEPLOYMENT.md) — VPS setup, Docker, monitoring, alerts; manual mirror of `main` to `zenouz-ai/zeninvest` (see “Mirror main to zenouz-ai/zeninvest” in that doc)
-- [VPS Systemd Runbook](docs/VPS_SYSTEMD_RUNBOOK.md) — lean non-Docker service install/start/check commands for a small VPS
-- [Dashboard](docs/DASHBOARD.md) — web dashboard architecture, phases, frontend/backend design
-- [Conversational Trading Workflow](docs/CONVERSATIONAL_TRADING_WORKFLOW.md) — multi-turn Slack/dashboard chat sessions, command interface
-- [Audit Index](docs/AUDIT_INDEX.md) — cross-reference of all audit findings and remediation status
-- [Backtesting](docs/BACKTESTING.md) — engine, walk-forward validation, promotion report
-- [Order Management](docs/ORDER_MANAGEMENT_PROJECT.md) — stop-loss, trailing stops, limit dip-buy: design and config
-- [Agentic Research](docs/AGENTIC_RESEARCH.md) — canonical architecture and conventions; [Follow-up Routing Plan](docs/FOLLOWUP_RESEARCH_ROUTING_PLAN.md) — routing policy
-- [Data Export Runbook](docs/DATA_EXPORT_RUNBOOK.md) — VPS-to-local export procedure with integrity checks
-- [Local Setup](docs/LOCAL_SETUP.md) — local setup guide for Trading 212 Practice
-- [Presentation](docs/PRESENTATION.md) — project overview and summary
-
-## Risk Rules (never overridden by LLMs)
-
-- No single stock > 15% of portfolio
-- No single sector > 35%
-- Portfolio avg pairwise correlation < 0.7
-- 30% drawdown → CAUTIOUS mode; 40% → HALTED (liquidate all); configurable in settings
-- VIX > 25: max 8% position; VIX > 35: max 5%
-- Daily loss > 2%: no new buys for 24 hours
-- Cash floor: always >= 10%
-- Min 5 positions once invested (checked for SELL and REDUCE actions)
-- CAUTIOUS mode: no new BUYs (only SELL/REDUCE/HOLD)
-
-## Cycle Output
-
-Each cycle records trades, rejected candidates by pipeline stage, UOV rankings/queue outcomes, and per-cycle cost summaries. This supports quick operator review and long-term diagnostics.
-
-Data model and run semantics: [Architecture](docs/ARCHITECTURE.md) and [Governance](docs/GOVERNANCE.md).
-
-### Universal Opportunity Value (UOV)
-
-UOV blends strategy, moderation/risk, and market context signals into per-ticker scores (`uov_raw`, `uov_z`, `uov_final`, `uov_ewma`) used for ranking and queueing.
-
-Modes:
-- `shadow` — compute/log only
-- `active` — rank BUY execution and manage queue/swap suggestions
-
-## Order Types
-
-Execution supports market BUY/SELL/REDUCE, auto stop-loss placement, trailing/tiered profit-lock behavior, limit dip-buy paths, order deduplication, and stale pending-order cleanup.
-
-Detailed mechanics and policy constraints: [Order Management](docs/ORDER_MANAGEMENT_PROJECT.md).
-
-## Universe Screening
-
-Screening uses a curated T212 seed universe with sector-balanced and market-cap-tiered sampling, cooldown/review gates, and metadata enrichment fallbacks. In CAUTIOUS mode, new BUYs are blocked by risk policy.
-
-Methodology and rationale: [Data Rationale](docs/DATA_RATIONALE.md) and [Architecture](docs/ARCHITECTURE.md).
+Governance details: [Governance](docs/GOVERNANCE.md)
 
 ## Cost Management
 
-LLM costs tracked per-call with daily/monthly budget enforcement:
-- Anthropic (Sonnet): £1.00/day
-- OpenAI (GPT-4o): £0.75/day
-- Google (Gemini Flash): £0.50/day
-- Monthly cap: £50.00
+ZenInvest tracks LLM and research spend per call and enforces daily plus monthly budgets:
 
-Graceful degradation: skip Gemini → skip GPT-4o → skip strategy cycle → halt
+- Anthropic: `£2.00/day`
+- OpenAI: `£1.00/day`
+- Google: `£1.00/day`
+- Monthly cap: `£60.00`
+
+When budgets tighten, the system degrades gracefully instead of failing unpredictably.
 
 ## Project Evolution
 
-This is a **POC (v1.0)** designed to validate the architecture and begin collecting live performance data. The system will evolve through evidence-based phases:
+ZenInvest remains a **POC (`v1.0`)** focused on evidence-backed iteration rather than premature complexity. The canonical roadmap source currently marks **37 of 51 milestones delivered (73%)**, with the Evolution Planner providing the operator-facing workflow for scoped future improvements.
 
-1. **Phase 1 (Current):** Deploy POC, build performance tracking and trade outcome feedback loop
-2. **Phase 2:** Calibrate conviction scores and strategy weights from live data (~50+ trades)
-3. **Phase 3:** Portfolio-level intelligence (risk-parity sizing, regime detection)
-4. **Phase 4:** Signal enhancement (volume and earnings delivered; sector rotation later)
-5. **Phase 5:** ~~Backtesting engine~~ — delivered (engine, walk-forward, promotion report, yfinance fetch + CSV cache)
-6. **Phase 6:** ML-assisted improvements (only if justified by accumulated evidence)
+Roadmap: [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) and [dashboard/frontend/src/data/roadmap.ts](dashboard/frontend/src/data/roadmap.ts)
 
-See [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) for full details, timelines, and priority matrix.
+## Documentation Index
+
+- [Architecture](docs/ARCHITECTURE.md) — pipeline, data flow, scheduling, dashboard/API topology
+- [Agentic Research](docs/AGENTIC_RESEARCH.md) — tool-use architecture, provider routing, budgets, audit model
+- [Dashboard](docs/DASHBOARD.md) — frontend/backend architecture, page map, UX, public/private split
+- [Conversational Trading Workflow](docs/CONVERSATIONAL_TRADING_WORKFLOW.md) — Slack and dashboard multi-turn trading flows
+- [Backtesting](docs/BACKTESTING.md) — engine, walk-forward validation, promotion report
+- [Governance](docs/GOVERNANCE.md) — risk rules, audit trail, safety posture
+- [Deployment](docs/DEPLOYMENT.md) — Docker Compose, nginx, HTTPS, alerts, VPS operations
+- [Local Setup](docs/LOCAL_SETUP.md) — install, env vars, tests, frontend runtime, troubleshooting
+- [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — canonical backlog and delivery status
+- [Zen Evolution Engine](docs/ZEN_EVOLUTION_ENGINE.md) — Evolution Planner scope and policy gates
+- [Data Rationale](docs/DATA_RATIONALE.md) — why each data source exists and whether it earns its cost
+- [Presentation](docs/PRESENTATION.md) — stakeholder-ready overview of the system story
+- [Brand Guide](branding/BRAND.md) — ZENOUZ.ai / ZenInvest visual system
 
 ## Contributing
 
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding guidelines, and the PR process.
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, conventions, and PR expectations.
 
 ## Security
 
-To report a security vulnerability, please follow our [Security Policy](SECURITY.md). **Do not open a public GitHub issue for security reports.**
+Report vulnerabilities through [SECURITY.md](SECURITY.md). Do not open public issues for security disclosures.
 
 ## License
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE).
