@@ -70,10 +70,10 @@ app = FastAPI(
     openapi_url=None,
 )
 
-# CORS middleware for frontend — allow the canonical HTTPS domain plus local dev.
+# CORS middleware for frontend — allow a representative HTTPS dashboard origin plus local dev.
 _settings = get_settings()
 _cors_origins = _settings.dashboard_cors_origins or [
-    "https://zeninvest.zenouz.ai",
+    "https://dashboard.example.com",
     "http://localhost:3000",
     "http://localhost:8000",
     "http://127.0.0.1:3000",

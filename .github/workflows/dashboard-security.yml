@@ -5,7 +5,6 @@ on:
     paths:
       - '.github/workflows/dashboard-security.yml'
       - 'dashboard/**'
-      - 'deploy/nginx/**'
       - 'src/**'
       - 'tests/**'
       - 'pyproject.toml'
@@ -14,7 +13,6 @@ on:
     paths:
       - '.github/workflows/dashboard-security.yml'
       - 'dashboard/**'
-      - 'deploy/nginx/**'
       - 'src/**'
       - 'tests/**'
       - 'pyproject.toml'
@@ -23,6 +21,10 @@ on:
 jobs:
   dashboard-security:
     runs-on: ubuntu-latest
+    env:
+      INVESTMENT_AGENT_USE_INMEMORY_DB: "1"
+      T212_API_KEY: public-ci-placeholder-key
+      T212_API_SECRET: public-ci-placeholder-secret
     steps:
       - uses: actions/checkout@v4
 
@@ -66,8 +68,3 @@ jobs:
       - name: Run npm audit
         working-directory: dashboard/frontend
         run: npm audit --omit=dev --audit-level=high
-
-      - name: Verify nginx public security policy
-        run: |
-          rg -n "Content-Security-Policy|X-Frame-Options|X-Content-Type-Options|Referrer-Policy|Permissions-Policy|Strict-Transport-Security" deploy/nginx/conf.d/default.conf
-          rg -n "limit_req_zone|limit_req zone=dashboard_auth|limit_req zone=dashboard_public" deploy/nginx/conf.d/default.conf

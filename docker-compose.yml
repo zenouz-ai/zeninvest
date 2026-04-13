@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile.agent
     container_name: investment-agent
-    restart: always
+    restart: unless-stopped
     env_file:
       - .env
     volumes:
@@ -12,10 +12,6 @@ services:
       - ./journals:/app/journals
       - ./logs:/app/logs
       - ./backtests/results:/app/backtests/results
-    deploy:
-      resources:
-        limits:
-          memory: 2G
     healthcheck:
       test: ["CMD", "python", "-c", "import src; print('ok')"]
       interval: 60s
@@ -28,7 +24,7 @@ services:
       context: .
       dockerfile: Dockerfile.agent
     container_name: investment-slack-listener
-    restart: always
+    restart: unless-stopped
     env_file:
       - .env
     volumes:
@@ -43,28 +39,17 @@ services:
     build:
       context: .
     container_name: investment-dashboard
-    restart: always
+    restart: unless-stopped
     env_file:
       - .env
     volumes:
       - ./data:/app/data
       - ./journals:/app/journals
       - ./logs:/app/logs
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     command: ["python", "-m", "dashboard.backend.server"]
     depends_on:
       - investment-agent
 
-  nginx:
-    image: nginx:alpine
-    container_name: investment-dashboard-nginx
-    restart: always
-    depends_on:
-      - dashboard
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./deploy/nginx/conf.d:/etc/nginx/conf.d:ro
-      - /home/deploy_invest_ai/certs/zeninvest.zenouz.ai:/etc/nginx/certs:ro
+# Reverse-proxy / TLS setup is intentionally omitted from the public mirror.

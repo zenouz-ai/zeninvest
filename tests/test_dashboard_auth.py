@@ -199,11 +199,11 @@ class TestDashboardSessionMiddleware:
             },
             clear=False,
         ):
-            client = TestClient(_make_app(), base_url="http://zeninvest.zenouz.ai")
+            client = TestClient(_make_app(), base_url="http://dashboard.example.com")
             resp = client.post(
                 "/api/auth/login",
                 json={"username": "operator", "password": "super-secret-password"},
-                headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "zeninvest.zenouz.ai"},
+                headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "dashboard.example.com"},
             )
             assert resp.status_code == 200
             assert "Secure" in resp.headers["set-cookie"]
@@ -219,17 +219,17 @@ class TestDashboardSessionMiddleware:
             },
             clear=False,
         ):
-            client = TestClient(_make_app(), base_url="http://zeninvest.zenouz.ai")
+            client = TestClient(_make_app(), base_url="http://dashboard.example.com")
             client.cookies.set(
                 SESSION_COOKIE_NAME,
                 create_session_token("operator"),
-                domain="zeninvest.zenouz.ai",
+                domain="dashboard.example.com",
                 path="/",
             )
 
             private_resp = client.get(
                 "/api/private",
-                headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "zeninvest.zenouz.ai"},
+                headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "dashboard.example.com"},
             )
             assert private_resp.status_code == 200
             assert private_resp.json()["operator"] == "operator"

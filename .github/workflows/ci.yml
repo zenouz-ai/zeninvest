@@ -13,6 +13,10 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      INVESTMENT_AGENT_USE_INMEMORY_DB: "1"
+      T212_API_KEY: public-ci-placeholder-key
+      T212_API_SECRET: public-ci-placeholder-secret
 
     steps:
       - uses: actions/checkout@v4
@@ -47,8 +51,6 @@ jobs:
           --ignore=tests/test_integration_orchestrator.py
           --ignore=tests/test_notifications_integration.py
           --ignore=tests/test_state_machine_transitions.py
-        env:
-          INVESTMENT_AGENT_USE_INMEMORY_DB: "1"
 
       - name: Type check
         # ~88 pre-existing mypy errors from type stub gaps (pandas, yfinance,

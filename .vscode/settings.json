@@ -1,8 +1,0 @@
-{
-    "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
-    "chat.tools.terminal.autoApprove": {
-        "poetry": true,
-        "git add": true,
-        "git commit": true
-    }
-}

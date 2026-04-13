@@ -253,9 +253,9 @@ dashboard:
   events_enabled: true
   sse_poll_interval_seconds: 5
   # CORS origins for dashboard API.
-  # Default (when absent): https://zeninvest.zenouz.ai plus localhost dev origins.
+  # Default (when absent): your chosen dashboard origin plus localhost dev origins.
   # cors_origins:
-  #   - "https://zeninvest.zenouz.ai"
+  #   - "https://dashboard.example.com"
   #   - "http://localhost:3000"
   # Operator auth is configured via .env:
   #   DASHBOARD_OPERATOR_USERNAME
