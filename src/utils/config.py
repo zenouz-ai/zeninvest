@@ -135,7 +135,7 @@ class Settings:
     @property
     def min_order_value_gbp(self) -> float:
         """Minimum order value floor for BUY orders."""
-        return float(self.trading.get("min_order_value_gbp", 500))
+        return float(self.trading.get("min_order_value_gbp", 300))
 
     @property
     def min_reduce_pct_of_position(self) -> float:
@@ -747,7 +747,7 @@ class Settings:
     @property
     def default_stop_loss_pct(self) -> float:
         """Default stop-loss % when placing missing stops (no ATR or no decision)."""
-        return float(self.order_management.get("default_stop_loss_pct", -10.0))
+        return float(self.order_management.get("default_stop_loss_pct", -12.0))
 
     @property
     def resubmit_partial_fills(self) -> bool:
