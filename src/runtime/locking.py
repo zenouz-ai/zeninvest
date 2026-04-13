@@ -44,10 +44,13 @@ class RuntimeLock:
 
     def release(self) -> None:
         """Release the lock and close the underlying file."""
+        if self._handle.closed:
+            return
         try:
             fcntl.flock(self._handle.fileno(), fcntl.LOCK_UN)
         finally:
-            self._handle.close()
+            if not self._handle.closed:
+                self._handle.close()
 
     def __enter__(self) -> "RuntimeLock":
         return self

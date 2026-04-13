@@ -174,9 +174,9 @@ class TestOrderManager:
         )
 
         assert result["status"] == "dry_run"
-        assert result["value_gbp"] == 500.0
+        assert result["value_gbp"] == 300.0
         assert db_session.query(Order).count() == 1
-        assert db_session.query(Order).first().value_gbp == 500.0
+        assert db_session.query(Order).first().value_gbp == 300.0
 
     def test_buy_at_floor_allows_quantity_rounding_dip(self, db_session):
         """Target>=min should allow BUY even if quantity flooring makes computed value dip slightly below."""

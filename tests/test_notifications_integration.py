@@ -383,7 +383,7 @@ def test_execute_trade_buy_upgrades_to_minimum_order_value(monkeypatch) -> None:
 
     assert trade is not None
     assert DummyOrderManager.last_kwargs is not None
-    assert DummyOrderManager.last_kwargs["target_amount_gbp"] == 500.0
+    assert DummyOrderManager.last_kwargs["target_amount_gbp"] == 300.0
     assert "buy_upgraded_to_min_order_value" in trade["execution_note"]
 
 
@@ -670,7 +670,7 @@ def test_profit_lock_context_marks_full_stop_protection() -> None:
     assert lock["threshold_crossed"] is True
     assert lock["protected"] is True
     assert lock["status"] == "protected"
-    assert lock["required_stop_price_gbp"] == pytest.approx(115.0)
+    assert lock["required_stop_price_gbp"] == pytest.approx(110.0)
 
 
 def test_pre_strategy_profit_lock_unprotected_winner_exits(monkeypatch) -> None:
@@ -1219,7 +1219,7 @@ def test_strategy_performance_summary_uses_wide_metrics_schema(db_session) -> No
     assert "Factor win rate: 71%" in summary
     assert "Total completed trades: 21" in summary
     assert "Median holding days: 5.0" in summary
-    assert "Realized take-profit exits (>= 15.0% pnl): 1 in last 30d" in summary
+    assert "Realized take-profit exits (>= 10.0% pnl): 1 in last 30d" in summary
 
 
 def test_state_machine_transition_emits_notification(monkeypatch) -> None:

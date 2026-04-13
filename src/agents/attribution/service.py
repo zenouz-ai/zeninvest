@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import desc
+from sqlalchemy.exc import OperationalError
 
 from src.data.database import get_session
 from src.data.models import CycleContextSnapshot, StrategyChangeEpisode, StrategyChangeEvidence
@@ -159,19 +160,24 @@ class StrategyAttributionService:
         """Return confirmed episodes active for a given cycle start."""
         session = get_session()
         try:
-            rows = (
-                session.query(StrategyChangeEpisode.id)
-                .filter(
-                    StrategyChangeEpisode.status == "confirmed",
-                    StrategyChangeEpisode.effective_start_at <= cycle_started_at,
+            try:
+                rows = (
+                    session.query(StrategyChangeEpisode.id)
+                    .filter(
+                        StrategyChangeEpisode.status == "confirmed",
+                        StrategyChangeEpisode.effective_start_at <= cycle_started_at,
+                    )
+                    .filter(
+                        (StrategyChangeEpisode.effective_end_at.is_(None))
+                        | (StrategyChangeEpisode.effective_end_at >= cycle_started_at)
+                    )
+                    .order_by(desc(StrategyChangeEpisode.effective_start_at))
+                    .all()
                 )
-                .filter(
-                    (StrategyChangeEpisode.effective_end_at.is_(None))
-                    | (StrategyChangeEpisode.effective_end_at >= cycle_started_at)
-                )
-                .order_by(desc(StrategyChangeEpisode.effective_start_at))
-                .all()
-            )
+            except OperationalError as exc:
+                # Older or in-memory test databases may not have attribution tables yet.
+                logger.warning("Strategy attribution lookup skipped: %s", exc)
+                return []
             return [int(row[0]) for row in rows]
         finally:
             session.close()

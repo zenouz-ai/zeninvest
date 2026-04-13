@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import desc
+from sqlalchemy.exc import OperationalError
 
 from src.data.database import get_session
 from src.data.models import (
@@ -138,26 +139,35 @@ class GuidanceService:
                 rows.append(row)
             session.commit()
             return self._serialize_snapshot(snapshot, rows)
+        except OperationalError as exc:
+            session.rollback()
+            logger.warning("Guidance generation skipped for %s: %s", cycle_id, exc)
+            return None
         except Exception as exc:
             session.rollback()
             logger.warning("Guidance generation failed for %s: %s", cycle_id, exc, exc_info=True)
-            failed = GuidanceSnapshot(
-                cycle_id=cycle_id,
-                timestamp=cycle_started_at,
-                mode=self.settings.guidance_mode,
-                status="failed",
-                regime="NEUTRAL",
-                confidence_score=0.0,
-                freshness_hours=None,
-                rationale=f"Guidance generation failed: {exc}",
-                prompt_summary="Guidance unavailable; baseline screening retained.",
-                bias_payload_json=json.dumps({"enabled": False, "reason": "generation_failed"}),
-                evidence_summary_json=json.dumps({"error": str(exc)}),
-                raw_payload_json=json.dumps({}),
-            )
-            session.add(failed)
-            session.commit()
-            return self._serialize_snapshot(failed, [])
+            try:
+                failed = GuidanceSnapshot(
+                    cycle_id=cycle_id,
+                    timestamp=cycle_started_at,
+                    mode=self.settings.guidance_mode,
+                    status="failed",
+                    regime="NEUTRAL",
+                    confidence_score=0.0,
+                    freshness_hours=None,
+                    rationale=f"Guidance generation failed: {exc}",
+                    prompt_summary="Guidance unavailable; baseline screening retained.",
+                    bias_payload_json=json.dumps({"enabled": False, "reason": "generation_failed"}),
+                    evidence_summary_json=json.dumps({"error": str(exc)}),
+                    raw_payload_json=json.dumps({}),
+                )
+                session.add(failed)
+                session.commit()
+                return self._serialize_snapshot(failed, [])
+            except OperationalError as persist_exc:
+                session.rollback()
+                logger.warning("Guidance failure snapshot skipped for %s: %s", cycle_id, persist_exc)
+                return None
         finally:
             session.close()
 

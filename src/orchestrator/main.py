@@ -1747,6 +1747,7 @@ class Orchestrator:
             )
 
         def _finalize(status: str) -> dict[str, Any]:
+            nonlocal cycle_lock
             result["status"] = status
             result["num_trades"] = len(result["trades"])
             result["stocks_reviewed"] = len(strategy_decisions)
@@ -1860,6 +1861,10 @@ class Orchestrator:
                 run_type=cycle_run_type,
                 audit_summary=audit_summary,
             )
+
+            if cycle_lock is not None:
+                cycle_lock.release()
+                cycle_lock = None
             
             # Flush events before returning (ensure they're processed)
             if DASHBOARD_AVAILABLE:
@@ -2111,7 +2116,7 @@ class Orchestrator:
                 cycle_id=cycle_id,
                 guidance=(guidance_snapshot or {}).get("bias_payload"),
             )
-            screening_meta = dict(self.data_fetcher.last_screening_metadata or {})
+            screening_meta = dict(getattr(self.data_fetcher, "last_screening_metadata", {}) or {})
             self._upsert_cycle_context_snapshot(
                 cycle_id,
                 applied_screening_bias_json=json.dumps(screening_meta, default=str),
