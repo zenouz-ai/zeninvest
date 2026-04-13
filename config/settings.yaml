@@ -1,7 +1,7 @@
 trading:
   mode: active
   account_type: practice  # practice = relaxed state machine (always ACTIVE); live = full CAUTIOUS/HALTED
-  min_order_value_gbp: 500       # Minimum BUY order-value floor
+  min_order_value_gbp: 300       # Minimum BUY order-value floor
   min_reduce_pct_of_position: 25  # Skip REDUCE below this % of position
   reduce_tiers_pct: [50]  # REDUCE is intentionally rare: only 50% trims are allowed
   sell_min_profit_pct: 10  # Ordinary autonomous SELL requires at least this unrealized gain unless hard-exit
@@ -189,7 +189,7 @@ intraday_refresh:
 
 order_management:
   enabled: true
-  default_stop_loss_pct: -10       # Default stop-loss % when placing missing stops (no ATR or no decision)
+  default_stop_loss_pct: -12       # Default stop-loss % when placing missing stops (no ATR or no decision)
   resubmit_partial_fills: true     # Retry eligible cancelled partial BUY remainders once when a later cycle still approves the BUY
   reassess_stops: true            # Reassess stop-losses each cycle based on ATR
   execution_quality:

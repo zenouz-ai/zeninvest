@@ -436,10 +436,10 @@ dashboard, runs, status, universe, portfolio, orders, events, decisions, moderat
 | `account_type` | `practice` | Relaxed state machine |
 | `max_positions` | 15 | Max concurrent holdings |
 | `cash_floor_pct` | 10 | Min cash requirement |
-| `min_order_value_gbp` | 500 | BUY/REDUCE floor |
+| `min_order_value_gbp` | 300 | BUY/REDUCE floor |
 | `max_single_stock_pct` | 15 | Max per-position (8% in CAUTIOUS) |
 | `max_sector_pct` | 35 | Max per-sector |
-| `default_stop_loss_pct` | -15 | Default stop distance |
+| `default_stop_loss_pct` | -12 | Default stop distance |
 | `trailing_stops.default_trail_pct` | 10.0 | Trailing stop distance |
 | `opportunity.mode` | `active` | UOV optimizer live |
 | `opportunity.immediate_threshold_z` | 0.3 | BUY immediately threshold |

@@ -722,13 +722,13 @@ class TestFormatRejectedReply:
         result = _make_result(
             status="rejected",
             user_action="BUY",
-            rejection_reason="Order value £308.68 is below the minimum order size of £500.00",
+            rejection_reason="Order value £308.68 is below the minimum order size of £300.00",
         )
 
         reply = format_trade_command_reply(result)
 
         assert "Tip:" in reply
-        assert "BUY £500 AAPL" in reply
+        assert "BUY £300 AAPL" in reply
         assert "REVIEW AAPL" in reply
 
     def test_rejected_no_force_hint_when_not_risk_reject(self):

@@ -91,7 +91,7 @@ All adjustments are persisted to `stop_loss_adjustments` and (where applicable) 
 ```yaml
 order_management:
   enabled: true
-  default_stop_loss_pct: -10   # Used when placing missing stops (no ATR or no decision)
+  default_stop_loss_pct: -12   # Used when placing missing stops (no ATR or no decision)
   reassess_stops: true
   trailing_stops:
     enabled: true

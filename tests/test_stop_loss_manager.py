@@ -578,7 +578,7 @@ class TestSettingsProperties:
         assert settings.order_management_enabled is False
         assert settings.reassess_stops_enabled is False
         assert settings.trailing_stops_enabled is False
-        assert settings.default_stop_loss_pct == -10.0
+        assert settings.default_stop_loss_pct == -12.0
         assert settings.trailing_stop_default_trail_pct == 10.0
         assert settings.trailing_stop_min_profit_pct == 20.0
         assert settings.limit_orders_enabled is False

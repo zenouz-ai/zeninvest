@@ -1113,7 +1113,26 @@ def _rejection_tip(result: "SingleTickerResult") -> str:
         return f"Use `force {result.user_action.lower()} <ticker>` to override moderation BLOCKED, or `REVIEW <ticker>` to inspect the committee reasoning first."
 
     if "minimum order size" in reason or "below the minimum order size" in reason:
-        return f"Try a larger order, for example `BUY £500 {ticker}` or use `REVIEW {ticker}` first."
+        suggested_amount = "500"
+        if result.rejection_reason:
+            # Reuse the numeric floor from the rejection text when available.
+            marker = "minimum order size of £"
+            lower_text = result.rejection_reason.lower()
+            start = lower_text.find(marker)
+            if start != -1:
+                amount_text = result.rejection_reason[start + len(marker):]
+                parsed = []
+                for ch in amount_text:
+                    if ch.isdigit() or ch == ".":
+                        parsed.append(ch)
+                    else:
+                        break
+                if parsed:
+                    try:
+                        suggested_amount = str(int(float("".join(parsed))))
+                    except ValueError:
+                        pass
+        return f"Try a larger order, for example `BUY £{suggested_amount} {ticker}` or use `REVIEW {ticker}` first."
 
     if "no open position" in reason:
         return f"Use `REVIEW {ticker}` to confirm whether you currently hold shares before selling."

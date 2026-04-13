@@ -204,7 +204,7 @@ The orchestrator also normalizes plain strategy outputs like `AAPL` back to T212
 
 Keep this section high-signal. Detailed env var docs belong in `docs/LOCAL_SETUP.md`.
 
-- **Trading:** `mode`, `account_type`, `cycle_frequency`, `schedule_mode`, `schedule_timezone`, `cycle_times_local`, `max_positions` (`20`), `cash_floor_pct` (`10`), `min_order_value_gbp` (`500`)
+- **Trading:** `mode`, `account_type`, `cycle_frequency`, `schedule_mode`, `schedule_timezone`, `cycle_times_local`, `max_positions` (`20`), `cash_floor_pct` (`10`), `min_order_value_gbp` (`300`)
 - **Risk:** `max_single_stock_pct` (`20`), `max_sector_pct` (`40`), drawdown thresholds (`30/40`), volatility gates (`25/35`), minimum holding windows
 - **Strategy:** model IDs, weights, signal toggles, decision caps
 - **Universe:** candidate counts, cooldowns, review limits, enrichment toggles
