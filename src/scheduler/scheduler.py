@@ -446,6 +446,56 @@ def _run_weekly_report() -> None:
         logger.error(f"Weekly report failed: {e}")
 
 
+def _run_learning_export() -> None:
+    """Weekly learning dataset export (audit + build + memory JSONL)."""
+    logger.info("Starting scheduled learning export...")
+    try:
+        from src.learning.export import run_learning_export
+
+        result = run_learning_export()
+        if result.get("status") == "failed":
+            logger.error("Learning export failed: %s", result.get("error"))
+        else:
+            logger.info(
+                "Learning export complete: %s decision rows, %s text rows",
+                result.get("decisions_rows"),
+                result.get("text_corpus_rows"),
+            )
+    except Exception as exc:
+        logger.error("Learning export failed: %s", exc)
+
+
+def _run_learning_evaluate() -> None:
+    """Weekly champion/challenger counterfactual evaluation."""
+    logger.info("Starting scheduled learning evaluation...")
+    try:
+        from src.learning.evaluation.counterfactual import run_counterfactual_evaluation
+
+        result = run_counterfactual_evaluation(write_report=True)
+        if result.get("status") == "failed":
+            logger.error("Learning evaluation failed: %s", result.get("error"))
+        else:
+            logger.info(
+                "Learning evaluation complete: %s (%s rows, %s realized)",
+                result.get("run_id"),
+                result.get("n_rows"),
+                result.get("closed_trades"),
+            )
+    except Exception as exc:
+        logger.error("Learning evaluation failed: %s", exc)
+
+
+def _run_shadow_outcome_join() -> None:
+    """Daily job: mature shadow scores with trade outcomes."""
+    try:
+        from src.learning.evaluation.outcome_join import join_shadow_outcomes
+
+        result = join_shadow_outcomes()
+        logger.info("Shadow outcome join: %s", result)
+    except Exception as exc:
+        logger.error("Shadow outcome join failed: %s", exc)
+
+
 def _refresh_instruments() -> None:
     """Refresh instrument universe from T212."""
     from src.agents.execution.t212_client import T212Client
@@ -624,6 +674,61 @@ def create_scheduler() -> BlockingScheduler:
         hour=2,
         minute=0,
         id="strategy_episode_scan",
+        replace_existing=True,
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+
+    if getattr(settings, "learning_export_enabled", False) is True:
+        export_day = str(getattr(settings, "learning_export_day_of_week", "sun"))
+        export_time = str(getattr(settings, "learning_export_time_utc", "13:00"))
+        export_hour, export_minute = map(int, export_time.split(":"))
+        scheduler.add_job(
+            _run_learning_export,
+            "cron",
+            day_of_week=export_day,
+            hour=export_hour,
+            minute=export_minute,
+            id="learning_export",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered learning_export job (%s %02d:%02d UTC)",
+            export_day,
+            export_hour,
+            export_minute,
+        )
+
+    if getattr(settings, "learning_evaluate_enabled", False) is True:
+        eval_day = str(getattr(settings, "learning_evaluate_day_of_week", "sun"))
+        eval_time = str(getattr(settings, "learning_evaluate_time_utc", "14:00"))
+        eval_hour, eval_minute = map(int, eval_time.split(":"))
+        scheduler.add_job(
+            _run_learning_evaluate,
+            "cron",
+            day_of_week=eval_day,
+            hour=eval_hour,
+            minute=eval_minute,
+            id="learning_evaluate",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            max_instances=1,
+        )
+        logger.info(
+            "Registered learning_evaluate job (%s %02d:%02d UTC)",
+            eval_day,
+            eval_hour,
+            eval_minute,
+        )
+
+    scheduler.add_job(
+        _run_shadow_outcome_join,
+        "cron",
+        hour=22,
+        minute=30,
+        id="shadow_outcome_join",
         replace_existing=True,
         misfire_grace_time=3600,
         max_instances=1,

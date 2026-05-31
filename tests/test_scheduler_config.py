@@ -248,6 +248,36 @@ def test_market_session_schedule_resolves_dst_aware_utc_times() -> None:
     assert next_scheduled_run_utc(settings, now_utc=now_utc) == datetime(2026, 3, 26, 14, 0, tzinfo=timezone.utc)
 
 
+def test_scheduler_registers_learning_export_when_enabled(tmp_path: Path) -> None:
+    mock_settings = MagicMock()
+    mock_settings.cycle_frequency = "standard"
+    mock_settings.schedule_mode = "fixed_utc"
+    mock_settings.schedule_timezone = "UTC"
+    mock_settings.cycle_times_local = ["07:00", "19:00"]
+    mock_settings.cycle_times_utc = ["07:00", "19:00"]
+    mock_settings.market_days = [0, 1, 2, 3, 4]
+    mock_settings.trading = {}
+    mock_settings.batch_enrichment_enabled = False
+    mock_settings.macro_proactive_scan_enabled = False
+    mock_settings.macro_scan_time_utc = "06:00"
+    mock_settings.learning_export_enabled = True
+    mock_settings.learning_export_day_of_week = "sun"
+    mock_settings.learning_export_time_utc = "13:00"
+    mock_settings.learning_evaluate_enabled = True
+    mock_settings.learning_evaluate_day_of_week = "sun"
+    mock_settings.learning_evaluate_time_utc = "14:00"
+
+    db_url = f"sqlite:///{tmp_path / 'scheduler_learning.db'}"
+    with patch("src.scheduler.scheduler.get_settings", return_value=mock_settings):
+        with patch("src.scheduler.scheduler.DATABASE_URL", db_url):
+            scheduler = create_scheduler()
+
+    job_ids = {j.id for j in scheduler.get_jobs()}
+    assert "learning_export" in job_ids
+    assert "learning_evaluate" in job_ids
+    assert "shadow_outcome_join" in job_ids
+
+
 def test_market_session_schedule_skips_us_market_holidays() -> None:
     settings = Settings(
         {

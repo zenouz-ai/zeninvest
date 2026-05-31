@@ -1,7 +1,7 @@
 trading:
   mode: active
   account_type: practice  # practice = relaxed state machine (always ACTIVE); live = full CAUTIOUS/HALTED
-  min_order_value_gbp: 300       # Minimum BUY order-value floor
+  min_order_value_gbp: 200       # Minimum BUY order-value floor
   min_reduce_pct_of_position: 25  # Skip REDUCE below this % of position
   reduce_tiers_pct: [50]  # REDUCE is intentionally rare: only 50% trims are allowed
   sell_min_profit_pct: 10  # Ordinary autonomous SELL requires at least this unrealized gain unless hard-exit
@@ -12,7 +12,11 @@ trading:
   buy_fractional_fallback_enabled: true  # Use fractional shares only when whole-share buy cannot satisfy rules
   take_profit_full_sell_pct: 10  # Legacy compatibility threshold retained for reporting/backward compatibility
   small_position_cleanup_enabled: true  # Liquidate residual holdings immediately before strategy runs
-  small_position_cleanup_value_gbp: 200  # Full SELL any holding below this value without strategy/moderation/risk
+  small_position_cleanup_value_gbp: 100  # Full SELL any holding below this value without strategy/moderation/risk
+  stagnation_exit_enabled: true  # Deterministic SELL for positions whose profit-per-day-held falls below the floor
+  stagnation_min_days: 15  # Only evaluate stagnation after a position has been held at least this many days (was 10; widened further to give slow theses a fuller window)
+  stagnation_min_profit_per_day_pct: 0.2  # Exit when (pnl_pct / held_days) drops below this percent per day (was 0.5; tolerates steady compounders ~6%/30d)
+  stagnation_grace_pnl_pct: null  # If set, exempt positions with pnl_pct >= this from stagnation exit (let winners run)
   base_url: https://demo.trading212.com/api/v0
   cycle_frequency: intraday  # standard = 2 fixed UTC cycles; intraday = 3 DST-aware market-session cycles
   schedule_mode: market_session  # market_session = America/New_York-local cycle times; fixed_utc = legacy UTC cron
@@ -284,3 +288,26 @@ conversation:
   native_web_search_enabled: false
   beta_shadow_logging_enabled: true
   chat_llm_daily_budget_gbp: 0.50           # Separate daily budget for chat LLM calls (does not consume scheduled cycle budgets)
+
+learning:
+  export_enabled: true
+  export_day_of_week: sun
+  export_time_utc: "13:00"
+  export_train_enabled: false
+  export_dataset_version: v2
+  embeddings_enabled: false
+  embedding_daily_budget_gbp: 0.25
+  memory_inject_strategy: false
+  neo4j_uri: bolt://neo4j:7687
+  neo4j_user: neo4j
+  graphiti_enabled: false
+  shadow_scoring_enabled: true
+  shadow_policies:
+    - challenger_gbm
+    - challenger_memory
+    - challenger_combined
+  evaluate_enabled: true
+  evaluate_day_of_week: sun
+  evaluate_time_utc: "14:00"
+  gbm_veto_threshold: 0.35
+  memory_veto_threshold: 0.5

@@ -62,6 +62,11 @@ class TestResolveTickerToT212:
         result = resolve_ticker_to_t212("APPLE")
         assert result == "AAPL_US_EQ"
 
+    def test_appl_typo_does_not_match_apple_inc(self):
+        """Common AAPL typo must not substring-match Apple Inc."""
+
+        assert resolve_ticker_to_t212("APPL") is None
+
     def test_name_search_handles_internal_t212_symbol(self):
         """IonQ resolves to the currently-listed Trading 212 instrument id."""
         result = resolve_ticker_to_t212("IONQ")

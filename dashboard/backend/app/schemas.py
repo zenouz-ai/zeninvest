@@ -102,6 +102,9 @@ class PositionSchema(BaseModel):
     profit_lock_required_price_gbp: float | None = None
     profit_lock_stop_price_gbp: float | None = None
     profit_lock_protected_qty: float | None = None
+    held_hours: float | None = None
+    held_days: float | None = None
+    profit_per_day_pct: float | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

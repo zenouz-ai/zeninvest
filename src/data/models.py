@@ -943,6 +943,89 @@ class EvolutionApproval(Base):
     decided_at = Column(DateTime, nullable=True)
 
 
+class LearningRun(Base):
+    """Persisted record of a trade-outcome learning pipeline run (US-2.1, US-6.1, US-6.3).
+
+    Stores metadata for one execution of the learning CLI (``python -m
+    src.learning.cli train ...``). Heavy artifacts live on disk under
+    ``data/learning/`` and are pointed to via ``artifact_paths_json``.
+    """
+
+    __tablename__ = "learning_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(100), nullable=False, unique=True, index=True)
+    dataset_version = Column(String(20), nullable=False, index=True)
+    model_kind = Column(String(50), nullable=False)  # calibrator, gbm, stall, bundle
+    status = Column(String(20), nullable=False, default="completed")  # completed, failed
+    rows = Column(Integer, nullable=False, default=0)
+    label_distribution_json = Column(Text, nullable=True)
+    metrics_json = Column(Text, nullable=True)
+    artifact_paths_json = Column(Text, nullable=True)
+    checksum = Column(String(128), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class LearningExportRun(Base):
+    """Persisted record of a scheduled or manual learning dataset export."""
+
+    __tablename__ = "learning_export_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(100), nullable=False, unique=True, index=True)
+    dataset_version = Column(String(20), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="completed")
+    rows = Column(Integer, nullable=False, default=0)
+    text_corpus_rows = Column(Integer, nullable=False, default=0)
+    label_distribution_json = Column(Text, nullable=True)
+    artifact_paths_json = Column(Text, nullable=True)
+    checksum = Column(String(128), nullable=True)
+    duration_sec = Column(Float, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class LearningEvaluationRun(Base):
+    """Persisted champion/challenger counterfactual evaluation run."""
+
+    __tablename__ = "learning_evaluation_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String(100), nullable=False, unique=True, index=True)
+    dataset_version = Column(String(20), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="completed")
+    n_rows = Column(Integer, nullable=False, default=0)
+    closed_trades = Column(Integer, nullable=False, default=0)
+    metrics_json = Column(Text, nullable=True)
+    gates_json = Column(Text, nullable=True)
+    artifact_run_id = Column(String(100), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class DecisionShadowScore(Base):
+    """Per-cycle shadow challenger recommendation (no live influence)."""
+
+    __tablename__ = "decision_shadow_scores"
+    __table_args__ = (
+        Index("ix_shadow_scores_cycle_ticker", "cycle_id", "ticker"),
+        Index("ix_shadow_scores_policy_ts", "policy_id", "decision_ts"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cycle_id = Column(String(100), nullable=False, index=True)
+    ticker = Column(String(50), nullable=False, index=True)
+    decision_ts = Column(DateTime, nullable=False, index=True)
+    champion_action = Column(String(30), nullable=False)
+    policy_id = Column(String(50), nullable=False, index=True)
+    recommended_action = Column(String(30), nullable=False)
+    scores_json = Column(Text, nullable=True)
+    artifact_run_ids_json = Column(Text, nullable=True)
+    outcome_json = Column(Text, nullable=True)
+    matured_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 class EvolutionDeployment(Base):
     """Deployment and rollback records for later evolution phases."""
 

@@ -10,7 +10,8 @@ from sqlalchemy.pool import StaticPool
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _DB_DIR = _PROJECT_ROOT / "data"
 _DB_DIR.mkdir(exist_ok=True)
-_DB_PATH = _DB_DIR / "investment_agent.db"
+_db_override = os.environ.get("INVESTMENT_AGENT_DB_PATH")
+_DB_PATH = Path(_db_override) if _db_override else _DB_DIR / "investment_agent.db"
 
 # When running tests (conftest sets this), use in-memory DB so tests never touch production.
 if os.environ.get("INVESTMENT_AGENT_USE_INMEMORY_DB") == "1":

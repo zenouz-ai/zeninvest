@@ -37,12 +37,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .venv
-          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          # `learning` suffix: invalidate caches from before `--with learning` so
+          # the venv cannot be restored missing scikit-learn / lightgbm.
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}-with-learning-v1
           restore-keys: |
             ${{ runner.os }}-poetry-
 
       - name: Install dependencies
-        run: poetry install --no-interaction
+        # Include the optional `learning` group so the shadow ML pipeline tests
+        # (calibrator / GBM / stall / dataset / insights / visualisations / CLI
+        # smoke / dashboard router) can run end-to-end in CI. The `rl` group is
+        # not installed here — d3rlpy-dependent code is gated behind
+        # `pytest.importorskip("d3rlpy")` in the offline-RL tests.
+        run: poetry install --sync --with learning --no-interaction
 
       - name: Run tests
         run: >

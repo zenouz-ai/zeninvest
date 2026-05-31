@@ -30,6 +30,16 @@ def _parse_position(pos_data: dict, session: Session) -> PositionSchema:
     pnl_pct = float(pos_data.get("pnl_pct", 0)) or ((pnl_gbp / total_cost * 100) if total_cost else 0)
     instrument = session.query(Instrument).filter(Instrument.ticker == ticker).first()
     sector = instrument.sector if instrument else None
+    held_hours = pos_data.get("held_hours")
+    held_days = pos_data.get("held_days")
+    ppd_pct = pos_data.get("profit_per_day_pct")
+    if ppd_pct is None and held_hours not in (None, 0) and pnl_pct:
+        try:
+            hh = float(held_hours)
+            if hh > 0:
+                ppd_pct = round(pnl_pct / (hh / 24.0), 4)
+        except (TypeError, ValueError):
+            ppd_pct = None
     return PositionSchema(
         ticker=ticker,
         quantity=quantity,
@@ -41,6 +51,9 @@ def _parse_position(pos_data: dict, session: Session) -> PositionSchema:
         profit_lock_required_price_gbp=pos_data.get("profit_lock_required_price_gbp"),
         profit_lock_stop_price_gbp=pos_data.get("profit_lock_stop_price_gbp"),
         profit_lock_protected_qty=pos_data.get("profit_lock_protected_qty"),
+        held_hours=float(held_hours) if isinstance(held_hours, (int, float)) else None,
+        held_days=float(held_days) if isinstance(held_days, (int, float)) else None,
+        profit_per_day_pct=float(ppd_pct) if isinstance(ppd_pct, (int, float)) else None,
     )
 
 

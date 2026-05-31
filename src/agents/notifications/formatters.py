@@ -693,6 +693,8 @@ def _human_reason(reason_code: Any, *, fallback: Any = "", context: dict[str, An
         return "Profit-lock policy triggered a full SELL after the target profit threshold was reached"
     if code == "small_position_cleanup":
         return "Full SELL triggered because the holding fell below the small-position cleanup threshold"
+    if code == "stagnation_exit":
+        return "Full SELL triggered because profit-per-day-held fell below the stagnation threshold"
     if code == "profit_lock_stop_placed":
         return "Broker stop protection was placed to lock at least the target profit"
     if code == "profit_lock_stop_already_sufficient":

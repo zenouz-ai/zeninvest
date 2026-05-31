@@ -216,6 +216,8 @@ __marimo__/
 logs/
 /data/
 *.db
+!fixtures/dev/investment_agent.db
+fixtures/dev/.tmp.db
 credentials/
 *.key
 /journals/

@@ -1204,6 +1204,18 @@ class Orchestrator:
                     reason_detail=cleanup_reason,
                     conviction_floor=75,
                 )
+                continue
+
+            stagnation = self._stagnation_exit_reason(position)
+            if stagnation:
+                stagnation_detail, stagnation_metrics = stagnation
+                self._apply_deterministic_sell_override(
+                    decision=decision,
+                    reason_code="stagnation_exit",
+                    reason_detail=stagnation_detail,
+                    conviction_floor=80,
+                )
+                decision["stagnation_metrics"] = stagnation_metrics
 
     def _profit_lock_reason_detail(
         self,
@@ -1257,35 +1269,67 @@ class Orchestrator:
         candidates: list[dict[str, Any]] = []
         for ticker, position in position_context.items():
             cleanup_reason = self._small_position_cleanup_reason(position)
-            if not cleanup_reason:
+            if cleanup_reason:
+                decision = {
+                    "ticker": ticker,
+                    "action": "HOLD",
+                    "conviction": 0,
+                    "reasoning": cleanup_reason,
+                    "primary_strategy": "order_management",
+                    "stop_loss_pct": 0,
+                }
+                self._apply_deterministic_sell_override(
+                    decision=decision,
+                    reason_code="small_position_cleanup",
+                    reason_detail=cleanup_reason,
+                    conviction_floor=75,
+                )
+
+                raw_position = positions_by_ticker.get(ticker, {})
+                current_price = float(raw_position.get("currentPrice", 0) or 0)
+                candidates.append({
+                    "ticker": ticker,
+                    "decision": decision,
+                    "reason": cleanup_reason,
+                    "stocks_data": [{
+                        "ticker": ticker,
+                        "indicators": {"current_price": current_price},
+                        "fundamentals": {},
+                    }],
+                    })
                 continue
 
-            decision = {
-                "ticker": ticker,
-                "action": "HOLD",
-                "conviction": 0,
-                "reasoning": cleanup_reason,
-                "primary_strategy": "order_management",
-                "stop_loss_pct": 0,
-            }
-            self._apply_deterministic_sell_override(
-                decision=decision,
-                reason_code="small_position_cleanup",
-                reason_detail=cleanup_reason,
-                conviction_floor=75,
-            )
-
-            raw_position = positions_by_ticker.get(ticker, {})
-            current_price = float(raw_position.get("currentPrice", 0) or 0)
-            candidates.append({
-                "ticker": ticker,
-                "decision": decision,
-                "reason": cleanup_reason,
-                "stocks_data": [{
+            stagnation = self._stagnation_exit_reason(position)
+            if stagnation:
+                stagnation_detail, stagnation_metrics = stagnation
+                decision = {
                     "ticker": ticker,
-                    "indicators": {"current_price": current_price},
-                    "fundamentals": {},
-                }],
+                    "action": "HOLD",
+                    "conviction": 0,
+                    "reasoning": stagnation_detail,
+                    "primary_strategy": "order_management",
+                    "stop_loss_pct": 0,
+                }
+                self._apply_deterministic_sell_override(
+                    decision=decision,
+                    reason_code="stagnation_exit",
+                    reason_detail=stagnation_detail,
+                    conviction_floor=80,
+                )
+                decision["stagnation_metrics"] = stagnation_metrics
+
+                raw_position = positions_by_ticker.get(ticker, {})
+                current_price = float(raw_position.get("currentPrice", 0) or 0)
+                candidates.append({
+                    "ticker": ticker,
+                    "decision": decision,
+                    "reason": stagnation_detail,
+                    "stagnation_metrics": stagnation_metrics,
+                    "stocks_data": [{
+                        "ticker": ticker,
+                        "indicators": {"current_price": current_price},
+                        "fundamentals": {},
+                    }],
                 })
         return candidates
 
@@ -1518,6 +1562,54 @@ class Orchestrator:
             f"the GBP {self.settings.small_position_cleanup_value_gbp:.2f} cleanup threshold and is exited immediately"
         )
 
+    def _stagnation_exit_reason(
+        self,
+        position: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Return (detail, metrics) when a position qualifies for stagnation exit.
+
+        Rule: after stagnation_min_days held, if realised profit-per-day-held
+        (pnl_pct / held_days) is below stagnation_min_profit_per_day_pct, the
+        position is forcibly exited to recycle cash. Losers qualify sooner
+        because their PPD is negative. An optional stagnation_grace_pnl_pct
+        exempts clear winners (they keep running under profit-lock).
+        """
+        if not self.settings.stagnation_exit_enabled:
+            return None
+        held_hours_raw = position.get("held_hours")
+        if held_hours_raw is None:
+            return None
+        try:
+            held_hours = float(held_hours_raw)
+        except (TypeError, ValueError):
+            return None
+        if held_hours <= 0:
+            return None
+        held_days = held_hours / 24.0
+        if held_days < self.settings.stagnation_min_days:
+            return None
+        pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
+        grace = self.settings.stagnation_grace_pnl_pct
+        if grace is not None and pnl_pct >= grace:
+            return None
+        floor = self.settings.stagnation_min_profit_per_day_pct
+        ppd = pnl_pct / held_days if held_days > 0 else 0.0
+        if ppd >= floor:
+            return None
+        detail = (
+            f"Deterministic stagnation SELL: held {held_days:.1f}d, pnl {pnl_pct:.2f}% "
+            f"=> {ppd:.3f}%/day < floor {floor:.2f}%/day "
+            f"(min_days={self.settings.stagnation_min_days:.1f})"
+        )
+        metrics = {
+            "held_days": round(held_days, 2),
+            "pnl_pct": round(pnl_pct, 3),
+            "profit_per_day_pct": round(ppd, 3),
+            "min_days": self.settings.stagnation_min_days,
+            "min_profit_per_day_pct": floor,
+        }
+        return detail, metrics
+
     @staticmethod
     def _apply_deterministic_sell_override(
         *,
@@ -1552,6 +1644,7 @@ class Orchestrator:
             "profit_lock_unprotected_exit",
             "profit_lock_hold_blocked",
             "profit_lock_remainder_unprotected",
+            "stagnation_exit",
         }:
             return True
         if str(decision.get("action", "")).strip().upper() not in {"SELL", "REDUCE"}:
@@ -1568,6 +1661,7 @@ class Orchestrator:
             "profit_lock_unprotected_exit",
             "profit_lock_hold_blocked",
             "profit_lock_remainder_unprotected",
+            "stagnation_exit",
         }:
             return True
         action = str(decision.get("action", "")).strip().upper()
@@ -1578,6 +1672,7 @@ class Orchestrator:
     def _profit_lock_bypass_codes() -> set[str]:
         return {
             "small_position_cleanup",
+            "stagnation_exit",
             "profit_lock_unprotected_exit",
             "profit_lock_hold_blocked",
             "profit_lock_remainder_unprotected",
@@ -1591,7 +1686,10 @@ class Orchestrator:
         position_context: dict[str, dict[str, Any]],
     ) -> tuple[bool, str | None, str | None]:
         exit_trigger_type = self._normalize_exit_trigger_type(decision)
-        if decision.get("deterministic_exit_reason_code") == "small_position_cleanup":
+        if decision.get("deterministic_exit_reason_code") in {
+            "small_position_cleanup",
+            "stagnation_exit",
+        }:
             return True, None, None
         if exit_trigger_type == "hard_exit":
             return True, None, None
@@ -2988,6 +3086,22 @@ class Orchestrator:
                 except Exception as refresh_err:
                     logger.warning(f"Portfolio refresh before BUY skipped: {refresh_err}")
 
+            # --- Shadow challenger scoring (no influence) ---
+            if pending_buys and self.settings.learning_shadow_scoring_enabled:
+                try:
+                    from src.learning.evaluation.shadow import score_cycle_shadow
+
+                    macro_regime = str(macro.get("regime") or market_regime or "")
+                    shadow_scores = score_cycle_shadow(
+                        cycle_id=cycle_id,
+                        pending_buys=pending_buys,
+                        macro_regime=macro_regime,
+                    )
+                    if shadow_scores:
+                        result["shadow_scores"] = len(shadow_scores)
+                except Exception as shadow_err:
+                    logger.warning("Shadow scoring skipped: %s", shadow_err)
+
             # --- STEP 6: UOV scoring + BUY optimization ---
             selected_buy_order = [b["ticker"] for b in pending_buys]
             if self.settings.opportunity_enabled:
@@ -4081,7 +4195,7 @@ class Orchestrator:
             },
         )
 
-        return {
+        trade_entry: dict[str, Any] = {
             "ticker": ticker,
             "action": action,
             "display_action": display_action,
@@ -4111,6 +4225,9 @@ class Orchestrator:
             ),
             "conviction": conviction,
         }
+        if decision.get("stagnation_metrics"):
+            trade_entry["stagnation_metrics"] = decision.get("stagnation_metrics")
+        return trade_entry
 
     def _get_top_tickers(self, sub_results: dict[str, Any]) -> list[str]:
         """Extract top tickers from sub-strategy results."""
@@ -5162,6 +5279,66 @@ class Orchestrator:
         return enriched
 
     @staticmethod
+    def _compute_profit_per_day_pct(
+        pnl_pct: float | None,
+        held_hours: float | None,
+    ) -> float | None:
+        """Derive profit-per-day-held (%/day) from pnl% and holding period.
+
+        Returns None when held_hours is missing/non-positive so callers can
+        distinguish "not enough data" from a genuine 0.0. Used for the
+        stagnation-exit rule, daily snapshot enrichment, and downstream
+        dashboard/ML consumers.
+        """
+        if held_hours is None or pnl_pct is None:
+            return None
+        try:
+            held_hours_f = float(held_hours)
+            pnl_pct_f = float(pnl_pct)
+        except (TypeError, ValueError):
+            return None
+        if held_hours_f <= 0:
+            return None
+        held_days = held_hours_f / 24.0
+        if held_days <= 0:
+            return None
+        return round(pnl_pct_f / held_days, 4)
+
+    @classmethod
+    def _annotate_normalized_positions_with_holding_metrics(
+        cls,
+        normalised: list[dict[str, Any]],
+        *,
+        position_context: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Attach `held_hours`, `held_days`, `profit_per_day_pct` to snapshot positions.
+
+        These per-position features are persisted in PortfolioSnapshot.positions_json
+        so they are visible on the dashboard and available as an historical dataset
+        (one row per ticker per snapshot) that future ML stages can use to promote
+        high-PPD setups and demote stagnating ones.
+        """
+        enriched: list[dict[str, Any]] = []
+        for pos in normalised:
+            ticker = str(pos.get("ticker", "")).strip().upper()
+            ctx = position_context.get(ticker, {}) if position_context else {}
+            held_hours = ctx.get("held_hours")
+            held_days: float | None = None
+            if isinstance(held_hours, (int, float)) and held_hours > 0:
+                held_days = round(float(held_hours) / 24.0, 3)
+            ppd_pct = cls._compute_profit_per_day_pct(
+                pos.get("pnl_pct"),
+                held_hours if isinstance(held_hours, (int, float)) else None,
+            )
+            enriched.append({
+                **pos,
+                "held_hours": float(held_hours) if isinstance(held_hours, (int, float)) else None,
+                "held_days": held_days,
+                "profit_per_day_pct": ppd_pct,
+            })
+        return enriched
+
+    @staticmethod
     def _get_close_prices_by_ticker(stocks_data: list[dict[str, Any]]) -> dict[str, list[float]]:
         """Extract close-price history per ticker for risk-parity sizing."""
         result: dict[str, list[float]] = {}
@@ -5240,8 +5417,11 @@ class Orchestrator:
     @staticmethod
     def _display_trade_action(action: str, reason_code: str | None = None) -> str:
         normalized = str(action or "").strip().upper() or "N/A"
-        if normalized == "SELL" and str(reason_code or "").strip().lower() == "small_position_cleanup":
+        code = str(reason_code or "").strip().lower()
+        if normalized == "SELL" and code == "small_position_cleanup":
             return "SELL_CLEAN_UP"
+        if normalized == "SELL" and code == "stagnation_exit":
+            return "SELL_STAGNATION"
         return normalized
 
     def _evaluate_reduce_guardrail(
@@ -5401,10 +5581,18 @@ class Orchestrator:
                 float(portfolio_data.get("invested", 0) or 0),
             )
             normalised = [self._normalize_position_for_snapshot(p, value_scale=value_scale) for p in raw_positions]
-            profit_lock_context = self._build_profit_lock_context(portfolio_data)
+            position_context = self._build_position_context_map(portfolio_data)
+            profit_lock_context = self._build_profit_lock_context(
+                portfolio_data,
+                position_context=position_context,
+            )
             normalised = self._annotate_normalized_positions_with_profit_lock(
                 normalised,
                 profit_lock_context=profit_lock_context,
+            )
+            normalised = self._annotate_normalized_positions_with_holding_metrics(
+                normalised,
+                position_context=position_context,
             )
 
             benchmark_value, benchmark_pnl_pct, alpha_pct = None, None, None

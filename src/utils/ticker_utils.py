@@ -36,6 +36,19 @@ COMPANY_NAME_ALIASES = {
 _LEADING_TRAILING_PUNCT_RE = re.compile(r"^[^\w]+|[^\w./-]+$")
 
 
+def _name_contains_symbol_token(name: str, symbol_upper: str) -> bool:
+    """True if ``symbol_upper`` appears as a whole alphabetic token in ``name``.
+
+    Prevents false positives such as resolving the typo ``APPL`` to Apple because
+    ``\"Apple\"`` contains the substring ``\"APPL\"`` as a prefix.
+    """
+
+    if not name or not symbol_upper:
+        return False
+    tokens = [t for t in re.split(r"[^A-Za-z]+", name.upper()) if t]
+    return symbol_upper in tokens
+
+
 def t212_to_yf(ticker: str) -> str:
     """Convert T212 ticker to yfinance symbol.
 
@@ -103,14 +116,18 @@ def resolve_ticker_to_t212(symbol: str) -> str | None:
         if inst:
             return inst.ticker
 
-        # 3. Case-insensitive name search (e.g. "Apple" -> "AAPL_US_EQ")
-        inst = (
+        # 3. Case-insensitive name search (e.g. "Apple" -> "AAPL_US_EQ").
+        # Whole-token match only — substring match would map the typo "APPL" to Apple.
+        candidates = (
             session.query(Instrument)
             .filter(Instrument.name.ilike(f"%{symbol}%"))
-            .first()
+            .limit(80)
+            .all()
         )
-        if inst:
-            return inst.ticker
+        sym_upper = symbol.upper()
+        for inst in candidates:
+            if _name_contains_symbol_token(inst.name or "", sym_upper):
+                return inst.ticker
 
         return None
     except Exception as e:

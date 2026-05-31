@@ -45,7 +45,10 @@ jobs:
         run: poetry run pip install bandit && poetry run bandit -q -r src dashboard/backend/app
 
       - name: Run pip-audit
-        run: poetry run pip install pip-audit && poetry run pip-audit
+        run: |
+          poetry run pip install --upgrade 'pip>=26.1'
+          poetry run pip install pip-audit
+          poetry run pip-audit
 
       - uses: actions/setup-node@v4
         with:

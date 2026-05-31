@@ -135,7 +135,7 @@ class Settings:
     @property
     def min_order_value_gbp(self) -> float:
         """Minimum order value floor for BUY orders."""
-        return float(self.trading.get("min_order_value_gbp", 300))
+        return float(self.trading.get("min_order_value_gbp", 200))
 
     @property
     def min_reduce_pct_of_position(self) -> float:
@@ -191,7 +191,33 @@ class Settings:
     @property
     def small_position_cleanup_value_gbp(self) -> float:
         """Full-sell threshold for residual small holdings."""
-        return float(self.trading.get("small_position_cleanup_value_gbp", 200.0))
+        return float(self.trading.get("small_position_cleanup_value_gbp", 100.0))
+
+    @property
+    def stagnation_exit_enabled(self) -> bool:
+        """Whether stagnation-based SELL (profit-per-day-held) is active."""
+        return bool(self.trading.get("stagnation_exit_enabled", False))
+
+    @property
+    def stagnation_min_days(self) -> float:
+        """Minimum holding period (days) before stagnation exit is evaluated."""
+        return float(self.trading.get("stagnation_min_days", 15.0))
+
+    @property
+    def stagnation_min_profit_per_day_pct(self) -> float:
+        """Minimum profit-per-day-held (percent) required to avoid stagnation exit."""
+        return float(self.trading.get("stagnation_min_profit_per_day_pct", 0.2))
+
+    @property
+    def stagnation_grace_pnl_pct(self) -> float | None:
+        """Optional pnl_pct floor that exempts clear winners from stagnation exit."""
+        val = self.trading.get("stagnation_grace_pnl_pct")
+        if val is None:
+            return None
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
 
     # --- Risk ---
     @property
@@ -1130,6 +1156,90 @@ class Settings:
     def smtp_use_tls(self) -> bool:
         raw = (self.get_env_optional("SMTP_USE_TLS", "true") or "true").strip().lower()
         return raw in {"1", "true", "yes", "y", "on"}
+
+    # --- Learning / memory (shadow-only) ---
+    @property
+    def learning(self) -> dict[str, Any]:
+        return self._config.get("learning", {})
+
+    @property
+    def learning_export_enabled(self) -> bool:
+        return bool(self.learning.get("export_enabled", False))
+
+    @property
+    def learning_export_day_of_week(self) -> str:
+        return str(self.learning.get("export_day_of_week", "sun")).lower()
+
+    @property
+    def learning_export_time_utc(self) -> str:
+        return str(self.learning.get("export_time_utc", "13:00"))
+
+    @property
+    def learning_export_train_enabled(self) -> bool:
+        return bool(self.learning.get("export_train_enabled", False))
+
+    @property
+    def learning_export_dataset_version(self) -> str:
+        return str(self.learning.get("export_dataset_version", "v2"))
+
+    @property
+    def learning_embeddings_enabled(self) -> bool:
+        return bool(self.learning.get("embeddings_enabled", False))
+
+    @property
+    def learning_embedding_daily_budget_gbp(self) -> float:
+        return float(self.learning.get("embedding_daily_budget_gbp", 0.25))
+
+    @property
+    def learning_memory_inject_strategy(self) -> bool:
+        return bool(self.learning.get("memory_inject_strategy", False))
+
+    @property
+    def learning_neo4j_uri(self) -> str:
+        return str(self.learning.get("neo4j_uri", "bolt://localhost:7687"))
+
+    @property
+    def learning_neo4j_user(self) -> str:
+        return str(self.learning.get("neo4j_user", "neo4j"))
+
+    @property
+    def learning_neo4j_password(self) -> str | None:
+        return os.environ.get("NEO4J_PASSWORD") or self.learning.get("neo4j_password")
+
+    @property
+    def learning_graphiti_enabled(self) -> bool:
+        return bool(self.learning.get("graphiti_enabled", False))
+
+    @property
+    def learning_shadow_scoring_enabled(self) -> bool:
+        return bool(self.learning.get("shadow_scoring_enabled", False))
+
+    @property
+    def learning_shadow_policies(self) -> list[str]:
+        raw = self.learning.get("shadow_policies")
+        if isinstance(raw, list) and raw:
+            return [str(x) for x in raw]
+        return ["challenger_gbm", "challenger_memory", "challenger_combined"]
+
+    @property
+    def learning_evaluate_enabled(self) -> bool:
+        return bool(self.learning.get("evaluate_enabled", True))
+
+    @property
+    def learning_evaluate_day_of_week(self) -> str:
+        return str(self.learning.get("evaluate_day_of_week", "sun"))
+
+    @property
+    def learning_evaluate_time_utc(self) -> str:
+        return str(self.learning.get("evaluate_time_utc", "14:00"))
+
+    @property
+    def learning_gbm_veto_threshold(self) -> float:
+        return float(self.learning.get("gbm_veto_threshold", 0.35))
+
+    @property
+    def learning_memory_veto_threshold(self) -> float:
+        return float(self.learning.get("memory_veto_threshold", 0.5))
 
     # --- Dashboard ---
     @property

@@ -1,6 +1,6 @@
 # Testing the Dashboard Backend
 
-## Full dashboard check (12 pages + full API)
+## Full dashboard check (13 pages + full API)
 
 Use this to confirm the full API and frontend are in place.
 
@@ -50,7 +50,7 @@ Then either:
 - **Option A — SPA via FastAPI:** From repo root, ensure backend is serving; open **http://localhost:8000**. FastAPI serves the built frontend from `dashboard/frontend/dist` when that folder exists.
 - **Option B — Dev server (proxies to backend):** From `dashboard/frontend`, run `npm run dev` and open **http://localhost:3000**.
 
-### 6. Verify all 12 pages
+### 6. Verify all 13 pages
 
 In the browser, confirm each route loads without errors:
 
@@ -68,6 +68,7 @@ In the browser, confirm each route loads without errors:
 | Costs           | `/costs`               | Signed-out: aggregate totals only; signed-in: degradation badge, daily chart, monthly table |
 | Chat            | `/chat`                | Signed-out: preview-only demo transcript; signed-in: full operator console |
 | Evolution       | `/evolution`           | Signed-out: preview-only planner concept; signed-in: authenticated evolution planner |
+| Learning        | `/learning`            | Operator-only: shadow learning runs list (`/api/learning/runs`), run detail + report URL, embedded insight PNGs when artifacts exist under `data/learning/` |
 
 ### 7. SSE activity feed
 

@@ -23,7 +23,15 @@ import {
   Cell,
 } from 'recharts'
 
-type PositionSortKey = 'ticker' | 'sector' | 'quantity' | 'value_gbp' | 'pnl_gbp' | 'pnl_pct'
+type PositionSortKey =
+  | 'ticker'
+  | 'sector'
+  | 'quantity'
+  | 'value_gbp'
+  | 'pnl_gbp'
+  | 'pnl_pct'
+  | 'profit_per_day_pct'
+  | 'held_days'
 type PortfolioHistoryPoint = { timestamp: string; date: string; value: number }
 
 const PORTFOLIO_HISTORY_FETCH_LIMIT = 1000
@@ -38,8 +46,15 @@ function comparePositions(a: Position, b: Position, key: PositionSortKey, dir: '
     if (c !== 0) return mul * c
     return a.ticker.localeCompare(b.ticker)
   }
-  const va = Number(a[key])
-  const vb = Number(b[key])
+  const rawA = a[key]
+  const rawB = b[key]
+  const va = rawA == null ? Number.NaN : Number(rawA)
+  const vb = rawB == null ? Number.NaN : Number(rawB)
+  const naA = Number.isNaN(va)
+  const naB = Number.isNaN(vb)
+  if (naA && naB) return a.ticker.localeCompare(b.ticker)
+  if (naA) return 1
+  if (naB) return -1
   if (va !== vb) return mul * (va < vb ? -1 : va > vb ? 1 : 0)
   return a.ticker.localeCompare(b.ticker)
 }
@@ -730,6 +745,10 @@ export default function Portfolio() {
                 <option value="pnl_gbp:asc">P&amp;L £ (low → high)</option>
                 <option value="pnl_pct:desc">P&amp;L % (high → low)</option>
                 <option value="pnl_pct:asc">P&amp;L % (low → high)</option>
+                <option value="profit_per_day_pct:desc">PPD %/day (high → low)</option>
+                <option value="profit_per_day_pct:asc">PPD %/day (low → high)</option>
+                <option value="held_days:desc">Held (longest → shortest)</option>
+                <option value="held_days:asc">Held (shortest → longest)</option>
               </select>
             </label>
             {/* Mobile card layout */}
@@ -757,6 +776,20 @@ export default function Portfolio() {
                     <div>
                       <span className="text-terminal-text-dim text-xs">Qty</span>
                       <div className="font-mono">{pos.quantity}</div>
+                    </div>
+                    <div>
+                      <span className="text-terminal-text-dim text-xs">Held</span>
+                      <div className="font-mono">
+                        {pos.held_days != null ? `${pos.held_days.toFixed(pos.held_days >= 10 ? 0 : 1)}d` : '—'}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-terminal-text-dim text-xs">PPD %/day</span>
+                      <div className="font-mono">
+                        {pos.profit_per_day_pct != null
+                          ? <PnlValue value={pos.profit_per_day_pct} suffix="%/d" />
+                          : '—'}
+                      </div>
                     </div>
                     <div className="flex items-end justify-end">
                       <button
@@ -837,6 +870,22 @@ export default function Portfolio() {
                       onSort={handlePositionSort}
                       className="px-4 py-3 text-left text-sm"
                     />
+                    <SortableTh
+                      label="Held"
+                      sortKey="held_days"
+                      active={positionSort?.key === 'held_days'}
+                      dir={positionSort?.key === 'held_days' ? positionSort.dir : null}
+                      onSort={handlePositionSort}
+                      className="px-4 py-3 text-left text-sm hidden md:table-cell"
+                    />
+                    <SortableTh
+                      label="PPD %/day"
+                      sortKey="profit_per_day_pct"
+                      active={positionSort?.key === 'profit_per_day_pct'}
+                      dir={positionSort?.key === 'profit_per_day_pct' ? positionSort.dir : null}
+                      onSort={handlePositionSort}
+                      className="px-4 py-3 text-left text-sm"
+                    />
                     <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim">Protection</th>
                     <th scope="col" className="px-4 py-3 text-left text-sm font-semibold text-terminal-text-dim hidden lg:table-cell">Trend</th>
                     <th scope="col" className="px-4 py-3 text-right text-sm font-semibold text-terminal-text-dim">Actions</th>
@@ -853,6 +902,16 @@ export default function Portfolio() {
                       </td>
                       <td className="px-4 py-3 font-mono"><PnlCurrency value={pos.pnl_gbp} /></td>
                       <td className="px-4 py-3 font-mono"><PnlValue value={pos.pnl_pct} suffix="%" /></td>
+                      <td className="px-4 py-3 font-mono text-sm hidden md:table-cell">
+                        {pos.held_days != null
+                          ? `${pos.held_days.toFixed(pos.held_days >= 10 ? 0 : 1)}d`
+                          : <span className="text-terminal-text-dim">—</span>}
+                      </td>
+                      <td className="px-4 py-3 font-mono">
+                        {pos.profit_per_day_pct != null
+                          ? <PnlValue value={pos.profit_per_day_pct} suffix="%/d" />
+                          : <span className="text-terminal-text-dim">—</span>}
+                      </td>
                       <td className="px-4 py-3 align-top">
                         <ProfitLockSummary
                           status={pos.profit_lock_status}

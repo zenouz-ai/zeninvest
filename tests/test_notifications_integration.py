@@ -365,7 +365,7 @@ def test_execute_trade_buy_upgrades_to_minimum_order_value(monkeypatch) -> None:
         decision={"conviction": 80, "primary_strategy": "momentum", "stop_loss_pct": -8.0, "reasoning": "ok"},
         action="BUY",
         ticker="AAPL_US_EQ",
-        final_alloc=2.0,
+        final_alloc=1.0,
         current_value=10_000,
         cash_gbp=5_000,
         total_return_pct=0.0,
@@ -383,7 +383,7 @@ def test_execute_trade_buy_upgrades_to_minimum_order_value(monkeypatch) -> None:
 
     assert trade is not None
     assert DummyOrderManager.last_kwargs is not None
-    assert DummyOrderManager.last_kwargs["target_amount_gbp"] == 300.0
+    assert DummyOrderManager.last_kwargs["target_amount_gbp"] == 200.0
     assert "buy_upgraded_to_min_order_value" in trade["execution_note"]
 
 
@@ -761,17 +761,17 @@ def test_small_position_cleanup_triggers_immediately_for_any_sub_threshold_holdi
 
     orchestrator._apply_deterministic_exit_overrides(
         decisions=[active_cleanup],
-        position_context={"VRTX_US_EQ": {"pnl_pct": 1.0, "value_gbp": 150.0, "held_hours": 30.0}},
+        position_context={"VRTX_US_EQ": {"pnl_pct": 1.0, "value_gbp": 80.0, "held_hours": 30.0}},
         cycle_id="scheduled_20260325_191501",
     )
     orchestrator._apply_deterministic_exit_overrides(
         decisions=[still_holds_above_threshold],
-        position_context={"ROST_US_EQ": {"pnl_pct": 1.0, "value_gbp": 250.0, "held_hours": 30.0}},
+        position_context={"ROST_US_EQ": {"pnl_pct": 1.0, "value_gbp": 150.0, "held_hours": 30.0}},
         cycle_id="scheduled_20260325_163001",
     )
     orchestrator._apply_deterministic_exit_overrides(
         decisions=[immediate_cleanup_even_if_new],
-        position_context={"ORCL_US_EQ": {"pnl_pct": 1.0, "value_gbp": 150.0, "held_hours": 8.0}},
+        position_context={"ORCL_US_EQ": {"pnl_pct": 1.0, "value_gbp": 80.0, "held_hours": 8.0}},
         cycle_id="scheduled_20260325_120001",
     )
 
@@ -832,17 +832,17 @@ def test_run_cycle_cleanup_sell_skips_strategy_and_uses_live_quantity(monkeypatc
     orchestrator.settings._config.setdefault("opportunity", {})["enabled"] = False
 
     orchestrator._get_portfolio_state = lambda: {
-        "cash": 9850.0,
+        "cash": 9920.0,
         "total_value": 10000.0,
-        "invested": 150.0,
+        "invested": 80.0,
         "positions": [
                 {
                     "ticker": "VRTX_US_EQ",
                     "quantity": 5,
-                    "currentPrice": 30.0,
-                    "averagePrice": 29.0,
-                    "value_gbp": 150.0,
-                    "pnl_gbp": 5.0,
+                    "currentPrice": 16.0,
+                    "averagePrice": 15.8,
+                    "value_gbp": 80.0,
+                    "pnl_gbp": 1.0,
                 }
             ],
         "num_positions": 1,

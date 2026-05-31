@@ -202,6 +202,175 @@ export const insightsApi = {
   },
 }
 
+export interface LearningRunSummary {
+  id: number
+  run_id: string
+  dataset_version: string
+  model_kind: string
+  status: string
+  rows: number
+  checksum: string | null
+  created_at: string | null
+  label_distribution: Record<string, number>
+  artifact_paths: Record<string, string>
+}
+
+export interface LearningRunDetail {
+  run: LearningRunSummary
+  metrics: Record<string, any> | null
+  insight_files: string[]
+  report_available: boolean
+}
+
+export const learningApi = {
+  listRuns: async (limit = 25): Promise<{ runs: LearningRunSummary[]; count: number }> => {
+    const response = await api.get('/api/learning/runs', { params: { limit } })
+    return response.data
+  },
+  getRun: async (runId: string): Promise<LearningRunDetail> => {
+    const response = await api.get(`/api/learning/runs/${runId}`)
+    return response.data
+  },
+  reportUrl: (runId: string): string => `${API_BASE_URL}/api/learning/runs/${runId}/report`,
+  insightUrl: (runId: string, filename: string): string =>
+    `${API_BASE_URL}/api/learning/runs/${runId}/insights/${filename}`,
+  getAudit: async (runId: string): Promise<Record<string, any>> => {
+    const response = await api.get(`/api/learning/runs/${runId}/audit`)
+    return response.data
+  },
+  listExports: async (limit = 25): Promise<{ exports: LearningExportSummary[]; count: number }> => {
+    const response = await api.get('/api/learning/exports', { params: { limit } })
+    return response.data
+  },
+  listDatasetVersions: async (): Promise<{ versions: string[]; default: string | null }> => {
+    const response = await api.get('/api/learning/datasets/versions')
+    return response.data
+  },
+  getDatasetManifest: async (version: string): Promise<LearningDatasetManifest> => {
+    const response = await api.get(`/api/learning/datasets/${version}`)
+    return response.data
+  },
+  previewDataset: async (
+    version: string,
+    artifact: string,
+    params?: { offset?: number; limit?: number },
+  ): Promise<LearningDatasetPreview> => {
+    const response = await api.get(`/api/learning/datasets/${version}/preview/${artifact}`, { params })
+    return response.data
+  },
+  getDatasetJson: async (version: string, artifact: 'schema' | 'splits'): Promise<Record<string, unknown>> => {
+    const response = await api.get(`/api/learning/datasets/${version}/json/${artifact}`)
+    return response.data
+  },
+  getLatestAudit: async (): Promise<Record<string, unknown>> => {
+    const response = await api.get('/api/learning/audit/latest')
+    return response.data
+  },
+  datasetDownloadUrl: (version: string, filename: string): string =>
+    `${API_BASE_URL}/api/learning/datasets/${version}/download/${filename}`,
+  getLatestEvaluation: async (): Promise<LearningEvaluationSummary> => {
+    const response = await api.get('/api/learning/evaluation/latest')
+    return response.data
+  },
+  evaluationReportUrl: (runId: string): string =>
+    `${API_BASE_URL}/api/learning/evaluation/${runId}/report`,
+  getShadowSummary: async (days = 30): Promise<LearningShadowSummary> => {
+    const response = await api.get('/api/learning/shadow/summary', { params: { days } })
+    return response.data
+  },
+  getShadowDisagreements: async (limit = 50, days = 30): Promise<{ disagreements: LearningShadowDisagreement[]; count: number }> => {
+    const response = await api.get('/api/learning/shadow/disagreements', { params: { limit, days } })
+    return response.data
+  },
+}
+
+export interface LearningExportSummary {
+  id: number
+  run_id: string
+  dataset_version: string
+  status: string
+  rows: number
+  text_corpus_rows: number
+  checksum: string | null
+  duration_sec: number | null
+  created_at: string | null
+  artifact_paths: Record<string, string>
+}
+
+export interface LearningDatasetFileInfo {
+  exists: boolean
+  path: string
+  kind: string
+  size_bytes?: number
+  modified_at?: string
+}
+
+export interface LearningDatasetManifest {
+  version: string
+  parquet_dir: string
+  exports_dir: string
+  artifacts: Record<string, LearningDatasetFileInfo>
+  extras: Record<string, LearningDatasetFileInfo>
+  schema: Record<string, unknown> | null
+  audit_files: string[]
+}
+
+export interface LearningDatasetPreview {
+  artifact: string
+  version: string
+  total_rows: number
+  offset: number
+  limit: number
+  columns?: string[]
+  rows: Array<Record<string, unknown>>
+}
+
+export interface LearningEvaluationSummary {
+  run_id: string
+  dataset_version?: string
+  status?: string
+  n_rows?: number
+  closed_trades?: number
+  created_at?: string | null
+  metrics?: Record<string, unknown>
+  gates?: Record<string, unknown>
+  report_available?: boolean
+  policies?: Record<string, Record<string, unknown>>
+}
+
+export interface LearningShadowSummary {
+  days: number
+  span_days?: number
+  total_scores: number
+  by_policy: Record<string, {
+    policy_id: string
+    n: number
+    matured: number
+    champion_bad: number
+    veto_correct: number
+    veto_missed_winner: number
+    disagreements: number
+  }>
+}
+
+export interface LearningShadowDisagreement {
+  cycle_id: string
+  ticker: string
+  decision_ts: string | null
+  policy_id: string
+  champion_action: string
+  recommended_action: string
+  scores?: Record<string, unknown>
+  outcome?: Record<string, unknown> | null
+}
+
+export const memoryApi = {
+  similar: async (q: string, params?: { ticker?: string; regime?: string; k?: number }) => {
+    const response = await api.get('/api/memory/similar', { params: { q, ...params } })
+    return response.data as { query: string; hits: Array<Record<string, unknown>>; count: number }
+  },
+}
+
 // Events API
 export const eventsApi = {
   list: async (params?: {

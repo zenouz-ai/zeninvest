@@ -1,40 +1,199 @@
-# Architecture
+# Solution Architecture
 
-ZenInvest is an orchestrated trading research pipeline built around a
-multi-model committee and deterministic execution guardrails.
+> Public technical architecture for the multi-LLM investment agent, including pipeline flow, state machine, data model, and dashboard integration.
 
-## Core Flow
+## Purpose
+
+This is the public architecture overview for ZenInvest. It explains how data moves from external sources through screening, strategy, moderation, risk, execution, journaling, and dashboard surfaces. It intentionally omits private deployment topology and operator-only infrastructure specifics.
+
+## Repository Layout
+
+- `src/` — orchestrator loop, agents, scheduler, DB models, utilities
+- `dashboard/backend/` — FastAPI routes and services for monitoring, chat, and operator workflows
+- `dashboard/frontend/` — React/Vite UI for dashboard and public-safe surfaces
+- `tests/` — unit and integration coverage
+- `config/` — default configuration and `.env` examples
+- `docs/` — technical and product documentation
+
+## System Overview
 
 ```text
-Data collection
-  -> universe screening
-  -> strategy synthesis
-  -> moderation review
-  -> deterministic risk checks
-  -> opportunity prioritisation
-  -> execution and stop management
-  -> run / order / outcome persistence
+Scheduler
+  -> Orchestrator
+      -> Step 1: Data + enrichment
+      -> Step 2: Strategy synthesis
+      -> Step 3: Moderation / adversarial review
+      -> Step 4: Deterministic risk rules
+      -> Step 5: Opportunity ranking / queueing
+      -> Step 6: Execution + stop management
+      -> Step 7: Journaling, reports, dashboard data, notifications
 ```
 
-## Main Subsystems
+## Data Flow
 
-- **Market data**: price, fundamentals, and macro context used for screening
-  and strategy prompts
-- **Strategy**: proposes actions and allocations
-- **Moderation**: challenges or supports the proposed action
-- **Risk**: deterministic guardrails that remain authoritative
-- **Execution**: broker-facing order, cancel, and stop workflows
-- **Dashboard**: authenticated operator views plus a sanitized public surface
-- **Reporting**: snapshots, trade outcomes, run history, and cost tracking
+### External sources
 
-## Persistence
+- `yfinance` for OHLCV, price context, and baseline company data
+- `Finnhub` for analyst recommendations, insider sentiment, and macro/news enrichment
+- `Alpha Vantage` for news sentiment and sector data
+- Search providers and SEC filing search for on-demand research
+- Trading 212 practice/demo endpoints for broker execution and portfolio truth
 
-The project uses SQLite by default for local and single-operator workflows.
-Application state covers orders, portfolio snapshots, run metadata, strategy
-decisions, moderation outcomes, risk decisions, and related audit tables.
+### Pipeline stages
+
+1. **Data fetcher**
+   - pulls market, indicator, fundamental, macro, and enrichment inputs
+   - applies ticker normalization and caching
+2. **Universe screener**
+   - rotates through candidate names
+   - balances sector and cap-tier representation
+   - honors cooldown and review rules
+3. **Strategy engine**
+   - combines sub-strategy signals such as momentum, mean reversion, factor inputs, and research context
+   - produces thesis, conviction, and allocation suggestions
+4. **Moderation panel**
+   - skeptical review and independent risk framing
+   - can use research tools when enabled
+5. **Risk manager**
+   - deterministic hard rules
+   - final veto on sizing or execution
+6. **Opportunity optimizer**
+   - ranks approved ideas and manages queued opportunities
+7. **Execution and stop management**
+   - places broker orders
+   - maintains stop-loss adjustments and pending-order cleanup
+8. **Persistence and reporting**
+   - records runs, decisions, moderation, risk, orders, costs, outcomes, and dashboard events
+
+## State Machine
+
+The orchestrator uses a three-state control model:
+
+- `ACTIVE` — normal operation
+- `CAUTIOUS` — reduced risk posture, tighter sizing and BUY restrictions
+- `HALTED` — emergency stop and capital-protection posture
+
+Transitions are driven by deterministic drawdown and hardening rules. Practice-mode workflows can relax some behaviors for safe testing, but the control model remains central to system design.
+
+## Cost Degradation Chain
+
+The system tracks model and research budgets and degrades in a controlled order rather than failing unpredictably.
+
+Example high-level sequence:
+
+```text
+FULL
+ -> one moderator unavailable
+ -> both moderators unavailable
+ -> strategy synthesis unavailable
+ -> HALTED / no autonomous progression
+```
+
+This allows the system to keep producing bounded outputs when one provider is unavailable or over budget while still preventing unsafe execution.
+
+## Dashboard and Public Surfaces
+
+The dashboard backend reads the agent's persistence layer and exposes:
+
+- authenticated operator APIs
+- sanitized public APIs under `/api/public/*`
+- real-time activity via SSE
+- chat/session workflows
+- roadmap and evolution-planning surfaces
+
+The frontend presents both operator pages and public-safe projections. Public views are intentionally capped, sanitized, or preview-only where necessary.
+
+## Key Subsystems
+
+### Strategy and moderation
+
+- strategy synthesis is multi-factor and model-assisted
+- moderation introduces adversarial review rather than simple agreement checking
+- model roles are intentionally differentiated so the committee produces tension, not duplicated opinions
+
+### Risk and execution
+
+- risk rules are deterministic and final
+- broker execution supports market, limit, stop, and cancellation workflows
+- execution metadata is persisted for later review, attribution, and audit
+
+### Opportunity queue
+
+- opportunities can be scored and queued across cycles
+- queue state persists so high-quality setups are not lost when capital or risk posture blocks immediate execution
+
+### Reporting and audit
+
+- decisions, moderation, research, costs, runs, and trade outcomes are persisted
+- chat/session flows have their own trace and action ledgers
+- dashboard reporting is built from these persisted tables rather than ephemeral in-memory state
+
+## Persistence Layer
+
+Important table groups include:
+
+- `runs`, `events_log`, `portfolio_snapshots`
+- `strategy_decisions`, `moderation_logs`, `risk_decisions`
+- `orders`, `stop_loss_adjustments`, `trade_outcomes`
+- `opportunity_score_snapshots`, `opportunity_queue`
+- `cost_logs`, `api_logs`, `research_logs`
+- `chat_sessions`, `chat_turns`, `chat_actions`, `chat_research_logs`, `chat_workflow_steps`
+
+The dashboard also stores dashboard-specific workflow tables for change-planning and operational review flows without overloading trading-session tables.
+
+## Technology Stack
+
+- Python + Poetry for backend/orchestrator code
+- SQLite for the default local persistence model
+- FastAPI for dashboard/backend APIs
+- React + Vite for the frontend
+- APScheduler for scheduled cycles and reports
+- Pytest for automated validation
+- Docker Compose for local/runtime multi-service packaging
 
 ## Public vs Private
 
-The product includes both public-safe and operator-authenticated surfaces. This
-public mirror keeps only the high-level architecture needed to understand the
-system; deployment topology and operator runbooks are intentionally omitted.
+The public mirror includes:
+
+- architecture and code structure
+- pipeline behavior
+- state machine and cost-degradation concepts
+- public/private API boundary in principle
+- dashboard and persistence model
+
+The public mirror intentionally omits:
+
+- private domains and ingress configuration
+- operator-only infrastructure topology
+- mirror token workflows
+- deployment runbooks and environment-specific production details
+
+## Near-Term Extensions
+
+Active and upcoming directions visible from the architecture:
+
+- richer learning-loop calibration
+- more adaptive regime-aware weighting
+- continued evolution-planner branch workflows
+- additional research routing sophistication
+- incremental execution-quality and attribution improvements
+
+### Agentic maturity (operability)
+
+A set of low-cost operability slices, each tied to a measured baseline and deliberately avoiding new infrastructure:
+
+- per-phase cycle timing captured into the run record so latency work targets the real bottleneck
+- prompt versioning/hashing across the whole committee (file-based templates, not a heavyweight registry)
+- enforcement of the already-defined chat and embedding budget caps
+- a durable research cache replacing an in-memory one that resets on restart
+- parallel moderation, gated on the timing evidence
+
+The learning, evaluation, and memory surfaces remain strictly shadow/research-only and do not influence live orders; promotion to any live influence is gated by evidence thresholds and explicit operator sign-off.
+
+## Related Docs
+
+- [Local Setup](LOCAL_SETUP.md)
+- [Dashboard](DASHBOARD.md)
+- [Agentic Research](AGENTIC_RESEARCH.md)
+- [Conversational Trading Workflow](CONVERSATIONAL_TRADING_WORKFLOW.md)
+- [Sophistication Roadmap](SOPHISTICATION_ROADMAP.md)

@@ -348,7 +348,7 @@ class TestSingleTickerRunner:
         result = runner.run(ticker_t212="AAPL_US_EQ", intent=intent)
 
         assert result.status == "rejected"
-        assert result.rejection_reason == "Order value £300.00 is below the minimum order size of £300.00"
+        assert result.rejection_reason == "Order value £300.00 is below the minimum order size of £200.00"
 
     def test_force_buy_bypasses_risk_veto(self, mock_runner):
         """Force buy should override risk REJECT and proceed to execution."""

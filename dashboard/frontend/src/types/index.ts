@@ -167,6 +167,9 @@ export interface Position {
   profit_lock_required_price_gbp?: number | null
   profit_lock_stop_price_gbp?: number | null
   profit_lock_protected_qty?: number | null
+  held_hours?: number | null
+  held_days?: number | null
+  profit_per_day_pct?: number | null
 }
 
 export interface PortfolioSnapshot {

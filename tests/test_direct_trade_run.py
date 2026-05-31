@@ -79,7 +79,7 @@ class TestDirectTradeRunner:
         assert result.strategy_decision is None
         call = mocks["order_manager"].execute_market_order.call_args.kwargs
         assert call["strategy"] == "slack_direct"
-        assert call["target_amount_gbp"] == pytest.approx(300.0)
+        assert call["target_amount_gbp"] == pytest.approx(200.0)
 
     def test_direct_sell_uses_full_position_when_no_quantity_given(self, direct_runner):
         runner, mocks = direct_runner
