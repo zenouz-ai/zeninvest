@@ -31,6 +31,12 @@ def shadow_env(monkeypatch):
         )(),
     )
     Base.metadata.create_all(bind=engine)
+    session = get_session()
+    try:
+        session.query(DecisionShadowScore).delete()
+        session.commit()
+    finally:
+        session.close()
     yield
     session = get_session()
     try:

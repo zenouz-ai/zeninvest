@@ -61,6 +61,26 @@ The refresh lane keeps the system grounded in broker truth between full strategy
 - Real-time operator dashboard, live activity feed, and conversational trading flows
 - Walk-forward backtesting and promotion-oriented validation tooling
 
+## Tech Stack
+
+- **Language & runtime:** Python `3.11`, Poetry, `asyncio` + `httpx`
+- **Backend & orchestration:** FastAPI, APScheduler, SQLAlchemy + SQLite, Alembic
+- **Committee LLMs:** Anthropic Claude (strategy), OpenAI GPT (skeptic), Google Gemini (risk)
+- **Market data & research:** yfinance, Finnhub, Alpha Vantage, Brave, Tavily, SEC EDGAR
+- **Learning & memory (research-only):** LightGBM, scikit-learn, SHAP, PyArrow, vector index, Neo4j + Graphiti, d3rlpy + gymnasium
+- **Frontend:** React 18 + TypeScript, Vite, Tailwind, Recharts/D3, Mermaid
+- **Infra & ops:** Docker Compose, nginx, Slack + SMTP, Rich logging
+
+## Innovation & Research
+
+ZenInvest is built to learn from its own track record without ever letting unproven models touch live capital. Three research tracks are maturing behind hard gates — each forward-looking, each with a kill switch and a documented fallback.
+
+- **Embedded learning loop (shadow → gated).** A dual-track pipeline turns every decision and outcome into training data: tabular ML (conviction calibration, win/loss/stall scoring) plus a champion-vs-challenger evaluation harness. It runs strictly read-only; any influence on live conviction or sizing is gated on a large body of closed trades plus operator sign-off.
+- **Knowledge graphs & memory.** Journal embeddings, a decision graph, and temporal episodes let the committee ask *"what did we think last time this setup appeared?"* — evidence-only retrieval that surfaces prior theses and their outcomes, never an auto-executed signal.
+- **Parallel processing.** The committee is being re-architected to run moderation models concurrently, gated on per-phase timing instrumentation, to cut cycle latency without weakening adversarial review.
+
+Architecture details: [Architecture](docs/ARCHITECTURE.md). Delivery status: [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md).
+
 ## API Ecosystem
 
 | API | Role | Why It Matters |
@@ -99,6 +119,19 @@ ZenInvest ships with a broad dashboard surface spanning portfolio, runs, univers
 Operator routes are authenticated; public routes are intentionally sanitized. Slack extends the same control surface into conversational trading with multi-turn review, confirm, reject, cancel, and planner-backed trade flows.
 
 Interface docs: [Dashboard](docs/DASHBOARD.md) and [Conversational Trading Workflow](docs/CONVERSATIONAL_TRADING_WORKFLOW.md)
+
+## Repository Layout
+
+The public mirror keeps stable entrypoints at the root while separating source, documentation, branding, tests, and generated local output:
+
+- `src/` — agent runtime, orchestrator, scheduler, data models, backtesting, and research-only learning code
+- `dashboard/` — FastAPI operator API and React/Vite frontend
+- `docs/` — public-safe architecture, setup, dashboard, research, roadmap, and workflow documentation
+- `config/` — default settings and `.env` example for local runs
+- `branding/` — public ZenInvest visual identity used by the README and dashboard
+- `tests/` — pytest coverage using in-memory SQLite by default
+- `backtests/` — backtest configs and scenarios; generated results belong under `backtests/results/`
+- `data/`, `logs/`, `journals/`, and `backtests/results/` — generated local/runtime outputs; do not commit them
 
 ## Quick Start
 

@@ -2,6 +2,7 @@
 __pycache__/
 *.py[codz]
 *$py.class
+.DS_Store
 
 # C extensions
 *.so
@@ -215,6 +216,7 @@ __marimo__/
 !.env.example
 logs/
 /data/
+backtests/results/
 *.db
 !fixtures/dev/investment_agent.db
 fixtures/dev/.tmp.db

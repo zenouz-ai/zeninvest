@@ -10,6 +10,8 @@
 - local setup instructions
 - public CI and security workflows
 - sanitized architecture and product documentation
+- public branding assets used by the README and dashboard
+- backtest configs and scenarios
 
 ## Intentionally omitted
 
@@ -18,6 +20,17 @@
 - mirror token workflows
 - operator-only operations docs
 - internal launch planning and private process notes
+- generated runtime outputs such as `data/`, `logs/`, `journals/`, and `backtests/results/`
+
+## Top-level structure
+
+- `src/` contains the agent runtime, orchestrator, scheduler, data models, backtesting, and research-only learning code.
+- `dashboard/` contains the FastAPI operator API and React/Vite frontend.
+- `docs/` contains public-safe architecture, setup, dashboard, research, roadmap, and workflow documentation.
+- `config/` contains default settings and the `.env` example for local runs.
+- `branding/` contains public ZenInvest visual identity assets.
+- `tests/` contains the pytest suite, configured to use in-memory SQLite by default.
+- `backtests/` contains reusable configs and scenarios; generated results stay local under `backtests/results/`.
 
 ## Why the split exists
 

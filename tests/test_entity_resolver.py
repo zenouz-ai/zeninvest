@@ -1,4 +1,9 @@
-"""Tests for EntityResolver — pronoun, ordinal, winner/loser, portfolio scope."""
+"""Tests for EntityResolver — pronoun, ordinal, winner/loser, portfolio scope.
+
+Resolution cases are consolidated into context-aware tables: each row supplies
+the message, SessionContext kwargs, resolve() kwargs, and the attributes it
+asserts. Confirmation-prompt and audit-detail cases keep dedicated tests.
+"""
 
 import os
 
@@ -16,196 +21,124 @@ def resolver():
 
 
 # ---------------------------------------------------------------------------
-# Explicit tickers (Layer 1)
+# Successful resolution across layers 1-4
+# (explicit / pronoun / ordinal / winner-loser). "_min_confidence" is an
+# optional floor; all other keys are exact attribute assertions.
 # ---------------------------------------------------------------------------
 
+RESOLUTION_CASES = [
+    # Layer 1 — explicit tickers (override pronouns, high confidence)
+    ("buy something", {}, {"explicit_tickers": ["AAPL_US_EQ"]},
+     {"tickers": ["AAPL_US_EQ"], "method": "explicit", "_min_confidence": 0.90}),
+    ("buy it", {"last_subject_tickers": ["MSFT_US_EQ"]}, {"explicit_tickers": ["AAPL_US_EQ"]},
+     {"tickers": ["AAPL_US_EQ"], "method": "explicit"}),
+    # Layer 2 — pronouns
+    ("buy it", {"last_subject_tickers": ["AAPL_US_EQ"]}, {},
+     {"tickers": ["AAPL_US_EQ"], "method": "pronoun", "_min_confidence": 0.80}),
+    ("sell that stock", {"last_subject_tickers": ["NVDA_US_EQ"]}, {},
+     {"tickers": ["NVDA_US_EQ"]}),
+    ("review this one", {"last_subject_tickers": ["TSLA_US_EQ"]}, {},
+     {"tickers": ["TSLA_US_EQ"]}),
+    ("compare both", {"last_subject_tickers": ["AAPL_US_EQ", "MSFT_US_EQ"]}, {},
+     {"tickers": ["AAPL_US_EQ", "MSFT_US_EQ"], "method": "pronoun"}),
+    ("sell them", {"last_subject_tickers": ["NVDA_US_EQ", "AMD_US_EQ"]}, {},
+     {"tickers": ["NVDA_US_EQ", "AMD_US_EQ"]}),
+    # Layer 3 — ordinals (incl. fallback to selection tickers)
+    ("buy the first one", {"last_subject_tickers": ["AAPL_US_EQ", "MSFT_US_EQ"]}, {},
+     {"tickers": ["AAPL_US_EQ"], "method": "ordinal"}),
+    ("sell the second one", {"last_subject_tickers": ["AAPL_US_EQ", "MSFT_US_EQ"]}, {},
+     {"tickers": ["MSFT_US_EQ"], "method": "ordinal"}),
+    ("buy the first one",
+     {"last_subject_tickers": [], "last_selection_tickers": ["GOOG_US_EQ", "META_US_EQ"]}, {},
+     {"tickers": ["GOOG_US_EQ"]}),
+    # Layer 4 — winner / loser
+    ("buy the winner", {"last_selection_result": {"winner": "NVDA_US_EQ", "loser": "AMD_US_EQ"}}, {},
+     {"tickers": ["NVDA_US_EQ"], "method": "winner", "_min_confidence": 0.85}),
+    ("buy the stronger one", {"last_selection_result": {"winner": "AAPL_US_EQ"}}, {},
+     {"tickers": ["AAPL_US_EQ"]}),
+    ("sell the loser", {"last_selection_result": {"winner": "NVDA_US_EQ", "loser": "AMD_US_EQ"}}, {},
+     {"tickers": ["AMD_US_EQ"], "method": "loser"}),
+    ("buy the best", {"last_selection_result": {"winner": "GOOG_US_EQ"}}, {},
+     {"tickers": ["GOOG_US_EQ"]}),
+]
 
-class TestExplicitTickers:
-    def test_explicit_tickers_returned_directly(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("buy something", ctx, explicit_tickers=["AAPL_US_EQ"])
-        assert result.tickers == ["AAPL_US_EQ"]
-        assert result.confidence >= 0.90
-        assert result.method == "explicit"
 
-    def test_explicit_tickers_override_pronouns(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["MSFT_US_EQ"])
-        result = resolver.resolve("buy it", ctx, explicit_tickers=["AAPL_US_EQ"])
-        assert result.tickers == ["AAPL_US_EQ"]
-        assert result.method == "explicit"
-
-
-# ---------------------------------------------------------------------------
-# Pronoun resolution (Layer 2)
-# ---------------------------------------------------------------------------
-
-
-class TestPronounResolution:
-    def test_it_resolves_to_last_subject(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["AAPL_US_EQ"])
-        result = resolver.resolve("buy it", ctx)
-        assert result.tickers == ["AAPL_US_EQ"]
-        assert result.method == "pronoun"
-        assert result.confidence >= 0.80
-
-    def test_that_stock_resolves(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["NVDA_US_EQ"])
-        result = resolver.resolve("sell that stock", ctx)
-        assert result.tickers == ["NVDA_US_EQ"]
-
-    def test_this_one_resolves(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["TSLA_US_EQ"])
-        result = resolver.resolve("review this one", ctx)
-        assert result.tickers == ["TSLA_US_EQ"]
-
-    def test_it_without_context_asks_confirmation(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("buy it", ctx)
-        assert result.tickers == []
-        assert result.needs_confirmation is True
-        assert "which stock" in result.confirmation_prompt.lower()
-
-    def test_both_resolves_to_two(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["AAPL_US_EQ", "MSFT_US_EQ"])
-        result = resolver.resolve("compare both", ctx)
-        assert result.tickers == ["AAPL_US_EQ", "MSFT_US_EQ"]
-        assert result.method == "pronoun"
-
-    def test_them_resolves_to_two(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["NVDA_US_EQ", "AMD_US_EQ"])
-        result = resolver.resolve("sell them", ctx)
-        assert result.tickers == ["NVDA_US_EQ", "AMD_US_EQ"]
-
-    def test_both_without_enough_context(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["AAPL_US_EQ"])
-        result = resolver.resolve("sell both", ctx)
-        assert result.tickers == []
-        assert result.needs_confirmation is True
+@pytest.mark.parametrize("message,ctx_kwargs,resolve_kwargs,expected", RESOLUTION_CASES)
+def test_resolution(resolver, message, ctx_kwargs, resolve_kwargs, expected):
+    result = resolver.resolve(message, SessionContext(**ctx_kwargs), **resolve_kwargs)
+    for attr, value in expected.items():
+        if attr == "_min_confidence":
+            assert result.confidence >= value
+        else:
+            assert getattr(result, attr) == value, f"{attr} mismatch for {message!r}"
 
 
 # ---------------------------------------------------------------------------
-# Ordinal resolution (Layer 3)
+# Unresolved: missing context / no references -> resolved is False
 # ---------------------------------------------------------------------------
 
 
-class TestOrdinalResolution:
-    def test_first_one(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["AAPL_US_EQ", "MSFT_US_EQ"])
-        result = resolver.resolve("buy the first one", ctx)
-        assert result.tickers == ["AAPL_US_EQ"]
-        assert result.method == "ordinal"
-
-    def test_second_one(self, resolver):
-        ctx = SessionContext(last_subject_tickers=["AAPL_US_EQ", "MSFT_US_EQ"])
-        result = resolver.resolve("sell the second one", ctx)
-        assert result.tickers == ["MSFT_US_EQ"]
-        assert result.method == "ordinal"
-
-    def test_first_without_context_unresolved(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("buy the first one", ctx)
-        assert result.resolved is False
-
-    def test_ordinal_falls_back_to_selection_tickers(self, resolver):
-        ctx = SessionContext(
-            last_subject_tickers=[],
-            last_selection_tickers=["GOOG_US_EQ", "META_US_EQ"],
-        )
-        result = resolver.resolve("buy the first one", ctx)
-        assert result.tickers == ["GOOG_US_EQ"]
+@pytest.mark.parametrize(
+    "message,ctx_kwargs",
+    [
+        ("buy the first one", {}),                    # ordinal, no context
+        ("buy the winner", {}),                       # winner, no selection result
+        ("", {}),                                     # empty
+        ("what is the market doing today", {}),       # no references
+    ],
+)
+def test_unresolved(resolver, message, ctx_kwargs):
+    assert resolver.resolve(message, SessionContext(**ctx_kwargs)).resolved is False
 
 
-# ---------------------------------------------------------------------------
-# Winner / loser resolution (Layer 4)
-# ---------------------------------------------------------------------------
+def test_it_without_context_asks_confirmation(resolver):
+    result = resolver.resolve("buy it", SessionContext())
+    assert result.tickers == []
+    assert result.needs_confirmation is True
+    assert "which stock" in result.confirmation_prompt.lower()
 
 
-class TestWinnerLoserResolution:
-    def test_the_winner(self, resolver):
-        ctx = SessionContext(last_selection_result={"winner": "NVDA_US_EQ", "loser": "AMD_US_EQ"})
-        result = resolver.resolve("buy the winner", ctx)
-        assert result.tickers == ["NVDA_US_EQ"]
-        assert result.method == "winner"
-        assert result.confidence >= 0.85
-
-    def test_the_stronger_one(self, resolver):
-        ctx = SessionContext(last_selection_result={"winner": "AAPL_US_EQ"})
-        result = resolver.resolve("buy the stronger one", ctx)
-        assert result.tickers == ["AAPL_US_EQ"]
-
-    def test_the_loser(self, resolver):
-        ctx = SessionContext(last_selection_result={"winner": "NVDA_US_EQ", "loser": "AMD_US_EQ"})
-        result = resolver.resolve("sell the loser", ctx)
-        assert result.tickers == ["AMD_US_EQ"]
-        assert result.method == "loser"
-
-    def test_winner_without_selection_result(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("buy the winner", ctx)
-        assert result.resolved is False
-
-    def test_the_best(self, resolver):
-        ctx = SessionContext(last_selection_result={"winner": "GOOG_US_EQ"})
-        result = resolver.resolve("buy the best", ctx)
-        assert result.tickers == ["GOOG_US_EQ"]
+def test_both_without_enough_context_asks_confirmation(resolver):
+    result = resolver.resolve("sell both", SessionContext(last_subject_tickers=["AAPL_US_EQ"]))
+    assert result.tickers == []
+    assert result.needs_confirmation is True
 
 
 # ---------------------------------------------------------------------------
-# Portfolio scope (Layer 5)
+# Portfolio scope (Layer 5): sector / threshold extraction + confirmation
 # ---------------------------------------------------------------------------
 
 
-class TestPortfolioScope:
-    def test_all_tech_stocks(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("sell all tech stocks", ctx)
-        assert result.method == "portfolio_scope"
-        assert result.needs_confirmation is True
-        assert "Technology" in result.confirmation_prompt
-        assert result.audit["sector"] == "Technology"
-
-    def test_all_healthcare_positions(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("liquidate all healthcare positions", ctx)
-        assert result.audit["sector"] == "Healthcare"
-
-    def test_everything_under_200(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("sell everything under £200", ctx)
-        assert result.method == "portfolio_scope"
-        assert result.needs_confirmation is True
-        assert result.audit["threshold"] == 200.0
-
-    def test_everything_below_500(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("liquidate everything below $500", ctx)
-        assert result.audit["threshold"] == 500.0
+@pytest.mark.parametrize(
+    "message,audit_key,audit_value",
+    [
+        ("sell all tech stocks", "sector", "Technology"),
+        ("liquidate all healthcare positions", "sector", "Healthcare"),
+        ("sell everything under £200", "threshold", 200.0),
+        ("liquidate everything below $500", "threshold", 500.0),
+    ],
+)
+def test_portfolio_scope(resolver, message, audit_key, audit_value):
+    result = resolver.resolve(message, SessionContext())
+    assert result.method == "portfolio_scope"
+    assert result.needs_confirmation is True
+    assert result.audit[audit_key] == audit_value
+    if audit_key == "sector":
+        assert audit_value in result.confirmation_prompt
 
 
 # ---------------------------------------------------------------------------
-# No resolution
+# ResolvedEntities.resolved property
 # ---------------------------------------------------------------------------
 
 
-class TestNoResolution:
-    def test_empty_message(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("", ctx)
-        assert result.resolved is False
-
-    def test_no_references(self, resolver):
-        ctx = SessionContext()
-        result = resolver.resolve("what is the market doing today", ctx)
-        assert result.resolved is False
-
-    def test_resolved_property(self, resolver):
-        r = ResolvedEntities(tickers=["A"], confidence=0.9)
-        assert r.resolved is True
-
-    def test_not_resolved_empty_tickers_no_confirmation(self, resolver):
-        r = ResolvedEntities(tickers=[], confidence=0.5)
-        assert r.resolved is False
-
-    def test_resolved_with_needs_confirmation(self, resolver):
-        r = ResolvedEntities(tickers=[], confidence=0.75, needs_confirmation=True)
-        assert r.resolved is True
+@pytest.mark.parametrize(
+    "kwargs,is_resolved",
+    [
+        ({"tickers": ["A"], "confidence": 0.9}, True),
+        ({"tickers": [], "confidence": 0.5}, False),
+        ({"tickers": [], "confidence": 0.75, "needs_confirmation": True}, True),
+    ],
+)
+def test_resolved_property(kwargs, is_resolved):
+    assert ResolvedEntities(**kwargs).resolved is is_resolved

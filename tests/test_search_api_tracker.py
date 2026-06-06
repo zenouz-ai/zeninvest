@@ -60,7 +60,11 @@ def test_monthly_count_empty_db(db_session):
 
 def test_monthly_count_current_month(db_session):
     _add_log(db_session, SERVICE_BRAVE_SEARCH, days_ago=0)
-    _add_log(db_session, SERVICE_BRAVE_SEARCH, days_ago=1)
+    # days_ago=0 again rather than 1: on the first of the month a 1-day offset
+    # lands in the previous calendar month and is (correctly) excluded by the
+    # current-month count, which made this assertion flaky on month boundaries.
+    # Previous-month exclusion is covered by test_monthly_count_ignores_previous_month.
+    _add_log(db_session, SERVICE_BRAVE_SEARCH, days_ago=0)
     _add_log(db_session, SERVICE_TAVILY, days_ago=0)  # Different service
     assert get_search_api_monthly_count(SERVICE_BRAVE_SEARCH) == 2
     assert get_search_api_monthly_count(SERVICE_TAVILY) == 1

@@ -8,12 +8,14 @@ This is the public architecture overview for ZenInvest. It explains how data mov
 
 ## Repository Layout
 
-- `src/` — orchestrator loop, agents, scheduler, DB models, utilities
-- `dashboard/backend/` — FastAPI routes and services for monitoring, chat, and operator workflows
-- `dashboard/frontend/` — React/Vite UI for dashboard and public-safe surfaces
-- `tests/` — unit and integration coverage
-- `config/` — default configuration and `.env` examples
-- `docs/` — technical and product documentation
+- `src/` — agent runtime, orchestrator, scheduler, DB models, utilities, backtesting, and research-only learning code
+- `dashboard/` — FastAPI routes/services plus React/Vite UI for dashboard and public-safe surfaces
+- `docs/` — public-safe architecture, setup, dashboard, research, roadmap, and workflow documentation
+- `config/` — default configuration and `.env` example
+- `branding/` — public ZenInvest visual identity used by README/dashboard surfaces
+- `tests/` — unit and integration coverage using in-memory SQLite by default
+- `backtests/` — reusable configs and scenarios; generated results stay local under `backtests/results/`
+- `data/`, `logs/`, `journals/`, and `backtests/results/` — generated local/runtime outputs that are intentionally not committed
 
 ## System Overview
 
