@@ -93,6 +93,8 @@ FULL
 
 This allows the system to keep producing bounded outputs when one provider is unavailable or over budget while still preventing unsafe execution.
 
+Conversational and embedding spend have their own daily caps, tracked separately from the per-provider trading budgets (so chat or memory work cannot starve trading, and vice-versa) while still counting toward the global monthly ceiling.
+
 ## Dashboard and Public Surfaces
 
 The dashboard backend reads the agent's persistence layer and exposes:
@@ -182,13 +184,14 @@ Active and upcoming directions visible from the architecture:
 
 ### Agentic maturity (operability)
 
-A set of low-cost operability slices, each tied to a measured baseline and deliberately avoiding new infrastructure:
+A set of low-cost operability slices, each tied to a measured baseline and deliberately avoiding new infrastructure. The zero-infra slices are **delivered**:
 
 - per-phase cycle timing captured into the run record so latency work targets the real bottleneck
 - prompt versioning/hashing across the whole committee (file-based templates, not a heavyweight registry)
-- enforcement of the already-defined chat and embedding budget caps
-- a durable research cache replacing an in-memory one that resets on restart
-- parallel moderation, gated on the timing evidence
+- chat and embedding budget caps enforced as truly-separate categories (excluded from the per-provider trading budgets, still counted toward the monthly cap)
+- a durable SQLite research cache replacing the in-memory one that reset on restart (cross-cycle, restart-safe)
+- parallel moderation — the two moderators run concurrently, preserving the consensus/degradation logic, behind a kill switch
+- a failure-mode catalog with stable error codes, plus golden prompt/tool tests in CI
 
 The learning, evaluation, and memory surfaces remain strictly shadow/research-only and do not influence live orders; promotion to any live influence is gated by evidence thresholds and explicit operator sign-off.
 

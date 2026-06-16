@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -16,6 +16,10 @@ import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 import { PageBrandHeader } from '../components/PageBrandHeader'
+import { usePollingInterval } from '../hooks/usePollingInterval'
+
+const UNIVERSE_LIMIT = 200
+const UNIVERSE_POLL_MS = 120_000
 
 type UniverseRow = Instrument & {
   _investigated: boolean
@@ -84,12 +88,12 @@ export default function Universe() {
     setSearchParams(params, { replace: true })
   }, [search, sectorFilter, setSearchParams])
 
-  const fetchUniverse = async () => {
+  const fetchUniverse = useCallback(async () => {
     setError(null)
     try {
       const [listData, bubble]: [Instrument[], UniverseBubbleItem[]] = await Promise.all([
-        universeApi.list({ limit: 1000 }),
-        universeApi.getBubble({ limit: 1000 }),
+        universeApi.list({ limit: UNIVERSE_LIMIT }),
+        universeApi.getBubble({ limit: UNIVERSE_LIMIT }),
       ])
       setInstruments(listData)
       const investigated: Record<string, boolean> = {}
@@ -127,13 +131,19 @@ export default function Universe() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  const pollingActive = usePollingInterval(true, fetchUniverse)
 
   useEffect(() => {
-    fetchUniverse()
-    const interval = setInterval(fetchUniverse, 30000)
+    void fetchUniverse()
+  }, [fetchUniverse])
+
+  useEffect(() => {
+    if (!pollingActive) return
+    const interval = setInterval(() => { void fetchUniverse() }, UNIVERSE_POLL_MS)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchUniverse, pollingActive])
 
   useEffect(() => {
     if (!expandedTicker) {

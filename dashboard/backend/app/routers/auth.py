@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request, Response, status
 from src.utils.config import get_settings
 
 from ..schemas import AuthLoginRequestSchema, AuthSessionSchema
+from ..async_utils import run_blocking
 from ..services.auth import (
     SESSION_COOKIE_NAME,
     auth_me_payload,
@@ -22,6 +23,12 @@ router = APIRouter()
 settings = get_settings()
 
 
+def _issue_session_token(username: str, password: str) -> str | None:
+    if not authenticate_operator(username, password):
+        return None
+    return create_session_token(username)
+
+
 @router.post("/login", response_model=AuthSessionSchema)
 async def login_operator(payload: AuthLoginRequestSchema, request: Request, response: Response):
     """Authenticate an operator and issue a signed session cookie."""
@@ -35,10 +42,9 @@ async def login_operator(payload: AuthLoginRequestSchema, request: Request, resp
                 "DASHBOARD_INSECURE_DEV_MODE=true and use localhost only."
             ),
         )
-    if not authenticate_operator(payload.username, payload.password):
+    token = await run_blocking(_issue_session_token, payload.username, payload.password)
+    if token is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
-
-    token = create_session_token(payload.username)
     secure_cookie = is_secure_request(request) or not settings.dashboard_insecure_dev_mode
     response.set_cookie(
         key=SESSION_COOKIE_NAME,

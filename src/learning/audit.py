@@ -37,6 +37,8 @@ from src.data.models import (
     StrategyDecision,
     TradeOutcome,
 )
+from src.agents.reporting.realized_trades import count_realized_trade_outcomes
+from src.learning.dataset.decision_filters import count_dry_run_cycles, eligible_strategy_decisions_query
 from src.learning.spec import DatasetSpec, get_default_spec
 from src.utils.logger import get_logger
 
@@ -108,7 +110,7 @@ def run_audit(
             (RiskDecision, "timestamp", []),
             (OpportunityScoreSnapshot, "timestamp", []),
             (Order, "timestamp", []),
-            (TradeOutcome, "sell_timestamp", ["only filled/dry-run sells are matched"]),
+            (TradeOutcome, "sell_timestamp", ["realized fills only; excludes dry_run and unfilled stops"]),
             (PortfolioSnapshot, "timestamp", []),
             (StopLossAdjustment, "timestamp", []),
             (MacroState, "timestamp", []),
@@ -141,13 +143,13 @@ def run_audit(
 
         # Eligible decision rows for the dataset.
         eligible_rows = int(
-            session.query(func.count())
-            .select_from(StrategyDecision)
+            eligible_strategy_decisions_query(session)
             .filter(StrategyDecision.action.in_(spec.row_actions))
-            .scalar()
+            .count()
             or 0
         )
-        closed_trades = _count(session, TradeOutcome)
+        closed_trades = count_realized_trade_outcomes(session)
+        dry_run_cycles_excluded = count_dry_run_cycles(session)
 
         # Per-action distribution for context.
         per_action_rows = dict(
@@ -174,6 +176,7 @@ def run_audit(
             "row_actions": list(spec.row_actions),
             "feature_groups": list(spec.feature_groups),
             "horizons_days": list(spec.labels.horizons_days),
+            "dry_run_cycles_excluded": dry_run_cycles_excluded,
         }
 
         return AuditReport(

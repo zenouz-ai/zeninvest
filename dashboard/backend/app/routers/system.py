@@ -6,6 +6,7 @@ from src.data.database import get_session
 from src.data.models import SystemState
 from src.utils.config import get_settings
 
+from ..async_utils import run_blocking
 from ..schemas import SystemStateSchema
 from ..services.run_dispatcher import submit_cycle, submit_refresh
 
@@ -91,23 +92,15 @@ async def resume_system():
     return {"message": "System resumed", "paused": False}
 
 
-@router.post("/reset-peak")
-async def reset_peak():
-    """Reset peak to current portfolio value and transition to ACTIVE.
-    Use when CAUTIOUS was triggered incorrectly (e.g. peak inflated by data glitch).
-    """
-    if not settings.dashboard_enabled:
-        raise HTTPException(status_code=503, detail="Dashboard is disabled")
-
+def _reset_peak_sync() -> dict:
     from src.agents.execution.order_manager import OrderManager
     from src.orchestrator.state_machine import StateMachine
 
+    om = OrderManager()
     try:
-        om = OrderManager()
         state = om.get_portfolio_state()
+    finally:
         om.close()
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to get portfolio: {e}") from e
 
     if state.get("error"):
         raise HTTPException(status_code=502, detail=f"Portfolio error: {state['error']}")
@@ -139,18 +132,38 @@ async def reset_peak():
     return {"message": "Peak reset to current value", "state": "ACTIVE", "current_value": current}
 
 
+@router.post("/reset-peak")
+async def reset_peak():
+    """Reset peak to current portfolio value and transition to ACTIVE."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    try:
+        return await run_blocking(_reset_peak_sync)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to get portfolio: {e}") from e
+
+
+def _force_sell_sync(ticker: str) -> dict:
+    from src.orchestrator.main import Orchestrator
+
+    orch = Orchestrator(dry_run=False)
+    try:
+        return orch.force_sell(ticker)
+    finally:
+        orch.close()
+
+
 @router.post("/force-sell/{ticker}")
 async def force_sell(ticker: str):
     """Force sell an entire position for the given T212 ticker (e.g. AAPL_US_EQ)."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
-    from src.orchestrator.main import Orchestrator
-
     try:
-        orch = Orchestrator(dry_run=False)
-        result = orch.force_sell(ticker)
-        orch.close()
+        result = await run_blocking(_force_sell_sync, ticker)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Force sell failed: {e}") from e
 

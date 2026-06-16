@@ -12,6 +12,7 @@ from src.data.models import Order
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
+from ..async_utils import run_blocking
 from ..database import Run
 from ..schemas import (
     ExecutionQualitySchema,
@@ -26,6 +27,19 @@ logger = get_logger("dashboard.orders")
 router = APIRouter()
 settings = get_settings()
 _RECENT_REFRESH_REUSE_WINDOW_SECONDS = 120
+
+
+def _reconcile_orders_with_t212_sync() -> dict:
+    """Blocking T212 sync — must run off the asyncio event loop."""
+    manager = OrderManager(dry_run=False)
+    reconciled_candidate = manager.sync_orders_with_t212()
+    if isinstance(reconciled_candidate, dict):
+        return reconciled_candidate
+    return manager.reconcile_pending_stop_orders_with_t212()
+
+
+async def _reconcile_orders_with_t212() -> dict:
+    return await run_blocking(_reconcile_orders_with_t212_sync)
 
 
 def _percentile(values: list[float], pct: float) -> float | None:
@@ -113,39 +127,61 @@ def _classify_failed_order(
     *,
     failed_order: Order,
     window_days: int,
+    session,
 ) -> str:
     """Classify a failed order as active_unresolved, archived_unresolved, or resolved."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
     failed_ts = failed_order.timestamp
-    # SQLite commonly returns naive datetimes even when app logic uses UTC.
     if failed_ts.tzinfo is None:
         cutoff = cutoff.replace(tzinfo=None)
 
+    later_resolution = (
+        session.query(Order.id)
+        .filter(
+            Order.ticker == failed_order.ticker,
+            Order.action == failed_order.action,
+            Order.order_type == failed_order.order_type,
+            Order.timestamp > failed_order.timestamp,
+            or_(
+                Order.status.in_(["filled", "cancelled"]),
+                and_(
+                    Order.status.in_(["pending", "submitting"]),
+                    Order.t212_order_id.isnot(None),
+                ),
+            ),
+        )
+        .first()
+    )
+    if later_resolution is not None:
+        return "resolved"
+    if failed_ts >= cutoff:
+        return "active_unresolved"
+    return "archived_unresolved"
+
+
+def _classify_failed_orders(
+    failed_orders: list[Order],
+    *,
+    window_days: int,
+) -> tuple[list[Order], list[Order]]:
+    if not failed_orders:
+        return [], []
+
     session = get_session()
     try:
-        # Do not treat a later dry_run as resolving a live broker failure.
-        later_resolution = (
-            session.query(Order.id)
-            .filter(
-                Order.ticker == failed_order.ticker,
-                Order.action == failed_order.action,
-                Order.order_type == failed_order.order_type,
-                Order.timestamp > failed_order.timestamp,
-                or_(
-                    Order.status.in_(["filled", "cancelled"]),
-                    and_(
-                        Order.status.in_(["pending", "submitting"]),
-                        Order.t212_order_id.isnot(None),
-                    ),
-                ),
+        active: list[Order] = []
+        archived: list[Order] = []
+        for order in failed_orders:
+            classification = _classify_failed_order(
+                failed_order=order,
+                window_days=window_days,
+                session=session,
             )
-            .first()
-        )
-        if later_resolution is not None:
-            return "resolved"
-        if failed_ts >= cutoff:
-            return "active_unresolved"
-        return "archived_unresolved"
+            if classification == "active_unresolved":
+                active.append(order)
+            elif classification == "archived_unresolved":
+                archived.append(order)
+        return active, archived
     finally:
         session.close()
 
@@ -203,9 +239,9 @@ def _recent_refresh_sync_summary(latest_refresh: Run | None) -> dict[str, object
 @router.get("/health", response_model=OrdersHealthSchema)
 async def get_orders_health(
     unresolved_window_days: int = Query(default=7, ge=1, le=30),
-    reconcile_pending: bool = Query(default=True),
+    reconcile_pending: bool = Query(default=False),
 ):
-    """Summarize unresolved failed orders and stale pending order counts."""
+    """Summarize unresolved failed orders and optional live T212 pending reconciliation."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
@@ -246,12 +282,7 @@ async def get_orders_health(
             live_fetch_error_at = reconciled.get("live_fetch_error_at")
         else:
             try:
-                manager = OrderManager(dry_run=False)
-                reconciled_candidate = manager.sync_orders_with_t212()
-                if isinstance(reconciled_candidate, dict):
-                    reconciled = reconciled_candidate
-                else:
-                    reconciled = manager.reconcile_pending_stop_orders_with_t212()
+                reconciled = await _reconcile_orders_with_t212()
                 broker_sync_at = reconciled.get("last_broker_sync_at")
                 history_sync_at = reconciled.get("last_history_sync_at")
                 live_pending_sync_at = reconciled.get("last_live_pending_sync_at")
@@ -286,17 +317,10 @@ async def get_orders_health(
     finally:
         session.close()
 
-    active_unresolved: list[Order] = []
-    archived_unresolved: list[Order] = []
-    for order in failed_orders:
-        classification = _classify_failed_order(
-            failed_order=order,
-            window_days=unresolved_window_days,
-        )
-        if classification == "active_unresolved":
-            active_unresolved.append(order)
-        elif classification == "archived_unresolved":
-            archived_unresolved.append(order)
+    active_unresolved, archived_unresolved = _classify_failed_orders(
+        failed_orders,
+        window_days=unresolved_window_days,
+    )
 
     failed_recent = [
         FailedOrderHealthSchema(

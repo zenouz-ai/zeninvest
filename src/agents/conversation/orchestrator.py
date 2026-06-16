@@ -51,6 +51,7 @@ from src.orchestrator.direct_trade_run import DirectTradeRunner
 from src.orchestrator.single_ticker_run import PreparedTradeExecution, SingleTickerResult, SingleTickerRunner
 from src.utils.config import get_settings
 from src.utils.chat_cost_context import bind_chat_cost_context
+from src.utils.cost_tracker import check_chat_budget
 from src.utils.logger import get_logger
 from src.utils.ticker_utils import resolve_ticker_to_t212, t212_to_yf
 
@@ -315,6 +316,41 @@ class ConversationOrchestrator:
                 self._emit_event(
                     "chat_turn_created",
                     f"Assistant turn created for session {session_id}",
+                    session_id=session_id,
+                    channel_type=channel_type,
+                    role="assistant",
+                )
+                return self._require_session(session_id)
+
+            # Chat LLM budget guard: deterministic commands (trades, stops, confirm/
+            # reject) already returned above and remain available even when the daily
+            # conversational budget is exhausted. Block only the LLM-backed planning path.
+            if not check_chat_budget():
+                budget_msg = (
+                    "Chat is paused for today: the daily conversational LLM budget "
+                    f"(£{self.settings.conversation_chat_llm_daily_budget_gbp:.2f}) is exhausted. "
+                    "Deterministic commands (trades, stops, confirm/reject) still work."
+                )
+                self.session_manager.add_turn(
+                    session_id,
+                    role="assistant",
+                    message_text=budget_msg,
+                    response_json={"warnings": ["chat_budget_exceeded"]},
+                    channel_type=channel_type,
+                )
+                self._mirror_assistant_reply_to_slack(
+                    session_id=session_id,
+                    message_text=budget_msg,
+                    source_channel_type=channel_type,
+                )
+                self._persist_session_context(
+                    session_id=session_id,
+                    context_state=context_state,
+                    channel_type=channel_type,
+                )
+                self._emit_event(
+                    "chat_turn_created",
+                    f"Chat blocked (budget exceeded) for session {session_id}",
                     session_id=session_id,
                     channel_type=channel_type,
                     role="assistant",
@@ -875,7 +911,7 @@ class ConversationOrchestrator:
                     detail_json={"related_tickers": evidence_bundle["related_tickers"]},
                 )
 
-        if planner_decision.requires_committee and resolved_tickers:
+        if planner_decision.requires_committee and resolved_tickers and check_chat_budget():
             committee_step_id: int | None = None
             committee_before_cost = self.session_manager.session_cost_total_gbp(session_id)
             if self.settings.conversation_transparency_enabled:

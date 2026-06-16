@@ -9,6 +9,7 @@ import type { PortfolioSnapshot, Position } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
 import { PageBrandHeader } from '../components/PageBrandHeader'
+import { usePollingInterval } from '../hooks/usePollingInterval'
 import {
   LineChart,
   Line,
@@ -34,7 +35,8 @@ type PositionSortKey =
   | 'held_days'
 type PortfolioHistoryPoint = { timestamp: string; date: string; value: number }
 
-const PORTFOLIO_HISTORY_FETCH_LIMIT = 1000
+const PORTFOLIO_HISTORY_FETCH_LIMIT = 180
+const PORTFOLIO_CURRENT_POLL_MS = 60_000
 const PORTFOLIO_HISTORY_BASELINE_VALUE_GBP = 10000
 
 function comparePositions(a: Position, b: Position, key: PositionSortKey, dir: 'asc' | 'desc'): number {
@@ -210,7 +212,7 @@ export default function Portfolio() {
   const [valueHistoryYCustomMax, setValueHistoryYCustomMax] = useState('')
   const [valueHistoryYCustomApplied, setValueHistoryYCustomApplied] = useState<[number, number] | null>(null)
 
-  const fetchPortfolio = async () => {
+  const fetchPortfolio = useCallback(async () => {
     setError(null)
     try {
       const [current, historyData, historyStart] = await Promise.all([
@@ -227,13 +229,29 @@ export default function Portfolio() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  const refreshCurrentPortfolio = useCallback(async () => {
+    try {
+      const current = await portfolioApi.current()
+      setCurrentPortfolio(current)
+    } catch (err) {
+      console.error('Failed to refresh portfolio:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load portfolio')
+    }
+  }, [])
+
+  const pollingActive = usePollingInterval(true, refreshCurrentPortfolio)
 
   useEffect(() => {
-    fetchPortfolio()
-    const interval = setInterval(fetchPortfolio, 30000) // Refresh every 30s
+    void fetchPortfolio()
+  }, [fetchPortfolio])
+
+  useEffect(() => {
+    if (!pollingActive) return
+    const interval = setInterval(() => { void refreshCurrentPortfolio() }, PORTFOLIO_CURRENT_POLL_MS)
     return () => clearInterval(interval)
-  }, [])
+  }, [refreshCurrentPortfolio, pollingActive])
 
   const positions = currentPortfolio?.positions ?? []
 

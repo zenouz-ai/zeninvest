@@ -695,6 +695,8 @@ def _human_reason(reason_code: Any, *, fallback: Any = "", context: dict[str, An
         return "Full SELL triggered because the holding fell below the small-position cleanup threshold"
     if code == "stagnation_exit":
         return "Full SELL triggered because profit-per-day-held fell below the stagnation threshold"
+    if code == "slow_bleed_exit":
+        return "Full SELL triggered because gain-per-day fell below the stall floor (slow bleed)"
     if code == "profit_lock_stop_placed":
         return "Broker stop protection was placed to lock at least the target profit"
     if code == "profit_lock_stop_already_sufficient":

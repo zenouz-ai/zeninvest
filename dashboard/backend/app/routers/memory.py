@@ -11,6 +11,8 @@ from src.learning.memory.neo4j_sync import query_similar_sector_regime
 from src.learning.memory.retrieval import find_similar_cases
 from src.utils.config import get_settings
 
+from ..async_utils import run_blocking
+
 router = APIRouter()
 settings = get_settings()
 
@@ -29,7 +31,8 @@ async def similar_cases(
 ) -> dict[str, Any]:
     """Vector similarity search over exported decision narratives."""
     _ensure_dashboard_enabled()
-    hits = find_similar_cases(
+    hits = await run_blocking(
+        find_similar_cases,
         thesis_text=q,
         ticker=ticker,
         regime=regime,
@@ -47,5 +50,5 @@ async def graph_sector_regime(
 ) -> dict[str, Any]:
     """Read-only Neo4j query: decisions in sector during macro regime."""
     _ensure_dashboard_enabled()
-    rows = query_similar_sector_regime(sector, regime, limit=limit)
+    rows = await run_blocking(query_similar_sector_regime, sector, regime, limit=limit)
     return {"sector": sector, "regime": regime, "decisions": rows, "count": len(rows)}

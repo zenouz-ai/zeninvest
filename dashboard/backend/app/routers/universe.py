@@ -12,6 +12,7 @@ from src.data.database import get_session
 from src.data.models import Instrument, ModerationLog, OpportunityScoreSnapshot, Order, PortfolioSnapshot, ResearchLog, RiskDecision, StrategyDecision
 from src.utils.config import get_settings
 
+from ..async_utils import run_blocking
 from ..schemas import InstrumentDetailSchema, InstrumentSchema, UniverseBubbleSchema
 
 router = APIRouter()
@@ -198,12 +199,16 @@ async def get_universe(
 
 @router.get("/bubble", response_model=list[UniverseBubbleSchema])
 async def get_universe_bubble(
-    limit: int = Query(default=1000, ge=1, le=5000),
+    limit: int = Query(default=200, ge=1, le=5000),
 ):
     """Universe with latest UOV per ticker and investigated flag for bubble viz."""
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
+    return await run_blocking(_get_universe_bubble_sync, limit)
+
+
+def _get_universe_bubble_sync(limit: int) -> list[UniverseBubbleSchema]:
     session = get_session()
     try:
         instruments = (

@@ -114,6 +114,58 @@ def test_update_trade_outcomes_idempotent(db_session) -> None:
     assert db_session.query(TradeOutcome).count() == 1
 
 
+def test_recompute_trade_outcomes_rebuilds_from_wallet(db_session) -> None:
+    db_session.add(
+        Order(
+            timestamp=_ts(5),
+            ticker="WAL_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=10.0,
+            filled_quantity=10.0,
+            price=100.0,
+            value_gbp=1000.0,
+            status="filled",
+        )
+    )
+    db_session.add(
+        Order(
+            timestamp=_ts(0),
+            ticker="WAL_US_EQ",
+            action="SELL",
+            order_type="market",
+            quantity=-10.0,
+            filled_quantity=10.0,
+            price=110.0,
+            value_gbp=1100.0,
+            status="filled",
+        )
+    )
+    db_session.commit()
+    db_session.add(
+        TradeOutcome(
+            buy_order_id=1,
+            sell_order_id=2,
+            ticker="WAL_US_EQ",
+            sell_timestamp=_ts(0),
+            buy_value_gbp=1.0,
+            sell_value_gbp=1.0,
+            pnl_gbp=0.0,
+            pnl_pct=0.0,
+        )
+    )
+    db_session.commit()
+
+    from src.agents.reporting.trade_outcome_tracker import recompute_trade_outcomes
+
+    count = recompute_trade_outcomes(session=db_session)
+    assert count == 1
+    out = db_session.query(TradeOutcome).one()
+    assert out.buy_value_gbp == 1000.0
+    assert out.sell_value_gbp == 1100.0
+    assert out.pnl_gbp == 100.0
+
+
 def test_holding_days_mixed_naive_and_aware_timestamps_no_typeerror(db_session) -> None:
     """Regression: subtracting naive ORM timestamps from aware datetimes must not raise."""
     naive_buy = datetime(2026, 3, 1, 12, 0, 0)
@@ -150,3 +202,100 @@ def test_holding_days_mixed_naive_and_aware_timestamps_no_typeerror(db_session) 
     assert outcome is not None
     assert outcome.holding_days is not None
     assert outcome.holding_days > 0
+
+
+def test_dry_run_stop_placement_does_not_create_outcome(db_session) -> None:
+    """Regression: deploy dry-run stop placement must not appear as a closed trade."""
+    buy_ts = datetime(2026, 6, 14, 11, 39, 27, tzinfo=timezone.utc)
+    stop_ts = buy_ts + timedelta(milliseconds=14)
+    db_session.add(
+        Order(
+            timestamp=buy_ts.replace(tzinfo=None),
+            ticker="GEF/B_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=4.0,
+            price=85.12,
+            value_gbp=286.57,
+            status="dry_run",
+            strategy="momentum",
+        )
+    )
+    db_session.add(
+        Order(
+            timestamp=stop_ts.replace(tzinfo=None),
+            ticker="GEF/B_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-4.0,
+            price=85.12,
+            stop_price=78.31,
+            value_gbp=253.77,
+            status="dry_run",
+            strategy="momentum",
+        )
+    )
+    db_session.commit()
+
+    assert update_trade_outcomes(session=db_session) == 0
+    assert db_session.query(TradeOutcome).count() == 0
+
+
+def test_dry_run_market_round_trip_does_not_create_outcome(db_session) -> None:
+    db_session.add(
+        Order(
+            timestamp=_ts(1),
+            ticker="DRY_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=2.0,
+            value_gbp=200.0,
+            status="dry_run",
+        )
+    )
+    db_session.add(
+        Order(
+            timestamp=_ts(0),
+            ticker="DRY_US_EQ",
+            action="SELL",
+            order_type="market",
+            quantity=-2.0,
+            value_gbp=210.0,
+            status="dry_run",
+        )
+    )
+    db_session.commit()
+
+    assert update_trade_outcomes(session=db_session) == 0
+
+
+def test_filled_stop_creates_outcome(db_session) -> None:
+    db_session.add(
+        Order(
+            timestamp=_ts(5),
+            ticker="STOP_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=5.0,
+            value_gbp=500.0,
+            status="filled",
+        )
+    )
+    db_session.add(
+        Order(
+            timestamp=_ts(0),
+            ticker="STOP_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-5.0,
+            stop_price=90.0,
+            value_gbp=450.0,
+            status="filled",
+        )
+    )
+    db_session.commit()
+
+    assert update_trade_outcomes(session=db_session) == 1
+    out = db_session.query(TradeOutcome).one()
+    assert out.ticker == "STOP_US_EQ"
+    assert out.pnl_gbp == -50.0

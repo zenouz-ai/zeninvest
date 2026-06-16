@@ -11,7 +11,7 @@ from src.agents.research import ResearchExecutor, get_research_tool_definitions
 from src.agents.strategy.factor import FactorScore, calculate_factor_score, rank_by_factor
 from src.agents.strategy.mean_reversion import MeanReversionSignal, evaluate_mean_reversion
 from src.agents.strategy.momentum import MomentumSignal, evaluate_momentum
-from src.agents.strategy.prompts import STRATEGY_SYSTEM_PROMPT, build_strategy_prompt
+from src.agents.strategy.prompts import STRATEGY_SYSTEM_PROMPT, build_strategy_prompt, get_strategy_prompt_hash
 from src.data.database import get_session
 from src.data.models import StrategyDecision
 from src.utils.config import get_settings
@@ -537,6 +537,7 @@ class StrategyEngine:
         try:
             market_assessment = result.get("market_assessment", "")
             portfolio_commentary = result.get("portfolio_commentary", "")
+            prompt_hash = get_strategy_prompt_hash(self.settings.strategy_model)
 
             for decision in result.get("decisions", []):
                 session.add(StrategyDecision(
@@ -563,6 +564,7 @@ class StrategyEngine:
                     market_assessment=market_assessment,
                     portfolio_commentary=portfolio_commentary,
                     raw_response_json=raw_json,
+                    prompt_hash=prompt_hash,
                 ))
             session.commit()
         except Exception as e:

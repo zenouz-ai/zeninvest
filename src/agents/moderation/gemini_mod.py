@@ -16,36 +16,16 @@ from src.agents.moderation.context import format_market_context
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, check_budget, log_cost
 from src.utils.logger import get_logger
+from src.utils.prompt_loader import get_prompt_hash, load_prompt_file
 
 logger = get_logger("gemini_moderator")
 
-SYSTEM_PROMPT = """You are an independent risk assessor on an Investment Committee.
-You receive the full data context: technical indicators, fundamentals, market conditions,
-sub-strategy scores, analyst recommendations, and news sentiment.
+SYSTEM_PROMPT = load_prompt_file("risk_assessor.md")
 
-Score each proposed trade on three dimensions using ALL available data:
-- Growth potential: 1-10 (based on momentum scores, earnings growth, analyst consensus, news catalysts)
-- Risk level: 1-10 (based on VIX, debt, P/E, conflicting signals, bearish news, regime)
-- Confidence in thesis: 1-10 (based on signal agreement, data quality, news confirmation)
 
-Scoring guidelines:
-- RSI >70 or negative MACD histogram increases risk. RSI <30 with sound fundamentals increases growth.
-- Debt/Equity >2.0, negative earnings, or P/E >40 raise risk by 2-3 points.
-- VIX >25 adds 1-2 risk points. VIX >35 adds 3+ risk points.
-- When sub-strategies disagree (momentum says BUY, factor says LOW), lower confidence by 2-3.
-- Bullish news + positive analyst consensus increases confidence. Bearish news decreases it.
-- Only flag high_risk_flag when risk exceeds growth potential by 3+ points.
-
-IMPORTANT: Keep your assessment under 100 words. Respond with ONLY valid JSON:
-{
-  "verdict": "AGREE|DISAGREE|MODIFY",
-  "growth_score": 7,
-  "risk_score": 4,
-  "confidence_score": 6,
-  "assessment": "2-sentence independent assessment referencing specific data points",
-  "high_risk_flag": false,
-  "modifications": null
-}"""
+def get_risk_assessor_prompt_hash(model_name: str) -> str:
+    """Return a stable hash for the Gemini risk-assessor moderator prompt."""
+    return get_prompt_hash("risk_assessor.md", extra={"model": model_name})
 
 
 def _normalize_modifications_payload(
@@ -151,13 +131,13 @@ Score growth potential, risk level, and confidence using the data above.
 Flag if risk > growth. Respond with JSON only."""
 
 
-def _log_gemini_cost(response: Any, cycle_id: str | None, settings: Any) -> None:
+def _log_gemini_cost(response: Any, cycle_id: str | None, settings: Any):
     input_tokens = 0
     output_tokens = 0
     if hasattr(response, "usage_metadata") and response.usage_metadata:
         input_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
         output_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
-    log_cost(
+    return log_cost(
         provider=Provider.GOOGLE.value,
         model=settings.moderator_2_model,
         input_tokens=input_tokens,
@@ -165,6 +145,14 @@ def _log_gemini_cost(response: Any, cycle_id: str | None, settings: Any) -> None
         cycle_id=cycle_id,
         purpose="moderation_gemini",
     )
+
+
+def _attach_gemini_usage(result: dict[str, Any], response: Any, cost_result: Any) -> None:
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        result["input_tokens"] = int(getattr(response.usage_metadata, "prompt_token_count", 0) or 0)
+        result["output_tokens"] = int(getattr(response.usage_metadata, "candidates_token_count", 0) or 0)
+    if cost_result is not None:
+        result["cost_gbp"] = cost_result.cost_gbp
 
 
 def _extract_json_from_text(content: str) -> str:
@@ -201,7 +189,7 @@ def _review_single_turn(
                 temperature=0.4,
             ),
         )
-        _log_gemini_cost(response, cycle_id, settings)
+        cost_result = _log_gemini_cost(response, cycle_id, settings)
 
         content = _extract_json_from_text(response.text or "")
         result = _parse_json_with_repair(
@@ -212,6 +200,7 @@ def _review_single_turn(
         )
         result["moderator"] = settings.moderator_2_model
         result["available"] = True
+        _attach_gemini_usage(result, response, cost_result)
         return result
 
     except json.JSONDecodeError as e:
@@ -358,7 +347,7 @@ def _review_with_tools(
                     tools=tools,
                 ),
             )
-            _log_gemini_cost(response, cycle_id, settings)
+            cost_result = _log_gemini_cost(response, cycle_id, settings)
 
             candidate = response.candidates[0] if response.candidates else None
             if not candidate or not candidate.content or not candidate.content.parts:
@@ -379,6 +368,7 @@ def _review_with_tools(
                 )
                 result["moderator"] = settings.moderator_2_model
                 result["available"] = True
+                _attach_gemini_usage(result, response, cost_result)
                 return result
 
             contents.append(candidate.content)

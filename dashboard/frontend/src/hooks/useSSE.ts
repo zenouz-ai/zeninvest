@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Event } from '../types'
 import { clearDashboardAuthRequired, setDashboardAuthRequired } from '../utils/authErrorBridge'
+import { dispatchDashboardSse } from '../utils/sseEventBridge'
 import { drainSseBuffer, reconnectDelayMs } from '../utils/sseStream'
 
 export type SseConnectionState = 'connecting' | 'open' | 'disconnected'
@@ -126,6 +127,7 @@ export function useSSE(options: UseSSEOptions = {}) {
               const event = data as unknown as Event
               setEvents((prev) => [event, ...prev].slice(0, 100))
               onEventRef.current?.(event)
+              dispatchDashboardSse(event)
             }
           }
         }

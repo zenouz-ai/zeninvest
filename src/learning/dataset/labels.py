@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from typing import Iterable, Mapping
 
 import pandas as pd
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from src.data.models import (
     MarketDataCache,
@@ -32,6 +32,13 @@ from src.data.models import (
     StopLossAdjustment,
     TradeOutcome,
 )
+from src.agents.reporting.realized_trades import REALIZED_ORDER_STATUS
+from src.agents.reporting.outcome_classification import (
+    derive_label_3class,
+    infer_exit_reason,
+    label_from_gain_per_day,
+)
+from src.learning.dataset.triple_barrier import BarrierResult, first_touch_barrier
 from src.learning.spec import DatasetSpec, LabelConfig, get_default_spec
 from src.utils.logger import get_logger
 from src.utils.ticker_utils import t212_to_yf
@@ -84,6 +91,10 @@ class LabelRow:
     trade_moderation_result: str | None = None
     trade_risk_result: str | None = None
     trade_strategy: str | None = None
+    barrier_outcome: str | None = None
+    barrier_days_to_touch: float | None = None
+    barrier_mtm_max_drawdown_pct: float | None = None
+    barrier_price_source: str | None = None
 
     def to_record(self) -> dict[str, object]:
         rec: dict[str, object] = {
@@ -103,6 +114,10 @@ class LabelRow:
             "trade_moderation_result": self.trade_moderation_result,
             "trade_risk_result": self.trade_risk_result,
             "trade_strategy": self.trade_strategy,
+            "barrier_outcome": self.barrier_outcome,
+            "barrier_days_to_touch": self.barrier_days_to_touch,
+            "barrier_mtm_max_drawdown_pct": self.barrier_mtm_max_drawdown_pct,
+            "barrier_price_source": self.barrier_price_source,
         }
         rec.update(self.forward_returns)
         rec.update({f"mtm_max_drawdown_{k.split('_')[1]}": v for k, v in self.forward_drawdowns.items()})
@@ -151,6 +166,8 @@ class LabelComputer:
             if not isinstance(decision_ts, datetime):
                 continue
             forward_returns, drawdowns, runups = self._mtm_returns(ticker, decision_ts)
+            prices = self._fetch_prices(ticker, decision_ts, max(self.cfg.horizons_days) + 5)
+            barrier = self._barrier_from_prices(prices, decision_ts)
             realized = self._first_realized_outcome_after(
                 order_pairs.get(ticker, ()),
                 decision_ts,
@@ -162,6 +179,7 @@ class LabelComputer:
                 drawdowns=drawdowns,
                 realized=realized,
                 exit_reason=exit_reason,
+                barrier=barrier,
             )
             records.append(
                 LabelRow(
@@ -184,6 +202,10 @@ class LabelComputer:
                     trade_moderation_result=(realized or {}).get("moderation_result"),
                     trade_risk_result=(realized or {}).get("risk_result"),
                     trade_strategy=(realized or {}).get("strategy"),
+                    barrier_outcome=barrier.outcome if barrier else None,
+                    barrier_days_to_touch=barrier.days_to_touch if barrier else None,
+                    barrier_mtm_max_drawdown_pct=barrier.mtm_max_drawdown_pct if barrier else None,
+                    barrier_price_source=barrier.price_source if barrier else None,
                 ).to_record()
             )
         if not records:
@@ -285,7 +307,18 @@ class LabelComputer:
             close_f = _close_price_float(close) if close is not None else None
             if close_f is None:
                 continue
-            data.append({"date": row.timestamp, "close": close_f})
+            high = payload.get("high")
+            low = payload.get("low")
+            high_f = _close_price_float(high) if high is not None else close_f
+            low_f = _close_price_float(low) if low is not None else close_f
+            data.append(
+                {
+                    "date": row.timestamp,
+                    "close": close_f,
+                    "high": high_f,
+                    "low": low_f,
+                }
+            )
         if not data:
             return None
         return pd.DataFrame.from_records(data)
@@ -302,8 +335,8 @@ class LabelComputer:
             if hist is None or hist.empty:
                 self._yf_history_cache[yf_symbol] = None
                 return None
-            df = hist.reset_index()[["Date", "Close"]].copy()
-            df.columns = ["date", "close"]
+            df = hist.reset_index()[["Date", "Close", "High", "Low"]].copy()
+            df.columns = ["date", "close", "high", "low"]
             df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None)
             self._yf_history_cache[yf_symbol] = df
             return df
@@ -312,6 +345,30 @@ class LabelComputer:
             self._yf_history_cache[yf_symbol] = None
             return None
 
+    def _barrier_from_prices(
+        self,
+        prices: pd.DataFrame | None,
+        decision_ts: datetime,
+    ) -> BarrierResult | None:
+        if prices is None or prices.empty:
+            return None
+        sorted_prices = prices.sort_values("date").reset_index(drop=True)
+        anchor_mask = sorted_prices["date"] <= decision_ts
+        if not anchor_mask.any():
+            return None
+        anchor_pos = int(anchor_mask[anchor_mask].index[-1])
+        anchor_price = float(sorted_prices.at[anchor_pos, "close"])
+        if anchor_price <= 0 or math.isnan(anchor_price):
+            return None
+        return first_touch_barrier(
+            sorted_prices,
+            decision_ts,
+            anchor_price,
+            upper_pct=self.cfg.barrier_upper_pct,
+            lower_pct=self.cfg.barrier_lower_pct,
+            vertical_days=self.cfg.barrier_vertical_days,
+        )
+
     # ------------------------------------------------------------------
     # Realized P&L join
     # ------------------------------------------------------------------
@@ -319,14 +376,21 @@ class LabelComputer:
     def _load_trade_outcomes_for_tickers(self, tickers: set[str]) -> dict[str, list[dict]]:
         if not tickers:
             return {}
+        buy_order = aliased(Order)
+        sell_order = aliased(Order)
         rows = (
-            self.session.query(TradeOutcome, Order)
-            .join(Order, Order.id == TradeOutcome.buy_order_id)
+            self.session.query(TradeOutcome, buy_order, sell_order)
+            .join(buy_order, buy_order.id == TradeOutcome.buy_order_id)
+            .join(sell_order, sell_order.id == TradeOutcome.sell_order_id)
             .filter(TradeOutcome.ticker.in_(tickers))
+            .filter(
+                buy_order.status == REALIZED_ORDER_STATUS,
+                sell_order.status == REALIZED_ORDER_STATUS,
+            )
             .all()
         )
         out: dict[str, list[dict]] = {}
-        for outcome, buy_order in rows:
+        for outcome, buy_row, sell_row in rows:
             entry = {
                 "buy_timestamp": outcome.buy_timestamp,
                 "sell_timestamp": outcome.sell_timestamp,
@@ -340,7 +404,8 @@ class LabelComputer:
                 "moderation_result": outcome.moderation_result,
                 "risk_result": outcome.risk_result,
                 "strategy": outcome.strategy,
-                "buy_warning_note": getattr(buy_order, "warning_note", None),
+                "buy_warning_note": getattr(buy_row, "warning_note", None),
+                "sell_order_type": sell_row.order_type,
             }
             out.setdefault(outcome.ticker, []).append(entry)
         for ticker in out:
@@ -387,17 +452,13 @@ class LabelComputer:
         sell_ts = realized.get("sell_timestamp")
         if sell_ts is None:
             return None
-        # If a stop adjustment landed within an hour of the sell, treat it as a hard stop.
-        for adj in stops:
-            if adj["timestamp"] is None:
-                continue
-            delta = abs((adj["timestamp"] - sell_ts).total_seconds())
-            if delta <= 3600 and adj.get("status") in {"placed", "filled"}:
-                return "hard_stop"
-        note = realized.get("buy_warning_note") or ""
-        if isinstance(note, str) and "stagnation" in note.lower():
-            return "stagnation_exit"
-        return "manual_or_strategy"
+        return infer_exit_reason(
+            sell_timestamp=sell_ts,
+            buy_warning_note=realized.get("buy_warning_note"),
+            stop_adjustments=stops,
+            pnl_pct=realized.get("pnl_pct"),
+            sell_order_type=realized.get("sell_order_type"),
+        )
 
     # ------------------------------------------------------------------
     # Label derivation
@@ -410,35 +471,59 @@ class LabelComputer:
         drawdowns: dict[str, float | None],
         realized: dict | None,
         exit_reason: str | None,
+        barrier: BarrierResult | None = None,
     ) -> str:
         max_h = max(self.cfg.horizons_days)
         ret_key = f"ret_{max_h}d"
         ret_long = forward_returns.get(ret_key)
+        ret_10 = forward_returns.get("ret_10d")
         drawdown_long = drawdowns.get(ret_key)
         realized_pct = (realized or {}).get("pnl_pct")
         holding_days = (realized or {}).get("holding_days")
 
-        # Treat hard stops as a big_loser even if MTM hasn't fully drawn down.
-        if exit_reason == "hard_stop":
-            return "big_loser"
+        if realized is not None and realized_pct is not None and realized.get("sell_timestamp") is not None:
+            return derive_label_3class(
+                pnl_pct=realized_pct,
+                holding_days=holding_days,
+                exit_reason=exit_reason,
+                label_cfg=self.cfg,
+            )
 
-        candidates_positive = [v for v in (ret_long, realized_pct) if v is not None]
-        candidates_negative = [v for v in (ret_long, realized_pct) if v is not None]
-        upside = max(candidates_positive) if candidates_positive else None
-        downside = min(candidates_negative) if candidates_negative else None
+        # Path-based triple barrier for open / MTM rows (Phase B).
+        if barrier is not None and barrier.outcome not in {"unknown", "none"}:
+            dd = barrier.mtm_max_drawdown_pct
+            if barrier.outcome == "lower":
+                return "big_loser"
+            if barrier.outcome == "upper":
+                if dd is None or dd > self.cfg.big_winner_max_drawdown_pct:
+                    return "big_winner"
+                return "stall"
+            if barrier.outcome == "vertical":
+                end_ret = barrier.end_return_pct
+                if end_ret is not None and abs(end_ret) < self.cfg.stall_abs_return_pct:
+                    return "stall"
+                if end_ret is not None:
+                    return label_from_gain_per_day(
+                        float(end_ret),
+                        self.cfg.barrier_vertical_days,
+                        self.cfg,
+                    )
+                return "stall"
 
-        if upside is not None and upside >= self.cfg.big_winner_min_return_pct:
+        # Phase A MTM fallback when barrier unavailable.
+        holding_proxy = float(max_h)
+        ret = ret_long if ret_long is not None else ret_10
+        if ret is not None:
             if drawdown_long is None or drawdown_long > self.cfg.big_winner_max_drawdown_pct:
-                return "big_winner"
+                return label_from_gain_per_day(float(ret), holding_proxy, self.cfg)
 
-        if downside is not None and downside <= self.cfg.big_loser_max_return_pct:
-            return "big_loser"
-
-        # Stall: small return AND either long realized holding OR no realized close yet.
         if ret_long is not None and abs(ret_long) < self.cfg.stall_abs_return_pct:
             long_held = (holding_days or 0) > self.cfg.stall_min_holding_days
             never_closed = realized is None
             if long_held or never_closed:
                 return "stall"
 
-        return "neutral"
+        if ret_long is not None:
+            return label_from_gain_per_day(float(ret_long), holding_proxy, self.cfg)
+
+        return "stall"

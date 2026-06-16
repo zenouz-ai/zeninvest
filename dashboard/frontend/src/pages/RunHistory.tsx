@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { runsApi } from '../api/client'
 import { TableSkeleton } from '../components/Skeleton'
 import type { Run } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
 import { PageBrandHeader } from '../components/PageBrandHeader'
+import { usePollingInterval } from '../hooks/usePollingInterval'
+
+const RUN_HISTORY_POLL_MS = 120_000
 
 type RunDiff = {
   from_cycle_id: string
@@ -24,7 +27,7 @@ export default function RunHistory() {
   const [diff, setDiff] = useState<RunDiff | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
 
-  const fetchRuns = async () => {
+  const fetchRuns = useCallback(async () => {
     setError(null)
     try {
       const data = await runsApi.list({ limit: 50 })
@@ -35,13 +38,19 @@ export default function RunHistory() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  const pollingActive = usePollingInterval(true, fetchRuns)
 
   useEffect(() => {
-    fetchRuns()
-    const interval = setInterval(fetchRuns, 30000) // Refresh every 30s
+    void fetchRuns()
+  }, [fetchRuns])
+
+  useEffect(() => {
+    if (!pollingActive) return
+    const interval = setInterval(() => { void fetchRuns() }, RUN_HISTORY_POLL_MS)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchRuns, pollingActive])
 
   useEffect(() => {
     if (!diffFrom || !diffTo || diffFrom.cycle_id === diffTo.cycle_id) {
@@ -291,6 +300,27 @@ export default function RunHistory() {
                   <div>
                     <div className="text-terminal-text-dim">Completed</div>
                     <div>{safeFormat(selectedRun.completed_at, 'PPpp')}</div>
+                  </div>
+                )}
+                {selectedRun.summary_json?.phase_timing && (
+                  <div className="pt-3 border-t border-terminal-border">
+                    <div className="text-terminal-text-dim mb-2">Phase timing</div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-terminal-text-dim">
+                          <th className="text-left py-1">Phase</th>
+                          <th className="text-right py-1">Seconds</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(selectedRun.summary_json.phase_timing).map(([phase, timing]) => (
+                          <tr key={phase}>
+                            <td className="py-1 capitalize">{phase.replace(/_/g, ' ')}</td>
+                            <td className="py-1 text-right font-mono">{timing.seconds.toFixed(1)}s</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
                 {selectedRun.summary_json && (

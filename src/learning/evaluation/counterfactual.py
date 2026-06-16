@@ -19,7 +19,7 @@ from src.learning.evaluation.policies import (
     PolicyId,
     RecommendedAction,
 )
-from src.learning.spec import get_default_spec
+from src.learning.spec import LabelConfig, get_default_spec
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -33,17 +33,28 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def _label_cfg() -> LabelConfig:
+    return get_default_spec().labels
+
+
 def _is_bad_row(row: pd.Series) -> bool:
     label = str(row.get("label_3class") or "")
     if label in BAD_LABELS:
         return True
+    cfg = _label_cfg()
     ret30 = row.get("ret_30d")
-    if ret30 is not None and not pd.isna(ret30) and float(ret30) <= -10.0:
-        return True
-    pnl = row.get("trade_pnl_gbp")
-    if pnl is not None and not pd.isna(pnl) and float(pnl) < 0:
-        realized_pct = row.get("realized_pnl_pct")
-        if realized_pct is not None and not pd.isna(realized_pct) and float(realized_pct) <= -10.0:
+    if ret30 is not None and not pd.isna(ret30):
+        from src.agents.reporting.outcome_classification import is_big_loser
+
+        if is_big_loser(float(ret30), 30.0, cfg):
+            return True
+    realized_pct = row.get("realized_pnl_pct")
+    holding = row.get("realized_holding_days")
+    if realized_pct is not None and not pd.isna(realized_pct):
+        from src.agents.reporting.outcome_classification import is_big_loser
+
+        hold = float(holding) if holding is not None and not pd.isna(holding) else 1.0
+        if is_big_loser(float(realized_pct), hold, cfg):
             return True
     return label == "big_loser"
 
@@ -61,6 +72,105 @@ def _recommend_champion(row: pd.Series) -> RecommendedAction:
     return "buy"
 
 
+def _recommend_strategy_only(row: pd.Series) -> RecommendedAction:
+    """Counterfactual: always follow strategy proposal (skip committee gates)."""
+    return _recommend_champion(row)
+
+
+def _recommend_moderation(row: pd.Series) -> RecommendedAction:
+    consensus = str(row.get("moderation_consensus") or "").upper()
+    if consensus == "BLOCKED":
+        return "skip"
+    if consensus == "CAUTION":
+        return "reduce_conviction"
+    return _recommend_strategy_only(row)
+
+
+def _recommend_gpt_only(row: pd.Series) -> RecommendedAction:
+    verdict = str(row.get("gpt_verdict") or "").upper()
+    if verdict == "DISAGREE":
+        return "skip"
+    return "buy"
+
+
+def _recommend_gemini_only(row: pd.Series) -> RecommendedAction:
+    verdict = str(row.get("gemini_verdict") or "").upper()
+    if verdict == "DISAGREE":
+        return "skip"
+    return "buy"
+
+
+def _recommend_risk_only(row: pd.Series) -> RecommendedAction:
+    verdict = str(row.get("risk_verdict") or "").upper()
+    if verdict == "REJECT":
+        return "skip"
+    if verdict == "RESIZE":
+        return "reduce_conviction"
+    return "buy"
+
+
+def _policy_recommendations(df: pd.DataFrame, policy: PolicyId, *, gbm_veto: float, mem_veto: float, gbm_prioritize: float) -> pd.Series:
+    if policy == PolicyId.CHAMPION_AS_IS:
+        return df.apply(_recommend_champion, axis=1)
+    if policy == PolicyId.BASELINE_STRATEGY_ONLY:
+        return df.apply(_recommend_strategy_only, axis=1)
+    if policy == PolicyId.BASELINE_CONVICTION:
+        return df.apply(_recommend_baseline_conviction, axis=1)
+    if policy == PolicyId.CHALLENGER_MODERATION:
+        return df.apply(_recommend_moderation, axis=1)
+    if policy == PolicyId.CHALLENGER_GPT_ONLY:
+        return df.apply(_recommend_gpt_only, axis=1)
+    if policy == PolicyId.CHALLENGER_GEMINI_ONLY:
+        return df.apply(_recommend_gemini_only, axis=1)
+    if policy == PolicyId.CHALLENGER_RISK_ONLY:
+        return df.apply(_recommend_risk_only, axis=1)
+    if policy == PolicyId.CHALLENGER_GBM:
+        return df.apply(
+            lambda r: _recommend_gbm(r, veto_threshold=gbm_veto, prioritize_threshold=gbm_prioritize),
+            axis=1,
+        )
+    if policy == PolicyId.CHALLENGER_CALIBRATOR:
+        return df.apply(_recommend_calibrator, axis=1)
+    if policy == PolicyId.CHALLENGER_MEMORY:
+        return df.apply(lambda r: _recommend_memory(r, veto_threshold=mem_veto), axis=1)
+    if policy == PolicyId.CHALLENGER_COMBINED:
+        return df.apply(
+            lambda r: _recommend_combined(
+                r,
+                gbm_veto=gbm_veto,
+                mem_veto=mem_veto,
+                prioritize_threshold=gbm_prioritize,
+            ),
+            axis=1,
+        )
+    if policy == PolicyId.CHALLENGER_RL:
+        return df.apply(_recommend_champion, axis=1)
+    if policy == PolicyId.CHALLENGER_NO_RESEARCH:
+        return df.apply(_recommend_no_research, axis=1)
+    if policy == PolicyId.CHALLENGER_SKEPTIC_RESEARCH:
+        return df.apply(_recommend_skeptic_research, axis=1)
+    return df.apply(_recommend_champion, axis=1)
+
+
+def _recommend_no_research(row: pd.Series) -> RecommendedAction:
+    """Counterfactual: skip trades that used any research (proxy for no-tool path)."""
+    total = row.get("research_calls_total")
+    if total is not None and not pd.isna(total) and float(total) > 0:
+        return "skip"
+    return _recommend_champion(row)
+
+
+def _recommend_skeptic_research(row: pd.Series) -> RecommendedAction:
+    """Counterfactual: veto when skeptic researched and flagged MODIFY/DISAGREE."""
+    skeptic_col = "research_member_skeptic_count"
+    skeptic_calls = row.get(skeptic_col)
+    if skeptic_calls is not None and not pd.isna(skeptic_calls) and float(skeptic_calls) > 0:
+        gpt = str(row.get("gpt_verdict") or "").upper()
+        if gpt in ("MODIFY", "DISAGREE"):
+            return "skip"
+    return _recommend_champion(row)
+
+
 def _recommend_baseline_conviction(row: pd.Series) -> RecommendedAction:
     conv = float(row.get("conviction") or 50.0)
     if conv < 60:
@@ -70,12 +180,17 @@ def _recommend_baseline_conviction(row: pd.Series) -> RecommendedAction:
     return "buy"
 
 
-def _recommend_gbm(row: pd.Series, *, veto_threshold: float) -> RecommendedAction:
+def _recommend_gbm(
+    row: pd.Series,
+    *,
+    veto_threshold: float,
+    prioritize_threshold: float,
+) -> RecommendedAction:
     p_bl = row.get("_p_big_loser")
     p_bw = row.get("_p_big_winner")
     if p_bl is not None and not pd.isna(p_bl) and float(p_bl) >= veto_threshold:
         return "skip"
-    if p_bw is not None and not pd.isna(p_bw) and float(p_bw) >= 0.45:
+    if p_bw is not None and not pd.isna(p_bw) and float(p_bw) >= prioritize_threshold:
         return "prioritize"
     return "buy"
 
@@ -96,14 +211,41 @@ def _recommend_memory(row: pd.Series, *, veto_threshold: float) -> RecommendedAc
     return "buy"
 
 
-def _recommend_combined(row: pd.Series, *, gbm_veto: float, mem_veto: float) -> RecommendedAction:
-    if _recommend_gbm(row, veto_threshold=gbm_veto) == "skip":
+def _recommend_combined(
+    row: pd.Series,
+    *,
+    gbm_veto: float,
+    mem_veto: float,
+    prioritize_threshold: float,
+) -> RecommendedAction:
+    if _recommend_gbm(row, veto_threshold=gbm_veto, prioritize_threshold=prioritize_threshold) == "skip":
         return "skip"
     if _recommend_memory(row, veto_threshold=mem_veto) == "skip":
         return "skip"
-    if _recommend_gbm(row, veto_threshold=gbm_veto) == "prioritize":
+    if _recommend_gbm(row, veto_threshold=gbm_veto, prioritize_threshold=prioritize_threshold) == "prioritize":
         return "prioritize"
     return "buy"
+
+
+def _compute_outcome_kpis(df: pd.DataFrame) -> dict[str, Any]:
+    """Aggregate fast-winner and slow-win KPIs on realized subset."""
+    realized_mask = df.apply(_has_realized, axis=1)
+    realized = df.loc[realized_mask]
+    if realized.empty:
+        return {"fast_winner_hit_rate": None, "slow_win_rate": None}
+    labels = realized.get("label_3class")
+    pnl = pd.to_numeric(realized.get("realized_pnl_pct"), errors="coerce")
+    fast_hits = int((labels == "big_winner").sum()) if labels is not None else 0
+    slow_wins = 0
+    if labels is not None and pnl is not None:
+        slow_wins = int(((labels == "stall") & (pnl > 0.5)).sum())
+    n = len(realized)
+    return {
+        "fast_winner_hit_rate": float(fast_hits / n) if n else None,
+        "slow_win_rate": float(slow_wins / n) if n else None,
+        "fast_winner_count": fast_hits,
+        "slow_win_count": slow_wins,
+    }
 
 
 def _attach_gbm_probs(df: pd.DataFrame, project_root: Path) -> pd.DataFrame:
@@ -395,6 +537,7 @@ def run_counterfactual_evaluation(
 
     gbm_veto = float(getattr(settings, "learning_gbm_veto_threshold", 0.35))
     mem_veto = float(getattr(settings, "learning_memory_veto_threshold", 0.5))
+    gbm_prioritize = float(getattr(settings, "learning_gbm_prioritize_threshold", 0.40))
 
     df = _attach_gbm_probs(df, root)
     df = _attach_calibrator(df, root)
@@ -404,31 +547,26 @@ def run_counterfactual_evaluation(
     recommenders: dict[PolicyId, pd.Series] = {}
 
     for policy in policy_list:
-        if policy == PolicyId.CHAMPION_AS_IS:
-            recs = df.apply(_recommend_champion, axis=1)
-        elif policy == PolicyId.BASELINE_CONVICTION:
-            recs = df.apply(_recommend_baseline_conviction, axis=1)
-        elif policy == PolicyId.CHALLENGER_GBM:
-            recs = df.apply(lambda r: _recommend_gbm(r, veto_threshold=gbm_veto), axis=1)
-        elif policy == PolicyId.CHALLENGER_CALIBRATOR:
-            recs = df.apply(_recommend_calibrator, axis=1)
-        elif policy == PolicyId.CHALLENGER_MEMORY:
-            recs = df.apply(lambda r: _recommend_memory(r, veto_threshold=mem_veto), axis=1)
-        elif policy == PolicyId.CHALLENGER_COMBINED:
-            recs = df.apply(
-                lambda r: _recommend_combined(r, gbm_veto=gbm_veto, mem_veto=mem_veto),
-                axis=1,
-            )
-        elif policy == PolicyId.CHALLENGER_RL:
-            recs = df.apply(_recommend_champion, axis=1)
-        else:
-            recs = df.apply(_recommend_champion, axis=1)
+        recs = _policy_recommendations(
+            df,
+            policy,
+            gbm_veto=gbm_veto,
+            mem_veto=mem_veto,
+            gbm_prioritize=gbm_prioritize,
+        )
         recommenders[policy] = recs
-        policy_metrics[policy.value] = _policy_metrics(df, policy, recs)
+        metrics = _policy_metrics(df, policy, recs)
+        from src.learning.evaluation.committee_attribution import extend_policy_forward_metrics
+
+        policy_metrics[policy.value] = extend_policy_forward_metrics(df, recs, metrics)
 
     rl_ope = {}
     if PolicyId.CHALLENGER_RL in policy_list or PolicyId.CHALLENGER_COMBINED in policy_list:
         rl_ope = _compute_rl_ope(root)
+
+    outcome_kpis = _compute_outcome_kpis(df)
+    if PolicyId.CHAMPION_AS_IS.value in policy_metrics:
+        policy_metrics[PolicyId.CHAMPION_AS_IS.value].update(outcome_kpis)
 
     train_metrics = _load_latest_train_metrics(root)
     closed_trades = int(policy_metrics.get(PolicyId.CHAMPION_AS_IS.value, {}).get("realized_n") or 0)
@@ -445,7 +583,12 @@ def run_counterfactual_evaluation(
         "policies": policy_metrics,
         "rl_ope": rl_ope,
         "artifact_run_id": _latest_train_run_id(root),
-        "thresholds": {"gbm_veto": gbm_veto, "memory_veto": mem_veto},
+        "thresholds": {
+            "gbm_veto": gbm_veto,
+            "memory_veto": mem_veto,
+            "gbm_prioritize": gbm_prioritize,
+        },
+        "outcome_kpis": outcome_kpis,
     }
     gates = check_promotion_gates(
         evaluation_metrics=eval_payload,
@@ -456,6 +599,29 @@ def run_counterfactual_evaluation(
 
     disagreements = _build_disagreements(df, recommenders, limit=100)
     eval_payload["disagreements"] = disagreements
+
+    from src.learning.evaluation.committee_attribution import (
+        build_context_influence_report,
+        compute_committee_stratified,
+        compute_stage_funnel,
+        summarize_blocked_trades,
+    )
+
+    session = get_session()
+    try:
+        blocked_summary = summarize_blocked_trades(session, df)
+        from src.learning.evaluation.research_attribution import build_research_influence_report
+
+        eval_payload["research_influence"] = build_research_influence_report(session, df)
+    finally:
+        session.close()
+
+    eval_payload["committee"] = {
+        "stratified": compute_committee_stratified(df),
+        "stage_funnel": compute_stage_funnel(df, blocked_summary=blocked_summary),
+        "blocked_trades": blocked_summary,
+    }
+    eval_payload["context_influence"] = build_context_influence_report(df)
 
     if write_report:
         from src.learning.evaluation.report import write_evaluation_report

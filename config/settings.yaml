@@ -14,9 +14,14 @@ trading:
   small_position_cleanup_enabled: true  # Liquidate residual holdings immediately before strategy runs
   small_position_cleanup_value_gbp: 100  # Full SELL any holding below this value without strategy/moderation/risk
   stagnation_exit_enabled: true  # Deterministic SELL for positions whose profit-per-day-held falls below the floor
-  stagnation_min_days: 15  # Only evaluate stagnation after a position has been held at least this many days (was 10; widened further to give slow theses a fuller window)
-  stagnation_min_profit_per_day_pct: 0.2  # Exit when (pnl_pct / held_days) drops below this percent per day (was 0.5; tolerates steady compounders ~6%/30d)
-  stagnation_grace_pnl_pct: null  # If set, exempt positions with pnl_pct >= this from stagnation exit (let winners run)
+  stagnation_min_days: 12  # Evaluate stagnation after this many days held (pace-aligned; was 15)
+  stagnation_min_profit_per_day_pct: null  # null + stagnation_use_pace_threshold=true => learning.success_min_profit_per_day_pct (0.25)
+  stagnation_use_pace_threshold: true  # Single source: inherit winner threshold from learning block (ADR-005)
+  stagnation_grace_by_pace: true  # Exempt positions with unrealized gain/day >= winner threshold
+  stagnation_grace_pnl_pct: null  # Optional absolute pnl_pct grace (used when stagnation_grace_by_pace is false)
+  slow_bleed_exit_enabled: true  # Exit slow losers when gain/day < stall floor before hard stop
+  slow_bleed_min_days: 10  # Minimum hold before slow-bleed evaluation
+  pace_aware_sell_enabled: false  # Allow gain_realization SELL below sell_min_profit_pct when pace >= winner threshold
   base_url: https://demo.trading212.com/api/v0
   cycle_frequency: intraday  # standard = 2 fixed UTC cycles; intraday = 3 DST-aware market-session cycles
   schedule_mode: market_session  # market_session = America/New_York-local cycle times; fixed_utc = legacy UTC cron
@@ -73,6 +78,7 @@ strategy:
 moderation:
   require_consensus: true
   consensus_threshold: 2
+  parallel_enabled: true   # US-9.5: run GPT-4o + Gemini moderators concurrently (kill switch)
 
 models:
   strategy: claude-sonnet-4-5-20250929
@@ -205,9 +211,13 @@ order_management:
     enabled: true                 # Software-based trailing stops (cancel + replace)
     default_trail_pct: 10.0       # Trail distance as % below high-water mark
     min_profit_pct: 20.0          # Only trail positions with unrealised P&L > this %
+    pace_trigger_enabled: true    # Also activate trailing when unrealized gain/day >= winner threshold
+    min_gain_per_day_pct: null    # null => learning.success_min_profit_per_day_pct
   profit_lock_tiers:
     enabled: true                 # Tiered profit-lock floors integrated with ATR/trailing stops
     tiers:
+      - unrealized_gain_pct: 3.5
+        min_lock_pct: 1.0
       - unrealized_gain_pct: 5.0
         min_lock_pct: 2.0
       - unrealized_gain_pct: 8.0
@@ -294,7 +304,9 @@ learning:
   export_day_of_week: sun
   export_time_utc: "13:00"
   export_train_enabled: false
-  export_dataset_version: v2
+  export_dataset_version: v6
+  success_min_profit_per_day_pct: 0.25
+  stall_min_gain_per_day_pct: -0.05
   embeddings_enabled: false
   embedding_daily_budget_gbp: 0.25
   memory_inject_strategy: false
@@ -310,4 +322,5 @@ learning:
   evaluate_day_of_week: sun
   evaluate_time_utc: "14:00"
   gbm_veto_threshold: 0.35
+  gbm_prioritize_threshold: 0.40
   memory_veto_threshold: 0.5

@@ -100,16 +100,16 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
 
   // --- Independent data sections ---
   const fetchStatus = useCallback(() => statusApi.get(), [])
-  const statusResult = useAsyncData(fetchStatus)
+  const statusResult = useAsyncData(fetchStatus, [], { refreshInterval: 60_000 })
 
   const fetchPortfolio = useCallback(() => portfolioApi.current(), [])
-  const portfolioResult = useAsyncData<PortfolioSnapshot | null>(fetchPortfolio)
+  const portfolioResult = useAsyncData<PortfolioSnapshot | null>(fetchPortfolio, [], { refreshInterval: 60_000 })
 
   const fetchLatestRun = useCallback(async () => {
     const runs = await runsApi.list({ limit: 10 })
     return runs.find((run) => run.run_type !== 'refresh') || null
   }, [])
-  const latestRunResult = useAsyncData<Run | null>(fetchLatestRun)
+  const latestRunResult = useAsyncData<Run | null>(fetchLatestRun, [], { refreshInterval: 60_000 })
 
   const fetchPerformance = useCallback(() => performanceApi.getMetrics(), [])
   const perfResult = useAsyncData(fetchPerformance)
@@ -120,8 +120,8 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const fetchMonthly = useCallback(() => dashboardApi.getMonthlySummary(currentYear, currentMonth), [currentYear, currentMonth])
   const monthlyResult = useAsyncData<MonthlySummary>(fetchMonthly)
 
-  const fetchEvents = useCallback(() => eventsApi.list({ limit: 200 }), [])
-  const historicalEventsResult = useAsyncData<Event[]>(fetchEvents)
+  const fetchEvents = useCallback(() => eventsApi.list({ limit: 50 }), [])
+  const historicalEventsResult = useAsyncData<Event[]>(fetchEvents, [], { refreshInterval: 120_000 })
 
   const fetchOrders = useCallback(() => ordersApi.list({ limit: 15 }), [])
   const ordersResult = useAsyncData<Order[]>(fetchOrders)
@@ -130,7 +130,7 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const runFeedResult = useAsyncData<RunFeedEntry[]>(fetchRunFeed)
 
   const fetchMacroSummary = useCallback(() => macroApi.summary().catch(() => null), [])
-  const macroResult = useAsyncData<MacroSummary | null>(fetchMacroSummary)
+  const macroResult = useAsyncData<MacroSummary | null>(fetchMacroSummary, [], { refreshInterval: 120_000 })
   const fetchGuidanceSummary = useCallback(() => insightsApi.getLatestGuidance().catch(() => null), [])
   const guidanceResult = useAsyncData<GuidanceSnapshot | null>(fetchGuidanceSummary)
   const fetchEpisodes = useCallback(() => insightsApi.listEpisodes().catch(() => []), [])

@@ -6,6 +6,7 @@ import math
 import time
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 import httpx
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
@@ -297,11 +298,24 @@ class T212Client:
 
     # --- History ---
 
-    def get_order_history(self, cursor: str | None = None, limit: int = 50) -> dict[str, Any]:
+    def get_order_history(
+        self,
+        cursor: str | None = None,
+        limit: int = 50,
+        *,
+        ticker: str | None = None,
+    ) -> dict[str, Any]:
         """GET /equity/history/orders — paginated order history."""
+        if cursor and cursor.startswith("/"):
+            parsed = urlparse(cursor)
+            pairs = [(key, value) for key, value in parse_qsl(parsed.query, keep_blank_values=False) if value]
+            cursor_path = f"{parsed.path}?{urlencode(pairs)}" if pairs else parsed.path
+            return self._request("GET", cursor_path)  # type: ignore[return-value]
         params: dict[str, Any] = {"limit": limit}
         if cursor:
             params["cursor"] = cursor
+        if ticker:
+            params["ticker"] = ticker
         return self._request("GET", "/equity/history/orders", params=params)  # type: ignore[return-value]
 
     def get_dividend_history(self, cursor: str | None = None, limit: int = 50) -> dict[str, Any]:

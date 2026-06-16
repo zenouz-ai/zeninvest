@@ -8,6 +8,7 @@ from typing import Any
 
 from src.data.database import get_session
 from src.data.models import DecisionShadowScore
+from src.learning.evaluation.gbm_inference import predict_gbm_probs
 from src.learning.evaluation.policies import DEFAULT_SHADOW_POLICIES, PolicyId, RecommendedAction
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
@@ -43,7 +44,8 @@ class ShadowEvaluator:
             decision = buy.get("decision") or {}
             conviction = float(buy.get("conviction") or decision.get("conviction") or 50.0)
             reasoning = str(decision.get("reasoning") or "")
-            champion_action: RecommendedAction = "buy"
+            action = str(buy.get("action") or decision.get("action") or "BUY").upper()
+            champion_action: RecommendedAction = "queue" if action == "QUEUED" else "buy"
 
             for policy_id in policy_ids:
                 recommended, scores = self._score_one(
@@ -52,6 +54,7 @@ class ShadowEvaluator:
                     conviction=conviction,
                     reasoning=reasoning,
                     macro_regime=macro_regime,
+                    buy_context=buy,
                 )
                 entry = {
                     "cycle_id": cycle_id,
@@ -78,6 +81,21 @@ class ShadowEvaluator:
                 continue
         return out or list(DEFAULT_SHADOW_POLICIES)
 
+    def _gbm_probs(self, buy_context: dict[str, Any], conviction: float) -> dict[str, float]:
+        row: dict[str, Any] = {"conviction": conviction}
+        decision = buy_context.get("decision") or {}
+        if isinstance(decision, dict):
+            row.update({k: v for k, v in decision.items() if k != "reasoning"})
+        row["target_allocation_pct"] = buy_context.get("target_allocation_pct")
+        row["final_allocation_pct"] = buy_context.get("final_allocation_pct")
+        try:
+            return predict_gbm_probs(row, conviction_fallback=conviction)
+        except Exception as exc:
+            logger.debug("Shadow GBM inference failed, using heuristic: %s", exc)
+            from src.learning.evaluation.gbm_inference import heuristic_probs
+
+            return heuristic_probs(conviction)
+
     def _score_one(
         self,
         *,
@@ -86,15 +104,22 @@ class ShadowEvaluator:
         conviction: float,
         reasoning: str,
         macro_regime: str | None,
+        buy_context: dict[str, Any],
     ) -> tuple[RecommendedAction, dict[str, Any]]:
         gbm_veto = float(self.settings.learning_gbm_veto_threshold)
+        gbm_prioritize = float(self.settings.learning_gbm_prioritize_threshold)
         mem_veto = float(self.settings.learning_memory_veto_threshold)
         scores: dict[str, Any] = {"conviction": conviction}
 
-        p_bl = max(0.0, (100.0 - conviction) / 200.0)
-        p_bw = min(1.0, conviction / 200.0)
-        scores["p_big_loser_heuristic"] = p_bl
-        scores["p_big_winner_heuristic"] = p_bw
+        probs = self._gbm_probs(buy_context, conviction)
+        p_bl = float(probs.get("big_loser", 0.0))
+        p_bw = float(probs.get("big_winner", 0.0))
+        p_stall = float(probs.get("stall", 0.0))
+        scores["p_big_loser"] = p_bl
+        scores["p_big_winner"] = p_bw
+        scores["p_stall"] = p_stall
+        scores["p_big_loser_heuristic"] = max(0.0, (100.0 - conviction) / 200.0)
+        scores["p_big_winner_heuristic"] = min(1.0, conviction / 200.0)
 
         memory_hits: list[dict[str, Any]] = []
         memory_bad_frac: float | None = None
@@ -113,7 +138,7 @@ class ShadowEvaluator:
         if policy_id == PolicyId.CHALLENGER_GBM:
             if p_bl >= gbm_veto:
                 return "skip", scores
-            if p_bw >= 0.45:
+            if p_bw >= gbm_prioritize:
                 return "prioritize", scores
             return "buy", scores
 
@@ -127,7 +152,7 @@ class ShadowEvaluator:
                 return "skip", scores
             if memory_bad_frac is not None and memory_bad_frac >= mem_veto:
                 return "skip", scores
-            if p_bw >= 0.45:
+            if p_bw >= gbm_prioritize:
                 return "prioritize", scores
             return "buy", scores
 

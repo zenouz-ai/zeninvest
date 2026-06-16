@@ -467,6 +467,71 @@ class TestFullReview:
         assert result.consensus == "APPROVED"
 
 
+class TestParallelModeration:
+    @patch("src.agents.moderation.panel.get_degradation_level")
+    @patch("src.agents.moderation.panel.openai_mod.review_trade")
+    @patch("src.agents.moderation.panel.gemini_mod.review_trade")
+    def test_parallel_runs_both_and_combines(
+        self, mock_gemini, mock_openai, mock_degradation,
+        panel, sample_proposal, sample_market_context,
+    ):
+        mock_degradation.return_value = DegradationLevel.FULL
+        panel.settings._config["moderation"]["parallel_enabled"] = True
+        mock_openai.return_value = {"verdict": "AGREE", "reasoning": "ok", "available": True}
+        mock_gemini.return_value = {
+            "verdict": "AGREE", "growth_score": 7, "risk_score": 4,
+            "confidence_score": 7, "assessment": "ok", "available": True,
+        }
+        result = panel.review_trade(
+            sample_proposal, "Portfolio context", sample_market_context, 78, "cycle-1",
+        )
+        assert result.moderators_available == 2
+        assert result.consensus == "APPROVED"
+        mock_openai.assert_called_once()
+        mock_gemini.assert_called_once()
+
+    @patch("src.agents.moderation.panel.get_degradation_level")
+    @patch("src.agents.moderation.panel.openai_mod.review_trade")
+    @patch("src.agents.moderation.panel.gemini_mod.review_trade")
+    def test_one_moderator_raising_does_not_kill_the_other(
+        self, mock_gemini, mock_openai, mock_degradation,
+        panel, sample_proposal, sample_market_context,
+    ):
+        mock_degradation.return_value = DegradationLevel.FULL
+        panel.settings._config["moderation"]["parallel_enabled"] = True
+        mock_openai.side_effect = RuntimeError("boom")
+        mock_gemini.return_value = {
+            "verdict": "AGREE", "growth_score": 7, "risk_score": 4,
+            "confidence_score": 7, "assessment": "ok", "available": True,
+        }
+        result = panel.review_trade(
+            sample_proposal, "Portfolio context", sample_market_context, 80, "cycle-1",
+        )
+        # GPT-4o blew up; Gemini still scored, so one moderator is available.
+        assert result.gpt4o_verdict is None
+        assert result.moderators_available == 1
+
+    @patch("src.agents.moderation.panel.get_degradation_level")
+    @patch("src.agents.moderation.panel.openai_mod.review_trade")
+    @patch("src.agents.moderation.panel.gemini_mod.review_trade")
+    def test_kill_switch_falls_back_to_serial(
+        self, mock_gemini, mock_openai, mock_degradation,
+        panel, sample_proposal, sample_market_context,
+    ):
+        mock_degradation.return_value = DegradationLevel.FULL
+        panel.settings._config["moderation"]["parallel_enabled"] = False
+        mock_openai.return_value = {"verdict": "AGREE", "reasoning": "ok", "available": True}
+        mock_gemini.return_value = {
+            "verdict": "AGREE", "growth_score": 7, "risk_score": 4,
+            "confidence_score": 7, "assessment": "ok", "available": True,
+        }
+        result = panel.review_trade(
+            sample_proposal, "Portfolio context", sample_market_context, 78, "cycle-1",
+        )
+        assert result.moderators_available == 2
+        assert result.consensus == "APPROVED"
+
+
 class TestContextFormatter:
     """Test the shared context formatting logic."""
 

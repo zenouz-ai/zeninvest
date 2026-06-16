@@ -17,6 +17,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -44,6 +46,20 @@ def _resolve_project_root() -> Path:
     if override:
         return Path(override)
     return Path(__file__).resolve().parents[2]
+
+
+def _git_commit_short() -> str | None:
+    """Best-effort git SHA for model governance metadata."""
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=_resolve_project_root(),
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        return out.strip()[:12] or None
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
 
 
 def _parse_args() -> argparse.Namespace:
@@ -314,6 +330,8 @@ def _run_train(args: argparse.Namespace) -> int:
             "dataset_checksum": result.checksum,
             "embargo_days": spec.labels.embargo_days,
             "horizons_days": list(spec.labels.horizons_days),
+            "label_config": asdict(spec.labels),
+            "git_commit": _git_commit_short(),
         },
     )
     paths = write_report(report, report_dir)

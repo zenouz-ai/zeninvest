@@ -167,7 +167,6 @@ async def get_runs(
 
     session = get_session()
     try:
-        _reconcile_stale_runs(session)
         query = session.query(Run)
 
         if run_type:

@@ -1,0 +1,25 @@
+{
+  "market_assessment": "Sideways regime with mixed sector signals; selective buying favored.",
+  "decisions": [
+    {
+      "ticker": "AAPL_US_EQ",
+      "action": "BUY",
+      "target_allocation_pct": 5.0,
+      "conviction": 78,
+      "primary_strategy": "momentum",
+      "reasoning": "Strong momentum with supportive fundamentals and neutral news.",
+      "growth_potential": "HIGH",
+      "risk_level": "MEDIUM",
+      "catalysts": ["earnings beat"],
+      "risks": ["sector rotation"],
+      "exit_conditions": "Trim on thesis break or +20% gain",
+      "exit_trigger_type": "none",
+      "upside_target_pct": 15.0,
+      "stop_loss_pct": -8.0,
+      "entry_type": "market",
+      "expected_holding_period": "5-30 trading days",
+      "news_sentiment_summary": "Neutral to mildly bullish headlines."
+    }
+  ],
+  "portfolio_commentary": "Maintain selective risk-on posture with cash buffer intact."
+}

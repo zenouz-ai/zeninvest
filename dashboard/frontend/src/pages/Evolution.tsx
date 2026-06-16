@@ -321,13 +321,13 @@ export default function Evolution() {
   const requestsState = useAsyncData<EvolutionRequestSummary[]>(
     () => evolutionApi.listRequests({ limit: 20 }),
     [reloadToken],
-    { refreshInterval: 30_000 }
+    { refreshInterval: 120_000 }
   )
 
   const detailState = useAsyncData<EvolutionRequestDetail | null>(
     () => (selectedId == null ? Promise.resolve(null) : evolutionApi.getRequest(selectedId)),
     [selectedId, reloadToken],
-    { enabled: selectedId != null, refreshInterval: 30_000 }
+    { enabled: selectedId != null }
   )
 
   useEffect(() => {

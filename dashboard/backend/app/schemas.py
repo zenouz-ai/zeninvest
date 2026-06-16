@@ -393,8 +393,84 @@ class TradeOutcomeSchema(BaseModel):
     pnl_gbp: float
     pnl_pct: float
     conviction: int | None
+    strategy: str | None = None
+    buy_order_id: int | None = None
+    sell_order_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TradeTimelinePricePointSchema(BaseModel):
+    date: str
+    close: float
+
+
+class TradeTimelineWindowSchema(BaseModel):
+    start: str | None
+    end: str | None
+
+
+class TradeTimelineLegSchema(BaseModel):
+    timestamp: str | None = None
+    price: float | None = None
+    decision_price: float | None = None
+    value_gbp: float | None = None
+    value_gbp_per_share: float | None = None
+    quantity: float | None = None
+    reasoning: str | None = None
+    cycle_id: str | None = None
+    order_type: str | None = None
+    strategy: str | None = None
+    conviction: int | None = None
+    leg_index: int | None = None
+    order_id: int | None = None
+    moderation_result: str | None = None
+    risk_result: str | None = None
+    committee: dict[str, Any] | None = None
+    market_context: dict[str, Any] | None = None
+    research: dict[str, Any] | None = None
+
+
+class TradeTimelineExitReasonSchema(BaseModel):
+    code: str
+    label: str
+
+
+class TradeTimelineClassificationRulesSchema(BaseModel):
+    flat_abs_pnl_pct: float
+    success_min_profit_per_day_pct: float
+    stall_min_gain_per_day_pct: float
+    exit_reasons: list[TradeTimelineExitReasonSchema]
+
+
+class TradeTimelineOutcomeSchema(BaseModel):
+    pnl_gbp: float
+    pnl_pct: float
+    cost_basis_gbp: float
+    sell_proceeds_gbp: float
+    holding_days: float | None
+    result: str
+    label_3class: str
+    classification_rationale: str
+    exit_reason: str
+    exit_label: str
+    quote_return_pct: float | None = None
+
+
+class TradeTimelineSchema(BaseModel):
+    outcome_id: int
+    ticker: str
+    moderation_result: str | None = None
+    risk_result: str | None = None
+    window: TradeTimelineWindowSchema
+    prices: list[TradeTimelinePricePointSchema]
+    price_series_currency: str
+    pnl_currency: str
+    classification_rules: TradeTimelineClassificationRulesSchema
+    buys: list[TradeTimelineLegSchema]
+    buy: TradeTimelineLegSchema
+    sell: TradeTimelineLegSchema
+    outcome: TradeTimelineOutcomeSchema
 
 
 class OutcomesStatsSchema(BaseModel):
@@ -406,6 +482,23 @@ class OutcomesStatsSchema(BaseModel):
     avg_holding_days: float
     best_trade_pct: float | None
     worst_trade_pct: float | None
+
+
+class NorthStarMetricsSchema(BaseModel):
+    """Rolling north-star KPIs aligned with v6 gain/day labels."""
+
+    window_days: int
+    total_trades: int
+    sufficient_data: bool
+    big_winner_hit_rate: float | None = None
+    stall_rate: float | None = None
+    big_loser_rate: float | None = None
+    slow_win_rate: float | None = None
+    avg_gain_per_day_pct: float | None = None
+    expectancy_gbp: float | None = None
+    avg_pnl_pct: float | None = None
+    targets: dict[str, Any] = Field(default_factory=dict)
+    thresholds: dict[str, float] = Field(default_factory=dict)
 
 
 # --- Stop loss ---

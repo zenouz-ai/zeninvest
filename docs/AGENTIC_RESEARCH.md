@@ -71,7 +71,7 @@ Agentic research is bounded, not open-ended.
 
 ### Cache
 
-Research is cached by ticker, tool, and normalized query so identical requests across strategy and moderators do not repeatedly hit the network.
+Research is cached by ticker, tool, and normalized query so identical requests across strategy and moderators do not repeatedly hit the network. The cache is durable (SQLite-backed), so results survive restarts and dedupe across cycles rather than resetting each run. The shared research budget is thread-safe, allowing the moderators to run concurrently.
 
 ### Per-member caps
 

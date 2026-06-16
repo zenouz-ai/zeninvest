@@ -75,6 +75,14 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         raise RuntimeError("OPENAI_API_KEY required for embeddings")
     client = OpenAI(api_key=api_key)
     response = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    try:
+        from src.utils.cost_tracker import log_embedding_cost
+
+        usage = getattr(response, "usage", None)
+        total_tokens = int(getattr(usage, "total_tokens", 0) or 0)
+        log_embedding_cost(total_tokens, model="text-embedding-3-small")
+    except Exception as exc:  # never let cost logging break embeddings
+        logger.debug(f"embedding cost log failed: {exc}")
     return [item.embedding for item in response.data]
 
 
@@ -93,6 +101,12 @@ def build_index_from_jsonl(jsonl_path: str | Path | None = None) -> dict[str, An
                 docs.append(json.loads(line))
     if not docs:
         return {"indexed": 0, "path": str(_index_path())}
+
+    from src.utils.cost_tracker import check_embedding_budget
+
+    if not check_embedding_budget():
+        logger.warning("Embedding budget exhausted; skipping index build")
+        return {"indexed": 0, "path": str(_index_path()), "skipped": "embedding_budget"}
 
     bodies = [d.get("body") or "" for d in docs]
     vectors = embed_texts(bodies)
@@ -122,6 +136,11 @@ def search_similar(
     """Return top-k similar documents by cosine similarity."""
     index = load_index()
     if not index:
+        return []
+    from src.utils.cost_tracker import check_embedding_budget
+
+    if not check_embedding_budget():
+        logger.warning("Embedding budget exhausted; returning no memory hits")
         return []
     query_vec = embed_texts([query_text])[0]
     scored: list[tuple[float, dict[str, Any]]] = []

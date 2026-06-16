@@ -1728,3 +1728,48 @@ class TestFxAwareQuantity:
         call_kwargs = mock_client.place_stop_order.call_args
         # Stop price must be 200 × 0.92 = 184.0 USD, not 155 × 0.92 = 142.6 GBP
         assert call_kwargs.kwargs.get("stop_price") == round(200.0 * 0.92, 2)
+
+    def test_reconcile_order_wallets_from_t212_uses_wallet_impact(self, db_session):
+        order = Order(
+            ticker="SCGLY_US_EQ",
+            action="SELL",
+            order_type="stop",
+            quantity=-24.0,
+            price=16.09,
+            value_gbp=386.16,
+            filled_quantity=24.0,
+            t212_order_id="scgly-stop-1",
+            status="filled",
+        )
+        db_session.add(order)
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_order_history.return_value = {
+            "items": [
+                {
+                    "fill": {
+                        "price": 16.09,
+                        "quantity": -24.0,
+                        "walletImpact": {"netValue": 279.12, "currency": "GBP"},
+                    },
+                    "order": {
+                        "id": "scgly-stop-1",
+                        "status": "FILLED",
+                        "filledQuantity": 24.0,
+                        "filledValue": 386.16,
+                    },
+                }
+            ],
+            "nextPagePath": None,
+        }
+        manager = OrderManager(client=mock_client, dry_run=False)
+        summary = manager.reconcile_order_wallets_from_t212()
+
+        assert summary["updated"] == 1
+        db_session.expire_all()
+        row = db_session.query(Order).filter(Order.t212_order_id == "scgly-stop-1").one()
+        assert row.value_gbp == pytest.approx(279.12)
+        assert row.price == pytest.approx(16.09)
+        assert row.filled_quantity == pytest.approx(24.0)
+

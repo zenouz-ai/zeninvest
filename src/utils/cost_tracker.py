@@ -9,6 +9,7 @@ from sqlalchemy import func
 from src.data.database import get_session
 from src.data.models import CostLog
 from src.utils.chat_cost_context import current_chat_cost_context
+from src.utils.error_codes import ErrorCode
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
@@ -31,6 +32,20 @@ COST_RATES: dict[str, dict[str, float]] = {
     "openai": {"input_per_1m": 2.50, "output_per_1m": 10.0},
     "google": {"input_per_1m": 0.10, "output_per_1m": 0.40},
 }
+
+# Embedding models priced per 1M tokens (USD). text-embedding-3-small ≈ $0.02/1M;
+# reusing the openai chat rate ($2.50/1M) would overstate cost ~125x.
+EMBEDDING_COST_RATES: dict[str, float] = {
+    "text-embedding-3-small": 0.02,
+    "text-embedding-3-large": 0.13,
+}
+
+# Daily-spend categories matched on CostLog.purpose. Chat spend uses
+# purpose="conversation_*"; embeddings use purpose="embedding". These have their
+# own daily caps and are kept OFF the per-provider trading daily budgets (they
+# still count toward the global monthly cap).
+CHAT_PURPOSE_PREFIX = "conversation_"
+EMBEDDING_PURPOSE = "embedding"
 
 
 class CostResult(NamedTuple):
@@ -84,6 +99,54 @@ def calculate_cost(
     return round(total_usd * USD_TO_GBP, 6)
 
 
+def calculate_embedding_cost(model: str, tokens: int) -> float:
+    """Calculate cost in GBP for an embedding call (single token bucket)."""
+    rate = EMBEDDING_COST_RATES.get(model)
+    if rate is None:
+        logger.warning(f"Unknown embedding model {model}, assuming zero cost")
+        return 0.0
+    total_usd = (tokens / 1_000_000) * rate
+    return round(total_usd * USD_TO_GBP, 6)
+
+
+def log_embedding_cost(
+    tokens: int,
+    model: str = "text-embedding-3-small",
+    cycle_id: str | None = None,
+) -> CostResult:
+    """Log an embedding API call cost to the database (purpose='embedding')."""
+    cost_gbp = calculate_embedding_cost(model, tokens)
+    bound_session_id, bound_turn_id = current_chat_cost_context()
+
+    session = get_session()
+    try:
+        entry = CostLog(
+            timestamp=datetime.now(timezone.utc),
+            chat_session_id=bound_session_id,
+            chat_turn_id=bound_turn_id,
+            provider=Provider.OPENAI.value,
+            model=model,
+            input_tokens=tokens,
+            output_tokens=0,
+            cost_gbp=cost_gbp,
+            cycle_id=cycle_id,
+            purpose=EMBEDDING_PURPOSE,
+        )
+        session.add(entry)
+        session.commit()
+        logger.info(f"Embedding cost logged: {model} - {tokens}tok = £{cost_gbp:.4f}")
+    finally:
+        session.close()
+
+    return CostResult(
+        input_tokens=tokens,
+        output_tokens=0,
+        cost_gbp=cost_gbp,
+        provider=Provider.OPENAI.value,
+        model=model,
+    )
+
+
 def log_cost(
     provider: str,
     model: str,
@@ -134,8 +197,13 @@ def log_cost(
     )
 
 
-def get_daily_spend(provider: str | None = None) -> float:
-    """Get total spend today in GBP, optionally filtered by provider."""
+def get_daily_spend(provider: str | None = None, exclude_categories: bool = False) -> float:
+    """Get total spend today in GBP, optionally filtered by provider.
+
+    When ``exclude_categories`` is True, chat (``conversation_*``) and embedding
+    (``embedding``) purposes are excluded so they do not consume the per-provider
+    trading daily budgets (they have their own daily caps).
+    """
     session = get_session()
     try:
         today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -144,6 +212,31 @@ def get_daily_spend(provider: str | None = None) -> float:
         )
         if provider:
             query = query.filter(CostLog.provider == provider)
+        if exclude_categories:
+            query = query.filter(
+                func.coalesce(CostLog.purpose, "").notlike(CHAT_PURPOSE_PREFIX + "%"),
+                func.coalesce(CostLog.purpose, "") != EMBEDDING_PURPOSE,
+            )
+        return float(query.scalar())
+    finally:
+        session.close()
+
+
+def get_category_daily_spend(category: str) -> float:
+    """Get today's spend in GBP for a purpose category ('chat' or 'embedding')."""
+    session = get_session()
+    try:
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        query = session.query(func.coalesce(func.sum(CostLog.cost_gbp), 0.0)).filter(
+            CostLog.timestamp >= today_start
+        )
+        if category == "chat":
+            query = query.filter(CostLog.purpose.like(CHAT_PURPOSE_PREFIX + "%"))
+        elif category == "embedding":
+            query = query.filter(CostLog.purpose == EMBEDDING_PURPOSE)
+        else:
+            logger.warning(f"Unknown spend category {category!r}; returning 0.0")
+            return 0.0
         return float(query.scalar())
     finally:
         session.close()
@@ -173,7 +266,8 @@ def get_budget_status(provider: str) -> BudgetStatus:
         Provider.GOOGLE.value: settings.google_daily_gbp,
     }
     daily_limit = daily_limits.get(provider, 0.0)
-    daily_spent = get_daily_spend(provider)
+    # Exclude chat/embedding purposes so they don't consume trading provider budgets.
+    daily_spent = get_daily_spend(provider, exclude_categories=True)
     daily_remaining = max(0.0, daily_limit - daily_spent)
     daily_pct = (daily_spent / daily_limit * 100) if daily_limit > 0 else 100.0
 
@@ -205,11 +299,17 @@ def check_budget(provider: str) -> bool:
     status = get_budget_status(provider)
 
     if status.is_over_monthly:
-        logger.warning(f"Monthly budget exceeded: £{status.monthly_spent_gbp:.2f}/£{status.monthly_limit_gbp:.2f}")
+        logger.warning(
+            f"[{ErrorCode.COST_MONTHLY_HALT}] Monthly budget exceeded: "
+            f"£{status.monthly_spent_gbp:.2f}/£{status.monthly_limit_gbp:.2f}"
+        )
         return False
 
     if status.is_over_daily:
-        logger.warning(f"{provider} daily budget exceeded: £{status.daily_spent_gbp:.2f}/£{status.daily_limit_gbp:.2f}")
+        logger.warning(
+            f"[{ErrorCode.COST_DAILY_CAP_EXCEEDED}] {provider} daily budget exceeded: "
+            f"£{status.daily_spent_gbp:.2f}/£{status.daily_limit_gbp:.2f}"
+        )
         return False
 
     if status.is_at_alert_threshold:
@@ -219,6 +319,58 @@ def check_budget(provider: str) -> bool:
         )
 
     return True
+
+
+def check_category_budget(category: str) -> bool:
+    """Check if a spend category ('chat'/'embedding') is within budget.
+
+    Returns True if OK to proceed. Respects the global monthly cap first, then the
+    category's own daily cap. Independent of the per-provider trading budgets.
+    """
+    settings = get_settings()
+
+    caps = {
+        "chat": settings.conversation_chat_llm_daily_budget_gbp,
+        "embedding": settings.learning_embedding_daily_budget_gbp,
+    }
+    cap = caps.get(category)
+    if cap is None:
+        logger.warning(f"Unknown spend category {category!r}; denying")
+        return False
+
+    # Fail-open guardrail: a budget check must never crash the path it protects.
+    # If spend cannot be read (e.g. transient DB error), allow the call to proceed.
+    try:
+        monthly_spent = get_monthly_spend()
+        if monthly_spent >= settings.total_monthly_gbp:
+            logger.warning(
+                f"[{ErrorCode.COST_MONTHLY_HALT}] Monthly budget exceeded: "
+                f"£{monthly_spent:.2f}/£{settings.total_monthly_gbp:.2f} — blocking {category} spend"
+            )
+            return False
+
+        spent = get_category_daily_spend(category)
+    except Exception as exc:
+        logger.debug(f"{category} budget check unavailable, failing open: {exc}")
+        return True
+
+    if spent >= cap:
+        logger.warning(
+            f"[{ErrorCode.COST_DAILY_CAP_EXCEEDED}] {category} daily budget exceeded: "
+            f"£{spent:.4f}/£{cap:.2f}"
+        )
+        return False
+    return True
+
+
+def check_chat_budget() -> bool:
+    """Check if conversational LLM spend is within its daily cap."""
+    return check_category_budget("chat")
+
+
+def check_embedding_budget() -> bool:
+    """Check if embedding spend is within its daily cap."""
+    return check_category_budget("embedding")
 
 
 def get_degradation_level() -> DegradationLevel:
@@ -278,6 +430,20 @@ def get_cost_summary(days: int = 1) -> dict[str, float]:
             summary[row.provider] = cost
             total += cost
         summary["total"] = total
+
+        # Category breakdown by purpose (chat = conversation_*, embedding = embedding).
+        chat_total = (
+            session.query(func.coalesce(func.sum(CostLog.cost_gbp), 0.0))
+            .filter(CostLog.timestamp >= since, CostLog.purpose.like(CHAT_PURPOSE_PREFIX + "%"))
+            .scalar()
+        )
+        embedding_total = (
+            session.query(func.coalesce(func.sum(CostLog.cost_gbp), 0.0))
+            .filter(CostLog.timestamp >= since, CostLog.purpose == EMBEDDING_PURPOSE)
+            .scalar()
+        )
+        summary["chat"] = float(chat_total or 0)
+        summary["embedding"] = float(embedding_total or 0)
         return summary
     finally:
         session.close()

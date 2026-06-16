@@ -6,13 +6,17 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.utils.config import get_settings
 
 from .database import init_dashboard_tables
 from .middleware.auth import DashboardSessionMiddleware
+from .static_frontend import (
+    apply_frontend_cache_headers,
+    index_html_response,
+    should_spa_fallback,
+)
 from .routers import (
     auth,
     api_usage,
@@ -144,17 +148,17 @@ if _FRONTEND_DIST.exists():
     )
 
     @app.middleware("http")
-    async def spa_fallback_middleware(request: Request, call_next):
-        """Serve index.html for non-API 404s so client-side routing works."""
+    async def frontend_static_middleware(request: Request, call_next):
+        """SPA fallback for client routes; never mask missing JS/CSS with index.html."""
+        path = request.url.path
         response = await call_next(request)
-        if (
-            response.status_code == 404
-            and not request.url.path.startswith("/api")
-            and request.url.path != "/health"
-        ):
+        if response.status_code == 404 and should_spa_fallback(path):
             index_path = _FRONTEND_DIST / "index.html"
             if index_path.exists():
-                return FileResponse(index_path)
+                return index_html_response(index_path)
+            return response
+        if response.status_code == 200:
+            apply_frontend_cache_headers(path, response)
         return response
 else:
     # Fallback when dist not present (e.g. dev without build)

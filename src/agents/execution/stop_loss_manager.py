@@ -207,10 +207,32 @@ class StopLossManager:
             if min_profit_pct > 0:
                 wallet = pos.get("walletImpact") or {}
                 total_cost = float(wallet.get("totalCost", 0))
+                # Only gate on profit when the cost basis is known. With no
+                # walletImpact/totalCost we cannot compute P&L, so fall back to
+                # applying the trailing stop (protective default) rather than
+                # silently dropping the position.
                 if total_cost > 0:
                     unrealised = float(wallet.get("unrealizedProfitLoss", 0))
                     pnl_pct = (unrealised / total_cost) * 100
-                    if pnl_pct < min_profit_pct:
+                    pace_ok = False
+                    if self.settings.trailing_stop_pace_trigger_enabled and pnl_pct > 0:
+                        held_days_raw = pos.get("held_days")
+                        if held_days_raw is None:
+                            held_hours = pos.get("held_hours")
+                            if held_hours is not None:
+                                try:
+                                    held_days_raw = float(held_hours) / 24.0
+                                except (TypeError, ValueError):
+                                    held_days_raw = None
+                        try:
+                            held_days = float(held_days_raw) if held_days_raw is not None else 0.0
+                        except (TypeError, ValueError):
+                            held_days = 0.0
+                        if held_days > 0:
+                            ppd = pnl_pct / held_days
+                            if ppd >= self.settings.trailing_stop_min_gain_per_day_pct:
+                                pace_ok = True
+                    if pnl_pct < min_profit_pct and not pace_ok:
                         continue
 
             # Get last known HWM from DB

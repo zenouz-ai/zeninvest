@@ -19,8 +19,8 @@ from src.learning.evaluation.policies import PolicyId
 def eval_sandbox(tmp_path, monkeypatch):
     monkeypatch.setenv("INVESTMENT_AGENT_LEARNING_ROOT", str(tmp_path))
     root = tmp_path
-    parquet_dir = root / "data" / "learning" / "parquet" / "v2"
-    exports_dir = root / "data" / "learning" / "exports" / "v2"
+    parquet_dir = root / "data" / "learning" / "parquet" / "v6"
+    exports_dir = root / "data" / "learning" / "exports" / "v6"
     parquet_dir.mkdir(parents=True)
     exports_dir.mkdir(parents=True)
 
@@ -88,6 +88,49 @@ def test_counterfactual_evaluation_completes(eval_sandbox) -> None:
         assert row.n_rows == 10
     finally:
         session.close()
+
+
+def test_committee_policies_in_evaluation(eval_sandbox) -> None:
+    rows = []
+    for i in range(6):
+        rows.append(
+            {
+                "cycle_id": f"c{i}",
+                "ticker": f"T{i}_US_EQ",
+                "decision_ts": datetime(2026, 4, 1, tzinfo=timezone.utc),
+                "action": "BUY",
+                "conviction": 70,
+                "label_3class": "big_loser" if i % 2 == 0 else "big_winner",
+                "ret_30d": -12.0 if i % 2 == 0 else 15.0,
+                "moderation_consensus": "BLOCKED" if i == 0 else "APPROVED",
+                "gpt_verdict": "DISAGREE" if i == 1 else "AGREE",
+                "gemini_verdict": "DISAGREE" if i == 2 else "AGREE",
+                "risk_verdict": "REJECT" if i == 3 else "APPROVE",
+                "actually_traded": i >= 4,
+                "trade_pnl_gbp": -40.0 if i == 4 else (50.0 if i == 5 else None),
+                "realized_pnl_pct": -12.0 if i == 4 else (15.0 if i == 5 else None),
+            }
+        )
+    df = pd.DataFrame(rows)
+    parquet_dir = eval_sandbox / "data" / "learning" / "parquet" / "v6"
+    df.to_parquet(parquet_dir / "merged.parquet", index=False)
+
+    result = run_counterfactual_evaluation(
+        project_root=eval_sandbox,
+        run_id="eval-committee",
+        policies=[
+            PolicyId.CHAMPION_AS_IS,
+            PolicyId.BASELINE_STRATEGY_ONLY,
+            PolicyId.CHALLENGER_MODERATION,
+            PolicyId.CHALLENGER_GPT_ONLY,
+            PolicyId.CHALLENGER_GEMINI_ONLY,
+            PolicyId.CHALLENGER_RISK_ONLY,
+        ],
+    )
+    assert result["status"] == "completed"
+    assert "committee" in result
+    assert PolicyId.CHALLENGER_MODERATION.value in result["policies"]
+    assert result["policies"][PolicyId.CHALLENGER_MODERATION.value]["forward_precision_at_veto"] is not None
 
 
 def test_promotion_gates_low_sample_not_ready(eval_sandbox) -> None:

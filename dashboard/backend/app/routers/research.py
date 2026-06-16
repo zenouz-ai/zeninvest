@@ -54,7 +54,7 @@ async def get_research_logs(
                 "latency_ms": r.latency_ms,
                 "cost_usd": r.cost_usd,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
-                "results_json": r.results_json[:500] if r.results_json else None,
+                "results_json": r.results_json[:1500] if r.results_json else None,
             }
             for r in rows
         ]
@@ -92,11 +92,62 @@ async def get_research_by_ticker(
                 "cache_hit": r.cache_hit,
                 "latency_ms": r.latency_ms,
                 "cost_usd": r.cost_usd,
-                "results_json": r.results_json[:500] if r.results_json else None,
+                "results_json": r.results_json[:1500] if r.results_json else None,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in rows
         ]
+    finally:
+        session.close()
+
+
+@router.get("/cycle/{cycle_id}")
+async def get_research_by_cycle(
+    cycle_id: str,
+    limit: int = Query(default=200, ge=1, le=500),
+):
+    """All research logs for one cycle (all tickers)."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+
+    session = get_session()
+    try:
+        rows = (
+            session.query(ResearchLog)
+            .filter(ResearchLog.cycle_id == cycle_id)
+            .order_by(desc(ResearchLog.created_at))
+            .limit(limit)
+            .all()
+        )
+        total_cost = sum(float(r.cost_usd or 0) for r in rows)
+        cache_hits = sum(1 for r in rows if r.cache_hit)
+        by_member: dict[str, int] = {}
+        for r in rows:
+            by_member[r.member] = by_member.get(r.member, 0) + 1
+        return {
+            "cycle_id": cycle_id,
+            "total_calls": len(rows),
+            "cache_hits": cache_hits,
+            "total_cost_usd": round(total_cost, 4),
+            "by_member": by_member,
+            "calls": [
+                {
+                    "id": r.id,
+                    "member": r.member,
+                    "ticker": r.ticker,
+                    "tool_name": r.tool_name,
+                    "query": r.query,
+                    "num_results": r.num_results,
+                    "provider": r.provider,
+                    "cache_hit": r.cache_hit,
+                    "latency_ms": r.latency_ms,
+                    "cost_usd": r.cost_usd,
+                    "results_json": r.results_json[:1500] if r.results_json else None,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ],
+        }
     finally:
         session.close()
 

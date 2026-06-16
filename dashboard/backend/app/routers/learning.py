@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +50,20 @@ def _reports_root() -> Path:
     return _project_root() / "data" / "learning" / "reports"
 
 
+def _learning_root() -> Path:
+    """Project root for learning artifacts, honoring INVESTMENT_AGENT_LEARNING_ROOT.
+
+    Mirrors how ``src/learning/cli.py`` resolves its artifact root so the
+    dashboard reads from the same directory tests/sandboxes redirect to.
+    """
+    override = os.environ.get("INVESTMENT_AGENT_LEARNING_ROOT")
+    return Path(override) if override else _project_root()
+
+
+def _learning_reports_dir() -> Path:
+    return _learning_root() / "data" / "learning" / "reports"
+
+
 def _ensure_dashboard_enabled() -> None:
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
@@ -72,6 +88,145 @@ def _serialize_run(row: LearningRun) -> dict[str, Any]:
     }
 
 
+def _export_age_days(created_at: datetime | None) -> int | None:
+    if created_at is None:
+        return None
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return max(0, (datetime.now(timezone.utc) - created_at).days)
+
+
+def _serialize_export_row(row: LearningExportRun) -> dict[str, Any]:
+    return {
+        "id": int(row.id),
+        "run_id": row.run_id,
+        "dataset_version": row.dataset_version,
+        "status": row.status,
+        "rows": int(row.rows or 0),
+        "text_corpus_rows": int(row.text_corpus_rows or 0),
+        "checksum": row.checksum,
+        "duration_sec": row.duration_sec,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "artifact_paths": (
+            json.loads(row.artifact_paths_json) if row.artifact_paths_json else {}
+        ),
+    }
+
+
+def _serialize_train_run(row: LearningRun) -> dict[str, Any]:
+    return {
+        "run_id": row.run_id,
+        "dataset_version": row.dataset_version,
+        "status": row.status,
+        "rows": int(row.rows or 0),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }
+
+
+@router.get("/status")
+async def get_learning_page_status() -> dict[str, Any]:
+    """Aggregate north-star, artifact freshness, and gate context for the Learning page."""
+    _ensure_dashboard_enabled()
+    from src.agents.reporting.north_star_metrics import compute_north_star_metrics
+    from src.agents.reporting.realized_trades import realized_trade_outcomes_query
+    from src.learning.evaluation.outcome_join import shadow_summary
+    from src.learning.spec import DATASET_VERSION
+
+    session = get_session()
+    warnings: list[str] = []
+    try:
+        outcome_rows = realized_trade_outcomes_query(session).all()
+        north_star = compute_north_star_metrics(outcome_rows, window_days=90).to_dict()
+
+        latest_export_row = (
+            session.query(LearningExportRun)
+            .order_by(desc(LearningExportRun.created_at))
+            .first()
+        )
+        latest_export = (
+            _serialize_export_row(latest_export_row) if latest_export_row else None
+        )
+
+        latest_eval_row = (
+            session.query(LearningEvaluationRun)
+            .order_by(desc(LearningEvaluationRun.created_at))
+            .first()
+        )
+        latest_evaluation = None
+        if latest_eval_row is not None:
+            metrics = json.loads(latest_eval_row.metrics_json) if latest_eval_row.metrics_json else {}
+            gates = json.loads(latest_eval_row.gates_json) if latest_eval_row.gates_json else {}
+            report_path = (
+                _project_root() / "data" / "learning" / "evaluation" / latest_eval_row.run_id / "index.html"
+            )
+            latest_evaluation = {
+                "run_id": latest_eval_row.run_id,
+                "dataset_version": latest_eval_row.dataset_version,
+                "status": latest_eval_row.status,
+                "n_rows": latest_eval_row.n_rows,
+                "closed_trades": latest_eval_row.closed_trades,
+                "created_at": (
+                    latest_eval_row.created_at.isoformat() if latest_eval_row.created_at else None
+                ),
+                "metrics": metrics,
+                "gates": gates,
+                "report_available": report_path.exists(),
+            }
+
+        latest_train_row = (
+            session.query(LearningRun)
+            .order_by(desc(LearningRun.created_at))
+            .first()
+        )
+        latest_train_run = (
+            _serialize_train_run(latest_train_row) if latest_train_row else None
+        )
+
+        export_preview_rows = (
+            session.query(LearningExportRun)
+            .order_by(desc(LearningExportRun.created_at))
+            .limit(10)
+            .all()
+        )
+        exports_preview = [_serialize_export_row(r) for r in export_preview_rows]
+
+        dataset_version = DATASET_VERSION
+        versions = list_dataset_versions(_project_root())
+        if versions:
+            dataset_version = versions[-1]
+
+        if latest_export is None:
+            warnings.append(
+                "No weekly export recorded — run: poetry run python -m src.learning.cli run-export"
+            )
+        else:
+            export_age = _export_age_days(latest_export_row.created_at if latest_export_row else None)
+            if export_age is not None and export_age > 8:
+                warnings.append(
+                    f"Parquet export is {export_age} days old (>8d) — schedule may have missed a week"
+                )
+
+        if latest_export is not None and latest_evaluation is None:
+            warnings.append(
+                "Export exists but no evaluation run — run: poetry run python -m src.learning.cli evaluate"
+            )
+
+        shadow = shadow_summary(days=30)
+
+        return {
+            "north_star": north_star,
+            "dataset_version": dataset_version,
+            "latest_export": latest_export,
+            "latest_evaluation": latest_evaluation,
+            "latest_train_run": latest_train_run,
+            "shadow_summary": shadow,
+            "exports_preview": exports_preview,
+            "staleness_warnings": warnings,
+        }
+    finally:
+        session.close()
+
+
 @router.get("/exports")
 async def list_exports(
     limit: int = Query(default=25, ge=1, le=100),
@@ -86,23 +241,7 @@ async def list_exports(
             .limit(limit)
             .all()
         )
-        out = [
-            {
-                "id": int(r.id),
-                "run_id": r.run_id,
-                "dataset_version": r.dataset_version,
-                "status": r.status,
-                "rows": int(r.rows or 0),
-                "text_corpus_rows": int(r.text_corpus_rows or 0),
-                "checksum": r.checksum,
-                "duration_sec": r.duration_sec,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "artifact_paths": (
-                    json.loads(r.artifact_paths_json) if r.artifact_paths_json else {}
-                ),
-            }
-            for r in rows
-        ]
+        out = [_serialize_export_row(r) for r in rows]
         return {"exports": out, "count": len(out)}
     finally:
         session.close()
@@ -315,6 +454,40 @@ async def get_latest_audit() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail="audit file corrupt") from exc
 
 
+@router.get("/rejection-analysis")
+async def get_rejection_analysis() -> dict[str, Any]:
+    """Serve the most recent precomputed rejected-ticker analysis artifact.
+
+    Reads ``data/learning/reports/rejected_analysis_<YYYYMMDD>.json`` (produced
+    by ``scripts/analyze_rejected_tickers.py``) and returns it verbatim plus
+    ``artifact_name``/``artifact_mtime``. Never computes forward returns at
+    request time. Returns ``{"available": False, ...}`` when no artifact exists.
+    """
+    _ensure_dashboard_enabled()
+    reports_dir = _learning_reports_dir()
+    candidates = (
+        sorted(reports_dir.glob("rejected_analysis_*.json")) if reports_dir.exists() else []
+    )
+    if not candidates:
+        return {
+            "available": False,
+            "hint": "run poetry run python scripts/analyze_rejected_tickers.py",
+        }
+    latest = candidates[-1]  # filename date sorts lexicographically
+    try:
+        payload = json.loads(latest.read_text())
+    except json.JSONDecodeError:
+        return {
+            "available": False,
+            "hint": "rejected_analysis artifact is corrupt — re-run scripts/analyze_rejected_tickers.py",
+        }
+    payload["artifact_name"] = latest.name
+    payload["artifact_mtime"] = datetime.fromtimestamp(
+        latest.stat().st_mtime, tz=timezone.utc
+    ).isoformat()
+    return payload
+
+
 @router.get("/evaluation/latest")
 async def get_latest_evaluation() -> dict[str, Any]:
     """Return the most recent champion/challenger evaluation."""
@@ -355,6 +528,61 @@ async def get_latest_evaluation() -> dict[str, Any]:
         session.close()
 
 
+@router.get("/evaluation/committee")
+async def get_committee_evaluation() -> dict[str, Any]:
+    """Committee attribution + context influence from latest evaluation run."""
+    _ensure_dashboard_enabled()
+    session = get_session()
+    try:
+        row = (
+            session.query(LearningEvaluationRun)
+            .order_by(desc(LearningEvaluationRun.created_at))
+            .first()
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="no evaluation runs")
+        metrics = json.loads(row.metrics_json) if row.metrics_json else {}
+        return {
+            "run_id": row.run_id,
+            "committee": metrics.get("committee") or {},
+            "context_influence": metrics.get("context_influence") or {},
+            "policies": {
+                k: v
+                for k, v in (metrics.get("policies") or {}).items()
+                if k.startswith(("baseline_strategy", "challenger_moderation", "challenger_gpt", "challenger_gemini", "challenger_risk", "champion_as_is"))
+            },
+        }
+    finally:
+        session.close()
+
+
+@router.get("/evaluation/research")
+async def get_research_evaluation() -> dict[str, Any]:
+    """Research influence attribution from latest evaluation run."""
+    _ensure_dashboard_enabled()
+    session = get_session()
+    try:
+        row = (
+            session.query(LearningEvaluationRun)
+            .order_by(desc(LearningEvaluationRun.created_at))
+            .first()
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="no evaluation runs")
+        metrics = json.loads(row.metrics_json) if row.metrics_json else {}
+        return {
+            "run_id": row.run_id,
+            "research_influence": metrics.get("research_influence") or {},
+            "policies": {
+                k: v
+                for k, v in (metrics.get("policies") or {}).items()
+                if k.startswith(("challenger_no_research", "challenger_skeptic_research", "champion_as_is"))
+            },
+        }
+    finally:
+        session.close()
+
+
 @router.get("/evaluation/{run_id}/report", include_in_schema=False)
 async def get_evaluation_report(run_id: str) -> FileResponse:
     """Serve evaluation HTML report."""
@@ -374,6 +602,15 @@ async def get_shadow_summary(days: int = Query(default=30, ge=1, le=365)) -> dic
     from src.learning.evaluation.outcome_join import shadow_summary
 
     return shadow_summary(days=days)
+
+
+@router.get("/shadow/entry-advisory")
+async def get_shadow_entry_advisory(days: int = Query(default=30, ge=1, le=365)) -> dict[str, Any]:
+    """Shadow stall/loser probability advisory for recent BUY scores (no live influence)."""
+    _ensure_dashboard_enabled()
+    from src.learning.evaluation.outcome_join import entry_advisory_summary
+
+    return entry_advisory_summary(days=days)
 
 
 @router.get("/shadow/disagreements")

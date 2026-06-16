@@ -24,7 +24,7 @@ from src.agents.conversation.intent_classifier import (
 )
 from src.agents.notifications.trade_command_parser import parse_trade_command
 from src.utils.config import get_settings
-from src.utils.cost_tracker import Provider, check_budget, log_cost
+from src.utils.cost_tracker import Provider, check_budget, check_chat_budget, log_cost
 from src.utils.logger import get_logger
 
 logger = get_logger("conversation_planner")
@@ -172,6 +172,12 @@ class ChatPlanner:
                 fallback,
                 "composer_unavailable",
                 "Composer unavailable, using a deterministic fallback because the OpenAI budget is exhausted.",
+            )
+        if not check_chat_budget():
+            return self._append_warning(
+                fallback,
+                "composer_unavailable",
+                "Composer unavailable, using a deterministic fallback because the daily chat budget is exhausted.",
             )
 
         try:

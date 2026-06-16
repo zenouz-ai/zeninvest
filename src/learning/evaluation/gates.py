@@ -17,7 +17,7 @@ GATE_MIN_TOP_DECILE_LIFT_PCT = 3.0
 GATE_MIN_WIS_ESS = 200
 GATE_MIN_MEMORY_VETO_PRECISION = 0.40
 GATE_MIN_STALL_AUC = 0.52
-GATE_MIN_GBM_BIG_LOSER_RECALL = 0.30
+GATE_MIN_GBM_BIG_WINNER_RECALL = 0.35
 
 
 @dataclass
@@ -72,10 +72,15 @@ def check_promotion_gates(
 
     per_class_recall = agg.get("per_class_recall") or {}
     gbm_bl_recall = float(per_class_recall.get("big_loser") or 0.0)
+    gbm_bw_recall = float(per_class_recall.get("big_winner") or 0.0)
     baseline_bl = _baseline_big_loser_recall(baselines)
     if gbm and baseline_bl is not None and gbm_bl_recall < baseline_bl:
         stop.append(
             f"GBM big_loser recall ({gbm_bl_recall:.1%}) regressed vs conviction baseline ({baseline_bl:.1%})"
+        )
+    if gbm and gbm_bw_recall < GATE_MIN_GBM_BIG_WINNER_RECALL:
+        stop.append(
+            f"GBM big_winner recall ({gbm_bw_recall:.1%}) below floor {GATE_MIN_GBM_BIG_WINNER_RECALL:.0%}"
         )
 
     stall_auc = float((stall.get("aggregate_metrics") or {}).get("auc") or 0.0)

@@ -15,6 +15,8 @@ from src.agents.conversation.session_manager import (
     StaleActionError,
 )
 
+from ..async_utils import run_blocking
+
 router = APIRouter()
 
 _session_manager = SessionManager()
@@ -65,7 +67,8 @@ async def list_sessions(
 async def create_session(body: CreateSessionRequest) -> dict[str, Any]:
     """Create or resume a channel-bound conversational session."""
     try:
-        return _orchestrator.start_session(
+        return await run_blocking(
+            _orchestrator.start_session,
             channel_type=body.channel_type,
             user_id=body.user_id,
             channel_session_key=body.channel_session_key,
@@ -78,7 +81,7 @@ async def create_session(body: CreateSessionRequest) -> dict[str, Any]:
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: int) -> dict[str, Any]:
     """Return full session detail including turns, actions, and research logs."""
-    result = _session_manager.get_session(session_id)
+    result = await run_blocking(_session_manager.get_session, session_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return result
@@ -88,7 +91,8 @@ async def get_session(session_id: int) -> dict[str, Any]:
 async def submit_turn(session_id: int, body: SubmitTurnRequest) -> dict[str, Any]:
     """Submit a new conversational turn and return the refreshed session."""
     try:
-        return _orchestrator.process_turn(
+        return await run_blocking(
+            _orchestrator.process_turn,
             session_id=session_id,
             message_text=body.message_text,
             channel_type=body.channel_type,
@@ -108,7 +112,8 @@ async def submit_turn(session_id: int, body: SubmitTurnRequest) -> dict[str, Any
 async def confirm_action(session_id: int, action_id: int, body: SessionActionRequest) -> dict[str, Any]:
     """Confirm a pending conversational action and return the refreshed session."""
     try:
-        return _orchestrator.confirm_action(
+        return await run_blocking(
+            _orchestrator.confirm_action,
             session_id=session_id,
             action_id=action_id,
             channel_type=body.channel_type,
@@ -132,7 +137,8 @@ async def confirm_action(session_id: int, action_id: int, body: SessionActionReq
 async def reject_action(session_id: int, action_id: int, body: SessionActionRequest) -> dict[str, Any]:
     """Reject a pending conversational action and return the refreshed session."""
     try:
-        return _orchestrator.reject_action(
+        return await run_blocking(
+            _orchestrator.reject_action,
             session_id=session_id,
             action_id=action_id,
             channel_type=body.channel_type,

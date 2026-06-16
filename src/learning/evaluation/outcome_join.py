@@ -8,6 +8,8 @@ from typing import Any
 
 from sqlalchemy import and_
 
+from src.agents.reporting.outcome_classification import derive_label_3class
+from src.agents.reporting.realized_trades import count_realized_trade_outcomes, realized_trade_outcomes_query
 from src.data.database import get_session
 from src.data.models import DecisionShadowScore, TradeOutcome
 from src.learning.evaluation.policies import BAD_LABELS
@@ -69,7 +71,7 @@ def join_shadow_outcomes(*, lookback_days: int = 90) -> dict[str, Any]:
 def _match_outcome(session, ticker: str, decision_ts: datetime) -> TradeOutcome | None:
     window_end = decision_ts + timedelta(days=60)
     return (
-        session.query(TradeOutcome)
+        realized_trade_outcomes_query(session)
         .filter(
             and_(
                 TradeOutcome.ticker == ticker,
@@ -83,15 +85,11 @@ def _match_outcome(session, ticker: str, decision_ts: datetime) -> TradeOutcome 
 
 
 def _outcome_label(outcome: TradeOutcome) -> str:
-    pnl_pct = float(outcome.pnl_pct or 0.0)
-    if pnl_pct >= 10.0:
-        return "big_winner"
-    if pnl_pct <= -10.0:
-        return "big_loser"
-    holding = float(outcome.holding_days or 0.0)
-    if abs(pnl_pct) <= 3.0 and holding >= 14.0:
-        return "stall"
-    return "neutral"
+    return derive_label_3class(
+        pnl_pct=float(outcome.pnl_pct or 0.0),
+        holding_days=float(outcome.holding_days or 0.0) if outcome.holding_days is not None else None,
+        exit_reason=None,
+    )
 
 
 def shadow_summary(*, days: int = 30) -> dict[str, Any]:
@@ -138,6 +136,8 @@ def shadow_summary(*, days: int = 30) -> dict[str, Any]:
         span_days = days
         if rows:
             first = min(r.decision_ts for r in rows if r.decision_ts)
+            if first.tzinfo is None:
+                first = first.replace(tzinfo=timezone.utc)
             span_days = max(1, (datetime.now(timezone.utc) - first).days)
 
         return {
@@ -145,6 +145,74 @@ def shadow_summary(*, days: int = 30) -> dict[str, Any]:
             "span_days": span_days,
             "total_scores": len(rows),
             "by_policy": by_policy,
+        }
+    finally:
+        session.close()
+
+
+def entry_advisory_summary(*, days: int = 30) -> dict[str, Any]:
+    """Shadow-only BUY advisory: stall/loser probability aggregates (no live influence)."""
+    from src.learning.evaluation.gates import GATE_MIN_CLOSED_TRADES_INFLUENCE_REVIEW
+
+    session = get_session()
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    try:
+        rows = (
+            session.query(DecisionShadowScore)
+            .filter(
+                DecisionShadowScore.decision_ts >= cutoff,
+                DecisionShadowScore.champion_action.in_(("buy", "BUY")),
+            )
+            .all()
+        )
+        if not rows:
+            return {
+                "days": days,
+                "total_buy_scores": 0,
+                "influence_gate_closed_trades": GATE_MIN_CLOSED_TRADES_INFLUENCE_REVIEW,
+                "live_influence_enabled": False,
+                "advisory_only": True,
+                "summary": {},
+            }
+
+        closed_trades = count_realized_trade_outcomes(session)
+        high_stall = 0
+        high_loser = 0
+        would_skip = 0
+        scored = 0
+        for row in rows:
+            if not row.scores_json:
+                continue
+            try:
+                scores = json.loads(row.scores_json)
+            except json.JSONDecodeError:
+                continue
+            scored += 1
+            p_stall = float(scores.get("p_stall") or 0.0)
+            p_bl = float(scores.get("p_big_loser") or 0.0)
+            if p_stall >= 0.35:
+                high_stall += 1
+            if p_bl >= 0.35:
+                high_loser += 1
+            if row.recommended_action == "skip":
+                would_skip += 1
+
+        return {
+            "days": days,
+            "total_buy_scores": len(rows),
+            "scored_with_probs": scored,
+            "high_stall_probability": high_stall,
+            "high_loser_probability": high_loser,
+            "challenger_would_skip": would_skip,
+            "closed_trades": closed_trades,
+            "influence_gate_closed_trades": GATE_MIN_CLOSED_TRADES_INFLUENCE_REVIEW,
+            "influence_gate_met": closed_trades >= GATE_MIN_CLOSED_TRADES_INFLUENCE_REVIEW,
+            "live_influence_enabled": False,
+            "advisory_only": True,
+            "message": (
+                "Shadow advisory only — challenger does not influence live execution "
+                f"until ≥{GATE_MIN_CLOSED_TRADES_INFLUENCE_REVIEW} closed trades and gates pass."
+            ),
         }
     finally:
         session.close()

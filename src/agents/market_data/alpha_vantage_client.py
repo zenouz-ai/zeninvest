@@ -10,6 +10,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from src.data.database import get_session
 from src.data.models import ApiLog
 from src.utils.config import get_settings
+from src.utils.error_codes import ErrorCode
 from src.utils.logger import get_logger
 
 logger = get_logger("alpha_vantage")
@@ -93,7 +94,7 @@ class AlphaVantageClient:
             return data
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Alpha Vantage API error: {error_msg}")
+            logger.error(f"[{ErrorCode.DATA_PROVIDER_ERROR}] Alpha Vantage API error: {error_msg}")
             raise
         finally:
             duration = (time.monotonic() - start) * 1000

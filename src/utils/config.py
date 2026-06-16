@@ -206,7 +206,47 @@ class Settings:
     @property
     def stagnation_min_profit_per_day_pct(self) -> float:
         """Minimum profit-per-day-held (percent) required to avoid stagnation exit."""
-        return float(self.trading.get("stagnation_min_profit_per_day_pct", 0.2))
+        if self.stagnation_use_pace_threshold:
+            return self.pace_success_min_profit_per_day_pct
+        explicit = self.trading.get("stagnation_min_profit_per_day_pct")
+        if explicit is not None:
+            return float(explicit)
+        return self.pace_success_min_profit_per_day_pct
+
+    @property
+    def stagnation_use_pace_threshold(self) -> bool:
+        """When true, stagnation floor inherits learning.success_min_profit_per_day_pct."""
+        return bool(self.trading.get("stagnation_use_pace_threshold", True))
+
+    @property
+    def stagnation_grace_by_pace(self) -> bool:
+        """Exempt stagnation when unrealized gain/day >= winner threshold."""
+        return bool(self.trading.get("stagnation_grace_by_pace", True))
+
+    @property
+    def slow_bleed_exit_enabled(self) -> bool:
+        """Exit positions bleeding below stall gain/day floor."""
+        return bool(self.trading.get("slow_bleed_exit_enabled", False))
+
+    @property
+    def slow_bleed_min_days(self) -> float:
+        """Minimum holding days before slow-bleed exit is evaluated."""
+        return float(self.trading.get("slow_bleed_min_days", 10.0))
+
+    @property
+    def pace_aware_sell_enabled(self) -> bool:
+        """Allow gain_realization SELL below absolute floor when pace >= winner threshold."""
+        return bool(self.trading.get("pace_aware_sell_enabled", False))
+
+    @property
+    def pace_success_min_profit_per_day_pct(self) -> float:
+        """Canonical winner pace threshold (learning block)."""
+        return self.learning_success_min_profit_per_day_pct
+
+    @property
+    def pace_stall_min_gain_per_day_pct(self) -> float:
+        """Canonical stall floor for gain/day bands (learning block)."""
+        return self.learning_stall_min_gain_per_day_pct
 
     @property
     def stagnation_grace_pnl_pct(self) -> float | None:
@@ -368,6 +408,11 @@ class Settings:
     @property
     def moderation(self) -> dict[str, Any]:
         return self._config["moderation"]
+
+    @property
+    def parallel_moderation_enabled(self) -> bool:
+        """US-9.5: run GPT-4o + Gemini moderators concurrently. Kill switch."""
+        return bool(self.moderation.get("parallel_enabled", True))
 
     # --- Models ---
     @property
@@ -820,6 +865,22 @@ class Settings:
         return float(ts.get("min_profit_pct", 20.0)) if isinstance(ts, dict) else 20.0
 
     @property
+    def trailing_stop_pace_trigger_enabled(self) -> bool:
+        ts = self.order_management.get("trailing_stops", {})
+        if not isinstance(ts, dict):
+            return False
+        return bool(ts.get("pace_trigger_enabled", False))
+
+    @property
+    def trailing_stop_min_gain_per_day_pct(self) -> float:
+        ts = self.order_management.get("trailing_stops", {})
+        if isinstance(ts, dict):
+            explicit = ts.get("min_gain_per_day_pct")
+            if explicit is not None:
+                return float(explicit)
+        return self.pace_success_min_profit_per_day_pct
+
+    @property
     def _profit_lock_tiers_config(self) -> dict[str, Any]:
         raw = self.order_management.get("profit_lock_tiers", {})
         return raw if isinstance(raw, dict) else {}
@@ -1180,7 +1241,15 @@ class Settings:
 
     @property
     def learning_export_dataset_version(self) -> str:
-        return str(self.learning.get("export_dataset_version", "v2"))
+        return str(self.learning.get("export_dataset_version", "v6"))
+
+    @property
+    def learning_success_min_profit_per_day_pct(self) -> float:
+        return float(self.learning.get("success_min_profit_per_day_pct", 0.25))
+
+    @property
+    def learning_stall_min_gain_per_day_pct(self) -> float:
+        return float(self.learning.get("stall_min_gain_per_day_pct", -0.05))
 
     @property
     def learning_embeddings_enabled(self) -> bool:
@@ -1236,6 +1305,10 @@ class Settings:
     @property
     def learning_gbm_veto_threshold(self) -> float:
         return float(self.learning.get("gbm_veto_threshold", 0.35))
+
+    @property
+    def learning_gbm_prioritize_threshold(self) -> float:
+        return float(self.learning.get("gbm_prioritize_threshold", 0.40))
 
     @property
     def learning_memory_veto_threshold(self) -> float:

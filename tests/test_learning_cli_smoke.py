@@ -201,7 +201,7 @@ def test_cli_smoke_train_persists_learning_run(monkeypatch, tmp_path) -> None:
     rc = cli._run_train(args)
     assert rc == 0
 
-    merged = sandbox / "data" / "learning" / "parquet" / "v2" / "merged.parquet"
+    merged = sandbox / "data" / "learning" / "parquet" / "v6" / "merged.parquet"
     assert merged.exists(), "merged parquet missing"
     metrics = sandbox / "data" / "learning" / "reports" / "smoke-20260512" / "metrics.json"
     assert metrics.exists(), "metrics.json missing"

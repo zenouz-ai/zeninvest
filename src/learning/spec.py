@@ -14,7 +14,7 @@ fresh build on the next ``python -m src.learning.cli build`` run.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 
@@ -22,30 +22,29 @@ from typing import Sequence
 # label column or a structural feature group. Feature additions inside an
 # existing group do not require a bump as long as builder.py stays
 # backwards-compatible.
-DATASET_VERSION = "v2"
+DATASET_VERSION = "v6"
 
 
 @dataclass(frozen=True)
 class LabelConfig:
-    """Thresholds for the 3-class supervised target.
+    """Thresholds for the 3-class supervised target (v6 unified gain/day bands).
 
-    Defaults match the operational definitions ZenInvest already uses
-    (US-3.7 stagnation exit, profit-lock tiers, US-2.1 conviction calibration).
+    Realized trades: ``big_winner`` when gain/day ≥ winner threshold;
+    ``stall`` when gain/day is between stall floor and winner threshold;
+    ``big_loser`` when gain/day < stall floor. No ``neutral`` on closed trades.
     """
 
     # Forward MTM horizons (calendar days) attached as ret_<H>d columns.
     horizons_days: tuple[int, ...] = (3, 10, 30)
 
-    # Big-winner / big-loser thresholds applied to the longest horizon (or
-    # realized P&L when the trade closed).
-    big_winner_min_return_pct: float = 10.0
-    big_loser_max_return_pct: float = -10.0
+    # Unified gain/day bands (realized rows and MTM fallbacks).
+    success_min_profit_per_day_pct: float = 0.25
+    stall_min_gain_per_day_pct: float = -0.05
 
-    # Drawdown veto: a big winner must never have drawn down by more than this
-    # over the labelling horizon (in pct). Negative number.
+    # Drawdown veto: path-resolved big_winner must not draw down beyond this (pct).
     big_winner_max_drawdown_pct: float = -8.0
 
-    # Stall band on the longest horizon and the minimum holding-days qualifier.
+    # MTM vertical-barrier / Phase-A stall helpers (open rows only).
     stall_abs_return_pct: float = 3.0
     stall_min_holding_days: float = 14.0
 
@@ -54,6 +53,18 @@ class LabelConfig:
     # ``max(horizons_days)`` to avoid label leakage across folds (Lopez de
     # Prado, AFML ch. 7).
     embargo_days: int = 30
+
+    @property
+    def barrier_vertical_days(self) -> float:
+        return float(max(self.horizons_days))
+
+    @property
+    def barrier_upper_pct(self) -> float:
+        return self.success_min_profit_per_day_pct * self.barrier_vertical_days
+
+    @property
+    def barrier_lower_pct(self) -> float:
+        return self.stall_min_gain_per_day_pct * self.barrier_vertical_days
 
 
 @dataclass(frozen=True)
@@ -101,8 +112,8 @@ class DatasetSpec:
             "feature_groups": list(self.feature_groups),
             "labels": {
                 "horizons_days": list(self.labels.horizons_days),
-                "big_winner_min_return_pct": self.labels.big_winner_min_return_pct,
-                "big_loser_max_return_pct": self.labels.big_loser_max_return_pct,
+                "success_min_profit_per_day_pct": self.labels.success_min_profit_per_day_pct,
+                "stall_min_gain_per_day_pct": self.labels.stall_min_gain_per_day_pct,
                 "big_winner_max_drawdown_pct": self.labels.big_winner_max_drawdown_pct,
                 "stall_abs_return_pct": self.labels.stall_abs_return_pct,
                 "stall_min_holding_days": self.labels.stall_min_holding_days,
@@ -130,8 +141,30 @@ class TextCorpusSpec:
 
 
 def get_default_spec() -> DatasetSpec:
-    """Return the canonical v2 spec."""
+    """Return the canonical dataset spec."""
     return DatasetSpec()
+
+
+def get_effective_label_config() -> LabelConfig:
+    """Label thresholds with optional overrides from settings.yaml."""
+    base = get_default_spec().labels
+    try:
+        from src.utils.config import get_settings
+
+        settings = get_settings()
+        learning = settings.learning
+        overrides: dict[str, float] = {}
+        for key, yaml_key in (
+            ("success_min_profit_per_day_pct", "success_min_profit_per_day_pct"),
+            ("stall_min_gain_per_day_pct", "stall_min_gain_per_day_pct"),
+        ):
+            if yaml_key in learning:
+                overrides[key] = float(learning[yaml_key])
+        if overrides:
+            return replace(base, **overrides)
+    except Exception:
+        pass
+    return base
 
 
 def get_text_corpus_spec() -> TextCorpusSpec:
@@ -160,6 +193,10 @@ def label_columns(spec: DatasetSpec | None = None) -> Sequence[str]:
             "trade_moderation_result",
             "trade_risk_result",
             "trade_strategy",
+            "barrier_outcome",
+            "barrier_days_to_touch",
+            "barrier_mtm_max_drawdown_pct",
+            "barrier_price_source",
         ]
     )
     return tuple(cols)

@@ -623,6 +623,18 @@ Current macro state:
             system="You produce concise, valid JSON for macro portfolio reasoning.",
             messages=[{"role": "user", "content": prompt}],
         )
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            from src.utils.cost_tracker import Provider, log_cost
+
+            log_cost(
+                provider=Provider.ANTHROPIC.value,
+                model=settings.strategy_model,
+                input_tokens=int(getattr(usage, "input_tokens", 0) or 0),
+                output_tokens=int(getattr(usage, "output_tokens", 0) or 0),
+                cycle_id=None,
+                purpose="macro_action_plan",
+            )
         raw_text = "".join(
             block.text for block in getattr(response, "content", []) if getattr(block, "type", "") == "text"
         ).strip()

@@ -19,6 +19,8 @@ from typing import Any, Iterable, Sequence
 import numpy as np
 import pandas as pd
 
+from src.learning.spec import get_default_spec
+
 
 # ---------------------------------------------------------------------------
 # Public dataclasses
@@ -45,7 +47,7 @@ class InsightTable:
 
 
 def compute_label_distribution(df: pd.DataFrame, label_col: str = "label_3class") -> InsightTable:
-    """Counts + percentages for the 3-class target (plus ``neutral``)."""
+    """Counts + percentages for the 3-class target (v6 bands; legacy ``neutral`` rows tolerated)."""
     if df.empty or label_col not in df.columns:
         return InsightTable(pd.DataFrame(columns=[label_col, "count", "pct"]), {"total": 0})
     counts = df[label_col].fillna("missing").value_counts(dropna=False)
@@ -168,13 +170,23 @@ def compute_realized_pnl_buckets(
     grouped["cumulative_pct"] = grouped["pct"].cumsum()
 
     values = closed[pnl_col].astype(float)
+    cfg = get_default_spec().labels
+    if "label_3class" in closed.columns:
+        labels = closed["label_3class"].astype(str)
+        big_winner_pct = float((labels == "big_winner").mean() * 100.0)
+        big_loser_pct = float((labels == "big_loser").mean() * 100.0)
+    else:
+        holding = closed.get("realized_holding_days", pd.Series([30.0] * len(closed))).astype(float).clip(lower=1.0)
+        gpd = values / holding
+        big_winner_pct = float((gpd >= cfg.success_min_profit_per_day_pct).mean() * 100.0)
+        big_loser_pct = float((gpd < cfg.stall_min_gain_per_day_pct).mean() * 100.0)
     summary = {
         "n_closed": int(closed.shape[0]),
         "mean_pnl_pct": float(values.mean()),
         "median_pnl_pct": float(values.median()),
         "win_rate_pct": float((values > 0).mean() * 100.0),
-        "big_winner_pct": float((values >= 10.0).mean() * 100.0),
-        "big_loser_pct": float((values <= -10.0).mean() * 100.0),
+        "big_winner_pct": big_winner_pct,
+        "big_loser_pct": big_loser_pct,
     }
     return InsightTable(df=grouped, summary=summary)
 
@@ -250,6 +262,86 @@ def compute_macro_regime_outcomes(
             "global_win_rate": float(work["win"].mean()),
         },
     )
+
+
+def compute_guidance_sector_outcomes(
+    df: pd.DataFrame,
+    *,
+    label_col: str = "label_3class",
+    guidance_col: str = "guidance_sector_label",
+) -> InsightTable:
+    """Win/loss breakdown by guidance sector label (favored/neutral/avoid)."""
+    if df.empty or guidance_col not in df.columns or label_col not in df.columns:
+        return InsightTable(pd.DataFrame(), {"n_rows": 0})
+    work = df.copy()
+    work[guidance_col] = work[guidance_col].fillna("UNKNOWN").astype(str)
+    work["win"] = (work[label_col].astype(str) == "big_winner").astype(int)
+    work["loss"] = (work[label_col].astype(str) == "big_loser").astype(int)
+    grouped = (
+        work.groupby(guidance_col)
+        .agg(n=("win", "size"), win_rate=("win", "mean"), loss_rate=("loss", "mean"))
+        .reset_index()
+        .rename(columns={guidance_col: "guidance_label"})
+    )
+    grouped["n"] = grouped["n"].astype(int)
+    return InsightTable(
+        df=grouped,
+        summary={"n_rows": int(work.shape[0]), "global_win_rate": float(work["win"].mean())},
+    )
+
+
+def compute_news_sentiment_outcomes(
+    df: pd.DataFrame,
+    *,
+    score_col: str = "news_sentiment_score",
+    label_col: str = "label_3class",
+    n_bins: int = 5,
+) -> InsightTable:
+    """Bad-rate by news sentiment score decile."""
+    if df.empty or score_col not in df.columns or label_col not in df.columns:
+        return InsightTable(pd.DataFrame(), {"n_rows": 0})
+    work = df[[score_col, label_col]].dropna()
+    if work.empty:
+        return InsightTable(pd.DataFrame(), {"n_rows": 0})
+    work["bad"] = work[label_col].astype(str).isin({"big_loser", "stall"}).astype(int)
+    try:
+        work["decile"] = pd.qcut(work[score_col].astype(float), q=n_bins, duplicates="drop")
+    except ValueError:
+        work["decile"] = pd.cut(work[score_col].astype(float), bins=n_bins)
+    grouped = (
+        work.groupby("decile", observed=False)
+        .agg(n=("bad", "size"), bad_rate=("bad", "mean"), mean_score=(score_col, "mean"))
+        .reset_index()
+    )
+    grouped["decile"] = grouped["decile"].astype(str)
+    grouped["n"] = grouped["n"].astype(int)
+    return InsightTable(df=grouped, summary={"n_rows": int(work.shape[0])})
+
+
+def compute_screening_delta_outcomes(
+    df: pd.DataFrame,
+    *,
+    delta_col: str = "guidance_candidate_delta",
+    label_col: str = "label_3class",
+) -> InsightTable:
+    """Outcome rates when guidance shrank vs expanded the candidate universe."""
+    if df.empty or delta_col not in df.columns or label_col not in df.columns:
+        return InsightTable(pd.DataFrame(), {"n_rows": 0})
+    work = df.copy()
+    work["bad"] = work[label_col].astype(str).isin({"big_loser", "stall"}).astype(int)
+    work["win"] = (work[label_col].astype(str) == "big_winner").astype(int)
+    work["screening_effect"] = np.where(
+        work[delta_col].fillna(0) < 0,
+        "shrunk",
+        np.where(work[delta_col].fillna(0) > 0, "expanded", "unchanged"),
+    )
+    grouped = (
+        work.groupby("screening_effect")
+        .agg(n=("bad", "size"), bad_rate=("bad", "mean"), win_rate=("win", "mean"))
+        .reset_index()
+    )
+    grouped["n"] = grouped["n"].astype(int)
+    return InsightTable(df=grouped, summary={"n_rows": int(work.shape[0])})
 
 
 # ---------------------------------------------------------------------------

@@ -29,6 +29,8 @@ Major delivered themes include:
 - execution-quality hardening
 - authentication and safe public demo surfaces
 - early evolution-planner capability
+- pace-aligned exits with north-star KPIs
+- agentic-operability hardening (per-phase timing, prompt hashing, budget enforcement, durable research cache, parallel moderation, failure-mode catalog, golden tests)
 
 ## Current State
 
@@ -61,6 +63,7 @@ What remains intentionally unfinished:
 - conviction calibration
 - dynamic strategy weighting
 - moderator effectiveness analysis
+- rejected-decision counterfactual and selection-bias diagnostics (shadow/evidence only): a read-only, per-stage view of whether the funnel declined names that would have lost (good miss) or won (false reject), with a dashboard surface delivered and deeper debiasing kept as gated research
 
 These are data-gated and should only move once enough trade-outcome evidence exists.
 
@@ -72,13 +75,14 @@ These are data-gated and should only move once enough trade-outcome evidence exi
 
 ### Agentic maturity (operability)
 
-A set of low-cost, high-leverage operability slices, prioritized by impact over effort and each tied to a measured baseline rather than a guess:
+A set of low-cost, high-leverage operability slices, prioritized by impact over effort and each tied to a measured baseline rather than a guess. The **zero-infra slices are now delivered**:
 
 - per-phase cycle timing/observability (so latency work targets the real driver)
 - prompt versioning/hashing across the full committee (file-based, not a heavyweight registry)
-- enforcement of the already-defined chat and embedding budget caps
-- a durable research cache (replacing an in-memory one that resets on restart)
-- parallel moderation, pursued only if the timing data shows it is worthwhile
+- enforcement of the chat and embedding budget caps as truly-separate categories
+- a durable research cache (replacing the in-memory one that reset on restart)
+- parallel moderation (the two moderators now run concurrently, behind a kill switch)
+- a failure-mode catalog with stable error codes, plus golden prompt/tool tests in CI
 
 These deliberately avoid new infrastructure: heavier observability stacks, database-backed prompt registries, and orchestration frameworks were assessed and judged unnecessary at the current single-host scale.
 

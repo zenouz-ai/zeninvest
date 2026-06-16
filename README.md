@@ -73,11 +73,12 @@ The refresh lane keeps the system grounded in broker truth between full strategy
 
 ## Innovation & Research
 
-ZenInvest is built to learn from its own track record without ever letting unproven models touch live capital. Three research tracks are maturing behind hard gates — each forward-looking, each with a kill switch and a documented fallback.
+ZenInvest is built to learn from its own track record without ever letting unproven models touch live capital. Two research tracks are maturing behind hard gates — each forward-looking, each with a kill switch and a documented fallback — alongside a delivered latency optimization.
 
 - **Embedded learning loop (shadow → gated).** A dual-track pipeline turns every decision and outcome into training data: tabular ML (conviction calibration, win/loss/stall scoring) plus a champion-vs-challenger evaluation harness. It runs strictly read-only; any influence on live conviction or sizing is gated on a large body of closed trades plus operator sign-off.
+- **Rejected-decision counterfactual & selection-bias diagnostics.** The committee also studies the names it *declined*: a read-only, mark-to-market counterfactual over every rejected ticker measures per-stage "good-miss" vs "false-reject" rates and quantifies the selection bias baked into a traded-only training set — surfaced on the dashboard as a directional process-quality signal, never a live trading input.
 - **Knowledge graphs & memory.** Journal embeddings, a decision graph, and temporal episodes let the committee ask *"what did we think last time this setup appeared?"* — evidence-only retrieval that surfaces prior theses and their outcomes, never an auto-executed signal.
-- **Parallel processing.** The committee is being re-architected to run moderation models concurrently, gated on per-phase timing instrumentation, to cut cycle latency without weakening adversarial review.
+- **Parallel moderation (delivered).** The committee runs its two moderation models concurrently (behind a kill switch), cutting cycle latency without weakening adversarial review — the consensus and degradation logic are unchanged.
 
 Architecture details: [Architecture](docs/ARCHITECTURE.md). Delivery status: [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md).
 
@@ -248,6 +249,7 @@ ZenInvest remains a proof-of-concept system focused on evidence-backed iteration
 - [Dashboard](docs/DASHBOARD.md) — frontend/backend architecture, page map, UX, public/private split
 - [Conversational Trading Workflow](docs/CONVERSATIONAL_TRADING_WORKFLOW.md) — Slack and dashboard multi-turn trading flows
 - [Backtesting](docs/BACKTESTING.md) — engine, walk-forward validation, promotion report
+- [Failure Modes](docs/FAILURE_MODES.md) — error-code taxonomy, triggers, and remediation
 - [Local Setup](docs/LOCAL_SETUP.md) — install, env vars, tests, frontend runtime, troubleshooting
 - [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md) — public backlog and delivery status
 - [Public Repo Scope](docs/PUBLIC_REPO_SCOPE.md) — what stays public and what intentionally does not

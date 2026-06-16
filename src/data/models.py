@@ -169,6 +169,7 @@ class StrategyDecision(Base):
     market_assessment = Column(Text, nullable=True)
     portfolio_commentary = Column(Text, nullable=True)
     raw_response_json = Column(Text, nullable=True)
+    prompt_hash = Column(String(64), nullable=True)
 
 
 class ModerationLog(Base):
@@ -204,6 +205,7 @@ class ModerationLog(Base):
     input_tokens = Column(Integer, nullable=True)
     output_tokens = Column(Integer, nullable=True)
     cost_gbp = Column(Float, nullable=True)
+    prompt_hash = Column(String(64), nullable=True)
 
     # Consensus result (filled on final row per cycle/ticker)
     consensus = Column(String(20), nullable=True)  # APPROVED, BLOCKED, CAUTION
@@ -249,6 +251,24 @@ class MarketDataCache(Base):
     timestamp = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     data_json = Column(Text, nullable=False)
     expires_at = Column(DateTime, nullable=True)
+
+
+class ResearchCache(Base):
+    """Durable research result cache (US-9.4).
+
+    Replaces the former in-memory dict so research results survive process
+    restarts and dedupe across cycles. Keyed by sha256(ticker|tool|query).
+    """
+
+    __tablename__ = "research_cache"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    cache_key = Column(String(64), nullable=False, unique=True, index=True)
+    ticker = Column(String(50), nullable=False)
+    tool = Column(String(50), nullable=False)
+    results_json = Column(Text, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
 class NewsSentimentCache(Base):

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from src.data.database import get_session
 from src.data.models import StrategyDecision
+from src.learning.dataset.decision_filters import eligible_strategy_decisions_query
 from src.learning.dataset.features import FeatureEngineer
 from src.learning.dataset.labels import LabelComputer
 from src.learning.dataset.splits import WalkForwardSplitter
@@ -153,7 +154,7 @@ class DatasetBuilder:
 
     def _load_decision_rows(self) -> pd.DataFrame:
         rows = (
-            self.session.query(StrategyDecision)
+            eligible_strategy_decisions_query(self.session)
             .filter(StrategyDecision.action.in_(self.spec.row_actions))
             .order_by(StrategyDecision.timestamp.asc())
             .all()

@@ -18,7 +18,7 @@ from dashboard.backend.app.routers import auth as auth_router
 from dashboard.backend.app.routers import learning as learning_router
 from dashboard.backend.app.services.auth import hash_password
 from src.data.database import engine, get_session
-from src.data.models import Base, LearningExportRun, LearningRun
+from src.data.models import Base, LearningExportRun, LearningRun, LearningEvaluationRun
 
 
 # A tiny 1x1 PNG so the insight endpoint has something real to serve.
@@ -47,6 +47,16 @@ def _reset_runs() -> None:
         session.close()
 
 
+def _reset_evaluation_runs() -> None:
+    Base.metadata.create_all(bind=engine)
+    session = get_session()
+    try:
+        session.query(LearningEvaluationRun).delete()
+        session.commit()
+    finally:
+        session.close()
+
+
 def _seed_run(run_id: str = "20260512T100400Z") -> int:
     session = get_session()
     try:
@@ -60,7 +70,7 @@ def _seed_run(run_id: str = "20260512T100400Z") -> int:
                 {"neutral": 894, "stall": 632, "big_winner": 247, "big_loser": 177}
             ),
             metrics_json=json.dumps({"gbm": {"accuracy": 0.41}}),
-            artifact_paths_json=json.dumps({"merged": "data/learning/parquet/v2/merged.parquet"}),
+            artifact_paths_json=json.dumps({"merged": "data/learning/parquet/v6/merged.parquet"}),
             checksum="abc123",
             created_at=datetime.now(timezone.utc) - timedelta(minutes=5),
         )
@@ -341,19 +351,187 @@ def test_evaluation_latest_from_disk(monkeypatch, tmp_path, dashboard_env) -> No
     (eval_dir / "metrics.json").write_text(json.dumps(payload))
     (eval_dir / "index.html").write_text("<html>eval</html>")
     monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path)
-    session = get_session()
-    try:
-        from src.data.models import LearningEvaluationRun
-
-        session.query(LearningEvaluationRun).delete()
-        session.commit()
-    finally:
-        session.close()
+    _reset_evaluation_runs()
     client = TestClient(_make_app(), base_url="http://localhost")
     _login(client)
     resp = client.get("/api/learning/evaluation/latest")
     assert resp.status_code == 200
     assert resp.json()["run_id"] == "eval-disk"
+
+
+def test_evaluation_committee(monkeypatch, tmp_path, dashboard_env) -> None:
+    eval_dir = tmp_path / "data" / "learning" / "evaluation" / "eval-committee"
+    eval_dir.mkdir(parents=True)
+    payload = {
+        "run_id": "eval-committee",
+        "status": "completed",
+        "committee": {"stage_funnel": {"strategy_buy_queued": 10}},
+        "context_influence": {"macro_regime": {"rows": []}},
+        "policies": {
+            "champion_as_is": {"realized_n": 5},
+            "challenger_moderation": {"forward_precision_at_veto": 0.7},
+        },
+    }
+    (eval_dir / "metrics.json").write_text(json.dumps(payload))
+    monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path)
+    _reset_evaluation_runs()
+    session = get_session()
+    try:
+        session.add(
+            LearningEvaluationRun(
+                run_id="eval-committee",
+                dataset_version="v6",
+                status="completed",
+                n_rows=10,
+                closed_trades=5,
+                metrics_json=json.dumps(payload),
+                gates_json="{}",
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+    resp = client.get("/api/learning/evaluation/committee")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] == "eval-committee"
+    assert "challenger_moderation" in body["policies"]
+
+
+def test_evaluation_research(monkeypatch, tmp_path, dashboard_env) -> None:
+    eval_dir = tmp_path / "data" / "learning" / "evaluation" / "eval-research"
+    eval_dir.mkdir(parents=True)
+    payload = {
+        "run_id": "eval-research",
+        "status": "completed",
+        "research_influence": {
+            "descriptive": {"total_decisions_with_research": 12, "query_overlap_pct": 0.15},
+            "stratified": {"by_intensity": [{"bucket": "0", "n": 5, "bad_rate": 0.4}]},
+            "citation": {"citation_rate": 0.3, "by_cited": []},
+        },
+        "policies": {
+            "champion_as_is": {"realized_n": 5},
+            "challenger_no_research": {"forward_precision_at_veto": 0.6},
+        },
+    }
+    (eval_dir / "metrics.json").write_text(json.dumps(payload))
+    monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path)
+    _reset_evaluation_runs()
+    session = get_session()
+    try:
+        session.add(
+            LearningEvaluationRun(
+                run_id="eval-research",
+                dataset_version="v5",
+                status="completed",
+                n_rows=10,
+                closed_trades=5,
+                metrics_json=json.dumps(payload),
+                gates_json="{}",
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+    resp = client.get("/api/learning/evaluation/research")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] == "eval-research"
+    assert body["research_influence"]["descriptive"]["total_decisions_with_research"] == 12
+    assert "challenger_no_research" in body["policies"]
+
+
+def _seed_rejection_artifact(tmp_root: Path, stamp: str, *, false_reject_rate: float = 0.3) -> Path:
+    reports_dir = tmp_root / "data" / "learning" / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "generated_at": f"2026-06-{stamp[-2:]}T00:00:00+00:00",
+        "horizon_days": 30,
+        "rejected_total": 120,
+        "rejected_resolved": 90,
+        "accepted_total": 40,
+        "accepted_resolved": 35,
+        "coverage_pct": 0.75,
+        "good_miss_rate": 0.55,
+        "false_reject_rate": false_reject_rate,
+        "stall_rate": 0.15,
+        "rejected_mean_forward_ret_pct": -2.5,
+        "accepted_mean_forward_ret_pct": 4.0,
+        "selection_gap_pct": 6.5,
+        "rejected_label_counts": {"big_loser": 50, "stall": 14, "big_winner": 26},
+        "accepted_label_counts": {"big_winner": 20, "stall": 10, "big_loser": 5},
+        "by_stage": [
+            {
+                "stage": "risk_reject",
+                "n": 70,
+                "n_resolved": 55,
+                "good_miss_rate": 0.6,
+                "false_reject_rate": false_reject_rate,
+                "stall_rate": 0.1,
+                "mean_forward_ret_pct": -3.1,
+            }
+        ],
+    }
+    path = reports_dir / f"rejected_analysis_{stamp}.json"
+    path.write_text(json.dumps(payload))
+    return path
+
+
+def test_rejection_analysis_serves_latest(monkeypatch, tmp_path, dashboard_env) -> None:
+    _seed_rejection_artifact(tmp_path, "20260601")
+    latest = _seed_rejection_artifact(tmp_path, "20260615")
+    monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path)
+    monkeypatch.delenv("INVESTMENT_AGENT_LEARNING_ROOT", raising=False)
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+
+    resp = client.get("/api/learning/rejection-analysis")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["artifact_name"] == latest.name
+    assert body["artifact_name"].endswith("20260615.json")
+    assert "artifact_mtime" in body
+    assert body["rejected_total"] == 120
+    assert body["by_stage"][0]["stage"] == "risk_reject"
+    assert body.get("available") is not False
+
+
+def test_rejection_analysis_empty_state(monkeypatch, tmp_path, dashboard_env) -> None:
+    monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path)
+    monkeypatch.delenv("INVESTMENT_AGENT_LEARNING_ROOT", raising=False)
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+
+    resp = client.get("/api/learning/rejection-analysis")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["available"] is False
+    assert "analyze_rejected_tickers" in body["hint"]
+
+
+def test_rejection_analysis_honors_learning_root(monkeypatch, tmp_path, dashboard_env) -> None:
+    # When INVESTMENT_AGENT_LEARNING_ROOT is set it wins over _project_root.
+    other_root = tmp_path / "sandbox"
+    _seed_rejection_artifact(other_root, "20260610")
+    monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path / "unused")
+    monkeypatch.setenv("INVESTMENT_AGENT_LEARNING_ROOT", str(other_root))
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+
+    resp = client.get("/api/learning/rejection-analysis")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["artifact_name"] == "rejected_analysis_20260610.json"
+
+
+def test_rejection_analysis_requires_auth(dashboard_env) -> None:
+    client = TestClient(_make_app(), base_url="http://localhost")
+    resp = client.get("/api/learning/rejection-analysis")
+    assert resp.status_code == 401
 
 
 def test_shadow_summary_empty(dashboard_env) -> None:
@@ -362,3 +540,37 @@ def test_shadow_summary_empty(dashboard_env) -> None:
     resp = client.get("/api/learning/shadow/summary?days=30")
     assert resp.status_code == 200
     assert resp.json()["total_scores"] == 0
+
+
+def test_learning_status_aggregator(dashboard_env, tmp_path, monkeypatch) -> None:
+    _reset_runs()
+    _seed_run()
+    session = get_session()
+    try:
+        session.add(
+            LearningExportRun(
+                run_id="export-status",
+                dataset_version="v6",
+                status="completed",
+                rows=2500,
+                text_corpus_rows=2500,
+                checksum="chk",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+
+    monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path)
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+    resp = client.get("/api/learning/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "north_star" in body
+    assert body["dataset_version"] == "v6"
+    assert body["latest_export"]["run_id"] == "export-status"
+    assert body["latest_train_run"]["run_id"] == "20260512T100400Z"
+    assert "staleness_warnings" in body
+    assert body["shadow_summary"]["total_scores"] == 0

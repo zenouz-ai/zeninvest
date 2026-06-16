@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { SkeletonCard } from '../components/Skeleton'
 import {
   AreaChart,
@@ -12,6 +12,9 @@ import {
 } from 'recharts'
 import { costsApi, researchApi, type ResearchSummary } from '../api/client'
 import { PageBrandHeader } from '../components/PageBrandHeader'
+import { usePollingInterval } from '../hooks/usePollingInterval'
+
+const COSTS_POLL_MS = 120_000
 
 export default function Costs() {
   const [daily, setDaily] = useState<any[]>([])
@@ -21,7 +24,7 @@ export default function Costs() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setError(null)
     try {
       const [dailyData, monthlyData, degData, resSummary] = await Promise.all([
@@ -40,13 +43,19 @@ export default function Costs() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  const pollingActive = usePollingInterval(true, fetchData)
 
   useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchData, 30000)
+    void fetchData()
+  }, [fetchData])
+
+  useEffect(() => {
+    if (!pollingActive) return
+    const interval = setInterval(() => { void fetchData() }, COSTS_POLL_MS)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchData, pollingActive])
 
   if (loading) {
     return <SkeletonCard lines={6} />

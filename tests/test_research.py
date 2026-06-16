@@ -15,7 +15,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from src.agents.research.budget import ResearchBudget
-from src.agents.research.cache import ResearchCache, _cache, _cache_key
+from src.agents.research.cache import ResearchCache, _cache_key
 from src.agents.research.executor import ResearchExecutor
 from src.agents.research.providers.router import ProviderRouter
 from src.agents.research.tools import (
@@ -23,7 +23,7 @@ from src.agents.research.tools import (
     get_research_tools_openai,
 )
 from src.agents.research.types import SECResult, SearchResult
-from src.data.models import Base, ResearchLog
+from src.data.models import Base, ResearchCache as ResearchCacheRow, ResearchLog
 
 
 @pytest.fixture
@@ -38,11 +38,23 @@ def db_session():
 
 
 @pytest.fixture(autouse=True)
-def clear_cache():
-    """Clear research cache between tests."""
-    _cache.clear()
-    yield
-    _cache.clear()
+def clear_cache(db_session):
+    """Back the durable research cache with the in-memory test DB and clear it.
+
+    The cache opens/closes its own sessions, so use ``side_effect`` to hand it a
+    fresh session bound to the same engine on each call (closing those must not
+    disturb the test's ``db_session``).
+    """
+    test_session_factory = sessionmaker(bind=db_session.get_bind())
+    with patch("src.agents.research.cache.get_session", side_effect=test_session_factory):
+        db_session.query(ResearchCacheRow).delete()
+        db_session.commit()
+        yield
+        try:
+            db_session.query(ResearchCacheRow).delete()
+            db_session.commit()
+        except Exception:
+            db_session.rollback()
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -90,6 +102,20 @@ class TestResearchCache:
         k1 = _cache_key("AAPL", "web_search", "test query")
         k2 = _cache_key("AAPL", "web_search", "test query")
         assert k1 == k2
+
+    def test_cache_survives_new_instance(self):
+        # Core US-9.4 win: a different ResearchCache instance (e.g. a later cycle or
+        # a process restart) reads results written by an earlier instance.
+        writer = ResearchCache(ttl_hours=4)
+        writer.set("AAPL", "web_search", "durable", [{"url": "persisted"}])
+        reader = ResearchCache(ttl_hours=4)
+        assert reader.get("AAPL", "web_search", "durable") == [{"url": "persisted"}]
+
+    def test_cache_upsert_overwrites(self):
+        cache = ResearchCache()
+        cache.set("AAPL", "web_search", "q", [{"v": 1}])
+        cache.set("AAPL", "web_search", "q", [{"v": 2}])
+        assert cache.get("AAPL", "web_search", "q") == [{"v": 2}]
 
 
 # ──────────────────────────────────────────────────────────────────

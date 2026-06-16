@@ -76,6 +76,18 @@ api.interceptors.response.use(
   }
 )
 
+const inflightGets = new Map<string, Promise<unknown>>()
+
+function dedupeGet<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const existing = inflightGets.get(key)
+  if (existing) return existing as Promise<T>
+  const promise = fn().finally(() => {
+    inflightGets.delete(key)
+  })
+  inflightGets.set(key, promise)
+  return promise
+}
+
 export interface AuthSession {
   authenticated: boolean
   username: string | null
@@ -272,6 +284,14 @@ export const learningApi = {
     const response = await api.get('/api/learning/evaluation/latest')
     return response.data
   },
+  getCommitteeEvaluation: async (): Promise<LearningCommitteeEvaluation> => {
+    const response = await api.get('/api/learning/evaluation/committee')
+    return response.data
+  },
+  getResearchEvaluation: async (): Promise<LearningResearchEvaluation> => {
+    const response = await api.get('/api/learning/evaluation/research')
+    return response.data
+  },
   evaluationReportUrl: (runId: string): string =>
     `${API_BASE_URL}/api/learning/evaluation/${runId}/report`,
   getShadowSummary: async (days = 30): Promise<LearningShadowSummary> => {
@@ -282,6 +302,49 @@ export const learningApi = {
     const response = await api.get('/api/learning/shadow/disagreements', { params: { limit, days } })
     return response.data
   },
+  getEntryAdvisory: async (days = 30): Promise<LearningEntryAdvisory> => {
+    const response = await api.get('/api/learning/shadow/entry-advisory', { params: { days } })
+    return response.data
+  },
+  getStatus: async (): Promise<LearningPageStatus> => {
+    const response = await api.get('/api/learning/status')
+    return response.data
+  },
+  getRejectionAnalysis: async (): Promise<RejectionAnalysisResponse> => {
+    const response = await api.get('/api/learning/rejection-analysis')
+    return response.data
+  },
+}
+
+export interface RejectionStageStat {
+  stage: string
+  n: number
+  n_resolved: number
+  good_miss_rate: number | null
+  false_reject_rate: number | null
+  stall_rate: number | null
+  mean_forward_ret_pct: number | null
+}
+
+export interface RejectionAnalysisResponse {
+  available?: boolean
+  hint?: string
+  generated_at?: string
+  horizon_days?: number
+  rejected_total?: number
+  rejected_resolved?: number
+  coverage_pct?: number | null
+  good_miss_rate?: number | null
+  false_reject_rate?: number | null
+  stall_rate?: number | null
+  rejected_mean_forward_ret_pct?: number | null
+  accepted_mean_forward_ret_pct?: number | null
+  selection_gap_pct?: number | null
+  rejected_label_counts?: Record<string, number>
+  accepted_label_counts?: Record<string, number>
+  by_stage?: RejectionStageStat[]
+  artifact_name?: string
+  artifact_mtime?: string
 }
 
 export interface LearningExportSummary {
@@ -336,6 +399,19 @@ export interface LearningEvaluationSummary {
   gates?: Record<string, unknown>
   report_available?: boolean
   policies?: Record<string, Record<string, unknown>>
+}
+
+export interface LearningCommitteeEvaluation {
+  run_id: string
+  committee: Record<string, unknown>
+  context_influence: Record<string, unknown>
+  policies: Record<string, Record<string, unknown>>
+}
+
+export interface LearningResearchEvaluation {
+  run_id: string
+  research_influence: Record<string, unknown>
+  policies: Record<string, Record<string, unknown>>
 }
 
 export interface LearningShadowSummary {
@@ -488,10 +564,10 @@ export const statusApi = {
         degraded?: boolean
       } | null
     } | null
-  }> => {
+  }> => dedupeGet('status', async () => {
     const response = await api.get('/api/status/')
     return response.data
-  },
+  }),
 }
 
 // Runs API
@@ -588,14 +664,14 @@ export const universeApi = {
   },
 
   getBubble: async (params?: { limit?: number }): Promise<UniverseBubbleItem[]> => {
-    const response = await api.get('/api/universe/bubble', { params: params ?? { limit: 1000 } })
+    const response = await api.get('/api/universe/bubble', { params: params ?? { limit: 200 } })
     return response.data
   },
 }
 
 // Portfolio API
 export const portfolioApi = {
-  current: async (): Promise<PortfolioSnapshot | null> => {
+  current: async (): Promise<PortfolioSnapshot | null> => dedupeGet('portfolio-current', async () => {
     try {
       const response = await api.get('/api/portfolio/')
       return response.data
@@ -603,7 +679,7 @@ export const portfolioApi = {
       if (err?.response?.status === 404) return null
       throw err
     }
-  },
+  }),
   
   history: async (params?: {
     limit?: number
@@ -645,13 +721,167 @@ export const opportunityApi = {
 }
 
 // Outcomes API
+
+export interface TradeOutcomeSummary {
+  id: number
+  ticker: string
+  buy_timestamp: string | null
+  sell_timestamp: string
+  holding_days: number | null
+  buy_value_gbp: number
+  sell_value_gbp: number
+  pnl_gbp: number
+  pnl_pct: number
+  conviction: number | null
+  strategy: string | null
+  buy_order_id: number | null
+  sell_order_id: number | null
+}
+
+export interface TradeTimelinePricePoint {
+  date: string
+  close: number
+}
+
+export interface TradeTimelineLeg {
+  timestamp: string | null
+  price: number | null
+  decision_price?: number | null
+  value_gbp: number | null
+  value_gbp_per_share?: number | null
+  quantity?: number | null
+  reasoning: string | null
+  cycle_id: string | null
+  order_type?: string | null
+  strategy?: string | null
+  conviction?: number | null
+  leg_index?: number | null
+  order_id?: number | null
+  moderation_result?: string | null
+  risk_result?: string | null
+  committee?: Record<string, unknown> | null
+  market_context?: Record<string, unknown> | null
+  research?: {
+    summary?: Record<string, unknown>
+    calls?: Array<{
+      member: string
+      tool_name: string
+      query?: string | null
+      num_results?: number | null
+      provider?: string | null
+      cache_hit?: boolean
+      latency_ms?: number | null
+      cost_usd?: number | null
+      results_preview?: string | null
+      created_at?: string | null
+    }>
+  } | null
+}
+
+export interface TradeTimelineExitReason {
+  code: string
+  label: string
+}
+
+export interface TradeTimelineClassificationRules {
+  flat_abs_pnl_pct: number
+  success_min_profit_per_day_pct: number
+  stall_min_gain_per_day_pct: number
+  exit_reasons: TradeTimelineExitReason[]
+}
+
+export interface TradeTimelineOutcome {
+  pnl_gbp: number
+  pnl_pct: number
+  cost_basis_gbp: number
+  sell_proceeds_gbp: number
+  holding_days: number | null
+  result: string
+  label_3class: string
+  classification_rationale: string
+  exit_reason: string
+  exit_label: string
+  quote_return_pct?: number | null
+}
+
+export interface TradeTimeline {
+  outcome_id: number
+  ticker: string
+  moderation_result?: string | null
+  risk_result?: string | null
+  window: { start: string | null; end: string | null }
+  prices: TradeTimelinePricePoint[]
+  price_series_currency: string
+  pnl_currency: string
+  classification_rules: TradeTimelineClassificationRules
+  buys: TradeTimelineLeg[]
+  buy: TradeTimelineLeg
+  sell: TradeTimelineLeg
+  outcome: TradeTimelineOutcome
+}
+
+export interface NorthStarMetrics {
+  window_days: number
+  total_trades: number
+  sufficient_data: boolean
+  big_winner_hit_rate: number | null
+  stall_rate: number | null
+  big_loser_rate: number | null
+  slow_win_rate: number | null
+  avg_gain_per_day_pct: number | null
+  expectancy_gbp: number | null
+  avg_pnl_pct: number | null
+  targets: Record<string, number>
+  thresholds: Record<string, number>
+}
+
+export interface LearningEntryAdvisory {
+  days: number
+  total_buy_scores: number
+  scored_with_probs?: number
+  high_stall_probability?: number
+  high_loser_probability?: number
+  challenger_would_skip?: number
+  closed_trades?: number
+  influence_gate_closed_trades: number
+  influence_gate_met?: boolean
+  live_influence_enabled: boolean
+  advisory_only: boolean
+  message?: string
+}
+
+export interface LearningPageStatus {
+  north_star: NorthStarMetrics
+  dataset_version: string
+  latest_export: LearningExportSummary | null
+  latest_evaluation: LearningEvaluationSummary | null
+  latest_train_run: {
+    run_id: string
+    dataset_version: string
+    status: string
+    rows: number
+    created_at: string | null
+  } | null
+  shadow_summary: LearningShadowSummary
+  exports_preview: LearningExportSummary[]
+  staleness_warnings: string[]
+}
+
 export const outcomesApi = {
-  list: async (params?: { limit?: number; offset?: number; ticker?: string }): Promise<any[]> => {
+  list: async (params?: { limit?: number; offset?: number; ticker?: string }): Promise<TradeOutcomeSummary[]> => {
     const response = await api.get('/api/outcomes/', { params })
     return response.data
   },
   getStats: async (): Promise<{ total_trades: number; win_rate_pct: number; avg_pnl_pct: number; avg_holding_days: number; best_trade_pct: number | null; worst_trade_pct: number | null }> => {
     const response = await api.get('/api/outcomes/stats')
+    return response.data
+  },
+  getNorthStar: async (windowDays = 90): Promise<NorthStarMetrics> => {
+    const response = await api.get('/api/outcomes/north-star', { params: { window_days: windowDays } })
+    return response.data
+  },
+  getTimeline: async (outcomeId: number): Promise<TradeTimeline> => {
+    const response = await api.get(`/api/outcomes/${outcomeId}/timeline`)
     return response.data
   },
 }

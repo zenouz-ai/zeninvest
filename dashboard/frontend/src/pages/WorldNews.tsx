@@ -8,6 +8,9 @@ import { StatusPill } from '../components/StatusPill'
 import { FreshnessIndicator } from '../components/FreshnessIndicator'
 import { SkeletonCard } from '../components/Skeleton'
 import { safeFormat } from '../utils/date'
+import { usePollingInterval } from '../hooks/usePollingInterval'
+
+const WORLD_NEWS_POLL_MS = 120_000
 
 type PillVariant = 'live' | 'active' | 'draft' | 'alert' | 'warning' | 'dim'
 
@@ -93,11 +96,17 @@ export default function WorldNews({ publicView = false }: { publicView?: boolean
     }
   }, [days, publicView, selectedCategory])
 
+  const pollingActive = usePollingInterval(true, fetchData)
+
   useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchData, 30000)
-    return () => clearInterval(interval)
+    void fetchData()
   }, [fetchData])
+
+  useEffect(() => {
+    if (!pollingActive) return
+    const interval = setInterval(() => { void fetchData() }, WORLD_NEWS_POLL_MS)
+    return () => clearInterval(interval)
+  }, [fetchData, pollingActive])
 
   const grouped = useMemo(() => groupHeadlinesByDate(headlines), [headlines])
   const dateKeys = useMemo(() => Object.keys(grouped).sort().reverse(), [grouped])

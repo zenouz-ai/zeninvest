@@ -14,40 +14,16 @@ from src.agents.moderation.context import format_market_context
 from src.utils.config import get_settings
 from src.utils.cost_tracker import Provider, check_budget, log_cost
 from src.utils.logger import get_logger
+from src.utils.prompt_loader import get_prompt_hash, load_prompt_file
 
 logger = get_logger("openai_moderator")
 
-SYSTEM_PROMPT = """You are a skeptical investment analyst serving on an Investment Committee.
-Your role is to challenge assumptions, identify risks the primary analyst may have missed,
-and flag recency bias or overfitting to recent trends.
+SYSTEM_PROMPT = load_prompt_file("skeptic.md")
 
-You receive the full data context: technical indicators, fundamentals, market conditions,
-sub-strategy scores, analyst recommendations, and news sentiment. Use ALL of this data
-to independently verify whether the proposed trade is justified.
 
-Key responsibilities:
-- Verify the technical picture supports the action (RSI trend, MACD, Bollinger Bands, MAs)
-- Confirm fundamentals are sound (P/E reasonable, ROE healthy, debt manageable, earnings growing)
-- Check if news sentiment confirms or contradicts the thesis
-- Assess whether the market regime (VIX, regime label) is appropriate for this trade type
-- Identify conflicting signals across sub-strategies — disagreement = lower confidence
-- Challenge the proposed allocation relative to the risk profile
-
-Scoring guidelines:
-- RSI 30-70 is neutral. <30 = oversold (mean reversion). >70 = overbought (caution).
-- P/E <15 = value. >40 = expensive unless high-growth sector.
-- Debt/Equity >2.0 is a red flag. <0.5 is strong.
-- VIX >25 = elevated volatility, warrant smaller positions.
-- When sub-strategies disagree (e.g. momentum BUY but factor LOW), consider MODIFY with reduced allocation rather than outright DISAGREE, unless the signals are clearly contradictory.
-
-For each proposed trade, respond with ONLY valid JSON:
-{
-  "verdict": "AGREE|DISAGREE|MODIFY",
-  "confidence_score": 1-10,
-  "reasoning": "2-3 sentence specific reasoning referencing actual data points",
-  "risk_flags": ["list of specific risks identified"],
-  "modifications": null or {"target_allocation_pct": X, "stop_loss_pct": Y}
-}"""
+def get_skeptic_prompt_hash(model_name: str) -> str:
+    """Return a stable hash for the GPT-4o skeptic moderator prompt."""
+    return get_prompt_hash("skeptic.md", extra={"model": model_name})
 
 
 def _normalize_modifications_payload(
@@ -198,7 +174,7 @@ Respond with JSON only."""
 
         usage = response.usage
         if usage:
-            log_cost(
+            cost_result = log_cost(
                 provider=Provider.OPENAI.value,
                 model=settings.moderator_1_model,
                 input_tokens=usage.prompt_tokens,
@@ -206,6 +182,8 @@ Respond with JSON only."""
                 cycle_id=cycle_id,
                 purpose="moderation_gpt4o",
             )
+        else:
+            cost_result = None
 
         content = response.choices[0].message.content or ""
         if "```json" in content:
@@ -220,6 +198,11 @@ Respond with JSON only."""
         )
         result["moderator"] = "gpt-4o"
         result["available"] = True
+        if usage:
+            result["input_tokens"] = int(usage.prompt_tokens or 0)
+            result["output_tokens"] = int(usage.completion_tokens or 0)
+        if cost_result is not None:
+            result["cost_gbp"] = cost_result.cost_gbp
         return result
 
     except (json.JSONDecodeError, ValueError) as e:

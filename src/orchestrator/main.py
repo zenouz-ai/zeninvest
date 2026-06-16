@@ -7,6 +7,7 @@ Sequence: Data -> Strategy -> Moderation -> Risk -> Execution -> Journal
 import json
 import signal
 import sys
+import time
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -35,7 +36,7 @@ from src.agents.opportunity.optimizer import OpportunityOptimizer
 from src.agents.opportunity.scorer import OpportunityScorer
 from src.agents.reporting.journal import generate_trade_journal
 from src.agents.reporting.performance_tracker import update_performance_metrics
-from src.agents.reporting.trade_outcome_tracker import update_trade_outcomes
+from src.agents.reporting.trade_outcome_tracker import recompute_trade_outcomes, update_trade_outcomes
 from src.agents.risk.risk_parity import RiskParitySizer
 from src.agents.risk.portfolio_overlap import analyze_candidate_portfolio_overlap, default_portfolio_overlap
 from src.agents.risk.risk_manager import RiskManager
@@ -72,6 +73,7 @@ from src.utils.config import get_settings
 from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
 from src.utils.fingerprints import get_repo_sha, stable_hash
 from src.utils.logger import get_logger
+from src.utils.phase_timer import PhaseTimer
 from src.utils.scheduling import is_within_regular_market_session
 from src.utils.ticker_utils import t212_to_yf
 
@@ -950,6 +952,14 @@ class Orchestrator:
             sync_summary = self.order_manager.sync_orders_with_t212()
             result["order_sync"] = sync_summary
             result["orders_updated_total"] = int(sync_summary.get("updated_total", 0) or 0)
+            wallet_updated = int(sync_summary.get("wallet_reconcile_updated", 0) or 0)
+            if wallet_updated > 0:
+                try:
+                    result["trade_outcomes_recomputed"] = recompute_trade_outcomes()
+                    update_performance_metrics()
+                except Exception as outcome_err:
+                    logger.warning("Trade outcome recompute after wallet sync failed: %s", outcome_err)
+                    result["errors"].append(f"trade_outcomes_recompute: {outcome_err}")
             self._maybe_emit_execution_quality_alert(cycle_id=cycle_id, sync_summary=sync_summary)
 
             portfolio_data = self._get_portfolio_state()
@@ -1206,16 +1216,72 @@ class Orchestrator:
                 )
                 continue
 
-            stagnation = self._stagnation_exit_reason(position)
-            if stagnation:
-                stagnation_detail, stagnation_metrics = stagnation
+            pace_exit = self._pace_deterministic_exit_reason(position)
+            if pace_exit:
+                reason_code, reason_detail, metrics = pace_exit
                 self._apply_deterministic_sell_override(
                     decision=decision,
-                    reason_code="stagnation_exit",
-                    reason_detail=stagnation_detail,
+                    reason_code=reason_code,
+                    reason_detail=reason_detail,
                     conviction_floor=80,
                 )
-                decision["stagnation_metrics"] = stagnation_metrics
+                if reason_code == "stagnation_exit":
+                    decision["stagnation_metrics"] = metrics
+                elif reason_code == "slow_bleed_exit":
+                    decision["slow_bleed_metrics"] = metrics
+
+    def _pace_deterministic_exit_reason(
+        self,
+        position: dict[str, Any],
+    ) -> tuple[str, str, dict[str, Any]] | None:
+        """First matching pace-aligned exit: slow-bleed (losers) then stagnation."""
+        slow = self._slow_bleed_exit_reason(position)
+        if slow:
+            detail, metrics = slow
+            return "slow_bleed_exit", detail, metrics
+        stagnation = self._stagnation_exit_reason(position)
+        if stagnation:
+            detail, metrics = stagnation
+            return "stagnation_exit", detail, metrics
+        return None
+
+    def _slow_bleed_exit_reason(
+        self,
+        position: dict[str, Any],
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Exit when gain/day falls below stall floor (slow capital bleed)."""
+        if not self.settings.slow_bleed_exit_enabled:
+            return None
+        held_hours_raw = position.get("held_hours")
+        if held_hours_raw is None:
+            return None
+        try:
+            held_hours = float(held_hours_raw)
+        except (TypeError, ValueError):
+            return None
+        if held_hours <= 0:
+            return None
+        held_days = held_hours / 24.0
+        if held_days < self.settings.slow_bleed_min_days:
+            return None
+        pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
+        floor = self.settings.pace_stall_min_gain_per_day_pct
+        ppd = pnl_pct / held_days if held_days > 0 else 0.0
+        if ppd >= floor:
+            return None
+        detail = (
+            f"Deterministic slow-bleed SELL: held {held_days:.1f}d, pnl {pnl_pct:.2f}% "
+            f"=> {ppd:.3f}%/day < stall floor {floor:.2f}%/day "
+            f"(min_days={self.settings.slow_bleed_min_days:.1f})"
+        )
+        metrics = {
+            "held_days": round(held_days, 2),
+            "pnl_pct": round(pnl_pct, 3),
+            "profit_per_day_pct": round(ppd, 3),
+            "min_days": self.settings.slow_bleed_min_days,
+            "stall_min_gain_per_day_pct": floor,
+        }
+        return detail, metrics
 
     def _profit_lock_reason_detail(
         self,
@@ -1299,9 +1365,9 @@ class Orchestrator:
                     })
                 continue
 
-            stagnation = self._stagnation_exit_reason(position)
+            stagnation = self._pace_deterministic_exit_reason(position)
             if stagnation:
-                stagnation_detail, stagnation_metrics = stagnation
+                reason_code, stagnation_detail, exit_metrics = stagnation
                 decision = {
                     "ticker": ticker,
                     "action": "HOLD",
@@ -1312,25 +1378,32 @@ class Orchestrator:
                 }
                 self._apply_deterministic_sell_override(
                     decision=decision,
-                    reason_code="stagnation_exit",
+                    reason_code=reason_code,
                     reason_detail=stagnation_detail,
                     conviction_floor=80,
                 )
-                decision["stagnation_metrics"] = stagnation_metrics
+                if reason_code == "stagnation_exit":
+                    decision["stagnation_metrics"] = exit_metrics
+                else:
+                    decision["slow_bleed_metrics"] = exit_metrics
 
                 raw_position = positions_by_ticker.get(ticker, {})
                 current_price = float(raw_position.get("currentPrice", 0) or 0)
-                candidates.append({
+                candidate_payload: dict[str, Any] = {
                     "ticker": ticker,
                     "decision": decision,
                     "reason": stagnation_detail,
-                    "stagnation_metrics": stagnation_metrics,
                     "stocks_data": [{
                         "ticker": ticker,
                         "indicators": {"current_price": current_price},
                         "fundamentals": {},
                     }],
-                })
+                }
+                if reason_code == "stagnation_exit":
+                    candidate_payload["stagnation_metrics"] = exit_metrics
+                else:
+                    candidate_payload["slow_bleed_metrics"] = exit_metrics
+                candidates.append(candidate_payload)
         return candidates
 
     @staticmethod
@@ -1589,11 +1662,13 @@ class Orchestrator:
         if held_days < self.settings.stagnation_min_days:
             return None
         pnl_pct = float(position.get("pnl_pct", 0.0) or 0.0)
+        ppd = pnl_pct / held_days if held_days > 0 else 0.0
+        if self.settings.stagnation_grace_by_pace and ppd >= self.settings.pace_success_min_profit_per_day_pct:
+            return None
         grace = self.settings.stagnation_grace_pnl_pct
         if grace is not None and pnl_pct >= grace:
             return None
         floor = self.settings.stagnation_min_profit_per_day_pct
-        ppd = pnl_pct / held_days if held_days > 0 else 0.0
         if ppd >= floor:
             return None
         detail = (
@@ -1645,6 +1720,7 @@ class Orchestrator:
             "profit_lock_hold_blocked",
             "profit_lock_remainder_unprotected",
             "stagnation_exit",
+            "slow_bleed_exit",
         }:
             return True
         if str(decision.get("action", "")).strip().upper() not in {"SELL", "REDUCE"}:
@@ -1662,6 +1738,7 @@ class Orchestrator:
             "profit_lock_hold_blocked",
             "profit_lock_remainder_unprotected",
             "stagnation_exit",
+            "slow_bleed_exit",
         }:
             return True
         action = str(decision.get("action", "")).strip().upper()
@@ -1673,6 +1750,7 @@ class Orchestrator:
         return {
             "small_position_cleanup",
             "stagnation_exit",
+            "slow_bleed_exit",
             "profit_lock_unprotected_exit",
             "profit_lock_hold_blocked",
             "profit_lock_remainder_unprotected",
@@ -1689,6 +1767,7 @@ class Orchestrator:
         if decision.get("deterministic_exit_reason_code") in {
             "small_position_cleanup",
             "stagnation_exit",
+            "slow_bleed_exit",
         }:
             return True, None, None
         if exit_trigger_type == "hard_exit":
@@ -1705,6 +1784,17 @@ class Orchestrator:
             )
             return False, "sell_guardrail_invalid_trigger", reason
         if pnl_pct < profit_floor:
+            if self.settings.pace_aware_sell_enabled:
+                held_hours_raw = position.get("held_hours")
+                try:
+                    held_hours = float(held_hours_raw) if held_hours_raw is not None else 0.0
+                except (TypeError, ValueError):
+                    held_hours = 0.0
+                held_days = held_hours / 24.0 if held_hours > 0 else 0.0
+                if held_days > 0:
+                    ppd = pnl_pct / held_days
+                    if ppd >= self.settings.pace_success_min_profit_per_day_pct:
+                        return True, None, None
             reason = (
                 f"Held instead of selling: unrealized gain {pnl_pct:.1f}% is below "
                 f"the {profit_floor:.1f}% sell profit floor"
@@ -1825,6 +1915,7 @@ class Orchestrator:
         stocks_data: list[dict[str, Any]] = []
         per_ticker_news: dict[str, str] = {}
         guidance_snapshot: dict[str, Any] | None = None
+        phase_timer = PhaseTimer()
         current_failure_stage = "run_cycle"
         current_failure_ticker: str | None = None
 
@@ -1887,6 +1978,9 @@ class Orchestrator:
             )
             if audit_summary:
                 result["audit_summary"] = audit_summary
+            phase_timing = phase_timer.to_dict()
+            if phase_timing:
+                result["phase_timing"] = phase_timing
             if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
@@ -1921,6 +2015,7 @@ class Orchestrator:
                                     "num_trades": result["num_trades"],
                                     "num_rejected": result["num_rejected"],
                                     "duration_seconds": duration_seconds,
+                                    "phase_timing": phase_timing or None,
                                     "audit_summary": audit_summary,
                                 }
                                 session.commit()
@@ -1940,6 +2035,7 @@ class Orchestrator:
                                         "num_trades": result["num_trades"],
                                         "num_rejected": result["num_rejected"],
                                         "duration_seconds": duration_seconds,
+                                        "phase_timing": phase_timing or None,
                                         "audit_summary": audit_summary,
                                     },
                                 )
@@ -2207,6 +2303,7 @@ class Orchestrator:
             existing_tickers = {t for p in active_positions if (t := self._ticker_from_position(p))}
 
             # Get data for current positions AND screen universe for new candidates
+            phase_timer.start("screening")
             stocks_data = self._fetch_stocks_data(
                 current_positions=active_positions,
                 exclude_tickers=existing_tickers,
@@ -2214,6 +2311,7 @@ class Orchestrator:
                 cycle_id=cycle_id,
                 guidance=(guidance_snapshot or {}).get("bias_payload"),
             )
+            phase_timer.end()
             screening_meta = dict(getattr(self.data_fetcher, "last_screening_metadata", {}) or {})
             self._upsert_cycle_context_snapshot(
                 cycle_id,
@@ -2226,6 +2324,7 @@ class Orchestrator:
 
             # --- STEP 4: Run strategies ---
             logger.info("Running strategies...")
+            phase_timer.start("strategy")
 
             sub_results = self.strategy_engine.run_sub_strategies(stocks_data, existing_tickers)
             top_tickers = self._get_top_tickers(sub_results)
@@ -2472,6 +2571,7 @@ class Orchestrator:
                 position_pnl=position_pnl,
                 strategy_performance=strategy_performance,
             )
+            phase_timer.end()
 
             if "error" in strategy_result and not strategy_result.get("decisions"):
                 logger.error(f"Strategy synthesis failed: {strategy_result['error']}")
@@ -2771,6 +2871,7 @@ class Orchestrator:
                             "final_allocation_pct": 0.0,
                         })
                         continue
+                    _exec_t0 = time.monotonic()
                     executed = self._execute_trade(
                         cycle_id,
                         decision,
@@ -2793,6 +2894,7 @@ class Orchestrator:
                         portfolio_data=portfolio_data,
                         quantity_override=live_qty,
                     )
+                    phase_timer.add_elapsed("execution", time.monotonic() - _exec_t0)
                     if executed:
                         result["trades"].append(executed)
                         if executed.get("execution", {}).get("status") in ("filled", "dry_run"):
@@ -2831,6 +2933,7 @@ class Orchestrator:
                 )
                 entry_quality_context = self._get_entry_quality_context(ticker, stocks_data)
 
+                _mod_t0 = time.monotonic()
                 mod_result = self.moderation_panel.review_trade(
                     trade_proposal=decision,
                     portfolio_context=portfolio_state_str,
@@ -2839,6 +2942,7 @@ class Orchestrator:
                     cycle_id=cycle_id,
                     research_executor=research_executor,
                 )
+                phase_timer.add_elapsed("moderation", time.monotonic() - _mod_t0)
                 current_failure_stage = "moderation_to_dict"
                 mod_dict = self._safe_moderation_to_dict(
                     mod_result=mod_result,
@@ -2896,6 +3000,7 @@ class Orchestrator:
                 # Risk check
                 logger.info(f"Risk check for {action} {ticker}...")
                 current_failure_stage = "risk_check"
+                _risk_t0 = time.monotonic()
                 risk_verdict = self.risk_manager.evaluate_trade(
                     ticker=ticker,
                     action=action,
@@ -2920,6 +3025,7 @@ class Orchestrator:
                     skip_min_holding_period=self._should_skip_min_holding_for_decision(decision),
                     skip_min_positions=self._should_skip_min_positions_for_decision(decision),
                 )
+                phase_timer.add_elapsed("risk", time.monotonic() - _risk_t0)
 
                 # Log risk decision
                 if DASHBOARD_AVAILABLE and log_event is not None:
@@ -3030,6 +3136,7 @@ class Orchestrator:
                     continue
 
                 current_failure_stage = "trade_execution"
+                _exec_t0 = time.monotonic()
                 trade_entry = self._execute_trade(
                     cycle_id=cycle_id,
                     decision=decision,
@@ -3051,6 +3158,7 @@ class Orchestrator:
                     risk_verdict=risk_verdict,
                     portfolio_data=portfolio_data,
                 )
+                phase_timer.add_elapsed("execution", time.monotonic() - _exec_t0)
                 if trade_entry:
                     exec_status = trade_entry.get("execution", {}).get("status")
                     if exec_status in self._submitted_execution_statuses():
@@ -3344,6 +3452,7 @@ class Orchestrator:
                     )
                     continue
 
+                _exec_t0 = time.monotonic()
                 trade_entry = self._execute_trade(
                     cycle_id=cycle_id,
                     decision=decision,
@@ -3365,6 +3474,7 @@ class Orchestrator:
                     risk_verdict=pending["risk_verdict"],
                     portfolio_data=portfolio_data,
                 )
+                phase_timer.add_elapsed("execution", time.monotonic() - _exec_t0)
                 if trade_entry:
                     exec_result = trade_entry.get("execution", {})
                     if exec_result.get("status") in self._submitted_execution_statuses():
@@ -5422,6 +5532,8 @@ class Orchestrator:
             return "SELL_CLEAN_UP"
         if normalized == "SELL" and code == "stagnation_exit":
             return "SELL_STAGNATION"
+        if normalized == "SELL" and code == "slow_bleed_exit":
+            return "SELL_SLOW_BLEED"
         return normalized
 
     def _evaluate_reduce_guardrail(
@@ -5779,6 +5891,7 @@ def _get_dashboard_summary() -> dict[str, Any]:
 @click.option("--status", is_flag=True, help="Show system status")
 @click.option("--performance", is_flag=True, help="Show performance metrics summary")
 @click.option("--dashboard", is_flag=True, help="Show dashboard: portfolio, metrics, costs, positions")
+@click.option("--reconcile-wallets", is_flag=True, help="Backfill order GBP wallets from T212 history and recompute trade outcomes")
 def main(
     dry_run: bool,
     uov_diagnostic: bool,
@@ -5790,6 +5903,7 @@ def main(
     status: bool,
     performance: bool,
     dashboard: bool,
+    reconcile_wallets: bool,
 ) -> None:
     """Investment Agent Orchestrator."""
     orchestrator = Orchestrator(dry_run=dry_run, uov_diagnostic=uov_diagnostic)
@@ -5806,6 +5920,23 @@ def main(
 
         if dashboard:
             click.echo(json.dumps(_get_dashboard_summary(), indent=2, default=str))
+            return
+
+        if reconcile_wallets:
+            wallet_summary = orchestrator.order_manager.reconcile_order_wallets_from_t212()
+            outcomes = recompute_trade_outcomes()
+            metrics = update_performance_metrics()
+            click.echo(
+                json.dumps(
+                    {
+                        "wallet_reconcile": wallet_summary,
+                        "trade_outcomes_recomputed": outcomes,
+                        "performance_metrics_updated": metrics,
+                    },
+                    indent=2,
+                    default=str,
+                )
+            )
             return
 
         if pause:

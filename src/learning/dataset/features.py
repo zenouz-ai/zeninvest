@@ -37,6 +37,17 @@ from src.utils.logger import get_logger
 
 logger = get_logger("learning.features")
 
+TOP_RISK_RULES: tuple[str, ...] = (
+    "max_single_stock",
+    "max_sector",
+    "correlation",
+    "drawdown",
+    "vix_limit",
+    "daily_loss_halt",
+    "cash_floor",
+    "min_holding_period",
+)
+
 
 @dataclass
 class FeatureRow:
@@ -145,6 +156,24 @@ def _word_count(text: Any) -> int | None:
     return len(words) if words else 0
 
 
+def _sector_trend_pct(macro_payload: dict[str, Any], sector: str | None) -> float | None:
+    if not sector:
+        return None
+    intel = macro_payload.get("macro_intelligence")
+    if not isinstance(intel, dict):
+        intel = macro_payload
+    trends = intel.get("sector_trends")
+    if not isinstance(trends, dict):
+        return None
+    for key, value in trends.items():
+        if str(key).lower() != str(sector).lower():
+            continue
+        if isinstance(value, dict):
+            return _safe_float(value.get("pct") or value.get("change_pct") or value.get("performance"))
+        return _safe_float(value)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -197,7 +226,15 @@ class FeatureEngineer:
             features: dict[str, Any] = {}
 
             self._add_committee_features(features, row, moderation.get((cycle_id, ticker)), risk.get((cycle_id, ticker)))
-            self._add_opportunity_macro_features(features, decision_ts, opp.get((cycle_id, ticker)), queue.get(ticker), instruments.get(ticker))
+            self._add_opportunity_macro_features(
+                features,
+                decision_ts,
+                cycle_id,
+                opp.get((cycle_id, ticker)),
+                queue.get(ticker),
+                instruments.get(ticker),
+                cycle_context.get(cycle_id),
+            )
             self._add_market_fundamentals_features(features, ticker, decision_ts)
             self._add_portfolio_features(features, decision_ts, ticker, instruments.get(ticker), portfolio_at)
             self._add_research_features(features, research.get((cycle_id, ticker), []))
@@ -378,8 +415,18 @@ class FeatureEngineer:
             features["risk_rule_veto"] = int(
                 any(isinstance(r, dict) and r.get("verdict") == "REJECT" for r in triggered)
             )
+            rule_names: set[str] = set()
+            for item in triggered:
+                if isinstance(item, str):
+                    rule_names.add(item)
+                elif isinstance(item, dict) and item.get("rule_name"):
+                    rule_names.add(str(item["rule_name"]))
+            for rule in TOP_RISK_RULES:
+                features[f"risk_rule_{rule}"] = int(rule in rule_names)
         else:
             features["risk_rule_veto"] = None
+            for rule in TOP_RISK_RULES:
+                features[f"risk_rule_{rule}"] = None
 
     # ------------------------------------------------------------------
     # Group B — opportunity, regime, structural
@@ -389,9 +436,11 @@ class FeatureEngineer:
         self,
         features: dict[str, Any],
         decision_ts: datetime,
+        cycle_id: str,
         opp: OpportunityScoreSnapshot | None,
         queue: OpportunityQueue | None,
         instrument: Instrument | None,
+        cycle_ctx: CycleContextSnapshot | None,
     ) -> None:
         if opp is not None:
             features.update(
@@ -448,7 +497,18 @@ class FeatureEngineer:
 
         macro_payload = _parse_json(macro.raw_payload_json) if macro else None
         macro_payload = macro_payload if isinstance(macro_payload, dict) else {}
-        features["vix_zscore_60d"] = _safe_float(macro_payload.get("vix_zscore_60d"))
+        features["vix_zscore_60d"] = _safe_float(
+            macro_payload.get("vix_zscore_60d") or macro_payload.get("vix_zscore")
+        )
+        features["vix_level"] = _safe_float(macro_payload.get("vix") or macro_payload.get("vix_level"))
+        features["spy_vs_50ma"] = _safe_float(macro_payload.get("spy_vs_50ma"))
+        sp200 = macro_payload.get("spy_vs_200ma")
+        if sp200 is None and "sp500_above_200ma" in macro_payload:
+            sp200 = 1.0 if macro_payload.get("sp500_above_200ma") else -1.0
+        features["spy_vs_200ma"] = _safe_float(sp200)
+
+        sector = instrument.sector if instrument else None
+        features["sector_trend_pct"] = _sector_trend_pct(macro_payload, sector)
 
         headline_count = (
             self.session.query(MacroHeadline)
@@ -469,15 +529,22 @@ class FeatureEngineer:
         )
         features["macro_signal_count_7d"] = int(signal_count)
 
-        # Guidance sector score for the ticker's sector.
-        sector = instrument.sector if instrument else None
+        # Guidance sector score — prefer cycle-aligned snapshot when available.
         if sector:
-            guidance = (
-                self.session.query(GuidanceSnapshot)
-                .filter(GuidanceSnapshot.timestamp <= decision_ts)
-                .order_by(GuidanceSnapshot.timestamp.desc())
-                .first()
-            )
+            guidance = None
+            if cycle_ctx is not None and cycle_ctx.guidance_snapshot_id:
+                guidance = (
+                    self.session.query(GuidanceSnapshot)
+                    .filter(GuidanceSnapshot.id == cycle_ctx.guidance_snapshot_id)
+                    .first()
+                )
+            if guidance is None:
+                guidance = (
+                    self.session.query(GuidanceSnapshot)
+                    .filter(GuidanceSnapshot.timestamp <= decision_ts)
+                    .order_by(GuidanceSnapshot.timestamp.desc())
+                    .first()
+                )
             if guidance is not None:
                 sector_score = (
                     self.session.query(GuidanceSectorScore)
@@ -489,12 +556,18 @@ class FeatureEngineer:
                 )
                 features["guidance_sector_score"] = _safe_float(sector_score.score) if sector_score else None
                 features["guidance_sector_label"] = sector_score.label if sector_score else None
+                features["guidance_mode"] = guidance.mode
+                features["guidance_snapshot_status"] = guidance.status
             else:
                 features["guidance_sector_score"] = None
                 features["guidance_sector_label"] = None
+                features["guidance_mode"] = None
+                features["guidance_snapshot_status"] = None
         else:
             features["guidance_sector_score"] = None
             features["guidance_sector_label"] = None
+            features["guidance_mode"] = None
+            features["guidance_snapshot_status"] = None
 
     # ------------------------------------------------------------------
     # Group C — market & fundamentals
@@ -657,6 +730,7 @@ class FeatureEngineer:
             "sec_search": 0,
             "macro_search": 0,
         }
+        per_member: dict[str, int] = {}
         cache_hits = 0
         total_cost = 0.0
         for row in research_rows:
@@ -665,6 +739,8 @@ class FeatureEngineer:
                 per_tool[tool] += 1
             else:
                 per_tool[tool] = per_tool.get(tool, 0) + 1
+            member = str(row.member or "unknown")
+            per_member[member] = per_member.get(member, 0) + 1
             if row.cache_hit:
                 cache_hits += 1
             if row.cost_usd:
@@ -676,6 +752,9 @@ class FeatureEngineer:
         features["research_calls_total"] = total
         for tool, count in per_tool.items():
             features[f"research_{tool}_count"] = count
+        for member, count in per_member.items():
+            key = member.replace("-", "_").replace(".", "_")
+            features[f"research_member_{key}_count"] = count
         features["research_cache_hit_rate"] = (cache_hits / total) if total else None
         features["research_cost_usd"] = total_cost if total else None
 

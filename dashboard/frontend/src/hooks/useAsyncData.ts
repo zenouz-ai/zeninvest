@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { usePollingInterval } from './usePollingInterval'
 
 interface UseAsyncDataOptions {
-  /** Refresh interval in ms. 0 = no auto-refresh. Default: 30000 */
+  /** Refresh interval in ms. 0 = no auto-refresh. Default: 0 */
   refreshInterval?: number
   /** Whether to fetch immediately on mount. Default: true */
   enabled?: boolean
@@ -31,7 +32,7 @@ export function useAsyncData<T>(
   deps: unknown[] = [],
   options: UseAsyncDataOptions = {}
 ): UseAsyncDataResult<T> {
-  const { refreshInterval = 30_000, enabled = true } = options
+  const { refreshInterval = 0, enabled = true } = options
   const [data, setData] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -49,7 +50,6 @@ export function useAsyncData<T>(
       }
     } catch (err) {
       if (mountedRef.current) {
-        // Keep old data — only set error (isStale derived from data + error)
         setError(err instanceof Error ? err.message : 'Failed to load')
       }
     } finally {
@@ -59,13 +59,15 @@ export function useAsyncData<T>(
     }
   }, [fetcher, enabled])
 
+  const pollingActive = usePollingInterval(enabled && refreshInterval > 0, fetchData)
+
   useEffect(() => {
     mountedRef.current = true
     setLoading(true)
     fetchData()
 
     let interval: ReturnType<typeof setInterval> | undefined
-    if (refreshInterval > 0) {
+    if (refreshInterval > 0 && pollingActive) {
       interval = setInterval(fetchData, refreshInterval)
     }
 
@@ -73,7 +75,7 @@ export function useAsyncData<T>(
       mountedRef.current = false
       if (interval) clearInterval(interval)
     }
-  }, [...deps, fetchData, refreshInterval])
+  }, [...deps, fetchData, refreshInterval, pollingActive])
 
   const isStale = error != null && data != null
 

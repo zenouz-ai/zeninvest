@@ -1,6 +1,5 @@
 """Tests for dashboard monthly summary aggregation."""
 
-import asyncio
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -9,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from dashboard.backend.app.database import Base as DashboardBase, Run
-from dashboard.backend.app.routers.dashboard import get_monthly_summary
+from dashboard.backend.app.routers.dashboard import _get_monthly_summary_sync
 from src.data.models import Base, CostLog
 
 
@@ -58,7 +57,7 @@ def test_monthly_summary_cost_includes_research(db_session):
         "dashboard.backend.app.routers.dashboard.get_research_cost_by_month",
         return_value={"2026-03": 0.5},
     ):
-        response = asyncio.run(get_monthly_summary(year=2026, month=3))
+        response = _get_monthly_summary_sync(2026, 3)
 
     assert response["runs_count"] == 1
     assert response["llm_cost_gbp"] == 1.25

@@ -25,6 +25,7 @@ def shadow_env(monkeypatch):
                 "learning_shadow_scoring_enabled": True,
                 "learning_shadow_policies": ["challenger_gbm", "challenger_combined"],
                 "learning_gbm_veto_threshold": 0.35,
+                "learning_gbm_prioritize_threshold": 0.40,
                 "learning_memory_veto_threshold": 0.5,
                 "learning_embeddings_enabled": False,
             },

@@ -12,6 +12,7 @@ from src.data.models import CostLog, Instrument, Order, PortfolioSnapshot, Strat
 from ..services.api_cost_estimator import estimate_api_cost_gbp, get_research_cost_by_month
 from src.utils.config import get_settings
 
+from ..async_utils import run_blocking
 from ..database import Run
 from ..schemas import (
     OrderSchema,
@@ -33,6 +34,10 @@ async def get_monthly_summary(
     if not settings.dashboard_enabled:
         raise HTTPException(status_code=503, detail="Dashboard is disabled")
 
+    return await run_blocking(_get_monthly_summary_sync, year, month)
+
+
+def _get_monthly_summary_sync(year: int, month: int) -> dict:
     start = datetime(year, month, 1, tzinfo=timezone.utc)
     _, last_day = monthrange(year, month)
     end = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
@@ -170,8 +175,6 @@ async def get_run_feed(
 
     session = get_session()
     try:
-        from ..routers.runs import _reconcile_stale_runs
-        _reconcile_stale_runs(session)
         runs = (
             session.query(Run)
             .order_by(desc(Run.started_at))

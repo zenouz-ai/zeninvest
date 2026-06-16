@@ -10,6 +10,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 from src.data.database import get_session
 from src.data.models import ApiLog
 from src.utils.config import get_settings
+from src.utils.error_codes import ErrorCode
 from src.utils.logger import get_logger
 
 logger = get_logger("finnhub_client")
@@ -95,7 +96,7 @@ class FinnhubClient:
             return response.json()
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Finnhub API error on {endpoint}: {error_msg}")
+            logger.error(f"[{ErrorCode.DATA_PROVIDER_ERROR}] Finnhub API error on {endpoint}: {error_msg}")
             raise
         finally:
             duration = (time.monotonic() - start) * 1000

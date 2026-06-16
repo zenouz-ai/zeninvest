@@ -10,7 +10,7 @@ import { ActionCard } from '../components/chat/ActionCard'
 import { ChatInput } from '../components/chat/ChatInput'
 import { WorkflowTimeline } from '../components/chat/WorkflowTimeline'
 import { chatApi, commandsApi } from '../api/client'
-import { useSSE } from '../hooks/useSSE'
+import { subscribeDashboardSse } from '../utils/sseEventBridge'
 import type {
   ChatAction,
   ChatCostSummary,
@@ -974,7 +974,7 @@ export default function Commands() {
     if (activeTab !== 'history') return
     const intervalId = window.setInterval(() => {
       void fetchCommandHistory()
-    }, 30000)
+    }, 120000)
     return () => window.clearInterval(intervalId)
   }, [activeTab, fetchCommandHistory])
 
@@ -991,7 +991,7 @@ export default function Commands() {
     void fetchSessions()
   }, [fetchSessionDetail, fetchSessions, selectedSessionId])
 
-  useSSE({ enabled: true, onEvent: handleSseEvent })
+  useEffect(() => subscribeDashboardSse(handleSseEvent), [handleSseEvent])
 
   const handleCreateSession = useCallback(async () => {
     setSubmitting(true)

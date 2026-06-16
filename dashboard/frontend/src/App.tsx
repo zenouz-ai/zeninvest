@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState, type ReactElement } from 'react'
+import { Suspense, useEffect, useRef, useState, type ReactElement } from 'react'
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AlertBanner } from './components/AlertBanner'
 import { LoadingSpinner } from './components/LoadingSpinner'
@@ -7,31 +7,33 @@ import { useSSE } from './hooks/useSSE'
 import { authApi, type AuthSession } from './api/client'
 import { getMoreNavigationItems, getPrimaryNavigationItems } from './navigation'
 import { clearDashboardAuthRequired } from './utils/authErrorBridge'
+import { lazyWithRetry } from './utils/lazyWithRetry'
 
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Universe = lazy(() => import('./pages/Universe'))
-const RunHistory = lazy(() => import('./pages/RunHistory'))
-const Portfolio = lazy(() => import('./pages/Portfolio'))
-const PublicUniverse = lazy(() => import('./pages/PublicUniverse'))
-const PublicRuns = lazy(() => import('./pages/PublicRuns'))
-const PublicPortfolio = lazy(() => import('./pages/PublicPortfolio'))
-const PublicOpportunity = lazy(() => import('./pages/PublicOpportunity'))
-const PublicInsights = lazy(() => import('./pages/PublicInsights'))
-const PublicOrderManagement = lazy(() => import('./pages/PublicOrderManagement'))
-const PublicCosts = lazy(() => import('./pages/PublicCosts'))
-const PublicChat = lazy(() => import('./pages/PublicChat'))
-const PublicEvolution = lazy(() => import('./pages/PublicEvolution'))
-const Opportunity = lazy(() => import('./pages/Opportunity'))
-const OrderManagement = lazy(() => import('./pages/OrderManagement'))
-const Costs = lazy(() => import('./pages/Costs'))
-const Roadmap = lazy(() => import('./pages/Roadmap'))
-const Insights = lazy(() => import('./pages/Insights'))
-const LearningInsights = lazy(() => import('./pages/LearningInsights'))
-const WorldNews = lazy(() => import('./pages/WorldNews'))
-const Chat = lazy(() => import('./pages/Chat'))
-const Evolution = lazy(() => import('./pages/Evolution'))
-const PublicOverview = lazy(() => import('./pages/PublicOverview'))
-const LoginPage = lazy(() => import('./pages/LoginPage'))
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'))
+const Universe = lazyWithRetry(() => import('./pages/Universe'))
+const RunHistory = lazyWithRetry(() => import('./pages/RunHistory'))
+const Portfolio = lazyWithRetry(() => import('./pages/Portfolio'))
+const PublicUniverse = lazyWithRetry(() => import('./pages/PublicUniverse'))
+const PublicRuns = lazyWithRetry(() => import('./pages/PublicRuns'))
+const PublicPortfolio = lazyWithRetry(() => import('./pages/PublicPortfolio'))
+const PublicOpportunity = lazyWithRetry(() => import('./pages/PublicOpportunity'))
+const PublicInsights = lazyWithRetry(() => import('./pages/PublicInsights'))
+const PublicOrderManagement = lazyWithRetry(() => import('./pages/PublicOrderManagement'))
+const PublicCosts = lazyWithRetry(() => import('./pages/PublicCosts'))
+const PublicChat = lazyWithRetry(() => import('./pages/PublicChat'))
+const PublicEvolution = lazyWithRetry(() => import('./pages/PublicEvolution'))
+const Opportunity = lazyWithRetry(() => import('./pages/Opportunity'))
+const OrderManagement = lazyWithRetry(() => import('./pages/OrderManagement'))
+const Costs = lazyWithRetry(() => import('./pages/Costs'))
+const Roadmap = lazyWithRetry(() => import('./pages/Roadmap'))
+const Insights = lazyWithRetry(() => import('./pages/Insights'))
+const LearningInsights = lazyWithRetry(() => import('./pages/LearningInsights'))
+const TradeReview = lazyWithRetry(() => import('./pages/TradeReview'))
+const WorldNews = lazyWithRetry(() => import('./pages/WorldNews'))
+const Chat = lazyWithRetry(() => import('./pages/Chat'))
+const Evolution = lazyWithRetry(() => import('./pages/Evolution'))
+const PublicOverview = lazyWithRetry(() => import('./pages/PublicOverview'))
+const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'))
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
   `inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-full transition-all focus:outline-none focus:ring-2 focus:ring-cyan/40 focus:ring-offset-2 focus:ring-offset-transparent ${
@@ -325,6 +327,14 @@ function DashboardShell() {
               element={(
                 <ProtectedRoute authenticated={authenticated} resolved={authResolved}>
                   <LearningInsights />
+                </ProtectedRoute>
+              )}
+            />
+            <Route
+              path="/trades/review"
+              element={(
+                <ProtectedRoute authenticated={authenticated} resolved={authResolved}>
+                  <TradeReview />
                 </ProtectedRoute>
               )}
             />

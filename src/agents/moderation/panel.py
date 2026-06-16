@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from src.agents.moderation import gemini_mod, openai_mod
+from src.agents.strategy.prompts import get_strategy_prompt_hash
 from src.data.database import get_session
 from src.data.models import ModerationLog
 from src.utils.config import get_settings
@@ -132,7 +133,7 @@ class ModerationPanel:
         market_context: dict[str, Any],
         conviction: int,
         cycle_id: str,
-        research_executor=None,
+        research_executor: Any = None,
     ) -> ModerationResult:
         """Run the full moderation panel on a trade proposal.
 
@@ -159,25 +160,50 @@ class ModerationPanel:
             use_gpt4o = False
             use_gemini = False
 
-        # Get moderator verdicts
-        gpt4o_result = None
-        gemini_result = None
-
-        if use_gpt4o:
-            gpt4o_result = openai_mod.review_trade(
+        # Get moderator verdicts (run concurrently when both are enabled).
+        def _run_gpt4o() -> dict[str, Any] | None:
+            res = openai_mod.review_trade(
                 trade_proposal, portfolio_context, market_context, cycle_id,
                 research_executor=research_executor if self.settings.skeptic_research_enabled else None,
             )
-            if not gpt4o_result.get("available", False):
-                gpt4o_result = None
+            return res if res.get("available", False) else None
 
-        if use_gemini:
-            gemini_result = gemini_mod.review_trade(
+        def _run_gemini() -> dict[str, Any] | None:
+            res = gemini_mod.review_trade(
                 trade_proposal, portfolio_context, market_context, cycle_id,
                 research_executor=research_executor if self.settings.risk_research_enabled else None,
             )
-            if not gemini_result.get("available", False):
-                gemini_result = None
+            return res if res.get("available", False) else None
+
+        gpt4o_result = None
+        gemini_result = None
+
+        if use_gpt4o and use_gemini and self.settings.parallel_moderation_enabled:
+            # Both moderators run in parallel; one failing must not kill the other.
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                gpt4o_future = executor.submit(_run_gpt4o)
+                gemini_future = executor.submit(_run_gemini)
+                try:
+                    gpt4o_result = gpt4o_future.result()
+                except Exception as exc:
+                    logger.error(f"GPT-4o moderator failed for {ticker}: {exc}")
+                try:
+                    gemini_result = gemini_future.result()
+                except Exception as exc:
+                    logger.error(f"Gemini moderator failed for {ticker}: {exc}")
+        else:
+            if use_gpt4o:
+                try:
+                    gpt4o_result = _run_gpt4o()
+                except Exception as exc:
+                    logger.error(f"GPT-4o moderator failed for {ticker}: {exc}")
+            if use_gemini:
+                try:
+                    gemini_result = _run_gemini()
+                except Exception as exc:
+                    logger.error(f"Gemini moderator failed for {ticker}: {exc}")
 
         # Count available moderators
         moderators_available = sum([
@@ -291,9 +317,11 @@ class ModerationPanel:
 
     def _log_moderation(self, result: ModerationResult, cycle_id: str) -> None:
         """Log moderation results to database."""
+        strategy_hash = get_strategy_prompt_hash(self.settings.strategy_model)
+        skeptic_hash = openai_mod.get_skeptic_prompt_hash(self.settings.moderator_1_model)
+        risk_hash = gemini_mod.get_risk_assessor_prompt_hash(self.settings.moderator_2_model)
         session = get_session()
         try:
-            # Log strategy verdict
             session.add(ModerationLog(
                 timestamp=datetime.now(timezone.utc),
                 cycle_id=cycle_id,
@@ -302,33 +330,45 @@ class ModerationPanel:
                 verdict=result.strategy_verdict,
                 reasoning="Primary strategy proposal",
                 consensus=result.consensus,
+                prompt_hash=strategy_hash,
             ))
 
-            # Log GPT-4o verdict (audit fix H-4: include consensus on all rows)
             if result.gpt4o_verdict:
+                gpt = result.gpt4o_verdict
                 session.add(ModerationLog(
                     timestamp=datetime.now(timezone.utc),
                     cycle_id=cycle_id,
                     ticker=result.ticker,
                     moderator="gpt-4o",
-                    verdict=result.gpt4o_verdict.get("verdict", "SKIP"),
-                    reasoning=result.gpt4o_verdict.get("reasoning"),
+                    verdict=gpt.get("verdict", "SKIP"),
+                    reasoning=gpt.get("reasoning"),
                     consensus=result.consensus,
+                    confidence_score=_safe_int_score(gpt.get("confidence_score")),
+                    modifications_json=_audit_json(gpt, include_high_risk=False),
+                    input_tokens=_safe_int_score(gpt.get("input_tokens")),
+                    output_tokens=_safe_int_score(gpt.get("output_tokens")),
+                    cost_gbp=_safe_float_cost(gpt.get("cost_gbp")),
+                    prompt_hash=skeptic_hash,
                 ))
 
-            # Log Gemini verdict (audit fix H-4: include consensus on all rows)
             if result.gemini_verdict:
+                gem = result.gemini_verdict
                 session.add(ModerationLog(
                     timestamp=datetime.now(timezone.utc),
                     cycle_id=cycle_id,
                     ticker=result.ticker,
-                    moderator=result.gemini_verdict.get("moderator", "gemini"),
-                    verdict=result.gemini_verdict.get("verdict", "SKIP"),
-                    reasoning=result.gemini_verdict.get("assessment"),
+                    moderator=gem.get("moderator", "gemini"),
+                    verdict=gem.get("verdict", "SKIP"),
+                    reasoning=gem.get("assessment"),
                     consensus=result.consensus,
-                    growth_score=result.gemini_verdict.get("growth_score"),
-                    risk_score=result.gemini_verdict.get("risk_score"),
-                    confidence_score=result.gemini_verdict.get("confidence_score"),
+                    growth_score=_safe_int_score(gem.get("growth_score")),
+                    risk_score=_safe_int_score(gem.get("risk_score")),
+                    confidence_score=_safe_int_score(gem.get("confidence_score")),
+                    modifications_json=_audit_json(gem, include_high_risk=True),
+                    input_tokens=_safe_int_score(gem.get("input_tokens")),
+                    output_tokens=_safe_int_score(gem.get("output_tokens")),
+                    cost_gbp=_safe_float_cost(gem.get("cost_gbp")),
+                    prompt_hash=risk_hash,
                 ))
 
             session.commit()
@@ -337,3 +377,34 @@ class ModerationPanel:
             session.rollback()
         finally:
             session.close()
+
+
+def _safe_int_score(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float_cost(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _audit_json(verdict: dict[str, Any], *, include_high_risk: bool) -> str | None:
+    payload: dict[str, Any] = {}
+    mods = verdict.get("modifications")
+    if isinstance(mods, dict) and mods:
+        payload["modifications"] = mods
+    flags = verdict.get("risk_flags")
+    if isinstance(flags, list) and flags:
+        payload["risk_flags"] = flags
+    if include_high_risk and verdict.get("high_risk_flag") is not None:
+        payload["high_risk_flag"] = bool(verdict.get("high_risk_flag"))
+    return json.dumps(payload) if payload else None

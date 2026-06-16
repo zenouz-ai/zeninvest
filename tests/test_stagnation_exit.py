@@ -125,6 +125,7 @@ def _configure_stagnation(
     trading = orchestrator.settings._config.setdefault("trading", {})
     trading["stagnation_exit_enabled"] = enabled
     trading["stagnation_min_days"] = min_days
+    trading["stagnation_use_pace_threshold"] = False
     trading["stagnation_min_profit_per_day_pct"] = min_ppd_pct
     trading["stagnation_grace_pnl_pct"] = grace_pnl_pct
     trading["small_position_cleanup_enabled"] = True
@@ -137,22 +138,19 @@ def _configure_stagnation(
 
 
 def test_stagnation_yaml_defaults_are_tuned_for_fewer_sells() -> None:
-    """The authoritative config/settings.yaml must ship the tuned thresholds.
-
-    `stagnation_min_days=15` gives slow theses a fuller window to play
-    out (losers younger than 15d are NOT deterministically exited by
-    this rule) and `stagnation_min_profit_per_day_pct=0.2` tolerates
-    steady compounders (~6%/30d) so the rule targets genuinely flat
-    money.
-    """
+    """Pace-aligned defaults (ADR-005): stagnation floor inherits learning winner threshold."""
     from src.utils.config import Settings
 
     settings = Settings()
 
     assert settings.stagnation_exit_enabled is True
-    assert settings.stagnation_min_days == pytest.approx(15.0)
-    assert settings.stagnation_min_profit_per_day_pct == pytest.approx(0.2)
+    assert settings.stagnation_min_days == pytest.approx(12.0)
+    assert settings.stagnation_use_pace_threshold is True
+    assert settings.stagnation_min_profit_per_day_pct == pytest.approx(0.25)
+    assert settings.stagnation_grace_by_pace is True
     assert settings.stagnation_grace_pnl_pct is None
+    assert settings.slow_bleed_exit_enabled is True
+    assert settings.pace_aware_sell_enabled is False
 
 
 # ---------------------------------------------------------------------------
@@ -622,3 +620,51 @@ def test_pre_strategy_cleanup_executes_stagnation_sell_with_live_quantity(db_ses
     assert captured["stagnation_metrics"]["held_days"] == pytest.approx(12.0, rel=0.05)
     assert len(opportunity_evaluations) == 1
     assert opportunity_evaluations[0]["moderation_consensus"] == "BYPASSED"
+
+
+def test_slow_bleed_exit_fires_before_stagnation_min_days() -> None:
+    orchestrator = Orchestrator(dry_run=True)
+    _configure_stagnation(orchestrator, min_days=12.0, min_ppd_pct=0.25)
+    trading = orchestrator.settings._config.setdefault("trading", {})
+    trading["slow_bleed_exit_enabled"] = True
+    trading["slow_bleed_min_days"] = 10.0
+
+    position = {"pnl_pct": -2.0, "held_hours": 11 * 24}
+    result = orchestrator._pace_deterministic_exit_reason(position)
+    assert result is not None
+    code, detail, metrics = result
+    assert code == "slow_bleed_exit"
+    assert "slow-bleed" in detail.lower()
+    assert metrics["stall_min_gain_per_day_pct"] == pytest.approx(-0.05)
+
+
+def test_stagnation_grace_by_pace_skips_winner_pace() -> None:
+    orchestrator = Orchestrator(dry_run=True)
+    _configure_stagnation(orchestrator, min_days=5.0, min_ppd_pct=0.25)
+    trading = orchestrator.settings._config.setdefault("trading", {})
+    trading["stagnation_grace_by_pace"] = True
+
+    position = {"pnl_pct": 5.0, "held_hours": 20 * 24}
+    assert orchestrator._stagnation_exit_reason(position) is None
+
+
+def test_pace_aware_sell_passes_below_absolute_floor() -> None:
+    orchestrator = Orchestrator(dry_run=True)
+    trading = orchestrator.settings._config.setdefault("trading", {})
+    trading["pace_aware_sell_enabled"] = True
+    trading["sell_min_profit_pct"] = 10.0
+
+    decision = {
+        "action": "SELL",
+        "exit_trigger_type": "gain_realization",
+    }
+    position_context = {
+        "AAPL_US_EQ": {"pnl_pct": 4.0, "held_hours": 16 * 24},
+    }
+    ok, code, _reason = orchestrator._evaluate_sell_guardrail(
+        ticker="AAPL_US_EQ",
+        decision=decision,
+        position_context=position_context,
+    )
+    assert ok is True
+    assert code is None

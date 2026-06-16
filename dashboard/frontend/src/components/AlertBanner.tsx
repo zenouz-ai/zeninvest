@@ -1,12 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
 import { statusApi, costsApi, portfolioApi, ordersApi } from '../api/client'
 import { cleanTicker } from '../types'
+import { runWhenIdle, usePollingInterval } from '../hooks/usePollingInterval'
 
 interface Alert {
   id: string
   severity: 'critical' | 'warning'
   message: string
 }
+
+const ALERT_POLL_MS = 120_000
 
 export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: boolean }) {
   const [alerts, setAlerts] = useState<Alert[]>([])
@@ -16,7 +19,6 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
   const fetchAlerts = useCallback(async () => {
     const newAlerts: Alert[] = []
 
-    // 1. System state
     try {
       const status = await statusApi.get()
       if (status.state === 'HALTED') {
@@ -43,12 +45,10 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
       }
     } catch { /* silent */ }
 
-    // 2. SSE disconnected (stable: avoids false positive on load / brief reconnect gaps)
     if (sseDisconnectedAlert) {
       newAlerts.push({ id: 'sse-disconnected', severity: 'warning', message: 'Real-time event stream disconnected' })
     }
 
-    // 3. Cost degradation
     try {
       const deg = await costsApi.getDegradation()
       if (deg.level === 'halted' || deg.level === 'no_strategy') {
@@ -58,7 +58,6 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
       }
     } catch { /* silent */ }
 
-    // 4. Losing positions (< -5%)
     try {
       const portfolio = await portfolioApi.current()
       if (portfolio?.positions) {
@@ -73,9 +72,8 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
       }
     } catch { /* silent */ }
 
-    // 5. Unresolved failed orders
     try {
-      const health = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: true })
+      const health = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: false })
       if (health.active_failed_count > 0) {
         newAlerts.push({
           id: 'failed-orders',
@@ -85,7 +83,6 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
       }
     } catch { /* silent */ }
 
-    // 6. Execution quality degradation
     try {
       const executionQuality = await ordersApi.executionQuality({ days: 7 })
       if (executionQuality.warning_breached && executionQuality.warning_message) {
@@ -100,11 +97,20 @@ export function AlertBanner({ sseDisconnectedAlert }: { sseDisconnectedAlert: bo
     setAlerts(newAlerts)
   }, [sseDisconnectedAlert])
 
+  const pollingActive = usePollingInterval(true, fetchAlerts)
+
   useEffect(() => {
-    fetchAlerts()
-    const interval = setInterval(fetchAlerts, 30_000)
-    return () => clearInterval(interval)
+    const cancelIdle = runWhenIdle(() => {
+      void fetchAlerts()
+    })
+    return cancelIdle
   }, [fetchAlerts])
+
+  useEffect(() => {
+    if (!pollingActive) return
+    const interval = setInterval(fetchAlerts, ALERT_POLL_MS)
+    return () => clearInterval(interval)
+  }, [fetchAlerts, pollingActive])
 
   const visible = alerts.filter((a) => !dismissed.has(a.id))
   if (visible.length === 0) return null

@@ -20,6 +20,7 @@ export interface Run {
     num_trades?: number
     num_rejected?: number
     duration_seconds?: number
+    phase_timing?: Record<string, { start?: string | null; end?: string | null; seconds: number }>
     stocks_reviewed?: number
     decisions_made?: number
     orders_placed?: number

@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 import httpx
 
+from src.agents.execution.order_wallet import parse_t212_history_item, wallet_amount_gbp
 from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.data.database import get_session
 from src.data.models import Instrument, Order
@@ -711,6 +712,7 @@ class OrderManager:
         status: str,
         t212_order_id: str | None = None,
         price: float | None = None,
+        value_gbp: float | None = None,
         filled_quantity: float | None = None,
         remaining_quantity: float | None = None,
         slippage_bps: float | None = None,
@@ -726,6 +728,8 @@ class OrderManager:
                     row.t212_order_id = t212_order_id
                 if price is not None:
                     row.price = price
+                if value_gbp is not None:
+                    row.value_gbp = value_gbp
                 if filled_quantity is not None:
                     row.filled_quantity = filled_quantity
                 if remaining_quantity is not None:
@@ -740,6 +744,111 @@ class OrderManager:
             logger.error(f"Failed to update order {order_id} to status={status}")
         finally:
             session.close()
+
+    @staticmethod
+    def _apply_t212_wallet_fill(row: Order, item: dict[str, Any]) -> bool:
+        """Apply T212 history fill wallet + quote truth to a local order row."""
+        parsed = parse_t212_history_item(item)
+        if parsed is None:
+            return False
+
+        changed = False
+        wallet_gbp = parsed.get("wallet_value_gbp")
+        if wallet_gbp is not None and wallet_gbp > 0:
+            if row.value_gbp is None or abs(float(row.value_gbp) - wallet_gbp) > 0.01:
+                row.value_gbp = wallet_gbp
+                changed = True
+
+        quote_price = parsed.get("quote_fill_price")
+        if quote_price is not None and quote_price > 0:
+            if row.price is None or abs(float(row.price) - quote_price) > 1e-6:
+                row.price = quote_price
+                changed = True
+
+        fill_qty = parsed.get("filled_quantity")
+        if fill_qty is not None and fill_qty > 0:
+            prev = float(row.filled_quantity or 0.0)
+            if fill_qty > prev + 1e-9:
+                row.filled_quantity = fill_qty
+                row.remaining_quantity = max(abs(float(row.quantity or 0.0)) - fill_qty, 0.0)
+                changed = True
+
+        order_status = parsed.get("order_status")
+        if order_status == "FILLED" and row.status == "pending":
+            row.status = "filled"
+            changed = True
+
+        if fill_qty and row.decision_price and row.price:
+            row.slippage_bps = OrderManager._compute_slippage_bps(
+                action=row.action,
+                decision_price=row.decision_price,
+                fill_price=row.price,
+            )
+        return changed
+
+    def reconcile_order_wallets_from_t212(self, *, max_pages: int = 40) -> dict[str, Any]:
+        """Backfill GBP wallet + native quote fills from T212 order history."""
+        if self.dry_run:
+            return {"updated": 0, "pages_scanned": 0, "history_fetch_error": None}
+
+        session = get_session()
+        updated = 0
+        pages_scanned = 0
+        history_fetch_error = None
+        try:
+            local_rows = session.query(Order).filter(Order.t212_order_id.isnot(None)).all()
+            local_by_id = {str(row.t212_order_id): row for row in local_rows if row.t212_order_id}
+            if not local_by_id:
+                return {"updated": 0, "pages_scanned": 0, "history_fetch_error": None}
+
+            tickers = sorted({row.ticker for row in local_rows if row.ticker})
+            for ticker in tickers:
+                cursor: str | None = None
+                ticker_pages = 0
+                while ticker_pages < max_pages:
+                    try:
+                        resp = self.client.get_order_history(cursor=cursor, limit=50, ticker=ticker)
+                    except Exception as exc:
+                        history_fetch_error = str(exc)
+                        logger.warning("Wallet reconcile failed for %s: %s", ticker, exc)
+                        break
+                    pages_scanned += 1
+                    ticker_pages += 1
+                    items = resp.get("items") or []
+                    next_page = resp.get("nextPagePath")
+
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        parsed = parse_t212_history_item(item)
+                        if parsed is None:
+                            continue
+                        row = local_by_id.get(parsed["t212_order_id"])
+                        if row is None:
+                            continue
+                        if self._apply_t212_wallet_fill(row, item):
+                            updated += 1
+
+                    if not next_page or len(items) < 50:
+                        break
+                    cursor = next_page
+
+            if updated:
+                session.commit()
+        except Exception as exc:
+            session.rollback()
+            history_fetch_error = str(exc)
+            logger.warning("Order wallet reconcile failed: %s", exc, exc_info=True)
+        finally:
+            session.close()
+
+        if updated:
+            logger.info("Reconciled T212 wallet fills on %s orders (%s pages)", updated, pages_scanned)
+        return {
+            "updated": updated,
+            "pages_scanned": pages_scanned,
+            "history_fetch_error": history_fetch_error,
+        }
 
     def execute_market_order(
         self,
@@ -1162,11 +1271,20 @@ class OrderManager:
             fill_price = None
             if filled_quantity > 0 and filled_val_raw is not None:
                 try:
+                    # filledValue is instrument notional for quantity orders — derive native quote only.
                     fill_price = abs(float(filled_val_raw)) / filled_quantity
                 except (TypeError, ValueError, ZeroDivisionError):
                     fill_price = None
             elif t212_status == "FILLED":
                 fill_price = current_price
+
+            fill_wallet_gbp = wallet_amount_gbp(result.get("walletImpact", {}).get("netValue") if isinstance(result.get("walletImpact"), dict) else None)
+            if fill_wallet_gbp is not None and fill_wallet_gbp > 0:
+                value_gbp = fill_wallet_gbp
+            elif action == "BUY" and t212_status == "FILLED" and filled_quantity >= abs(quantity) - 1e-9:
+                value_gbp = float(abs(target_amount_gbp))
+            elif action in ("SELL", "REDUCE") and price_gbp and filled_quantity > 0:
+                value_gbp = filled_quantity * float(price_gbp)
             slippage_bps = self._compute_slippage_bps(
                 action=action,
                 decision_price=current_price,
@@ -1192,6 +1310,7 @@ class OrderManager:
                 db_status,
                 t212_order_id=str(t212_order_id) if t212_order_id else None,
                 price=fill_price,
+                value_gbp=value_gbp,
                 filled_quantity=filled_quantity,
                 remaining_quantity=remaining_quantity,
                 slippage_bps=slippage_bps,
@@ -1337,6 +1456,7 @@ class OrderManager:
             local_pending = query.all()
             pending_local_count = len(local_pending)
             if pending_local_count == 0:
+                wallet_summary = self.reconcile_order_wallets_from_t212()
                 return {
                     "pending_local_count": 0,
                     "pending_live_count": 0,
@@ -1355,6 +1475,7 @@ class OrderManager:
                     "last_live_pending_sync_at": None,
                     "history_fetch_error_at": None,
                     "live_fetch_error_at": None,
+                    "wallet_reconcile_updated": wallet_summary.get("updated", 0),
                 }
 
             local_by_id = {
@@ -1388,6 +1509,8 @@ class OrderManager:
                             continue
                         t212_ids_seen.add(t212_id)
                         row = local_by_id[t212_id]
+                        self._apply_t212_wallet_fill(row, item)
+
                         filled_qty = order_obj.get("filledQuantity")
                         filled_val = order_obj.get("filledValue")
                         filled_quantity = float(row.filled_quantity or 0.0)
@@ -1404,7 +1527,7 @@ class OrderManager:
                         if filled_quantity > 0:
                             row.filled_quantity = filled_quantity
                             row.remaining_quantity = max(abs(float(row.quantity or 0.0)) - filled_quantity, 0.0)
-                            if filled_val is not None:
+                            if row.price is None and filled_val is not None and filled_quantity > 0:
                                 try:
                                     row.price = abs(float(filled_val)) / filled_quantity
                                 except (TypeError, ValueError, ZeroDivisionError):
@@ -1484,6 +1607,7 @@ class OrderManager:
                 logger.warning(f"Pending order reconciliation skipped: failed to fetch live pending orders: {e}")
 
             session.commit()
+            wallet_summary = self.reconcile_order_wallets_from_t212()
             updated_total = filled_count + partial_fill_count + cancelled_count + failed_count
             last_broker_sync_at = max(
                 [ts for ts in (last_history_sync_at, last_live_pending_sync_at) if ts is not None],
@@ -1516,6 +1640,7 @@ class OrderManager:
                 "last_live_pending_sync_at": last_live_pending_sync_at,
                 "history_fetch_error_at": history_fetch_error_at,
                 "live_fetch_error_at": live_fetch_error_at,
+                "wallet_reconcile_updated": wallet_summary.get("updated", 0),
             }
         except Exception as e:
             session.rollback()
@@ -1604,7 +1729,15 @@ class OrderManager:
 
         stop_price = round(current_price * (1 + stop_loss_pct / 100), 2)
         sell_quantity = -quantity  # Negative for sell
-        stop_order_value = abs(sell_quantity) * (current_price_gbp or current_price)
+        if current_price_gbp is not None and current_price_gbp > 0:
+            stop_order_value = abs(sell_quantity) * current_price_gbp
+        else:
+            # Placeholder until T212 history supplies walletImpact.netValue.
+            stop_order_value = 0.0
+            logger.debug(
+                "Stop-loss %s: no GBP price for value estimate — wallet will reconcile from T212 history",
+                ticker,
+            )
         can_place, reject_reason = self._passes_min_order_value(
             action="SELL",
             order_type="stop",

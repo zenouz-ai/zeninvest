@@ -53,6 +53,14 @@ def learning_session(tmp_path):
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
+    # The dataset builder joins the dashboard-owned `runs` table (to exclude
+    # dry-run cycles), so create the dashboard schema on the same engine too.
+    try:
+        from dashboard.backend.app.database import Base as DashboardBase
+
+        DashboardBase.metadata.create_all(engine)
+    except ImportError:
+        pass
     factory = sessionmaker(bind=engine)
     session = factory()
     try:
@@ -229,9 +237,10 @@ def test_label_derivation_big_winner_and_loser(learning_session) -> None:
 
     def fake_prices(ticker: str, _ts: datetime, _days: int) -> pd.DataFrame:
         days = [decision_ts + timedelta(days=i) for i in range(0, 35)]
-        # Constant +15% trajectory.
         closes = [100.0 + i * 0.5 for i in range(0, 35)]
-        return pd.DataFrame({"date": days, "close": closes})
+        return pd.DataFrame(
+            {"date": days, "close": closes, "high": closes, "low": closes}
+        )
 
     computer._price_fetcher = fake_prices  # type: ignore[attr-defined]
     rows = [{"cycle_id": "c1", "ticker": "AAPL_US_EQ", "timestamp": decision_ts}]
@@ -240,8 +249,10 @@ def test_label_derivation_big_winner_and_loser(learning_session) -> None:
 
     def fake_prices_loss(ticker: str, _ts: datetime, _days: int) -> pd.DataFrame:
         days = [decision_ts + timedelta(days=i) for i in range(0, 35)]
-        closes = [100.0 - i * 0.5 for i in range(0, 35)]
-        return pd.DataFrame({"date": days, "close": closes})
+        closes = [100.0 - i * 0.8 for i in range(0, 35)]
+        return pd.DataFrame(
+            {"date": days, "close": closes, "high": closes, "low": closes}
+        )
 
     computer._price_fetcher = fake_prices_loss  # type: ignore[attr-defined]
     out2 = computer.compute(rows)
@@ -388,7 +399,9 @@ def test_end_to_end_build_no_leakage(learning_session, tmp_path) -> None:
     def fake_prices(ticker: str, _ts: datetime, _days: int) -> pd.DataFrame:
         days = [decision_ts + timedelta(days=i) for i in range(0, 35)]
         closes = [100.0 + i * 0.4 for i in range(0, 35)]
-        return pd.DataFrame({"date": days, "close": closes})
+        return pd.DataFrame(
+            {"date": days, "close": closes, "high": closes, "low": closes}
+        )
 
     builder = DatasetBuilder(
         session=learning_session,
@@ -404,7 +417,7 @@ def test_end_to_end_build_no_leakage(learning_session, tmp_path) -> None:
     for path in result.paths.values():
         assert path.startswith(str(tmp_path))
     # Schema file should exist.
-    schema_path = tmp_path / "data" / "learning" / "parquet" / "v2" / "schema.json"
+    schema_path = tmp_path / "data" / "learning" / "parquet" / "v6" / "schema.json"
     assert schema_path.exists()
 
     # Leakage assertion: no feature column matches a label column name.
@@ -412,3 +425,42 @@ def test_end_to_end_build_no_leakage(learning_session, tmp_path) -> None:
     feature_cols = set(schema["features_columns"]) - {"cycle_id", "ticker", "decision_ts"}
     label_cols = set(schema["labels_columns"]) - {"cycle_id", "ticker", "decision_ts"}
     assert feature_cols.isdisjoint(label_cols)
+
+
+def test_build_excludes_dry_run_cycle_decisions(learning_session, tmp_path) -> None:
+    from dashboard.backend.app.database import Base as DashboardBase, Run
+
+    DashboardBase.metadata.create_all(learning_session.bind)
+    _seed_minimal_dataset(learning_session)
+    dry_ts = datetime(2026, 6, 14, 11, 38)
+    learning_session.add(
+        Run(
+            cycle_id="cycle_dry_1",
+            run_type="dry_run",
+            started_at=dry_ts,
+            status="completed",
+        )
+    )
+    learning_session.add(
+        StrategyDecision(
+            cycle_id="cycle_dry_1",
+            ticker="GEF/B_US_EQ",
+            action="BUY",
+            conviction=80,
+            timestamp=dry_ts,
+        )
+    )
+    learning_session.commit()
+
+    def fake_prices(ticker: str, _ts: datetime, _days: int) -> pd.DataFrame:
+        days = [dry_ts + timedelta(days=i) for i in range(0, 35)]
+        closes = [100.0 + i * 0.2 for i in range(0, 35)]
+        return pd.DataFrame({"date": days, "close": closes, "high": closes, "low": closes})
+
+    builder = DatasetBuilder(
+        session=learning_session,
+        project_root=str(tmp_path),
+        price_fetcher=fake_prices,
+    )
+    result = builder.build(write=False)
+    assert result.decisions_rows == 1

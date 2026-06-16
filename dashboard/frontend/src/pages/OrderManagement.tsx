@@ -1,11 +1,14 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, useCallback } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { ordersApi, stopLossApi } from '../api/client'
 import { TableSkeleton } from '../components/Skeleton'
 import { safeFormat } from '../utils/date'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { StatusPill, type PillVariant } from '../components/StatusPill'
+import { usePollingInterval } from '../hooks/usePollingInterval'
 import { cleanTicker, type ExecutionQuality, type StopLossCurrent } from '../types'
+
+const ORDER_POLL_MS = 120_000
 
 function formatMoney(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '—'
@@ -93,11 +96,15 @@ export default function OrderManagement() {
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [brokerSyncLoading, setBrokerSyncLoading] = useState(false)
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (reconcilePending = false) => {
     setError(null)
     try {
-      const healthData = await ordersApi.health({ unresolved_window_days: 7, reconcile_pending: true })
+      const healthData = await ordersApi.health({
+        unresolved_window_days: 7,
+        reconcile_pending: reconcilePending,
+      })
       const [currentData, adjData, ordersData, executionQualityData] = await Promise.all([
         stopLossApi.getCurrent(),
         stopLossApi.getAdjustments({ limit: 50 }),
@@ -115,13 +122,29 @@ export default function OrderManagement() {
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  const syncWithBroker = async () => {
+    setBrokerSyncLoading(true)
+    setError(null)
+    try {
+      await fetchData(true)
+    } finally {
+      setBrokerSyncLoading(false)
+    }
   }
 
+  const pollingActive = usePollingInterval(true, () => { void fetchData(false) })
+
   useEffect(() => {
-    fetchData()
-    const interval = setInterval(fetchData, 30000)
+    void fetchData(false)
+  }, [fetchData])
+
+  useEffect(() => {
+    if (!pollingActive) return
+    const interval = setInterval(() => { void fetchData(false) }, ORDER_POLL_MS)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchData, pollingActive])
 
   if (loading) {
     return <TableSkeleton rows={5} cols={5} />
@@ -131,7 +154,7 @@ export default function OrderManagement() {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <p className="text-loss text-sm">{error}</p>
-        <button type="button" onClick={() => { setLoading(true); fetchData() }} className="btn-secondary">
+        <button type="button" onClick={() => { setLoading(true); void fetchData(false) }} className="btn-secondary">
           Retry
         </button>
       </div>
@@ -147,7 +170,17 @@ export default function OrderManagement() {
 
       {health && (
         <div className="card">
-          <h2 className="text-lg font-semibold tracking-wide mb-3">Order Health</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="text-lg font-semibold tracking-wide">Order Health</h2>
+            <button
+              type="button"
+              onClick={() => { void syncWithBroker() }}
+              disabled={brokerSyncLoading}
+              className="btn-secondary text-xs"
+            >
+              {brokerSyncLoading ? 'Syncing with broker…' : 'Sync with broker'}
+            </button>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-sm">
             <div className="border border-terminal-border rounded-md p-3">
               <div className="text-terminal-text-dim">Active unresolved</div>
