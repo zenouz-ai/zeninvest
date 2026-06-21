@@ -501,7 +501,7 @@ async def get_rejection_analysis() -> dict[str, Any]:
     ).isoformat()
     from src.learning.dataset.rejection_analysis import load_rejection_history
 
-    payload["history"] = load_rejection_history()
+    payload["history"] = load_rejection_history(directory=reports_dir)
     return payload
 
 

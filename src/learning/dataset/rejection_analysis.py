@@ -367,9 +367,10 @@ def rejection_analysis_freshness() -> dict[str, Any]:
     }
 
 
-def load_rejection_history(limit: int = 12) -> list[dict]:
+def load_rejection_history(limit: int = 12, directory: Path | None = None) -> list[dict]:
     """Load headline metrics from historical rejected_analysis_*.json artifacts."""
-    candidates = sorted(reports_dir().glob("rejected_analysis_*.json")) if reports_dir().exists() else []
+    root = directory or reports_dir()
+    candidates = sorted(root.glob("rejected_analysis_*.json")) if root.exists() else []
     history: list[dict] = []
     for path in candidates[-limit:]:
         try:

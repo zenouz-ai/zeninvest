@@ -1,15 +1,17 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const getCommitteeDebateHealth = vi.fn()
 const getCommitteeEvaluation = vi.fn()
+const getRejectionAnalysis = vi.fn()
 const getResearchEvaluation = vi.fn()
 
 vi.mock('../../../api/client', () => ({
   learningApi: {
     getCommitteeEvaluation: () => getCommitteeEvaluation(),
+    getRejectionAnalysis: () => getRejectionAnalysis(),
     getResearchEvaluation: () => getResearchEvaluation(),
     getCommitteeDebateHealth: () => getCommitteeDebateHealth(),
   },
@@ -38,6 +40,7 @@ describe('AttributionPanel committee debate health', () => {
   it('renders live debate health even below the 200-trade gate', async () => {
     getCommitteeDebateHealth.mockResolvedValue(DEBATE_HEALTH)
     getCommitteeEvaluation.mockResolvedValue(null)
+    getRejectionAnalysis.mockResolvedValue(null)
     getResearchEvaluation.mockResolvedValue(null)
 
     render(<MemoryRouter><AttributionPanel closedTrades={10} /></MemoryRouter>)
@@ -52,6 +55,7 @@ describe('AttributionPanel committee debate health', () => {
   it('shows an empty hint when no decisions are in the window', async () => {
     getCommitteeDebateHealth.mockResolvedValue({ ...DEBATE_HEALTH, total_decisions: 0 })
     getCommitteeEvaluation.mockResolvedValue(null)
+    getRejectionAnalysis.mockResolvedValue(null)
     getResearchEvaluation.mockResolvedValue(null)
 
     render(<MemoryRouter><AttributionPanel closedTrades={10} /></MemoryRouter>)
