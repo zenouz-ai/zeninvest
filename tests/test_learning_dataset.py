@@ -108,6 +108,8 @@ def _seed_minimal_dataset(session) -> None:
             risk_score=4,
             confidence_score=8,
             timestamp=decision_ts,
+            debate_rounds=2,
+            verdict_changed_in_debate=True,
         )
     )
     session.add(
@@ -121,6 +123,8 @@ def _seed_minimal_dataset(session) -> None:
             confidence_score=7,
             consensus="APPROVED",
             timestamp=decision_ts,
+            debate_rounds=2,
+            verdict_changed_in_debate=False,
         )
     )
     session.add(
@@ -310,6 +314,9 @@ def test_feature_engineer_emits_all_groups(learning_session) -> None:
     assert row["gemini_verdict"] == "AGREE"
     assert row["moderation_consensus"] == "APPROVED"
     assert row["consensus_disagreement"] == 0
+    # Committee-debate telemetry (US-9.13 Phase 2)
+    assert int(row["debate_rounds"]) == 2
+    assert int(row["verdict_changed_in_debate"]) == 1  # gpt-4o flipped its verdict
     # Group B
     assert row["uov_ewma"] == pytest.approx(0.88)
     assert row["uov_ewma_delta"] == pytest.approx(0.14)

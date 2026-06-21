@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from tenacity import RetryError, Future
@@ -109,6 +109,9 @@ class TestCalculateQuantity:
 
     def test_negative_price(self):
         assert calculate_quantity(500.0, -10.0) == 0.0
+
+    def test_nan_price(self):
+        assert calculate_quantity(500.0, float("nan")) == 0.0
 
     def test_small_amount(self):
         # £10 at £200 = 0.05
@@ -1772,4 +1775,54 @@ class TestFxAwareQuantity:
         assert row.value_gbp == pytest.approx(279.12)
         assert row.price == pytest.approx(16.09)
         assert row.filled_quantity == pytest.approx(24.0)
+
+    def test_reconcile_incremental_skips_when_no_orders_need_gbp(self, db_session):
+        """Per-cycle (incremental) reconcile makes zero T212 calls when nothing needs GBP truth."""
+        old = Order(
+            ticker="AAPL_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=10.0,
+            price=100.0,
+            value_gbp=900.0,
+            filled_quantity=10.0,
+            t212_order_id="aapl-old-1",
+            status="filled",
+            timestamp=datetime.now(timezone.utc) - timedelta(days=90),
+        )
+        db_session.add(old)
+        db_session.commit()
+
+        mock_client = MagicMock()
+        manager = OrderManager(client=mock_client, dry_run=False)
+        summary = manager.reconcile_order_wallets_from_t212()
+
+        assert summary["updated"] == 0
+        assert summary["tickers_scanned"] == 0
+        mock_client.get_order_history.assert_not_called()
+
+    def test_reconcile_full_scans_old_orders(self, db_session):
+        """full=True backfill still scans tickers for old orders the incremental path skips."""
+        old = Order(
+            ticker="MSFT_US_EQ",
+            action="BUY",
+            order_type="market",
+            quantity=5.0,
+            price=200.0,
+            value_gbp=800.0,
+            filled_quantity=5.0,
+            t212_order_id="msft-old-1",
+            status="filled",
+            timestamp=datetime.now(timezone.utc) - timedelta(days=90),
+        )
+        db_session.add(old)
+        db_session.commit()
+
+        mock_client = MagicMock()
+        mock_client.get_order_history.return_value = {"items": [], "nextPagePath": None}
+        manager = OrderManager(client=mock_client, dry_run=False)
+        summary = manager.reconcile_order_wallets_from_t212(full=True)
+
+        assert summary["tickers_scanned"] == 1
+        mock_client.get_order_history.assert_called()
 

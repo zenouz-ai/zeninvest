@@ -9,6 +9,25 @@ from typing import Any
 from src.learning.evaluation.policies import PolicyId
 
 
+def _fmt_pct(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value) * 100:.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _fmt_num(value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        v = float(value)
+        return f"{v:+.2f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def write_evaluation_report(payload: dict[str, Any], *, root: Path) -> dict[str, str]:
     run_id = payload["run_id"]
     out_dir = root / "data" / "learning" / "evaluation" / run_id
@@ -63,6 +82,25 @@ def _render_html(payload: dict[str, Any]) -> str:
             f"<td>{d.get('trade_pnl_gbp')}</td></tr>"
         )
 
+    rejection = payload.get("rejection_funnel") or {}
+    funnel = rejection.get("funnel_metrics") or {}
+    rejection_html = ""
+    if rejection.get("rejected_total"):
+        rejection_html = f"""
+<h2>Full-funnel rejection quality (US-6.7)</h2>
+<p>{rejection.get('rejected_total')} rejected · coverage {_fmt_pct(rejection.get('coverage_pct'))} ·
+generated {rejection.get('generated_at', '—')}</p>
+<table><thead><tr>
+<th>Good-miss rate</th><th>False-reject rate</th><th>Selection gap</th>
+<th>Forward veto precision</th><th>Missed-winner rate</th></tr></thead>
+<tbody><tr>
+<td>{_fmt_pct(rejection.get('good_miss_rate'))}</td>
+<td>{_fmt_pct(rejection.get('false_reject_rate'))}</td>
+<td>{_fmt_num(rejection.get('selection_gap_pct'))}</td>
+<td>{_fmt_pct(funnel.get('forward_precision_at_veto'))}</td>
+<td>{_fmt_pct(funnel.get('missed_winner_rate'))}</td>
+</tr></tbody></table>"""
+
     champion = policies.get(PolicyId.CHAMPION_AS_IS.value, {})
     low_n = champion.get("low_confidence")
     warning = (
@@ -96,4 +134,5 @@ th{{background:#f8fafc;}}
 <h2>Champion vs combined disagreements (sample)</h2>
 <table><thead><tr><th>Ticker</th><th>Label</th><th>Champion</th><th>Combined</th><th>PnL £</th></tr></thead>
 <tbody>{dis_rows or '<tr><td colspan="5">No disagreements in sample</td></tr>'}</tbody></table>
+{rejection_html}
 </body></html>"""

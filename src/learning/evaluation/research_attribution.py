@@ -13,7 +13,7 @@ from src.learning.evaluation.counterfactual import _is_bad_row
 
 
 def _research_bucket(total: float | int | None) -> str:
-    if total is None or (isinstance(total, float) and pd.isna(total)):
+    if total is None or pd.isna(total):
         return "unknown"
     n = int(total)
     if n == 0:

@@ -94,4 +94,5 @@ def test_intraday_refresh_updates_snapshot_and_warms_market_data(monkeypatch) ->
     assert result["status"] == "completed"
     assert result["positions_refreshed"] == 1
     assert result["market_data_tickers_warmed"] == 2
+    assert "broker_sync" in (result.get("step_timing") or {})
     assert len(snapshot_calls) == 2

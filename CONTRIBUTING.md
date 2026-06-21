@@ -38,6 +38,7 @@ poetry run python -m src.orchestrator.main --dry-run
 - Use absolute imports from `src.*`
 - Keep new features behind an explicit config toggle where practical
 - Update public-facing docs in the same PR when behavior changes
+- When roadmap waves, counts, or dashboard surfaces change, sync `public-export/replacements/` per `docs/PUBLIC_MIRROR_POLICY.md`
 - Avoid committing secrets, `.env` contents, local DBs, or generated artifacts
 
 ## Pull Requests

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getNavigationItems } from './navigation'
+import { getNavigationItems, getNavLabel } from './navigation'
 
 describe('navigation', () => {
   it('shows the full public product surface to anonymous users', () => {
@@ -17,7 +17,7 @@ describe('navigation', () => {
       'Order Mgmt',
       'Chat',
       'Evolution',
-      'Costs',
+      'Costs & Latency',
     ])
   })
 
@@ -26,5 +26,14 @@ describe('navigation', () => {
 
     expect(labels).toContain('Dashboard')
     expect(labels).not.toContain('Overview')
+  })
+
+  it('uses Costs & Latency nav label for public and operator', () => {
+    const publicItem = getNavigationItems(false).find((item) => item.to === '/costs')
+    const operatorItem = getNavigationItems(true).find((item) => item.to === '/costs')
+    expect(publicItem?.label).toBe('Costs & Latency')
+    expect(operatorItem?.label).toBe('Costs & Latency')
+    expect(getNavLabel(publicItem!, false)).toBe('Costs & Latency')
+    expect(getNavLabel(operatorItem!, true)).toBe('Costs & Latency')
   })
 })

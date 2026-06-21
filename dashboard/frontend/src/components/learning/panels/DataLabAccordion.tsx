@@ -246,6 +246,69 @@ function ExportHistoryTable({ exports }: { exports: LearningExportSummary[] }) {
   )
 }
 
+function SectorRegimeGraphSearch() {
+  const [sector, setSector] = useState('Technology')
+  const [regime, setRegime] = useState('RISK_ON')
+  const [rows, setRows] = useState<Array<Record<string, unknown>>>([])
+  const [graphError, setGraphError] = useState<string | null>(null)
+
+  return (
+    <div className="mt-6 border-t border-terminal-border pt-4">
+      <SectionHeader
+        title="Sector + regime graph"
+        subtitle="Neo4j read-only query (requires sync-neo4j + compose service)."
+      />
+      <InfoCallout
+        why="Structured precedent paths by sector and macro regime — MEM-1 phase 2."
+        action="poetry run python -m src.learning.cli sync-neo4j"
+        roadmapId="US-6.4"
+      />
+      <div className="flex flex-wrap gap-2 items-center mb-2">
+        <input
+          className="bg-terminal-surface border border-terminal-border rounded-panel px-3 py-2 text-sm"
+          value={sector}
+          onChange={(e) => setSector(e.target.value)}
+          placeholder="Sector"
+        />
+        <input
+          className="bg-terminal-surface border border-terminal-border rounded-panel px-3 py-2 text-sm"
+          value={regime}
+          onChange={(e) => setRegime(e.target.value)}
+          placeholder="Regime"
+        />
+        <button
+          type="button"
+          className="px-3 py-2 text-sm border border-violet/40 text-violet rounded-panel hover:bg-violet/10"
+          onClick={async () => {
+            setGraphError(null)
+            try {
+              const res = await memoryApi.graphSectorRegime(sector.trim(), regime.trim(), 10)
+              setRows(res.decisions)
+              if (res.count === 0) setGraphError('No decisions — run sync-neo4j or check Neo4j service.')
+            } catch (err) {
+              setRows([])
+              setGraphError(err instanceof Error ? err.message : 'Graph query failed')
+            }
+          }}
+        >
+          Query graph
+        </button>
+      </div>
+      {graphError ? <p className="text-sm text-terminal-text-muted">{graphError}</p> : null}
+      {rows.length > 0 ? (
+        <ul className="mt-2 space-y-1 text-sm font-mono">
+          {rows.map((row, idx) => (
+            <li key={idx} className="border border-terminal-border rounded-panel px-2 py-1">
+              {String(row.ticker ?? '—')} · {String(row.label ?? row.outcome_label ?? '—')}
+              {row.pnl_pct != null ? ` · ${String(row.pnl_pct)}%` : ''}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
 function SimilarCasesSearch() {
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<Array<Record<string, unknown>>>([])
@@ -307,6 +370,29 @@ function SimilarCasesSearch() {
   )
 }
 
+function TemporalEpisodesPanel() {
+  return (
+    <div className="mt-6 border-t border-terminal-border pt-4">
+      <SectionHeader
+        title="Temporal episodes (Graphiti export)"
+        subtitle="Ingest-ready JSON only — no Graphiti Docker service in Wave 1."
+      />
+      <InfoCallout
+        why="Track B temporal memory export for future ingestion; upstream Graphiti CE is deprecated."
+        action="poetry run python -m src.learning.cli sync-graphiti"
+        roadmapId="US-6.5"
+      />
+      <p className="text-sm text-terminal-text-muted font-mono mt-2">
+        Output: data/learning/graphiti/v6/episodes.json
+      </p>
+      <p className="text-xs text-terminal-text-muted mt-2">
+        For temporal queries today, use Neo4j <code className="font-mono">decision_ts</code> on Decision nodes
+        (see docs/MEMORY_AND_LEARNING.md).
+      </p>
+    </div>
+  )
+}
+
 interface DataLabAccordionProps {
   exports: LearningExportSummary[]
 }
@@ -343,6 +429,8 @@ export function DataLabAccordion({ exports }: DataLabAccordionProps) {
           </div>
           <RawDatasetsPanel />
           <SimilarCasesSearch />
+          <SectorRegimeGraphSearch />
+          <TemporalEpisodesPanel />
         </div>
       ) : null}
     </Panel>

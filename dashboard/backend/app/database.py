@@ -70,6 +70,24 @@ class RunDatasetAudit(Base):
     error_message = Column(Text, nullable=True)
 
 
+class LatencySpan(Base):
+    """Normalized timing spans for runs — dashboard aggregates and future OTel export."""
+
+    __tablename__ = "latency_spans"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(Integer, ForeignKey("runs.id", ondelete="CASCADE"), nullable=True, index=True)
+    cycle_id = Column(String(100), nullable=False, index=True)
+    run_type = Column(String(30), nullable=False, index=True)
+    job_id = Column(String(80), nullable=True, index=True)
+    span_name = Column(String(100), nullable=False, index=True)
+    parent_span = Column(String(100), nullable=True)
+    started_at = Column(DateTime, nullable=False, index=True)
+    completed_at = Column(DateTime, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    metadata_json = Column(JSON, nullable=True)
+
+
 def init_dashboard_tables():
     """Create dashboard tables in the existing database."""
     # Create all tables (both agent and dashboard) if they don't exist

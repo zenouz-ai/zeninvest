@@ -411,13 +411,12 @@ class TestFullReview:
         assert result.consensus == "APPROVED"
         assert result.moderators_available == 2
 
-        # Verify moderators received the rich market_context dict
-        mock_openai.assert_called_once()
-        call_args = mock_openai.call_args
-        assert call_args[0][2] == sample_market_context  # 3rd positional arg
-        mock_gemini.assert_called_once()
-        call_args = mock_gemini.call_args
-        assert call_args[0][2] == sample_market_context
+        # Verify moderators received the rich market_context dict on the opening round
+        # (debate may add a rebuttal round, so assert on the first call rather than once).
+        assert mock_openai.called
+        assert mock_openai.call_args_list[0][0][2] == sample_market_context  # 3rd positional arg
+        assert mock_gemini.called
+        assert mock_gemini.call_args_list[0][0][2] == sample_market_context
 
     @patch("src.agents.moderation.panel.get_degradation_level")
     @patch("src.agents.moderation.panel.openai_mod.review_trade")
@@ -477,6 +476,9 @@ class TestParallelModeration:
     ):
         mock_degradation.return_value = DegradationLevel.FULL
         panel.settings._config["moderation"]["parallel_enabled"] = True
+        # This test targets the parallel opening round only; disable debate so the
+        # rebuttal round doesn't add a second call per moderator.
+        panel.settings._config["moderation"]["debate_enabled"] = False
         mock_openai.return_value = {"verdict": "AGREE", "reasoning": "ok", "available": True}
         mock_gemini.return_value = {
             "verdict": "AGREE", "growth_score": 7, "risk_score": 4,
@@ -606,3 +608,156 @@ class TestContextFormatter:
         ctx = {"indicators": {"macd_bearish_crossover": True, "current_price": 50.0}}
         text = format_market_context(ctx)
         assert "Bearish crossover (sell signal)" in text
+
+
+class TestCommitteeDebate:
+    """Multi-turn debate flow: opening -> rebuttal -> consensus, plus kill-switch parity."""
+
+    def _panel(self, **overrides):
+        from types import SimpleNamespace
+
+        panel = ModerationPanel()
+        base = dict(
+            parallel_moderation_enabled=False,
+            skeptic_research_enabled=False,
+            risk_research_enabled=False,
+            debate_enabled=True,
+            debate_rounds=2,
+            debate_anonymize=True,
+            min_conviction_no_moderators=78,
+            min_conviction_one_moderator=70,
+            strategy_model="claude-x",
+            moderator_1_model="gpt-x",
+            moderator_2_model="gemini-x",
+        )
+        base.update(overrides)
+        panel.settings = SimpleNamespace(**base)
+        return panel
+
+    @staticmethod
+    def _agree_results():
+        gpt = {"available": True, "verdict": "AGREE", "confidence_score": 8, "reasoning": "ok"}
+        gem = {
+            "available": True, "verdict": "AGREE", "growth_score": 7,
+            "risk_score": 4, "confidence_score": 7, "assessment": "ok",
+        }
+        return gpt, gem
+
+    @patch("src.agents.moderation.panel.get_degradation_level")
+    @patch("src.agents.moderation.gemini_mod.review_trade")
+    @patch("src.agents.moderation.openai_mod.review_trade")
+    def test_debate_runs_rebuttal_with_peer_argument(self, mock_gpt, mock_gem, mock_degrade):
+        mock_degrade.return_value = DegradationLevel.FULL
+        gpt, gem = self._agree_results()
+        mock_gpt.return_value = gpt
+        mock_gem.return_value = gem
+
+        panel = self._panel(debate_rounds=2)
+        result = panel.review_trade(
+            trade_proposal={"ticker": "AAPL_US_EQ", "action": "BUY"},
+            portfolio_context="",
+            market_context={},
+            conviction=78,
+            cycle_id="debate-cycle",
+        )
+
+        # Opening round + one rebuttal round = two calls per moderator.
+        assert mock_gpt.call_count == 2
+        assert mock_gem.call_count == 2
+        # The opening call carries no peer argument; the rebuttal does.
+        assert not mock_gpt.call_args_list[0].kwargs.get("peer_argument")
+        assert mock_gpt.call_args_list[1].kwargs.get("peer_argument")
+        assert mock_gem.call_args_list[1].kwargs.get("peer_argument")
+        assert result.consensus == "APPROVED"
+
+    @patch("src.agents.moderation.panel.get_degradation_level")
+    @patch("src.agents.moderation.gemini_mod.review_trade")
+    @patch("src.agents.moderation.openai_mod.review_trade")
+    def test_debate_disabled_is_single_round(self, mock_gpt, mock_gem, mock_degrade):
+        mock_degrade.return_value = DegradationLevel.FULL
+        gpt, gem = self._agree_results()
+        mock_gpt.return_value = gpt
+        mock_gem.return_value = gem
+
+        panel = self._panel(debate_enabled=False)
+        panel.review_trade(
+            trade_proposal={"ticker": "AAPL_US_EQ", "action": "BUY"},
+            portfolio_context="",
+            market_context={},
+            conviction=78,
+            cycle_id="parity-cycle",
+        )
+        # Kill switch -> opening round only (legacy one-shot behaviour).
+        assert mock_gpt.call_count == 1
+        assert mock_gem.call_count == 1
+
+    @patch("src.agents.moderation.panel.get_degradation_level")
+    @patch("src.agents.moderation.gemini_mod.review_trade")
+    @patch("src.agents.moderation.openai_mod.review_trade")
+    def test_debate_rounds_one_is_single_round(self, mock_gpt, mock_gem, mock_degrade):
+        mock_degrade.return_value = DegradationLevel.FULL
+        gpt, gem = self._agree_results()
+        mock_gpt.return_value = gpt
+        mock_gem.return_value = gem
+
+        panel = self._panel(debate_rounds=1)
+        panel.review_trade(
+            trade_proposal={"ticker": "AAPL_US_EQ", "action": "BUY"},
+            portfolio_context="",
+            market_context={},
+            conviction=78,
+            cycle_id="rounds1-cycle",
+        )
+        assert mock_gpt.call_count == 1
+        assert mock_gem.call_count == 1
+
+    @patch("src.agents.moderation.panel.get_degradation_level")
+    @patch("src.agents.moderation.gemini_mod.review_trade")
+    @patch("src.agents.moderation.openai_mod.review_trade")
+    def test_debate_telemetry_persisted(self, mock_gpt, mock_gem, mock_degrade, db_session):
+        from src.data.models import ModerationLog
+
+        mock_degrade.return_value = DegradationLevel.FULL
+        # GPT-4o flips DISAGREE -> AGREE after the rebuttal; Gemini holds AGREE.
+        mock_gpt.side_effect = [
+            {"available": True, "verdict": "DISAGREE", "confidence_score": 5, "reasoning": "open"},
+            {"available": True, "verdict": "AGREE", "confidence_score": 7, "reasoning": "rebut"},
+        ]
+        _, gem = self._agree_results()
+        mock_gem.return_value = gem
+
+        panel = self._panel(debate_rounds=2)
+        panel.review_trade(
+            trade_proposal={"ticker": "AAPL_US_EQ", "action": "BUY"},
+            portfolio_context="",
+            market_context={},
+            conviction=78,
+            cycle_id="tele-cycle",
+        )
+
+        rows = {r.moderator: r for r in db_session.query(ModerationLog).filter_by(cycle_id="tele-cycle").all()}
+        assert rows["strategy"].debate_rounds == 2
+        assert rows["gpt-4o"].debate_rounds == 2
+        assert rows["gpt-4o"].verdict_changed_in_debate is True
+        assert rows["gemini"].verdict_changed_in_debate is False
+
+    @patch("src.agents.moderation.panel.get_degradation_level")
+    @patch("src.agents.moderation.gemini_mod.review_trade")
+    @patch("src.agents.moderation.openai_mod.review_trade")
+    def test_debate_skipped_when_one_moderator_unavailable(self, mock_gpt, mock_gem, mock_degrade):
+        mock_degrade.return_value = DegradationLevel.FULL
+        gpt, _ = self._agree_results()
+        mock_gpt.return_value = gpt
+        mock_gem.return_value = {"available": False, "verdict": "SKIP"}
+
+        panel = self._panel(debate_rounds=2)
+        panel.review_trade(
+            trade_proposal={"ticker": "AAPL_US_EQ", "action": "BUY"},
+            portfolio_context="",
+            market_context={},
+            conviction=78,
+            cycle_id="solo-cycle",
+        )
+        # No peer to debate -> no rebuttal round.
+        assert mock_gpt.call_count == 1
+        assert mock_gem.call_count == 1

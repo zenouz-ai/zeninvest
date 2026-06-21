@@ -1,26 +1,26 @@
 # Sophistication Roadmap
 
-> Public roadmap for delivered capabilities, active tracks, and later-stage enhancement themes.
+> Public roadmap for delivered capabilities, active waves, and later-stage enhancement themes.
 
 ## Overview
 
-ZenInvest is still positioned as a proof-of-concept system, but it already contains a substantial amount of end-to-end functionality across trading, observability, research, backtesting, and operator tooling.
+ZenInvest is still positioned as a proof-of-concept system, but it already contains substantial end-to-end functionality across trading, observability, research, backtesting, and operator tooling.
 
-The roadmap is organized around a few principles:
+The roadmap uses a **Wave + Gate + ICE** framework (see the canonical repo for full story IDs):
 
-1. safety before new capability
-2. execution quality before more aggressive live posture
-3. evidence-gated learning loops
-4. incremental delivery over broad rewrites
+1. **Production safety** before new capability
+2. **Execution quality** before live-account posture change
+3. **Live influence** stays data-gated; **diagnostics and shadow** work does not
+4. Lower-leverage investigations stay in later waves unless tied to an active epic
 
-The canonical machine-readable roadmap remains in the frontend data model, while this public doc explains the direction at a human level.
+**Current counts (machine-readable source in the repo):** **55 delivered · 16 pipeline · 71 total (~77%)**.
 
 ## Delivered Themes
 
 Major delivered themes include:
 
 - end-to-end pipeline execution
-- dashboard and observability
+- dashboard and observability (including per-phase timing, latency spine US-9.1/US-9.11, production scorecard US-9.12)
 - conversational trading workflows
 - backtesting and walk-forward validation
 - opportunity ranking and queueing
@@ -28,96 +28,75 @@ Major delivered themes include:
 - macro intelligence
 - execution-quality hardening
 - authentication and safe public demo surfaces
-- early evolution-planner capability
+- evolution planner Phase 1 (planner-only)
 - pace-aligned exits with north-star KPIs
-- agentic-operability hardening (per-phase timing, prompt hashing, budget enforcement, durable research cache, parallel moderation, failure-mode catalog, golden tests)
+- decision-quality evaluation foundation (US-6.6) and moderator effectiveness (US-2.3)
+- committee debate telemetry (US-9.13)
+- **Wave 1 decision-quality depth:** rejected-decision funnel diagnostics (US-6.7 Tier 1)
+- **Wave 1 Track B memory (shadow-only):** vector similar-case search (US-6.2), optional Neo4j sector/regime panel (US-6.4), Graphiti-ready episodes JSON (US-6.5)
+- agentic-operability hardening: prompt hashing 3/3, chat/embedding budgets, durable research cache, parallel moderation, failure-mode catalog, golden tests
 
-## Current State
+## Wave 1 — Evidence & Ops (**complete**)
 
-The current POC establishes:
+Wave 1 pipeline stories delivered (2026-06-21):
 
-- data -> screening -> strategy -> moderation -> risk -> execution -> reporting flow
-- multi-LLM adversarial committee design
-- deterministic risk veto power
-- practice-oriented broker integration
-- dashboard and public-safe observability surfaces
-- backtesting and trade-outcome infrastructure
+| Epic | Stories | Outcome |
+|------|---------|---------|
+| **OPS-1** | US-9.12 | Production latency scorecard — US-9.5 exit confirmed (truncation 0%) |
+| **EQ-1** | US-6.7 | Rejected-decision funnel Tier 1 — parquet, dashboard, evaluate funnel block |
+| **MEM-1** | US-6.2 → US-6.4 → US-6.5 | Track B operator tools: embeddings search, **optional** Neo4j graph panel, episodes JSON |
 
-What remains intentionally unfinished:
+**Track B clarifications (public):**
 
-- deeper calibration of conviction and sizing
-- more adaptive learning loops
-- broader execution-quality optimization
-- carefully gated autonomy in software evolution workflows
+- Full live audit lives in **SQLite** — not Neo4j.
+- **Embeddings**, **Neo4j**, and **episodes JSON** are independent paths from the same weekly export; use only what you need.
+- The live committee does **not** query Neo4j or embeddings today (`memory_inject_strategy` false and unwired).
+- Shadow `challenger_memory` reads exported JSONL — not the graph.
 
-## Active and Near-Term Themes
+These Wave 1 items do **not** require live ML influence gates.
 
-### Evolution Engine follow-ons
+## Wave 2 — Data-gated calibration (**active next**)
 
-- branch-based change execution
-- validation packs and promotion gates
-- low-risk auto-promotion only after manual trust is established
+Blocked until enough `trade_outcomes` exist:
 
-### Calibration and adaptation
+- conviction calibration (US-2.1)
+- dynamic strategy weighting (US-2.2)
+- MLflow platform when experiment volume warrants (US-6.8)
+- US-6.7 Tier 2 reject-inference research (only if diagnostics show material bias)
 
-- conviction calibration
-- dynamic strategy weighting
-- moderator effectiveness analysis
-- rejected-decision counterfactual and selection-bias diagnostics (shadow/evidence only): a read-only, per-stage view of whether the funnel declined names that would have lost (good miss) or won (false reject), with a dashboard surface delivered and deeper debiasing kept as gated research
+## Wave 3 — Evolution automation
 
-These are data-gated and should only move once enough trade-outcome evidence exists.
+Zen Evolution Engine follow-ons (after Wave 1 foundations):
 
-### Regime and factor expansion
+- branch-based change execution (US-1.11)
+- policy-gated promotion (US-1.12)
+- low-risk auto-promotion only after manual trust (US-1.13)
+- system-initiated improvements (US-1.14)
 
-- enhanced regime detection
-- sector rotation signals
-- parameter sensitivity analysis
-
-### Agentic maturity (operability)
-
-A set of low-cost, high-leverage operability slices, prioritized by impact over effort and each tied to a measured baseline rather than a guess. The **zero-infra slices are now delivered**:
-
-- per-phase cycle timing/observability (so latency work targets the real driver)
-- prompt versioning/hashing across the full committee (file-based, not a heavyweight registry)
-- enforcement of the chat and embedding budget caps as truly-separate categories
-- a durable research cache (replacing the in-memory one that reset on restart)
-- parallel moderation (the two moderators now run concurrently, behind a kill switch)
-- a failure-mode catalog with stable error codes, plus golden prompt/tool tests in CI
-
-These deliberately avoid new infrastructure: heavier observability stacks, database-backed prompt registries, and orchestration frameworks were assessed and judged unnecessary at the current single-host scale.
-
-## Later / Optional Themes
-
-These are interesting but intentionally later:
+## Wave 4 — Parked optional
 
 - alternative provider investigations
-- gradient-boosted trade scoring
-- embeddings and similarity search for journal learning
-- reinforcement-learning investigations
-- relational / supply-chain graph context (preferring an embedded graph store over standing up more services)
-- distributed trace observability (only if simpler audit and per-phase timing prove insufficient)
+- gradient-boosted trade scoring and RL research (shadow only)
+- enhanced regime detection, sector rotation, parameter sensitivity
+- relational / supply-chain graph (**US-9.7** — prefer embedded Kùzu over expanding Neo4j if ever built)
+- Phoenix traces, Opik pilot
 
-The roadmap treats these as optional until the simpler, higher-leverage foundations are mature.
+## Agentic maturity (delivered + deferred)
 
-## Resource Allocation Heuristic
+**Delivered zero-infra slices:** per-phase timing, committee prompt hashing, budget enforcement, durable research cache, parallel moderation, committee debate telemetry, failure modes catalog, golden tests, latency observability platform, production latency scorecard.
 
-The roadmap implicitly prioritizes:
-
-- reliability and safety first
-- observability before optimization
-- data collection before adaptive logic
-- low-complexity/high-leverage work over novelty for its own sake
+**Deferred:** supply-chain graph, distributed trace stacks, external prompt playgrounds — judged unnecessary at single-VPS scale until a concrete debugging need arises.
 
 ## Public Roadmap Use
 
-This public version is intended to answer:
+This public version answers:
 
 - what is already real
-- what the next meaningful steps are
+- what Wave 2 is building next
 - which ideas are evidence-gated
 - where the system is deliberately conservative
 
-It is intentionally less operational than the canonical internal planning material and excludes environment-specific or private launch mechanics.
+It is less operational than the canonical internal planning material and excludes environment-specific launch mechanics.
 
 ## Related Docs
 

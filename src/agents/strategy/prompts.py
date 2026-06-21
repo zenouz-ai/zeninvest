@@ -41,6 +41,7 @@ def build_strategy_prompt(
     strategy_performance: str = "",
 ) -> str:
     """Build the full strategy prompt for Claude."""
+    settings = get_settings()
     state_constraints = ""
     if system_state == "CAUTIOUS":
         state_constraints = "CAUTIOUS MODE: No new positions. Max 8% per position. Only add to winners."
@@ -50,7 +51,7 @@ def build_strategy_prompt(
         state_constraints = "Normal operation."
     pre_earnings_policy = (
         "Avoid_pre_earnings is enabled: for new entries, prefer HOLD/QUEUED over BUY when earnings are within the configured pre-earnings window unless the upside case is unusually strong."
-        if get_settings().avoid_pre_earnings
+        if settings.avoid_pre_earnings
         else "Avoid_pre_earnings is disabled: treat earnings timing as informational context only."
     )
 
@@ -70,6 +71,8 @@ def build_strategy_prompt(
         vix=vix or "N/A",
         cash_pct=cash_pct,
         max_position_pct=max_position_pct,
+        min_position_pct=settings.min_position_pct,
+        cash_floor_pct=settings.cash_floor_pct,
         num_positions=num_positions,
         max_positions=max_positions,
         momentum_weight=momentum_weight,

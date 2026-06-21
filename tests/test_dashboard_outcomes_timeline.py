@@ -179,9 +179,36 @@ def test_timeline_returns_prices_and_annotations(client, db_session, monkeypatch
     assert response.status_code == 200
     body = response.json()
     assert body["ticker"] == "BAC_US_EQ"
-    assert len(body["prices"]) == 2
+    assert len(body["prices"]) == 4
+    assert body["prices"][1]["date"] == "2025-01-10"
+    assert body["prices"][-1] == {"date": "2025-03-10", "close": 39.0}
     assert body["buy"]["reasoning"] == "Momentum entry"
     assert body["outcome"]["result"] == "win"
+
+
+def test_timeline_pads_sell_day_when_yfinance_ends_early(client, db_session, monkeypatch):
+    outcome = _seed_outcome(db_session)
+    fake_df = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2025-01-01", "2025-02-01", "2025-03-09"]),
+            "open": [34.0, 35.0, 38.0],
+            "high": [35.0, 36.0, 39.0],
+            "low": [33.0, 34.0, 37.0],
+            "close": [34.5, 35.5, 38.5],
+            "volume": [1000, 1100, 1200],
+        }
+    )
+
+    monkeypatch.setattr(
+        "src.agents.reporting.trade_review.fetch_bars_yfinance",
+        lambda *args, **kwargs: {"BAC": fake_df},
+    )
+
+    response = client.get(f"/api/outcomes/{outcome.id}/timeline")
+    assert response.status_code == 200
+    prices = response.json()["prices"]
+    assert prices[-1]["date"] == "2025-03-10"
+    assert prices[-1]["close"] == 39.0
 
 
 def test_timeline_includes_committee_and_market_context(client, db_session, monkeypatch):
@@ -277,14 +304,18 @@ def test_timeline_not_found(client):
     assert response.status_code == 404
 
 
-def test_timeline_empty_prices_returns_502(client, db_session, monkeypatch):
+def test_timeline_synthetic_event_bars_when_yfinance_empty(client, db_session, monkeypatch):
     outcome = _seed_outcome(db_session)
     monkeypatch.setattr(
         "src.agents.reporting.trade_review.fetch_bars_yfinance",
         lambda *args, **kwargs: {},
     )
     response = client.get(f"/api/outcomes/{outcome.id}/timeline")
-    assert response.status_code == 502
+    assert response.status_code == 200
+    prices = response.json()["prices"]
+    assert len(prices) == 2
+    assert prices[0] == {"date": "2025-01-10", "close": 35.0}
+    assert prices[1] == {"date": "2025-03-10", "close": 39.0}
 
 
 def test_north_star_metrics_endpoint(client, db_session):

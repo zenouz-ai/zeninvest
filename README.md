@@ -20,7 +20,7 @@
   <img src="branding/ZenInvest_Promo.png" alt="ZenInvest promotional poster" width="760" />
 </p>
 
-**Status:** Proof of Concept (`v1.0`) with a large pytest suite, Docker-based local/runtime workflows, and an operator-facing dashboard plus conversational trading interface.
+**Status:** Proof of Concept (`v1.0`) with 1,000+ pytest cases, Docker-based local/runtime workflows, and an operator dashboard. Roadmap: **55 delivered / 16 pipeline / 71 total** — Wave 1 complete ([Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md)).
 
 ## Important Notes
 
@@ -36,7 +36,7 @@ Orchestrator (configurable intraday and standard schedules)
   ├── Market Data Agent    → yfinance + Finnhub + Alpha Vantage + macro intelligence
   ├── Universe Screener    → sector-balanced, cap-tiered candidate discovery
   ├── Strategy Agent       → momentum + mean reversion + factor + LLM synthesis
-  ├── Moderation Panel     → adversarial review and risk challenge
+  ├── Moderation Panel     → adversarial review and risk challenge (multi-turn debate)
   ├── Risk Agent           → deterministic Python guardrails with veto power
   ├── Opportunity Agent    → queueing, prioritisation, and BUY selection
   ├── Execution Agent      → broker market/limit/stop order workflows
@@ -67,20 +67,21 @@ The refresh lane keeps the system grounded in broker truth between full strategy
 - **Backend & orchestration:** FastAPI, APScheduler, SQLAlchemy + SQLite, Alembic
 - **Committee LLMs:** Anthropic Claude (strategy), OpenAI GPT (skeptic), Google Gemini (risk)
 - **Market data & research:** yfinance, Finnhub, Alpha Vantage, Brave, Tavily, SEC EDGAR
-- **Learning & memory (research-only):** LightGBM, scikit-learn, SHAP, PyArrow, vector index, Neo4j + Graphiti, d3rlpy + gymnasium
+- **Learning & memory (research-only):** LightGBM, scikit-learn, SHAP, PyArrow, vector index (similar-case search), optional Neo4j sector/regime graph, Graphiti episodes JSON export, d3rlpy + gymnasium
 - **Frontend:** React 18 + TypeScript, Vite, Tailwind, Recharts/D3, Mermaid
 - **Infra & ops:** Docker Compose, nginx, Slack + SMTP, Rich logging
 
 ## Innovation & Research
 
-ZenInvest is built to learn from its own track record without ever letting unproven models touch live capital. Two research tracks are maturing behind hard gates — each forward-looking, each with a kill switch and a documented fallback — alongside a delivered latency optimization.
+Shadow-only learning and memory tracks sit behind hard gates — each has a kill switch and a documented fallback:
 
-- **Embedded learning loop (shadow → gated).** A dual-track pipeline turns every decision and outcome into training data: tabular ML (conviction calibration, win/loss/stall scoring) plus a champion-vs-challenger evaluation harness. It runs strictly read-only; any influence on live conviction or sizing is gated on a large body of closed trades plus operator sign-off.
-- **Rejected-decision counterfactual & selection-bias diagnostics.** The committee also studies the names it *declined*: a read-only, mark-to-market counterfactual over every rejected ticker measures per-stage "good-miss" vs "false-reject" rates and quantifies the selection bias baked into a traded-only training set — surfaced on the dashboard as a directional process-quality signal, never a live trading input.
-- **Knowledge graphs & memory.** Journal embeddings, a decision graph, and temporal episodes let the committee ask *"what did we think last time this setup appeared?"* — evidence-only retrieval that surfaces prior theses and their outcomes, never an auto-executed signal.
-- **Parallel moderation (delivered).** The committee runs its two moderation models concurrently (behind a kill switch), cutting cycle latency without weakening adversarial review — the consensus and degradation logic are unchanged.
+- **Learning loop (shadow → gated).** Tabular ML + champion/challenger evaluation; no live influence until `200+` closed trades and operator sign-off.
+- **Rejection diagnostics (Wave 1).** Per-stage good-miss vs false-reject counterfactuals over declined tickers — dashboard evidence only.
+- **Memory track (Wave 1).** Operator-only Track B: vector similar-case search, optional Neo4j sector/regime panel, episodes JSON export — not wired into live committee (`memory_inject_strategy` false).
+- **Parallel moderation (delivered).** Concurrent GPT + Gemini review behind a kill switch.
+- **Committee debate (delivered).** Moderators read and rebut each other's opening arguments before final verdicts — genuine debate behind a kill switch — with minimalist prompts and per-decision telemetry so the benefit is measured over time, not assumed.
 
-Architecture details: [Architecture](docs/ARCHITECTURE.md). Delivery status: [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md).
+Details: [Architecture](docs/ARCHITECTURE.md) · [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md).
 
 ## API Ecosystem
 
@@ -212,7 +213,7 @@ These rules are deterministic Python and remain final even when every LLM agrees
 - Volatility-aware sizing caps when `VIX` rises
 - Daily loss halts that block new buys
 - Cash floor protection
-- Minimum position-count discipline once invested
+- Position-count discipline once invested (a minimum floor and a concurrent-holdings ceiling for diversification)
 - `CAUTIOUS` mode restrictions on new `BUY` actions
 
 ## Cost Management
@@ -240,7 +241,7 @@ See [Public Repo Scope](docs/PUBLIC_REPO_SCOPE.md).
 
 ## Project Evolution
 
-ZenInvest remains a proof-of-concept system focused on evidence-backed iteration rather than premature complexity. The public roadmap is available in [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md).
+**Wave + Gate + ICE** roadmap: **55 / 16 / 71 (~77%)**. **Wave 1 complete:** latency scorecard (US-9.12), rejection diagnostics (US-6.7), memory track (US-6.2–6.5). **Wave 2 next:** calibration (US-2.1, US-2.2). **Wave 3:** Evolution Engine automation. [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md).
 
 ## Documentation Index
 

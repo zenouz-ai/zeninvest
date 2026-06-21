@@ -268,7 +268,7 @@ class FeatureEngineer:
             key = (row.cycle_id, row.ticker)
             entry = out.setdefault(
                 key,
-                {"moderators": {}, "consensus": None},
+                {"moderators": {}, "consensus": None, "debate_rounds": None},
             )
             entry["moderators"][row.moderator] = {
                 "verdict": row.verdict,
@@ -276,9 +276,12 @@ class FeatureEngineer:
                 "risk_score": row.risk_score,
                 "confidence_score": row.confidence_score,
                 "modifications": _parse_json(row.modifications_json) or {},
+                "verdict_changed_in_debate": row.verdict_changed_in_debate,
             }
             if row.consensus and not entry.get("consensus"):
                 entry["consensus"] = row.consensus
+            if row.debate_rounds is not None and entry.get("debate_rounds") is None:
+                entry["debate_rounds"] = row.debate_rounds
         return out
 
     def _load_risk(self, cycles: set[str], tickers: set[str]) -> dict[tuple[str, str], dict[str, Any]]:
@@ -386,6 +389,14 @@ class FeatureEngineer:
                 )
                 if moderators
                 else None,
+                # Committee-debate telemetry (US-9.13): rounds run for this decision and
+                # whether any moderator changed its verdict after the rebuttal.
+                "debate_rounds": _safe_int((moderation or {}).get("debate_rounds")),
+                "verdict_changed_in_debate": (
+                    int(any(bool(m.get("verdict_changed_in_debate")) for m in moderators.values()))
+                    if moderators
+                    else None
+                ),
             }
         )
 

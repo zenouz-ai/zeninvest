@@ -489,6 +489,30 @@ def fetch_price_series(
     return points
 
 
+def _chart_calendar_date(dt: datetime | None) -> str | None:
+    """UTC calendar date string matching frontend toISOString().slice(0, 10)."""
+    parsed = ensure_utc_datetime(dt)
+    return parsed.date().isoformat() if parsed else None
+
+
+def ensure_trade_event_bars(
+    prices: list[dict[str, Any]],
+    *,
+    events: list[tuple[datetime | None, float | None]],
+) -> list[dict[str, Any]]:
+    """Append synthetic daily closes for buy/sell dates missing from yfinance."""
+    existing_dates = {point["date"] for point in prices}
+    augmented = list(prices)
+    for ts, quote in events:
+        date_str = _chart_calendar_date(ts)
+        if not date_str or quote is None or date_str in existing_dates:
+            continue
+        augmented.append({"date": date_str, "close": round(float(quote), 4)})
+        existing_dates.add(date_str)
+    augmented.sort(key=lambda point: point["date"])
+    return augmented
+
+
 def _load_stop_adjustments(session: Session, ticker: str) -> list[dict[str, Any]]:
     rows = (
         session.query(StopLossAdjustment)
@@ -565,6 +589,11 @@ def build_trade_timeline(session: Session, outcome_id: int) -> dict[str, Any] | 
     earliest_buy_ts = fifo_legs[0].order.timestamp if fifo_legs else outcome.buy_timestamp
     window = build_timeline_window(earliest_buy_ts, outcome.sell_timestamp)
     prices = fetch_price_series(outcome.ticker, window.start, window.end)
+    prices = ensure_trade_event_bars(
+        prices,
+        events=[(leg.order.timestamp, order_quote_price(leg.order)) for leg in fifo_legs]
+        + [(sell_order.timestamp, order_quote_price(sell_order))],
+    )
 
     def _iso(dt: datetime | None) -> str | None:
         if dt is None:

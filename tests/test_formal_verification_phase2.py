@@ -21,6 +21,7 @@ from src.agents.notifications.service import NotificationService
 from src.agents.notifications.types import NotificationEvent
 from src.agents.opportunity.optimizer import OpportunityOptimizer
 from src.data.models import Base, OpportunityQueue
+from src.utils.config import get_settings
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +158,7 @@ class TestOpportunityQueueStatus:
     def test_full_lifecycle_queue_execute_dequeue(self, db_session):
         """Full lifecycle: queue → mark executing → dequeue after success."""
         optimizer = OpportunityOptimizer()
+        cap = get_settings().max_positions
 
         # Cycle 1: queue it (at capacity)
         approved = [{"ticker": "LIFE_US_EQ", "final_allocation_pct": 5.0}]
@@ -165,9 +167,9 @@ class TestOpportunityQueueStatus:
             cycle_id="cycle_1",
             approved_buys=approved,
             scores_by_ticker=scores,
-            existing_tickers={f"POS{j}_US_EQ" for j in range(20)},
+            existing_tickers={f"POS{j}_US_EQ" for j in range(cap)},
             cash_pct=20.0,
-            num_positions=20,
+            num_positions=cap,
         )
 
         row = db_session.query(OpportunityQueue).filter_by(ticker="LIFE_US_EQ").first()
@@ -179,9 +181,9 @@ class TestOpportunityQueueStatus:
             cycle_id="cycle_2",
             approved_buys=approved,
             scores_by_ticker=scores,
-            existing_tickers={f"POS{j}_US_EQ" for j in range(13)},
+            existing_tickers={f"POS{j}_US_EQ" for j in range(cap - 7)},
             cash_pct=20.0,
-            num_positions=13,
+            num_positions=cap - 7,
         )
 
         assert "LIFE_US_EQ" in result["execution_order"]

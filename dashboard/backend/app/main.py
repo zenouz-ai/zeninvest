@@ -29,6 +29,7 @@ from .routers import (
     events,
     evolution,
     insights,
+    latency,
     learning,
     macro,
     memory,
@@ -115,6 +116,7 @@ app.include_router(stop_loss.router, prefix="/api/stop-loss", tags=["stop-loss"]
 app.include_router(research.router, prefix="/api/research", tags=["research"])
 app.include_router(performance.router, prefix="/api/performance", tags=["performance"])
 app.include_router(costs.router, prefix="/api/costs", tags=["costs"])
+app.include_router(latency.router, prefix="/api/latency", tags=["latency"])
 app.include_router(api_usage.router, prefix="/api/api-usage", tags=["api-usage"])
 app.include_router(system.router, prefix="/api/system", tags=["system"])
 app.include_router(docs.router, prefix="/api/docs", tags=["docs"])

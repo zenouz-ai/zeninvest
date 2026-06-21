@@ -65,7 +65,7 @@ In the browser, confirm each route loads without errors:
 | Opportunity     | `/opportunity`         | Signed-out: capped preview examples; signed-in: full UOV queue and scores table |
 | Insights        | `/insights`            | Signed-out: sanitized market-guidance history; signed-in: full guidance + attribution review |
 | Order Management| `/orders`              | Signed-out: preview-only explainer; signed-in: stops, health, execution quality, adjustments |
-| Costs           | `/costs`               | Signed-out: aggregate totals only; signed-in: degradation badge, daily chart, monthly table |
+| Costs & Latency | `/costs`               | Signed-out: **Costs & Latency** title with aggregate spend totals only; signed-in: Spend tab (degradation badge, daily chart, monthly table) + Latency tab (schedule map, p50/p95, slow calls) |
 | Chat            | `/chat`                | Signed-out: preview-only demo transcript; signed-in: full operator console |
 | Evolution       | `/evolution`           | Signed-out: preview-only planner concept; signed-in: authenticated evolution planner |
 | Learning        | `/learning`            | Operator-only: shadow learning runs list (`/api/learning/runs`), run detail + report URL, embedded insight PNGs when artifacts exist under `data/learning/` |

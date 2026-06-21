@@ -949,3 +949,69 @@ class EpisodeReviewRequestSchema(BaseModel):
     title: str | None = Field(default=None, min_length=3, max_length=200)
     summary: str | None = Field(default=None, min_length=3, max_length=5000)
     effective_start_at: datetime | None = None
+
+
+class LatencyScheduleJobSchema(BaseModel):
+    job_id: str
+    run_type: str
+    cron: str
+    category: str
+    shares_cycle_lock: bool = False
+
+
+class LatencyScheduleSchema(BaseModel):
+    timezone: str
+    cycle_lock_note: str
+    jobs: list[LatencyScheduleJobSchema]
+
+
+class LatencySummarySchema(BaseModel):
+    days: int
+    run_types: dict[str, dict[str, float | int]]
+    phases: dict[str, dict[str, float | int]]
+    steps: dict[str, dict[str, float | int]]
+    off_hours_jobs: list[dict[str, Any]]
+    truncation_rate: float | None = None
+    baseline_delta: dict[str, float | None] | None = None
+    frozen_baseline: dict[str, Any] | None = None
+
+
+class LatencyTimelineRunSchema(BaseModel):
+    cycle_id: str
+    run_type: str
+    status: str
+    started_at: datetime
+    completed_at: datetime | None
+    duration_seconds: float
+    shares_cycle_lock: bool
+
+
+class LatencyTimelineSchema(BaseModel):
+    date: str
+    runs: list[LatencyTimelineRunSchema]
+    lock_warnings: list[str]
+
+
+class LatencySlowCallSchema(BaseModel):
+    service: str
+    endpoint: str
+    count: int
+    avg_duration_ms: float
+    p95_duration_ms: float
+    max_duration_ms: float
+
+
+class LatencyRunSpanSchema(BaseModel):
+    span_name: str
+    parent_span: str | None = None
+    started_at: datetime
+    completed_at: datetime | None = None
+    duration_ms: int | None = None
+    metadata_json: dict[str, Any] | None = None
+
+
+class LatencyBaselineResponseSchema(BaseModel):
+    status: str
+    dry_run: bool
+    include_learning: bool
+    message: str

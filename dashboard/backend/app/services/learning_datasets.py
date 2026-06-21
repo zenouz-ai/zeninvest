@@ -12,7 +12,7 @@ from src.utils.logger import get_logger
 
 logger = get_logger("dashboard.learning_datasets")
 
-PARQUET_ARTIFACTS = frozenset({"decisions", "features", "outcomes", "merged", "text_corpus"})
+PARQUET_ARTIFACTS = frozenset({"decisions", "features", "outcomes", "merged", "text_corpus", "rejected"})
 JSON_ARTIFACTS = frozenset({"schema", "splits"})
 TEXT_TRUNCATE = 600
 
@@ -58,6 +58,7 @@ def dataset_manifest(project_root: Path, version: str) -> dict[str, Any]:
     artifacts: dict[str, Any] = {}
     paths_map = dict(spec.parquet_paths())
     paths_map["merged"] = f"{spec.output_dir}/parquet/{version}/merged.parquet"
+    paths_map["rejected"] = f"{spec.output_dir}/parquet/{version}/rejected.parquet"
 
     for key, rel in paths_map.items():
         path = project_root / rel
@@ -108,6 +109,8 @@ def _resolve_parquet_path(project_root: Path, version: str, artifact: str) -> Pa
     spec = DatasetSpec(version=version)
     if artifact == "merged":
         rel = f"{spec.output_dir}/parquet/{version}/merged.parquet"
+    elif artifact == "rejected":
+        rel = f"{spec.output_dir}/parquet/{version}/rejected.parquet"
     else:
         rel = spec.parquet_paths().get(artifact)
         if not rel:
@@ -232,6 +235,7 @@ def resolve_download_path(project_root: Path, version: str, filename: str) -> Pa
         "features.parquet",
         "outcomes.parquet",
         "merged.parquet",
+        "rejected.parquet",
         "text_corpus.parquet",
         "schema.json",
         "splits.json",

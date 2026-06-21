@@ -275,14 +275,12 @@ def _attach_gbm_probs(df: pd.DataFrame, project_root: Path) -> pd.DataFrame:
 
 
 def _latest_gbm_artifact(project_root: Path) -> tuple[str | None, list[str] | None, list[str]]:
+    from src.data.database import get_session
+    from src.learning.registry import active_dataset_version, resolve_champion_run
+
     session = get_session()
     try:
-        row = (
-            session.query(LearningRun)
-            .filter(LearningRun.status == "completed")
-            .order_by(LearningRun.created_at.desc())
-            .first()
-        )
+        row = resolve_champion_run(session, dataset_version=active_dataset_version())
         if row is None:
             return None, None, ["big_loser", "stall", "big_winner"]
         metrics_path = project_root / "data" / "learning" / "reports" / row.run_id / "metrics.json"
@@ -368,14 +366,12 @@ def _attach_calibrator(df: pd.DataFrame, project_root: Path) -> pd.DataFrame:
 
 
 def _latest_train_run_id(project_root: Path) -> str | None:
+    from src.data.database import get_session
+    from src.learning.registry import active_dataset_version, resolve_champion_run
+
     session = get_session()
     try:
-        row = (
-            session.query(LearningRun)
-            .filter(LearningRun.status == "completed")
-            .order_by(LearningRun.created_at.desc())
-            .first()
-        )
+        row = resolve_champion_run(session, dataset_version=active_dataset_version())
         return row.run_id if row else None
     finally:
         session.close()
@@ -622,6 +618,22 @@ def run_counterfactual_evaluation(
         "blocked_trades": blocked_summary,
     }
     eval_payload["context_influence"] = build_context_influence_report(df)
+
+    from src.learning.dataset.rejection_analysis import load_latest_rejection_analysis
+
+    rejection_payload = load_latest_rejection_analysis()
+    if rejection_payload is None:
+        session = get_session()
+        try:
+            from src.learning.dataset.rejection_analysis import analyze_rejections
+
+            analysis = analyze_rejections(session)
+            rejection_payload = analysis.to_json()
+        except Exception:
+            rejection_payload = None
+        finally:
+            session.close()
+    eval_payload["rejection_funnel"] = rejection_payload or {}
 
     if write_report:
         from src.learning.evaluation.report import write_evaluation_report

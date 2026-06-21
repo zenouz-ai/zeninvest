@@ -235,7 +235,25 @@ function buildChartRows(timeline: TradeTimeline): {
   const firstBuyDate = buyDates[0]?.date ?? null
   const lastBuyDate = buyDates[buyDates.length - 1]?.date ?? firstBuyDate
 
-  const rows: ChartRow[] = timeline.prices.map((point) => ({
+  const priceByDate = new Map(timeline.prices.map((point) => [point.date, point.close]))
+  const eventBars: Array<{ date: string; close: number }> = []
+  for (const leg of buys) {
+    const date = toChartDate(leg.timestamp)
+    const quote = legQuotePrice(leg)
+    if (date && quote != null && !priceByDate.has(date)) {
+      eventBars.push({ date, close: quote })
+      priceByDate.set(date, quote)
+    }
+  }
+  const sellQuote = legQuotePrice(timeline.sell)
+  if (sellDate && sellQuote != null && !priceByDate.has(sellDate)) {
+    eventBars.push({ date: sellDate, close: sellQuote })
+    priceByDate.set(sellDate, sellQuote)
+  }
+
+  const chartPrices = [...timeline.prices, ...eventBars].sort((a, b) => a.date.localeCompare(b.date))
+
+  const rows: ChartRow[] = chartPrices.map((point) => ({
     date: point.date,
     close: point.close,
     inPosition: Boolean(
@@ -254,7 +272,6 @@ function buildChartRows(timeline: TradeTimeline): {
     return [{ date, close: quote, legIndex: legNum, label: `Buy ${legNum}` }]
   })
 
-  const sellQuote = legQuotePrice(timeline.sell)
   const sellMarker: BuyMarkerRow[] =
     sellDate && sellQuote != null
       ? [{ date: sellDate, close: sellQuote, legIndex: 0, label: 'Sell' }]

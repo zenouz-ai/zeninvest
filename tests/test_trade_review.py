@@ -19,6 +19,7 @@ from src.agents.reporting.outcome_classification import (
 from src.agents.reporting.trade_review import (
     build_timeline_window,
     build_trade_timeline,
+    ensure_trade_event_bars,
     fifo_buy_legs_for_sell,
     load_research_payload,
     match_strategy_decision,
@@ -55,6 +56,40 @@ def test_build_timeline_window_recent_sell_uses_now():
     now = datetime(2025, 6, 15, tzinfo=timezone.utc)
     window = build_timeline_window(buy, sell, now=now)
     assert window.end == now
+
+
+def test_ensure_trade_event_bars_appends_missing_sell_day():
+    sell_ts = datetime(2026, 6, 17, 14, 0, tzinfo=timezone.utc)
+    prices = [
+        {"date": "2026-06-15", "close": 9.8},
+        {"date": "2026-06-16", "close": 10.1},
+    ]
+    augmented = ensure_trade_event_bars(
+        prices,
+        events=[(sell_ts, 10.23)],
+    )
+    assert [point["date"] for point in augmented] == [
+        "2026-06-15",
+        "2026-06-16",
+        "2026-06-17",
+    ]
+    assert augmented[-1]["close"] == 10.23
+
+
+def test_ensure_trade_event_bars_skips_duplicates_and_sorts():
+    buy_ts = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
+    sell_ts = datetime(2026, 6, 17, 14, 0, tzinfo=timezone.utc)
+    prices = [
+        {"date": "2026-06-01", "close": 9.05},
+        {"date": "2026-06-16", "close": 10.1},
+    ]
+    augmented = ensure_trade_event_bars(
+        prices,
+        events=[(buy_ts, 9.05), (sell_ts, 10.23)],
+    )
+    assert len(augmented) == 3
+    assert augmented[0]["date"] == "2026-06-01"
+    assert augmented[-1] == {"date": "2026-06-17", "close": 10.23}
 
 
 def test_match_strategy_decision_prefers_nearest_buy(db_session):
@@ -229,7 +264,8 @@ def test_build_trade_timeline_integration(db_session, monkeypatch):
     payload = build_trade_timeline(db_session, outcome.id)
     assert payload is not None
     assert payload["ticker"] == "BAC_US_EQ"
-    assert len(payload["prices"]) == 3
+    assert len(payload["prices"]) == 5
+    assert payload["prices"][-1] == {"date": "2025-03-15", "close": 38.5}
     assert payload["buy"]["reasoning"] == "Strong momentum breakout"
     assert payload["sell"]["reasoning"] == "Take profit on target"
     assert payload["outcome"]["result"] == "win"

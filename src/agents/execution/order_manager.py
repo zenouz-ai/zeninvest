@@ -1,6 +1,7 @@
 """Order management with deduplication and execution logic."""
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
@@ -786,23 +787,92 @@ class OrderManager:
             )
         return changed
 
-    def reconcile_order_wallets_from_t212(self, *, max_pages: int = 40) -> dict[str, Any]:
-        """Backfill GBP wallet + native quote fills from T212 order history."""
+    def reconcile_order_wallets_from_t212(
+        self,
+        *,
+        max_pages: int = 40,
+        full: bool = False,
+        lookback_days: int | None = None,
+        max_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """Backfill GBP wallet + native quote fills from T212 order history.
+
+        Args:
+            max_pages: Max history pages fetched per ticker.
+            full: When True, rescan every distinct historical ticker (manual backfill).
+                When False (default), only reconcile tickers with orders that still
+                need GBP truth or were placed within ``lookback_days`` — keeps the
+                per-cycle/refresh cost bounded so it never overruns the cycle lock.
+            lookback_days: Window for picking recently-placed orders in incremental
+                mode. Falls back to ``wallet_reconcile_lookback_days`` when None.
+            max_seconds: Wall-clock budget. Stops scanning further tickers once
+                exceeded (incremental safety). Falls back to
+                ``wallet_reconcile_max_seconds`` when None and not in full mode.
+        """
         if self.dry_run:
-            return {"updated": 0, "pages_scanned": 0, "history_fetch_error": None}
+            return {"updated": 0, "pages_scanned": 0, "tickers_scanned": 0, "history_fetch_error": None}
+
+        if lookback_days is None:
+            lookback_days = self.settings.wallet_reconcile_lookback_days
+        if max_seconds is None and not full:
+            max_seconds = self.settings.wallet_reconcile_max_seconds
 
         session = get_session()
         updated = 0
         pages_scanned = 0
+        tickers_scanned = 0
+        budget_exceeded = False
         history_fetch_error = None
         try:
             local_rows = session.query(Order).filter(Order.t212_order_id.isnot(None)).all()
             local_by_id = {str(row.t212_order_id): row for row in local_rows if row.t212_order_id}
             if not local_by_id:
-                return {"updated": 0, "pages_scanned": 0, "history_fetch_error": None}
+                return {
+                    "updated": 0,
+                    "pages_scanned": 0,
+                    "tickers_scanned": 0,
+                    "history_fetch_error": None,
+                }
 
-            tickers = sorted({row.ticker for row in local_rows if row.ticker})
+            if full:
+                tickers = sorted({row.ticker for row in local_rows if row.ticker})
+            else:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=max(lookback_days, 0))
+                candidate_tickers: set[str] = set()
+                for row in local_rows:
+                    if not row.ticker:
+                        continue
+                    if str(row.status) not in ("filled", "pending", "submitting"):
+                        continue
+                    needs_gbp = row.value_gbp is None or float(row.value_gbp or 0.0) == 0.0
+                    row_ts = row.timestamp
+                    if row_ts is not None and row_ts.tzinfo is None:
+                        row_ts = row_ts.replace(tzinfo=timezone.utc)
+                    recent = row_ts is not None and row_ts >= cutoff
+                    if needs_gbp or recent:
+                        candidate_tickers.add(row.ticker)
+                tickers = sorted(candidate_tickers)
+                if not tickers:
+                    logger.debug("Per-cycle wallet reconcile: no orders need GBP truth — skipping")
+                    return {
+                        "updated": 0,
+                        "pages_scanned": 0,
+                        "tickers_scanned": 0,
+                        "history_fetch_error": None,
+                    }
+
+            deadline = (time.monotonic() + max_seconds) if max_seconds else None
             for ticker in tickers:
+                if deadline is not None and time.monotonic() >= deadline:
+                    budget_exceeded = True
+                    logger.warning(
+                        "Wallet reconcile budget (%ss) reached after %s/%s tickers — deferring rest",
+                        max_seconds,
+                        tickers_scanned,
+                        len(tickers),
+                    )
+                    break
+                tickers_scanned += 1
                 cursor: str | None = None
                 ticker_pages = 0
                 while ticker_pages < max_pages:
@@ -843,10 +913,17 @@ class OrderManager:
             session.close()
 
         if updated:
-            logger.info("Reconciled T212 wallet fills on %s orders (%s pages)", updated, pages_scanned)
+            logger.info(
+                "Reconciled T212 wallet fills on %s orders (%s tickers, %s pages)",
+                updated,
+                tickers_scanned,
+                pages_scanned,
+            )
         return {
             "updated": updated,
             "pages_scanned": pages_scanned,
+            "tickers_scanned": tickers_scanned,
+            "budget_exceeded": budget_exceeded,
             "history_fetch_error": history_fetch_error,
         }
 
@@ -1456,7 +1533,11 @@ class OrderManager:
             local_pending = query.all()
             pending_local_count = len(local_pending)
             if pending_local_count == 0:
-                wallet_summary = self.reconcile_order_wallets_from_t212()
+                wallet_summary = (
+                    self.reconcile_order_wallets_from_t212()
+                    if self.settings.wallet_reconcile_per_cycle_enabled
+                    else {"updated": 0}
+                )
                 return {
                     "pending_local_count": 0,
                     "pending_live_count": 0,
@@ -1607,7 +1688,11 @@ class OrderManager:
                 logger.warning(f"Pending order reconciliation skipped: failed to fetch live pending orders: {e}")
 
             session.commit()
-            wallet_summary = self.reconcile_order_wallets_from_t212()
+            wallet_summary = (
+                self.reconcile_order_wallets_from_t212()
+                if self.settings.wallet_reconcile_per_cycle_enabled
+                else {"updated": 0}
+            )
             updated_total = filled_count + partial_fill_count + cancelled_count + failed_count
             last_broker_sync_at = max(
                 [ts for ts in (last_history_sync_at, last_live_pending_sync_at) if ts is not None],

@@ -41,6 +41,7 @@ PATCHED_GET_SESSION_TARGETS = [
     "src.agents.opportunity.scorer.get_session",
     "src.agents.opportunity.optimizer.get_session",
     "src.utils.search_api_tracker.get_session",
+    "src.learning.export.get_session",
 ]
 
 

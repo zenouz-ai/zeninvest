@@ -185,6 +185,28 @@ class NotificationService:
             ],
         )
 
+    def emit_learning_alert(
+        self,
+        *,
+        payload: dict[str, Any],
+        severity: str = "warning",
+        source: str = "learning_alerts",
+    ) -> None:
+        """Alert on shadow disagreement spikes or promotion gate regression."""
+        self._emit(
+            event_type="learning_alert",
+            severity=severity,  # type: ignore[arg-type]
+            cycle_id=None,
+            payload=payload,
+            source=source,
+            dedup_parts=[
+                payload.get("alert_type"),
+                payload.get("policy_id"),
+                payload.get("evaluation_run_id"),
+                payload.get("stop_the_line"),
+            ],
+        )
+
     @staticmethod
     def _trade_execution_severity(payload: dict[str, Any]) -> str:
         status = str(payload.get("execution_status", "")).strip().lower()
@@ -204,6 +226,27 @@ class NotificationService:
                 return "info"
             return "warning"
         return "info"
+
+    def emit_cycle_skipped_locked(
+        self,
+        *,
+        cycle_id: str | None,
+        payload: dict[str, Any],
+        source: str = "scheduler",
+    ) -> None:
+        """Alert when a scheduled analysis cycle was skipped because the cycle lock was held.
+
+        This usually means a long-running refresh/cycle overran into the next
+        scheduled cycle. Surfacing it prevents the failure mode from being silent.
+        """
+        self._emit(
+            event_type="cycle_skipped_locked",
+            severity="warning",
+            cycle_id=cycle_id,
+            payload=payload,
+            source=source,
+            dedup_parts=[cycle_id, payload.get("lock_owner_pid"), payload.get("lock_owner_cycle_id")],
+        )
 
     def emit_critical_cycle_failure(
         self,

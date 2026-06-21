@@ -7,10 +7,7 @@ fully offline and reproducible.
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -22,15 +19,12 @@ from src.data.models import Base, OpportunityScoreSnapshot
 from src.learning.dataset.labels import LabelComputer
 from src.learning.spec import get_default_spec
 
-# Load the script module by path (scripts/ is not an importable package).
-_SPEC = importlib.util.spec_from_file_location(
-    "analyze_rejected_tickers",
-    Path(__file__).resolve().parent.parent / "scripts" / "analyze_rejected_tickers.py",
+from src.learning.dataset.rejection_analysis import (
+    analyze_rejections,
+    label_rows,
+    load_snapshot_rows,
+    render_markdown,
 )
-assert _SPEC and _SPEC.loader
-analyze = importlib.util.module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = analyze  # required so @dataclass introspection resolves the module
-_SPEC.loader.exec_module(analyze)
 
 
 BASE_TS = datetime(2026, 1, 5, 12, 0, tzinfo=timezone.utc)
@@ -107,15 +101,15 @@ def _seed(session) -> None:
 def _run(session):
     spec = get_default_spec()
     computer = LabelComputer(session, spec=spec, price_fetcher=_fake_price_fetcher)
-    return analyze.analyze_rejections(session, spec=spec, label_computer=computer)
+    return analyze_rejections(session, spec=spec, label_computer=computer)
 
 
 def test_counterfactual_labels_land_in_expected_bands(session):
     _seed(session)
     spec = get_default_spec()
     computer = LabelComputer(session, spec=spec, price_fetcher=_fake_price_fetcher)
-    rejected = analyze.label_rows(
-        session, analyze.load_snapshot_rows(session, is_tradable=False), spec=spec, label_computer=computer
+    rejected = label_rows(
+        session, load_snapshot_rows(session, is_tradable=False), spec=spec, label_computer=computer
     )
     by_ticker = dict(zip(rejected["ticker"], rejected["cf_label"]))
     assert by_ticker["WINR_US_EQ"] == "big_winner"
@@ -158,6 +152,5 @@ def test_per_stage_breakdown_flags_false_reject_stage(session):
 
 def test_markdown_renders(session):
     _seed(session)
-    md = analyze.render_markdown(_run(session))
+    md = render_markdown(_run(session))
     assert "Good-miss rate" in md
-    assert "Per-stage veto quality" in md

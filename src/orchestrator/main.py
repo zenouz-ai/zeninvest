@@ -74,6 +74,15 @@ from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degra
 from src.utils.fingerprints import get_repo_sha, stable_hash
 from src.utils.logger import get_logger
 from src.utils.phase_timer import PhaseTimer
+from src.utils.run_summary import merge_run_summary
+from src.utils.slow_calls import fetch_slow_calls_for_cycle
+from src.utils.span_recorder import SpanRecorder
+
+try:
+    from src.observability.spans import persist_latency_spans
+except ImportError:
+    def persist_latency_spans(**kwargs: Any) -> int:  # type: ignore[misc]
+        return 0
 from src.utils.scheduling import is_within_regular_market_session
 from src.utils.ticker_utils import t212_to_yf
 
@@ -737,6 +746,7 @@ class Orchestrator:
         refresh_start_time = datetime.now(timezone.utc)
         refresh_run_type = "refresh"
         refresh_audit_baselines = self._capture_audit_baselines(self._REFRESH_AUDIT_DATASETS)
+        span_recorder = SpanRecorder()
 
         try:
             cycle_lock = acquire_runtime_lock(
@@ -869,6 +879,21 @@ class Orchestrator:
             )
             if audit_summary:
                 result["audit_summary"] = audit_summary
+            step_timing = span_recorder.to_step_dict()
+            if step_timing:
+                result["step_timing"] = step_timing
+            slow_calls = fetch_slow_calls_for_cycle(
+                cycle_id,
+                started_at=refresh_start_time,
+                completed_at=refresh_end_time,
+            )
+            if slow_calls:
+                result["slow_calls"] = slow_calls
+            persist_latency_spans(
+                cycle_id=cycle_id,
+                run_type=refresh_run_type,
+                span_rows=span_recorder.span_rows(),
+            )
 
             if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
@@ -898,16 +923,15 @@ class Orchestrator:
                         session = get_session()
                         try:
                             run = session.query(Run).filter(Run.cycle_id == cycle_id).first()
-                            summary_json = {
-                                "orders_updated_total": result["orders_updated_total"],
-                                "positions_refreshed": result["positions_refreshed"],
-                                "market_data_tickers_warmed": result["market_data_tickers_warmed"],
-                                "stop_adjustments": result["stop_adjustments"],
-                                "deterministic_exits": result["deterministic_exits"],
-                                "duration_seconds": duration_seconds,
-                                "order_sync": summary_order_sync,
-                                "audit_summary": audit_summary,
-                            }
+                            summary_json = merge_run_summary(
+                                None,
+                                {
+                                    **result,
+                                    "order_sync": summary_order_sync,
+                                    "audit_summary": audit_summary,
+                                },
+                                duration_seconds=duration_seconds,
+                            )
                             if run:
                                 run.completed_at = refresh_end_time
                                 run.status = status
@@ -949,7 +973,8 @@ class Orchestrator:
             return result
 
         try:
-            sync_summary = self.order_manager.sync_orders_with_t212()
+            with span_recorder.span("broker_sync"):
+                sync_summary = self.order_manager.sync_orders_with_t212()
             result["order_sync"] = sync_summary
             result["orders_updated_total"] = int(sync_summary.get("updated_total", 0) or 0)
             wallet_updated = int(sync_summary.get("wallet_reconcile_updated", 0) or 0)
@@ -962,96 +987,100 @@ class Orchestrator:
                     result["errors"].append(f"trade_outcomes_recompute: {outcome_err}")
             self._maybe_emit_execution_quality_alert(cycle_id=cycle_id, sync_summary=sync_summary)
 
-            portfolio_data = self._get_portfolio_state()
-            current_state = str(self.state_machine.get_state().get("state") or "ACTIVE")
-            self._save_snapshot(portfolio_data, current_state)
+            with span_recorder.span("portfolio_snapshot"):
+                portfolio_data = self._get_portfolio_state()
+                current_state = str(self.state_machine.get_state().get("state") or "ACTIVE")
+                self._save_snapshot(portfolio_data, current_state)
             result["positions_refreshed"] = portfolio_data.get("num_positions", 0)
 
             warm_tickers = self._get_intraday_refresh_tickers(portfolio_data)
             result["market_data_warm_tickers"] = warm_tickers
-            stocks_data = self._warm_intraday_refresh_market_data(warm_tickers)
+            with span_recorder.span("market_data_warm"):
+                stocks_data = self._warm_intraday_refresh_market_data(warm_tickers)
 
             positions = portfolio_data.get("positions", [])
             adjustments: list[dict[str, Any]] = []
             if positions:
-                adjustments.extend(
-                    self.stop_loss_manager.place_missing_stops(positions, stocks_data, cycle_id=cycle_id)
-                )
-                adjustments.extend(
-                    self.stop_loss_manager.reassess_stops(positions, stocks_data, cycle_id=cycle_id)
-                )
-                profit_lock_context = self._build_profit_lock_context(portfolio_data)
-                adjustments.extend(
-                    self.stop_loss_manager.apply_trailing_stops(
-                        positions,
-                        cycle_id=cycle_id,
-                        profit_lock_context=profit_lock_context,
+                with span_recorder.span("stop_maintenance"):
+                    adjustments.extend(
+                        self.stop_loss_manager.place_missing_stops(positions, stocks_data, cycle_id=cycle_id)
                     )
-                )
-                profit_lock_context = self._build_profit_lock_context(portfolio_data)
-                adjustments.extend(
-                    self.stop_loss_manager.enforce_profit_locks(
-                        positions,
-                        profit_lock_context=profit_lock_context,
-                        cycle_id=cycle_id,
+                    adjustments.extend(
+                        self.stop_loss_manager.reassess_stops(positions, stocks_data, cycle_id=cycle_id)
                     )
-                )
+                    profit_lock_context = self._build_profit_lock_context(portfolio_data)
+                    adjustments.extend(
+                        self.stop_loss_manager.apply_trailing_stops(
+                            positions,
+                            cycle_id=cycle_id,
+                            profit_lock_context=profit_lock_context,
+                        )
+                    )
+                    profit_lock_context = self._build_profit_lock_context(portfolio_data)
+                    adjustments.extend(
+                        self.stop_loss_manager.enforce_profit_locks(
+                            positions,
+                            profit_lock_context=profit_lock_context,
+                            cycle_id=cycle_id,
+                        )
+                    )
                 result["order_adjustments"] = adjustments
 
                 if self.settings.intraday_refresh_auto_actions_mode == "deterministic_exits":
-                    profit_lock_context = self._build_profit_lock_context(portfolio_data)
-                    existing_tickers = {
-                        self._ticker_from_position(pos)
-                        for pos in positions
-                        if self._ticker_from_position(pos)
-                    }
-                    refresh_mod = SimpleNamespace(consensus="REFRESH")
-                    refresh_risk = SimpleNamespace(verdict="REFRESH")
-                    for pos in positions:
-                        ticker = self._ticker_from_position(pos)
-                        lock = profit_lock_context.get(ticker, {})
-                        if not lock or lock.get("status") != "exit_required":
-                            continue
-                        reason_detail = self._profit_lock_reason_detail(
-                            ticker=ticker,
-                            status=str(lock.get("status") or "inactive"),
-                            required_stop_price_gbp=lock.get("required_stop_price_gbp"),
-                            stop_price_gbp=lock.get("stop_price_gbp"),
-                        )
-                        trade = self._execute_trade(
-                            cycle_id=cycle_id,
-                            decision={
-                                "ticker": ticker,
-                                "action": "SELL",
-                                "conviction": 100,
-                                "primary_strategy": "intraday_refresh",
-                                "reasoning": reason_detail,
-                                "exit_trigger_type": "gain_realization",
-                                "profit_lock_threshold_crossed": True,
-                                "deterministic_exit_reason_code": "profit_lock_unprotected_exit",
-                                "deterministic_exit_reason": reason_detail,
-                            },
-                            action="SELL",
-                            ticker=ticker,
-                            final_alloc=0.0,
-                            current_value=float(portfolio_data.get("total_value", 0) or 0),
-                            cash_gbp=float(portfolio_data.get("cash", 0) or 0),
-                            total_return_pct=float(portfolio_data.get("total_return_pct", 0) or 0),
-                            alpha_pct=float(portfolio_data.get("alpha_pct", 0) or 0),
-                            existing_tickers=existing_tickers,
-                            market_regime="SIDEWAYS",
-                            vix=None,
-                            macro={},
-                            stocks_data=stocks_data,
-                            analyst_data_map={},
-                            av_broad_sentiment={},
-                            mod_result=refresh_mod,
-                            risk_verdict=refresh_risk,
-                            portfolio_data=portfolio_data,
-                            quantity_override=float(pos.get("quantity", 0) or 0),
-                        )
-                        if trade is not None:
-                            result["trades"].append(trade)
+                    with span_recorder.span("deterministic_exits"):
+                        profit_lock_context = self._build_profit_lock_context(portfolio_data)
+                        existing_tickers = {
+                            self._ticker_from_position(pos)
+                            for pos in positions
+                            if self._ticker_from_position(pos)
+                        }
+                        refresh_mod = SimpleNamespace(consensus="REFRESH")
+                        refresh_risk = SimpleNamespace(verdict="REFRESH")
+                        for pos in positions:
+                            ticker = self._ticker_from_position(pos)
+                            lock = profit_lock_context.get(ticker, {})
+                            if not lock or lock.get("status") != "exit_required":
+                                continue
+                            reason_detail = self._profit_lock_reason_detail(
+                                ticker=ticker,
+                                status=str(lock.get("status") or "inactive"),
+                                required_stop_price_gbp=lock.get("required_stop_price_gbp"),
+                                stop_price_gbp=lock.get("stop_price_gbp"),
+                            )
+                            trade = self._execute_trade(
+                                cycle_id=cycle_id,
+                                decision={
+                                    "ticker": ticker,
+                                    "action": "SELL",
+                                    "conviction": 100,
+                                    "primary_strategy": "intraday_refresh",
+                                    "reasoning": reason_detail,
+                                    "exit_trigger_type": "gain_realization",
+                                    "profit_lock_threshold_crossed": True,
+                                    "deterministic_exit_reason_code": "profit_lock_unprotected_exit",
+                                    "deterministic_exit_reason": reason_detail,
+                                },
+                                action="SELL",
+                                ticker=ticker,
+                                final_alloc=0.0,
+                                current_value=float(portfolio_data.get("total_value", 0) or 0),
+                                cash_gbp=float(portfolio_data.get("cash", 0) or 0),
+                                total_return_pct=float(portfolio_data.get("total_return_pct", 0) or 0),
+                                alpha_pct=float(portfolio_data.get("alpha_pct", 0) or 0),
+                                existing_tickers=existing_tickers,
+                                market_regime="SIDEWAYS",
+                                vix=None,
+                                macro={},
+                                stocks_data=stocks_data,
+                                analyst_data_map={},
+                                av_broad_sentiment={},
+                                mod_result=refresh_mod,
+                                risk_verdict=refresh_risk,
+                                portfolio_data=portfolio_data,
+                                quantity_override=float(pos.get("quantity", 0) or 0),
+                            )
+                            if trade is not None:
+                                result["trades"].append(trade)
 
             if result["trades"] or adjustments or result["orders_updated_total"]:
                 portfolio_data = self._get_portfolio_state()
@@ -1915,7 +1944,7 @@ class Orchestrator:
         stocks_data: list[dict[str, Any]] = []
         per_ticker_news: dict[str, str] = {}
         guidance_snapshot: dict[str, Any] | None = None
-        phase_timer = PhaseTimer()
+        phase_timer: SpanRecorder = SpanRecorder()
         current_failure_stage = "run_cycle"
         current_failure_ticker: str | None = None
 
@@ -1981,6 +2010,21 @@ class Orchestrator:
             phase_timing = phase_timer.to_dict()
             if phase_timing:
                 result["phase_timing"] = phase_timing
+            step_timing = phase_timer.to_step_dict()
+            if step_timing:
+                result["step_timing"] = step_timing
+            slow_calls = fetch_slow_calls_for_cycle(
+                cycle_id,
+                started_at=cycle_start_time,
+                completed_at=cycle_end_time,
+            )
+            if slow_calls:
+                result["slow_calls"] = slow_calls
+            persist_latency_spans(
+                cycle_id=cycle_id,
+                run_type=cycle_run_type,
+                span_rows=phase_timer.span_rows(),
+            )
             if DASHBOARD_AVAILABLE and log_event is not None:
                 try:
                     duration_seconds = (cycle_end_time - cycle_start_time).total_seconds()
@@ -2008,16 +2052,11 @@ class Orchestrator:
                             if run:
                                 run.completed_at = cycle_end_time
                                 run.status = status
-                                run.summary_json = {
-                                    "stocks_screened": result["stocks_screened"],
-                                    "stocks_reviewed": result["stocks_reviewed"],
-                                    "decisions_made": result["stocks_reviewed"],
-                                    "num_trades": result["num_trades"],
-                                    "num_rejected": result["num_rejected"],
-                                    "duration_seconds": duration_seconds,
-                                    "phase_timing": phase_timing or None,
-                                    "audit_summary": audit_summary,
-                                }
+                                run.summary_json = merge_run_summary(
+                                    run.summary_json,
+                                    result,
+                                    duration_seconds=duration_seconds,
+                                )
                                 session.commit()
                                 logger.debug(f"Updated Run record for cycle {cycle_id}")
                             else:
@@ -2028,16 +2067,11 @@ class Orchestrator:
                                     started_at=cycle_start_time,
                                     completed_at=cycle_end_time,
                                     status=status,
-                                    summary_json={
-                                        "stocks_screened": result["stocks_screened"],
-                                        "stocks_reviewed": result["stocks_reviewed"],
-                                        "decisions_made": result["stocks_reviewed"],
-                                        "num_trades": result["num_trades"],
-                                        "num_rejected": result["num_rejected"],
-                                        "duration_seconds": duration_seconds,
-                                        "phase_timing": phase_timing or None,
-                                        "audit_summary": audit_summary,
-                                    },
+                                    summary_json=merge_run_summary(
+                                        None,
+                                        result,
+                                        duration_seconds=duration_seconds,
+                                    ),
                                 )
                                 session.add(run)
                                 session.commit()
@@ -2169,7 +2203,8 @@ class Orchestrator:
             # --- STEP 2: Get portfolio state ---
             if portfolio_data is None:
                 try:
-                    portfolio_data = self._get_portfolio_state()
+                    with phase_timer.span("portfolio_load"):
+                        portfolio_data = self._get_portfolio_state()
                 except Exception as e:
                     logger.error(f"Failed to get portfolio state: {e}")
                     result["errors"].append(f"portfolio_state: {e}")
@@ -2185,7 +2220,8 @@ class Orchestrator:
             # Sync order status from T212 (pending -> filled)
             if not self.dry_run:
                 try:
-                    sync_summary = self.order_manager.sync_orders_with_t212()
+                    with phase_timer.span("order_sync"):
+                        sync_summary = self.order_manager.sync_orders_with_t212()
                     result["order_sync"] = sync_summary
                     self._maybe_emit_execution_quality_alert(cycle_id=cycle_id, sync_summary=sync_summary)
                 except Exception as sync_err:
@@ -3836,16 +3872,15 @@ class Orchestrator:
                 guidance=guidance,
             )
             self._last_screened_candidate_count = len(candidates)
-            self.data_fetcher.mark_instruments_screened(
-                [c["ticker"] for c in candidates],
-            )
             logger.info(f"Screening {len(candidates)} universe candidates...")
             skipped_no_data = 0
+            screened_for_cooldown: list[str] = []
             for candidate in candidates:
                 c_ticker = candidate["ticker"]
                 yf_ticker = t212_to_yf(c_ticker)
                 if c_ticker in analyzed_tickers:
                     continue
+                screened_for_cooldown.append(c_ticker)
                 try:
                     cached = self.data_fetcher.get_cached_data(yf_ticker, cache_key)
                     if cached:
@@ -3869,6 +3904,8 @@ class Orchestrator:
                 except Exception as e:
                     logger.warning(f"Failed to fetch data for candidate {c_ticker}: {e}")
                 analyzed_tickers.add(c_ticker)
+            if screened_for_cooldown:
+                self.data_fetcher.mark_instruments_screened(screened_for_cooldown)
             if skipped_no_data:
                 self._last_screening_skipped_no_data = skipped_no_data
                 logger.info(f"Skipped {skipped_no_data} candidates with no OHLCV data")
@@ -5923,7 +5960,7 @@ def main(
             return
 
         if reconcile_wallets:
-            wallet_summary = orchestrator.order_manager.reconcile_order_wallets_from_t212()
+            wallet_summary = orchestrator.order_manager.reconcile_order_wallets_from_t212(full=True)
             outcomes = recompute_trade_outcomes()
             metrics = update_performance_metrics()
             click.echo(

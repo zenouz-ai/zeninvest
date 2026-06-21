@@ -11,15 +11,17 @@ import {
 import { useParams, useSearchParams } from 'react-router-dom'
 import { universeApi } from '../api/client'
 import { TableSkeleton } from '../components/Skeleton'
-import type { Instrument, InstrumentDetail, UniverseBubbleItem } from '../types'
+import type { Instrument, InstrumentDetail } from '../types'
 import { cleanTicker } from '../types'
 import { safeFormat } from '../utils/date'
 import { LLMOutputPanel } from '../components/LLMOutputBlocks'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { usePollingInterval } from '../hooks/usePollingInterval'
 
-const UNIVERSE_LIMIT = 200
+const UNIVERSE_LIMIT = 500
 const UNIVERSE_POLL_MS = 120_000
+
+type CoverageFilter = '' | 'never_investigated' | 'never_screened' | 'needs_enrichment'
 
 type UniverseRow = Instrument & {
   _investigated: boolean
@@ -65,6 +67,19 @@ export default function Universe() {
   const [detail, setDetail] = useState<InstrumentDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [sorting, setSorting] = useState<SortingState>([])
+  const [coverageFilter, setCoverageFilter] = useState<CoverageFilter>('')
+  const [coverageStats, setCoverageStats] = useState<{
+    total_instruments: number
+    enriched_count: number
+    ever_screened_count: number
+    investigated_count: number
+    needs_enrichment_count: number
+    latest_enrich_run: {
+      started_at: string | null
+      status: string
+      summary_json: Record<string, unknown> | null
+    } | null
+  } | null>(null)
 
   // Deep-link: auto-expand ticker from URL param (WF-5)
   useEffect(() => {
@@ -91,10 +106,12 @@ export default function Universe() {
   const fetchUniverse = useCallback(async () => {
     setError(null)
     try {
-      const [listData, bubble]: [Instrument[], UniverseBubbleItem[]] = await Promise.all([
+      const [listData, bubble, coverage] = await Promise.all([
         universeApi.list({ limit: UNIVERSE_LIMIT }),
         universeApi.getBubble({ limit: UNIVERSE_LIMIT }),
+        universeApi.getCoverage(),
       ])
+      setCoverageStats(coverage)
       setInstruments(listData)
       const investigated: Record<string, boolean> = {}
       const stats: Record<string, { count: number; buy: number; sell: number; reduce: number; hold: number }> = {}
@@ -262,8 +279,12 @@ export default function Universe() {
         },
       }),
       columnHelper.accessor('_reviews', {
-        header: 'Reviews',
+        header: 'Decisions (lifetime)',
         enableSorting: true,
+        meta: {
+          title:
+            'Lifetime strategy_decisions count (positions, Slack reviews, and screener picks all count).',
+        },
         cell: (info) => (
           <span className="font-mono text-xs">{info.getValue()}</span>
         ),
@@ -386,7 +407,13 @@ export default function Universe() {
         cleanTicker(row.ticker).toLowerCase().includes(search.toLowerCase()) ||
         row.name.toLowerCase().includes(search.toLowerCase())
       const matchesSector = !sectorFilter || row.sector === sectorFilter
-      return matchesSearch && matchesSector
+      const matchesCoverage =
+        !coverageFilter ||
+        (coverageFilter === 'never_investigated' && !row._investigated) ||
+        (coverageFilter === 'never_screened' && !row.last_screened_at) ||
+        (coverageFilter === 'needs_enrichment' &&
+          (!row.sector || row.sector === 'Unknown' || !row.market_cap))
+      return matchesSearch && matchesSector && matchesCoverage
     })
 
     // Default order when no user sort applied
@@ -406,7 +433,7 @@ export default function Universe() {
     })
 
     return filtered
-  }, [instruments, search, sectorFilter, investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap, researchMap, researchLatestMap])
+  }, [instruments, search, sectorFilter, coverageFilter, investigatedMap, decisionStatsMap, holdingsMap, soldMap, uovMap, researchMap, researchLatestMap])
 
   const table = useReactTable({
     data: filteredData,
@@ -437,9 +464,44 @@ export default function Universe() {
     <div className="space-y-4">
       <PageBrandHeader
         title="Stock Universe"
-        titleMeta={`${filteredData.length} of ${instruments.length} stocks`}
-        description="All instruments the agent screens for opportunities. Columns show screening history (Investigated, Reviews, Decisions), holdings, shares sold, and UOV scores. Use search and sector filters; click a row to expand full LLM reasoning (strategy, moderation, risk)."
+        titleMeta={`${filteredData.length} of ${instruments.length} stocks shown`}
+        description="All instruments the agent screens for opportunities. Decisions (lifetime) counts every strategy_decisions row (positions, Slack reviews, and screener picks). Use filters for coverage gaps; click a row to expand full LLM reasoning."
       />
+
+      {coverageStats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="card p-3">
+            <div className="text-xs text-terminal-text-dim">Enriched</div>
+            <div className="font-mono text-lg">
+              {coverageStats.enriched_count}/{coverageStats.total_instruments}
+            </div>
+          </div>
+          <div className="card p-3">
+            <div className="text-xs text-terminal-text-dim">Ever screened</div>
+            <div className="font-mono text-lg">
+              {coverageStats.ever_screened_count}/{coverageStats.total_instruments}
+            </div>
+          </div>
+          <div className="card p-3">
+            <div className="text-xs text-terminal-text-dim">Investigated</div>
+            <div className="font-mono text-lg">
+              {coverageStats.investigated_count}/{coverageStats.total_instruments}
+            </div>
+          </div>
+          <div className="card p-3">
+            <div className="text-xs text-terminal-text-dim">Enrichment backlog</div>
+            <div className="font-mono text-lg">{coverageStats.needs_enrichment_count}</div>
+            {coverageStats.latest_enrich_run?.started_at && (
+              <div className="text-[10px] text-terminal-text-dim mt-1">
+                Last batch: {safeFormat(coverageStats.latest_enrich_run.started_at, 'MMM dd HH:mm', '—')}
+                {typeof coverageStats.latest_enrich_run.summary_json?.instruments_enriched === 'number'
+                  ? ` · ${coverageStats.latest_enrich_run.summary_json.instruments_enriched} enriched`
+                  : ''}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card flex gap-4 items-center">
@@ -451,6 +513,18 @@ export default function Universe() {
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-terminal-bg border border-terminal-border rounded px-3 py-2 text-terminal-text focus:outline-none focus:ring-2 focus:ring-neutral"
           />
+        </div>
+        <div>
+          <select
+            value={coverageFilter}
+            onChange={(e) => setCoverageFilter(e.target.value as CoverageFilter)}
+            className="bg-terminal-bg border border-terminal-border rounded px-3 py-2 text-terminal-text focus:outline-none focus:ring-2 focus:ring-neutral"
+          >
+            <option value="">All coverage</option>
+            <option value="never_investigated">Never investigated</option>
+            <option value="never_screened">Never screened</option>
+            <option value="needs_enrichment">Needs enrichment</option>
+          </select>
         </div>
         <div>
           <select

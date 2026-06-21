@@ -358,7 +358,7 @@ def calculate_quantity(
     Default behavior returns quantity floored to 2 decimal places.
     When prefer_whole_shares is enabled, attempt an integer share count first.
     """
-    if price <= 0:
+    if price <= 0 or math.isnan(price):
         return 0.0
     if prefer_whole_shares:
         floor_shares = math.floor(target_amount / price)

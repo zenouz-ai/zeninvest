@@ -1272,6 +1272,11 @@ def test_scheduler_exception_emits_critical(monkeypatch) -> None:
 
     monkeypatch.setattr("src.agents.notifications.NotificationService", FakeNotificationService)
     monkeypatch.setattr("src.orchestrator.main.Orchestrator", FakeOrchestrator)
+    monkeypatch.setattr(
+        scheduler,
+        "get_settings",
+        lambda: type("Settings", (), {"skip_market_holidays": False})(),
+    )
 
     scheduler._run_analysis_cycle()
 

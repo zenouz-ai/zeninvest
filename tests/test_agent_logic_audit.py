@@ -334,6 +334,27 @@ class TestStrategyDecisionValidation:
         result = StrategyEngine._validate_decisions({"market_assessment": "test"})
         assert len(result["decisions"]) == 0
 
+    def test_fill_missing_hold_decisions_adds_audit_stub(self):
+        result = StrategyEngine._fill_missing_hold_decisions(
+            {
+                "decisions": [
+                    {
+                        "ticker": "AAPL_US_EQ",
+                        "action": "BUY",
+                        "conviction": 7,
+                        "exit_trigger_type": "none",
+                    }
+                ]
+            },
+            ["AAPL_US_EQ", "MSFT_US_EQ"],
+        )
+        validated = StrategyEngine._validate_decisions(result)
+        tickers = {d["ticker"] for d in validated["decisions"]}
+        assert tickers == {"AAPL_US_EQ", "MSFT_US_EQ"}
+        msft = next(d for d in validated["decisions"] if d["ticker"] == "MSFT_US_EQ")
+        assert msft["action"] == "HOLD"
+        assert msft["conviction"] == 1
+
 
 # ── C-3: Conviction and allocation clamping (integration) ──────────────────
 

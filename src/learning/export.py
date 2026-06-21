@@ -53,6 +53,25 @@ def run_learning_export(
         result_dict = build_result.to_dict()
         result_dict["audit"] = audit.to_dict()
         result_dict["run_id"] = run_id
+
+        try:
+            from src.learning.dataset.rejected_builder import run_rejection_analysis_job
+
+            rejection_result = run_rejection_analysis_job()
+            result_dict["rejection_analysis"] = rejection_result
+        except Exception as rej_exc:
+            logger.warning("Rejection analysis job failed (non-fatal): %s", rej_exc)
+            result_dict["rejection_analysis"] = {"status": "failed", "error": str(rej_exc)}
+
+        if settings.learning_export_sync_embeddings_enabled and settings.learning_embeddings_enabled:
+            try:
+                from src.learning.memory.vector_store import build_index_from_jsonl
+
+                emb_result = build_index_from_jsonl()
+                result_dict["embeddings_sync"] = emb_result
+            except Exception as emb_exc:
+                logger.warning("Post-export embeddings sync failed (non-fatal): %s", emb_exc)
+                result_dict["embeddings_sync"] = {"status": "failed", "error": str(emb_exc)}
     except Exception as exc:
         status = "failed"
         error_message = str(exc)
@@ -60,6 +79,10 @@ def run_learning_export(
         result_dict = {"run_id": run_id, "status": status, "error": error_message}
     finally:
         duration = time.monotonic() - started
+        paths = dict(result_dict.get("paths") or {})
+        rejection_meta = result_dict.get("rejection_analysis")
+        if isinstance(rejection_meta, dict) and rejection_meta.get("rows"):
+            paths["rejection_analysis"] = rejection_meta
         _record_export_run(
             run_id=run_id,
             dataset_version=spec.version,
@@ -67,7 +90,7 @@ def run_learning_export(
             rows=int(result_dict.get("decisions_rows", 0) or 0),
             text_corpus_rows=int(result_dict.get("text_corpus_rows", 0) or 0),
             label_distribution=result_dict.get("label_distribution") or {},
-            paths=result_dict.get("paths") or {},
+            paths=paths,
             checksum=result_dict.get("checksum"),
             duration_sec=duration,
             error_message=error_message,

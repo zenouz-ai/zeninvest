@@ -280,6 +280,8 @@ class StrategyEngine:
 
             # Validate and log decisions (audit fix H-5)
             result = self._validate_decisions(result)
+            result = self._fill_missing_hold_decisions(result, all_tickers)
+            result = self._validate_decisions(result)
             self._log_decisions(result, cycle_id, content)
 
             return result
@@ -397,6 +399,8 @@ class StrategyEngine:
                             return {"error": "json_truncated", "decisions": []}
                     else:
                         return {"error": "json_parse_error", "decisions": [], "raw": content}
+                result = self._validate_decisions(result)
+                result = self._fill_missing_hold_decisions(result, all_tickers)
                 result = self._validate_decisions(result)
                 self._log_decisions(result, cycle_id, content)
                 return result
@@ -529,6 +533,27 @@ class StrategyEngine:
         if dropped > 0:
             logger.warning(f"Dropped {dropped} invalid decisions after validation")
         result["decisions"] = validated
+        return result
+
+    @staticmethod
+    def _fill_missing_hold_decisions(result: dict[str, Any], expected_tickers: list[str]) -> dict[str, Any]:
+        """Ensure every ticker sent to strategy gets an auditable decision row."""
+        decided = {d.get("ticker", "").strip() for d in result.get("decisions", []) if d.get("ticker")}
+        for ticker in expected_tickers:
+            if ticker in decided:
+                continue
+            result.setdefault("decisions", []).append(
+                {
+                    "ticker": ticker,
+                    "action": "HOLD",
+                    "conviction": 1,
+                    "reasoning": (
+                        "No explicit committee output for this cycle; deterministic HOLD stub "
+                        "for audit coverage."
+                    ),
+                    "exit_trigger_type": "none",
+                }
+            )
         return result
 
     def _log_decisions(self, result: dict[str, Any], cycle_id: str, raw_json: str) -> None:

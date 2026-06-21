@@ -349,6 +349,12 @@ function TimelineMilestoneCard({
               variant={materialityPillVariant(milestone.materiality)}
             />
           )}
+          {milestone.epic && (
+            <StatusPill label={milestone.epic} variant="dim" />
+          )}
+          {milestone.wave && (
+            <StatusPill label={`W${milestone.wave}`} variant="live" />
+          )}
         </div>
 
         <div className="space-y-2">

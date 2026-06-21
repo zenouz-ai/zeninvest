@@ -219,10 +219,13 @@ class TestFactor:
 
 class TestPrompts:
     def test_profit_gated_hold_friendly_prompt_language(self):
-        assert "conviction-led stock picker" in STRATEGY_SYSTEM_PROMPT.lower()
-        assert "underpriced-with-catalyst setups" in STRATEGY_SYSTEM_PROMPT
-        assert "SELL vs REDUCE" in STRATEGY_SYSTEM_PROMPT
-        assert "EXIT TRIGGER TYPE" in STRATEGY_SYSTEM_PROMPT
+        # Minimalist prompt: assert core intent markers survive (role, buy-cheap,
+        # exit-slowly), not the old verbose section headers.
+        lower = STRATEGY_SYSTEM_PROMPT.lower()
+        assert "conviction-led stock picker" in lower
+        assert "underpriced" in lower
+        assert "exit slowly" in lower
+        assert "exit_trigger_type" in STRATEGY_SYSTEM_PROMPT
 
     def test_build_prompt(self):
         prompt = build_strategy_prompt(

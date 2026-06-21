@@ -195,6 +195,20 @@ A set of low-cost operability slices, each tied to a measured baseline and delib
 
 The learning, evaluation, and memory surfaces remain strictly shadow/research-only and do not influence live orders; promotion to any live influence is gated by evidence thresholds and explicit operator sign-off.
 
+### Track B — institutional memory (shadow-only)
+
+Weekly export builds a text/memory corpus (`memory_bundle.jsonl`) for **operator research** on the Learning dashboard:
+
+| Capability | Mechanism | Neo4j required? |
+|------------|-----------|-----------------|
+| Full live audit | SQLite tables (strategy, moderation, research, orders) | No |
+| Similar-thesis search | Vector index + `/api/memory/similar` | No |
+| Shadow `challenger_memory` | JSONL ticker peers | No |
+| Sector + regime precedent | Optional Neo4j panel + `sync-neo4j` | Yes (optional) |
+| Temporal episodes export | JSON file (`sync-graphiti`) | No |
+
+The live committee does **not** query Neo4j or embeddings today. Docker images include the Neo4j Python driver for optional graph sync and dashboard queries.
+
 ## Related Docs
 
 - [Local Setup](LOCAL_SETUP.md)

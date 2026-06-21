@@ -61,7 +61,10 @@ def _learning_root() -> Path:
 
 
 def _learning_reports_dir() -> Path:
-    return _learning_root() / "data" / "learning" / "reports"
+    override = os.environ.get("INVESTMENT_AGENT_LEARNING_ROOT")
+    if override:
+        return Path(override) / "reports"
+    return _project_root() / "data" / "learning" / "reports"
 
 
 def _ensure_dashboard_enabled() -> None:
@@ -76,6 +79,7 @@ def _serialize_run(row: LearningRun) -> dict[str, Any]:
         "dataset_version": row.dataset_version,
         "model_kind": row.model_kind,
         "status": row.status,
+        "is_champion": bool(row.is_champion),
         "rows": int(row.rows or 0),
         "checksum": row.checksum,
         "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -118,6 +122,7 @@ def _serialize_train_run(row: LearningRun) -> dict[str, Any]:
         "run_id": row.run_id,
         "dataset_version": row.dataset_version,
         "status": row.status,
+        "is_champion": bool(row.is_champion),
         "rows": int(row.rows or 0),
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
@@ -135,6 +140,11 @@ async def get_learning_page_status() -> dict[str, Any]:
     session = get_session()
     warnings: list[str] = []
     try:
+        dataset_version = DATASET_VERSION
+        versions = list_dataset_versions(_project_root())
+        if versions:
+            dataset_version = versions[-1]
+
         outcome_rows = realized_trade_outcomes_query(session).all()
         north_star = compute_north_star_metrics(outcome_rows, window_days=90).to_dict()
 
@@ -175,7 +185,11 @@ async def get_learning_page_status() -> dict[str, Any]:
 
         latest_train_row = (
             session.query(LearningRun)
-            .order_by(desc(LearningRun.created_at))
+            .filter(
+                LearningRun.status == "completed",
+                LearningRun.dataset_version == dataset_version,
+            )
+            .order_by(desc(LearningRun.is_champion), desc(LearningRun.created_at))
             .first()
         )
         latest_train_run = (
@@ -189,11 +203,6 @@ async def get_learning_page_status() -> dict[str, Any]:
             .all()
         )
         exports_preview = [_serialize_export_row(r) for r in export_preview_rows]
-
-        dataset_version = DATASET_VERSION
-        versions = list_dataset_versions(_project_root())
-        if versions:
-            dataset_version = versions[-1]
 
         if latest_export is None:
             warnings.append(
@@ -213,6 +222,10 @@ async def get_learning_page_status() -> dict[str, Any]:
 
         shadow = shadow_summary(days=30)
 
+        from src.learning.dataset.rejection_analysis import rejection_analysis_freshness
+
+        rejection_freshness = rejection_analysis_freshness()
+
         return {
             "north_star": north_star,
             "dataset_version": dataset_version,
@@ -221,6 +234,7 @@ async def get_learning_page_status() -> dict[str, Any]:
             "latest_train_run": latest_train_run,
             "shadow_summary": shadow,
             "exports_preview": exports_preview,
+            "rejection_analysis": rejection_freshness,
             "staleness_warnings": warnings,
         }
     finally:
@@ -485,6 +499,9 @@ async def get_rejection_analysis() -> dict[str, Any]:
     payload["artifact_mtime"] = datetime.fromtimestamp(
         latest.stat().st_mtime, tz=timezone.utc
     ).isoformat()
+    from src.learning.dataset.rejection_analysis import load_rejection_history
+
+    payload["history"] = load_rejection_history()
     return payload
 
 
@@ -554,6 +571,20 @@ async def get_committee_evaluation() -> dict[str, Any]:
         }
     finally:
         session.close()
+
+
+@router.get("/committee/debate")
+async def get_committee_debate_health(days: int = Query(default=30, ge=1, le=365)) -> dict[str, Any]:
+    """Live committee-debate leading indicators (ungated; no closed-trade gate).
+
+    Churn rate, participation, rounds/consensus mix, per-moderator churn, skeptic tool usage,
+    and moderation spend over the window — answers "is the debate doing anything, at what cost?"
+    before there are enough closed trades for forward-outcome attribution.
+    """
+    _ensure_dashboard_enabled()
+    from src.learning.evaluation.committee_attribution import compute_debate_health
+
+    return compute_debate_health(days=days)
 
 
 @router.get("/evaluation/research")

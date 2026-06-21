@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { learningApi } from '../../../api/client'
+import { learningApi, type RejectionAnalysisResponse } from '../../../api/client'
+import type { LearningDebateHealth } from '../../../api/client'
 import { Panel } from '../../Panel'
 import { SectionHeader } from '../../SectionHeader'
 import { InfoCallout } from '../InfoCallout'
@@ -13,6 +14,8 @@ interface AttributionPanelProps {
 export function AttributionPanel({ closedTrades, evaluationCreatedAt }: AttributionPanelProps) {
   const [committeeData, setCommitteeData] = useState<Record<string, unknown> | null>(null)
   const [researchData, setResearchData] = useState<Record<string, unknown> | null>(null)
+  const [debateHealth, setDebateHealth] = useState<LearningDebateHealth | null>(null)
+  const [rejectionFunnel, setRejectionFunnel] = useState<RejectionAnalysisResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const influenceGate = 200
   const belowGate = closedTrades < influenceGate
@@ -21,13 +24,17 @@ export function AttributionPanel({ closedTrades, evaluationCreatedAt }: Attribut
     let cancelled = false
     async function load() {
       try {
-        const [committee, research] = await Promise.all([
+        const [committee, research, debate, rejection] = await Promise.all([
           learningApi.getCommitteeEvaluation().catch(() => null),
           learningApi.getResearchEvaluation().catch(() => null),
+          learningApi.getCommitteeDebateHealth().catch(() => null),
+          learningApi.getRejectionAnalysis().catch(() => null),
         ])
         if (cancelled) return
         setCommitteeData(committee as unknown as Record<string, unknown> | null)
         setResearchData(research as unknown as Record<string, unknown> | null)
+        setDebateHealth(debate as LearningDebateHealth | null)
+        setRejectionFunnel(rejection as RejectionAnalysisResponse | null)
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load attribution')
       }
@@ -35,6 +42,36 @@ export function AttributionPanel({ closedTrades, evaluationCreatedAt }: Attribut
     load()
     return () => { cancelled = true }
   }, [])
+
+  // Leading indicators — live and ungated (no closed-trade gate): is the debate doing
+  // anything, and at what cost? Rendered in both the gated and ungated states.
+  const debateHealthSection = (
+    <div className="mb-6" data-testid="committee-debate-health">
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-terminal-text-muted mb-2">
+        Committee debate health <span className="normal-case text-terminal-text-muted/70">· live, last {debateHealth?.days ?? 30}d</span>
+      </h4>
+      {!debateHealth || debateHealth.total_decisions === 0 ? (
+        <p className="text-sm text-terminal-text-muted">
+          No moderated decisions in the window yet — populates once the committee debates live trades.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-3 text-xs text-terminal-text-muted mb-2">
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">decisions: {debateHealth.total_decisions}</span>
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">debated: {formatPct(debateHealth.debate_participation_rate)}</span>
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">verdict churn: {formatPct(debateHealth.debate_churn_rate)}</span>
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">skeptic tool calls: {debateHealth.skeptic_tool_calls}</span>
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">moderation spend: {formatMoney(debateHealth.moderation_cost_gbp)}</span>
+          </div>
+          <div className="flex flex-wrap gap-3 text-xs text-terminal-text-muted">
+            {Object.entries(debateHealth.consensus_mix).map(([k, v]) => (
+              <span key={k} className="px-2 py-1 border border-terminal-border rounded-panel">{k}: {v}</span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
 
   if (belowGate) {
     return (
@@ -46,9 +83,10 @@ export function AttributionPanel({ closedTrades, evaluationCreatedAt }: Attribut
           freshSource="learning_evaluation_runs"
           roadmapId="US-2.3"
         />
+        {debateHealthSection}
         <p className="text-sm text-terminal-text-muted">
-          Detailed attribution unlocks at {influenceGate} closed trades (currently {closedTrades}). Shadow and offline
-          evaluation tabs remain available.
+          Forward-outcome attribution (consensus bad-rate, veto precision, debate-vs-outcome) unlocks at {influenceGate} closed
+          trades (currently {closedTrades}). The live debate health above is available now; shadow and offline evaluation tabs remain available.
         </p>
       </Panel>
     )
@@ -80,6 +118,30 @@ export function AttributionPanel({ closedTrades, evaluationCreatedAt }: Attribut
       />
       {error ? <p className="text-sm text-loss">{error}</p> : null}
 
+      {debateHealthSection}
+
+      {rejectionFunnel?.available !== false && rejectionFunnel?.rejected_total ? (
+        <div className="mb-6" data-testid="rejection-funnel-attribution">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-terminal-text-muted mb-2">
+            Full-funnel rejection quality <span className="normal-case text-terminal-text-muted/70">· US-6.7 shadow</span>
+          </h4>
+          <div className="flex flex-wrap gap-3 text-xs text-terminal-text-muted">
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">
+              rejected: {rejectionFunnel.rejected_total}
+            </span>
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">
+              false-reject: {formatPct(rejectionFunnel.false_reject_rate ?? null)}
+            </span>
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">
+              good-miss: {formatPct(rejectionFunnel.good_miss_rate ?? null)}
+            </span>
+            <span className="px-2 py-1 border border-terminal-border rounded-panel">
+              gap: {rejectionFunnel.selection_gap_pct != null ? `${rejectionFunnel.selection_gap_pct >= 0 ? '+' : ''}${rejectionFunnel.selection_gap_pct.toFixed(2)}%` : '—'}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       <h4 className="text-xs font-semibold uppercase tracking-wide text-terminal-text-muted mt-4 mb-2">Committee funnel</h4>
       {!committeeData ? (
         <p className="text-sm text-terminal-text-muted mb-4">Run evaluate after export to populate committee metrics.</p>
@@ -106,6 +168,28 @@ export function AttributionPanel({ closedTrades, evaluationCreatedAt }: Attribut
                   {(stratified.by_consensus ?? []).map((row) => (
                     <tr key={String(row.moderation_consensus)} className="border-t border-terminal-border/60">
                       <td className="px-2 py-1">{String(row.moderation_consensus)}</td>
+                      <td className="px-2 py-1">{String(row.n)}</td>
+                      <td className="px-2 py-1">{formatPct(row.bad_rate as number)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+          {(stratified.by_debate_change ?? []).length > 0 ? (
+            <div className="overflow-x-auto border border-terminal-border rounded-panel mb-4">
+              <table className="min-w-full text-xs">
+                <thead>
+                  <tr className="bg-terminal-surface text-terminal-text-muted text-left">
+                    <th className="px-2 py-1">Verdict changed in debate</th>
+                    <th className="px-2 py-1">n</th>
+                    <th className="px-2 py-1">Bad rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(stratified.by_debate_change ?? []).map((row) => (
+                    <tr key={String(row.verdict_changed_in_debate)} className="border-t border-terminal-border/60">
+                      <td className="px-2 py-1">{Number(row.verdict_changed_in_debate) === 1 ? 'changed' : 'held'}</td>
                       <td className="px-2 py-1">{String(row.n)}</td>
                       <td className="px-2 py-1">{formatPct(row.bad_rate as number)}</td>
                     </tr>

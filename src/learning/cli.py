@@ -76,6 +76,14 @@ def _parse_args() -> argparse.Namespace:
     p_train.add_argument("--skip-gbm", action="store_true", help="Skip GBM training (calibrator only)")
     p_train.add_argument("--skip-stall", action="store_true", help="Skip stall training")
     p_train.add_argument("--seed", type=int, default=42)
+    p_train.add_argument(
+        "--promote",
+        action="store_true",
+        help="Mark this run as champion for its dataset version after training",
+    )
+
+    p_promote = sub.add_parser("promote", help="Mark a completed training run as champion")
+    p_promote.add_argument("--run-id", required=True)
 
     p_report = sub.add_parser("report", help="Re-render the HTML report from saved metrics.json")
     p_report.add_argument("--run-id", required=True)
@@ -351,6 +359,13 @@ def _run_train(args: argparse.Namespace) -> int:
 
     metrics_dict = report.to_metrics_dict()
     metrics_dict["insights"] = insights_paths
+    train_warnings: list[str] = []
+    if not args.skip_gbm and gbm_result is None:
+        train_warnings.append("gbm_training_failed")
+    if not args.skip_stall and stall_result is None:
+        train_warnings.append("stall_training_failed")
+    if train_warnings:
+        metrics_dict["train_warnings"] = train_warnings
 
     artifact_paths = {**paths, **result.paths}
     if insights_paths:
@@ -363,6 +378,27 @@ def _run_train(args: argparse.Namespace) -> int:
         metrics=metrics_dict,
         paths=artifact_paths,
         checksum=result.checksum,
+    )
+
+    try:
+        from src.learning.tracking import mirror_train_run_to_mlflow
+
+        mirror_train_run_to_mlflow(
+            run_id=run_id,
+            dataset_version=spec.version,
+            seed=args.seed,
+            metrics=metrics_dict,
+            booster_dir=booster_dir,
+            label_config=asdict(spec.labels),
+            git_commit=_git_commit_short(),
+        )
+    except Exception as exc:
+        logger.warning("MLflow mirror logging failed (non-fatal): %s", exc)
+
+    _maybe_promote_champion(
+        run_id=run_id,
+        dataset_version=spec.version,
+        promote=bool(getattr(args, "promote", False)),
     )
 
     try:
@@ -441,6 +477,7 @@ def _run_list_runs(limit: int) -> int:
                 "model_kind": r.model_kind,
                 "rows": r.rows,
                 "status": r.status,
+                "is_champion": bool(r.is_champion),
                 "created_at": r.created_at.isoformat() if r.created_at else None,
                 "label_distribution": (
                     json.loads(r.label_distribution_json) if r.label_distribution_json else None
@@ -463,6 +500,58 @@ def _run_report(run_id: str) -> int:
         return 4
     print(metrics_path.read_text())
     return 0
+
+
+def _maybe_promote_champion(*, run_id: str, dataset_version: str, promote: bool) -> None:
+    """Promote a run when requested or when no champion exists for the version."""
+    from src.data.models import LearningRun
+    from src.learning.registry import promote_champion_run
+
+    session = get_session()
+    try:
+        if not promote:
+            explicit = (
+                session.query(LearningRun)
+                .filter(
+                    LearningRun.dataset_version == dataset_version,
+                    LearningRun.status == "completed",
+                    LearningRun.is_champion.is_(True),
+                )
+                .first()
+            )
+            if explicit is not None:
+                return
+        promote_champion_run(session, run_id)
+        logger.info("Promoted %s as champion for %s", run_id, dataset_version)
+    except Exception as exc:
+        session.rollback()
+        logger.warning("Champion promotion failed for %s: %s", run_id, exc)
+    finally:
+        session.close()
+
+
+def _run_promote(run_id: str) -> int:
+    from src.learning.registry import promote_champion_run
+
+    session = get_session()
+    try:
+        row = promote_champion_run(session, run_id)
+        print(
+            json.dumps(
+                {
+                    "run_id": row.run_id,
+                    "dataset_version": row.dataset_version,
+                    "is_champion": bool(row.is_champion),
+                },
+                indent=2,
+            )
+        )
+        return 0
+    except ValueError as exc:
+        print(json.dumps({"error": str(exc)}, indent=2))
+        return 2
+    finally:
+        session.close()
 
 
 def _record_learning_run(
@@ -561,6 +650,8 @@ def main() -> int:
         return _run_sync_graphiti()
     if args.command == "list-runs":
         return _run_list_runs(args.limit)
+    if args.command == "promote":
+        return _run_promote(args.run_id)
     if args.command == "evaluate":
         return _run_evaluate(args.run_id, args.policies)
     if args.command == "gates":

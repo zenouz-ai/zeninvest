@@ -1,56 +1,48 @@
-Analyze the following data and make allocation decisions.
+Analyze the following data and make allocation decisions. Weigh whatever is decision-relevant; the section notes are orientation, not rules.
 
 ## CURRENT PORTFOLIO STATE
 {portfolio_state}
 
 ## MARKET REGIME: {market_regime}
-Interpretation: BULL = trending up (favor momentum and active buying). BEAR = risk-off (favor selective buying and patient holds over panic exits).
-SIDEWAYS = mixed signals (favor factor quality, selective mean reversion, and patience).
+BULL favors momentum and active buying; BEAR favors selective buying and patient holds over panic exits; SIDEWAYS favors factor quality and patience.
 
 ## COMPANY PROFILES
-Use these business descriptions to assess qualitative factors: competitive moats, regulatory exposure,
-sector trends, and how macro news might impact each company's revenue streams.
+Business descriptions for qualitative judgment (moats, regulatory exposure, sector trends, macro sensitivity).
 {company_profiles}
 
 ## STRATEGY PROPOSALS
-Each line: TICKER: ACTION (score: 0-100) — reasoning. Scores 80+ are very strong. Scores 65-79 are actionable when confirmed by catalyst, valuation, or other signals. Scores below 65 can still support BUY if the stock is clearly underpriced with credible upside.
+Each line: TICKER: ACTION (score 0-100) — reasoning. Treat scores as evidence strength, not thresholds.
 
-### Momentum Strategy (weight: {momentum_weight})
-Signals: RSI trend, MACD crossovers, relative strength vs S&P 500.
+### Momentum (weight: {momentum_weight})
+RSI trend, MACD crossovers, relative strength vs S&P 500.
 {momentum_proposals}
 
-### Mean Reversion Strategy (weight: {mean_reversion_weight})
-Signals: RSI oversold (<30), below Bollinger Band, with sound fundamentals.
+### Mean Reversion (weight: {mean_reversion_weight})
+RSI oversold, below Bollinger Band, with sound fundamentals.
 {mean_reversion_proposals}
 
-### Factor Strategy (weight: {factor_weight})
-Composite: Value(30%) + Quality(30%) + Momentum(40%). V=value, Q=quality, M=momentum sub-scores.
+### Factor (weight: {factor_weight})
+Composite of Value, Quality, and Momentum sub-scores.
 {factor_proposals}
 
 ## ANALYST DATA (Finnhub — recommendations & insider sentiment)
-Buy/hold/sell counts reflect Wall Street consensus. Insider MSPR > 0 = insiders buying (mildly bullish).
 {analyst_data}
 
 ## NEWS SENTIMENT (Alpha Vantage — ticker-specific & market-wide)
-Format: [Sentiment ±score] Headline (Source). Score > +0.15 = bullish. Score < -0.15 = bearish.
-Use headlines to identify catalysts, risks, and market mood that numbers cannot capture.
+Use headlines to identify catalysts, risks, and mood the numbers miss.
 {news_sentiment}
 
 ## PROACTIVE MACRO CONTEXT
-Use this persisted macro state and action plan as top-down context for second-order impacts
-on sectors and holdings. It should inform conviction and risk framing, but not override
-stock-specific evidence by itself.
+Top-down context for second-order impacts on sectors and holdings; it informs framing but should not override stock-specific evidence.
 {macro_context}
 
 ## ENTRY QUALITY GUARDS
-Use these per-ticker guardrails before proposing new BUYs. Earnings-imminent and duplicate-risk
-flags are advisory, not deterministic vetoes, but they should materially influence conviction and
-whether a ticker is better expressed as BUY versus HOLD/QUEUED.
+Per-ticker advisory flags (earnings-imminent, duplicate-risk). They weigh on conviction and BUY-vs-HOLD/QUEUED framing, not hard vetoes.
 {entry_quality_guards}
 
 ## CURRENT RISK BUDGET
 - System State: {system_state}
-- VIX: {vix} (>25 = elevated volatility, reduce position sizes; >35 = extreme, max 5%)
+- VIX: {vix}
 - Cash: {cash_pct:.1f}%
 - Max position size: {max_position_pct}%
 - Positions: {num_positions}/{max_positions}
@@ -68,9 +60,9 @@ whether a ticker is better expressed as BUY versus HOLD/QUEUED.
 {tickers_to_decide}
 
 ## CONSTRAINTS
-- Max 15 positions
-- Min 2% / Max {max_position_pct}% per position
-- Min 10% cash buffer
+- Max {max_positions} positions (a broad, well-diversified book is expected; do not artificially cap entries below this)
+- Min {min_position_pct}% / Max {max_position_pct}% per position
+- Min {cash_floor_pct}% cash buffer
 - {state_constraints}
 - {pre_earnings_policy}
 - You MUST include every ticker above in your decisions array. No exceptions.

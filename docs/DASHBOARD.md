@@ -104,18 +104,23 @@ The main page groups are:
 - macro headline archive
 - public-safe read-only macro views
 
-### 9. Costs and API Usage
+### 9. Costs & Latency
 
-- model spend
-- research spend
+- Spend tab: model, API, and research spend (public: aggregate totals only)
+- Latency tab (operator): pipeline timing, phase/step p50/p95, slow API calls, scheduled-cycle scorecard vs Jun 2026 baseline (US-9.12)
 - degradation posture
-- API consumption summaries
 
-### 10. Roadmap / Architecture / Evolution
+### 10. Learning (operator)
 
-- roadmap visibility
+- north-star KPIs and promotion gate strip
+- evidence tabs: live shadow, offline evaluation, pipeline attribution, rejection quality (US-6.7)
+- model lab and collapsed data lab: similar-case search (US-6.2, embeddings); **optional** sector/regime graph (US-6.4, Neo4j); episodes JSON path (US-6.5)
+
+### 11. Roadmap / Architecture / Evolution
+
+- roadmap visibility with **Wave + epic** badges (`horizon: Pipeline` = active wave; Wave 1 complete — Wave 2 calibration next)
 - architecture context
-- evolution planning workflows and gated change-management surfaces
+- evolution planning workflows (Phase 1 delivered; branch runner Wave 3)
 
 ## Access Model
 

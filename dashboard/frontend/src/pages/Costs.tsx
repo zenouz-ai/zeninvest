@@ -11,12 +11,14 @@ import {
   Legend,
 } from 'recharts'
 import { costsApi, researchApi, type ResearchSummary } from '../api/client'
+import { CostsLatencyTab } from '../components/CostsLatencyTab'
 import { PageBrandHeader } from '../components/PageBrandHeader'
 import { usePollingInterval } from '../hooks/usePollingInterval'
 
 const COSTS_POLL_MS = 120_000
 
 export default function Costs() {
+  const [activeTab, setActiveTab] = useState<'spend' | 'latency'>('spend')
   const [daily, setDaily] = useState<any[]>([])
   const [monthly, setMonthly] = useState<any[]>([])
   const [degradation, setDegradation] = useState<{ level: string; message?: string } | null>(null)
@@ -101,10 +103,39 @@ export default function Costs() {
   return (
     <div className="space-y-6">
       <PageBrandHeader
-        title="Costs"
-        description="LLM spend tracking and budget enforcement. Daily budgets (Anthropic £1, OpenAI £0.75, Google £0.50) plus a monthly cap (£50) control costs. If a budget is exceeded, the system degrades gracefully instead of failing. Use the charts and table to monitor spend by provider."
+        title="Costs & Latency"
+        description="LLM spend tracking, budget enforcement, and pipeline latency observability."
       />
 
+      <div className="flex gap-2 border-b border-terminal-border">
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            activeTab === 'spend'
+              ? 'border-terminal-accent text-terminal-text'
+              : 'border-transparent text-terminal-text-dim hover:text-terminal-text'
+          }`}
+          onClick={() => setActiveTab('spend')}
+        >
+          Spend
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            activeTab === 'latency'
+              ? 'border-terminal-accent text-terminal-text'
+              : 'border-transparent text-terminal-text-dim hover:text-terminal-text'
+          }`}
+          onClick={() => setActiveTab('latency')}
+        >
+          Latency
+        </button>
+      </div>
+
+      {activeTab === 'latency' ? (
+        <CostsLatencyTab />
+      ) : (
+        <>
       {degradation && (
         <div className="card">
           <div className="flex items-center gap-4 flex-wrap">
@@ -304,6 +335,8 @@ export default function Costs() {
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   )

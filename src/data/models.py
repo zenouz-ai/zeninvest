@@ -210,6 +210,12 @@ class ModerationLog(Base):
     # Consensus result (filled on final row per cycle/ticker)
     consensus = Column(String(20), nullable=True)  # APPROVED, BLOCKED, CAUTION
 
+    # Committee debate telemetry: rounds executed for this decision (1 = opening
+    # one-shot only), and whether this moderator's verdict changed between its
+    # opening argument and its post-rebuttal final verdict.
+    debate_rounds = Column(Integer, nullable=True)
+    verdict_changed_in_debate = Column(Boolean, nullable=True)
+
 
 class RiskDecision(Base):
     """Risk agent decisions."""
@@ -983,6 +989,7 @@ class LearningRun(Base):
     metrics_json = Column(Text, nullable=True)
     artifact_paths_json = Column(Text, nullable=True)
     checksum = Column(String(128), nullable=True)
+    is_champion = Column(Boolean, nullable=False, default=False, index=True)
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
 

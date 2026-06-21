@@ -9,8 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from src.data.database import get_session
-from src.data.models import LearningRun
+from src.learning.registry import active_dataset_version, resolve_champion_run
 from src.utils.logger import get_logger
 
 logger = get_logger("learning.evaluation.gbm_inference")
@@ -27,15 +26,19 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def latest_gbm_artifact(root: Path | None = None) -> tuple[str | None, list[str] | None, list[str]]:
+def latest_gbm_artifact(
+    root: Path | None = None,
+    *,
+    dataset_version: str | None = None,
+) -> tuple[str | None, list[str] | None, list[str]]:
+    from src.data.database import get_session
+
     root = root or project_root()
     session = get_session()
     try:
-        row = (
-            session.query(LearningRun)
-            .filter(LearningRun.status == "completed")
-            .order_by(LearningRun.created_at.desc())
-            .first()
+        row = resolve_champion_run(
+            session,
+            dataset_version=dataset_version or active_dataset_version(),
         )
         if row is None:
             return None, None, list(DEFAULT_CLASSES)
@@ -87,17 +90,19 @@ def predict_gbm_probs(
         conv = float(series.get("conviction", conviction_fallback) or conviction_fallback)
         return heuristic_probs(conv)
 
-    boosters = sorted(booster_dir.glob("fold_*.txt")) or sorted(booster_dir.glob("*.txt"))
+    boosters = sorted(booster_dir.glob("fold_*.txt"))
+    if not boosters:
+        boosters = sorted(booster_dir.glob("*.txt"))
     if not boosters:
         conv = float(series.get("conviction", conviction_fallback) or conviction_fallback)
         return heuristic_probs(conv)
 
-    available = [c for c in feature_cols if c in series.index or c in series]
+    available = [c for c in feature_cols if c in series.index]
     if not available:
         conv = float(series.get("conviction", conviction_fallback) or conviction_fallback)
         return heuristic_probs(conv)
 
-    X = pd.DataFrame([{c: pd.to_numeric(series.get(c), errors="coerce") for c in available}]).fillna(0.0)
+    X = pd.DataFrame([{c: float(pd.to_numeric(series.get(c), errors="coerce") or 0.0) for c in available}])
     prob_sum = None
     for path in boosters:
         model = lgb.Booster(model_file=str(path))
@@ -110,9 +115,13 @@ def predict_gbm_probs(
         conv = float(series.get("conviction", conviction_fallback) or conviction_fallback)
         return heuristic_probs(conv)
 
-    prob_avg = prob_sum[0] / len(boosters)
+    avg = prob_sum / len(boosters)
+    if avg.ndim == 1:
+        conv = float(series.get("conviction", conviction_fallback) or conviction_fallback)
+        return heuristic_probs(conv)
+
     out: dict[str, float] = {}
     for idx, cls in enumerate(classes):
-        if idx < len(prob_avg):
-            out[str(cls)] = float(prob_avg[idx])
-    return out
+        if idx < avg.shape[1]:
+            out[str(cls)] = float(avg[0, idx])
+    return out or heuristic_probs(float(series.get("conviction", conviction_fallback) or conviction_fallback))

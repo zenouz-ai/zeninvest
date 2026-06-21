@@ -1,6 +1,6 @@
 """Data loading for backtesting: daily bars and benchmark with integrity checks."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -78,10 +78,12 @@ def fetch_bars_yfinance(
     result: dict[str, pd.DataFrame] = {}
     for ticker in tickers:
         try:
+            # yfinance treats end as exclusive; +1 day so end.date() is included when available.
+            download_end = (end + timedelta(days=1)).strftime("%Y-%m-%d")
             df = yf.download(
                 ticker,
                 start=start.strftime("%Y-%m-%d"),
-                end=end.strftime("%Y-%m-%d"),
+                end=download_end,
                 progress=False,
                 auto_adjust=True,
             )

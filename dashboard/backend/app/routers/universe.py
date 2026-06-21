@@ -5,12 +5,14 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session
 
 from src.data.database import get_session
 from src.data.models import Instrument, ModerationLog, OpportunityScoreSnapshot, Order, PortfolioSnapshot, ResearchLog, RiskDecision, StrategyDecision
 from src.utils.config import get_settings
+
+from dashboard.backend.app.database import Run
 
 from ..async_utils import run_blocking
 from ..schemas import InstrumentDetailSchema, InstrumentSchema, UniverseBubbleSchema
@@ -168,6 +170,78 @@ def _get_instrument_label(session: Session, ticker: str) -> tuple[str | None, di
     }
 
     return label, decision_data
+
+
+def _get_universe_coverage_sync() -> dict[str, Any]:
+    session = get_session()
+    try:
+        total = session.query(func.count(Instrument.id)).filter(Instrument.data_available.is_(True)).scalar() or 0
+        enriched = (
+            session.query(func.count(Instrument.id))
+            .filter(
+                Instrument.data_available.is_(True),
+                Instrument.sector.isnot(None),
+                Instrument.sector != "",
+                Instrument.sector != "Unknown",
+                Instrument.market_cap.isnot(None),
+                Instrument.market_cap > 0,
+            )
+            .scalar()
+            or 0
+        )
+        ever_screened = (
+            session.query(func.count(Instrument.id))
+            .filter(Instrument.data_available.is_(True), Instrument.last_screened_at.isnot(None))
+            .scalar()
+            or 0
+        )
+        investigated = session.query(func.count(func.distinct(StrategyDecision.ticker))).scalar() or 0
+        needs_enrichment = (
+            session.query(func.count(Instrument.id))
+            .filter(
+                Instrument.data_available.is_(True),
+                or_(
+                    Instrument.sector.is_(None),
+                    Instrument.sector == "",
+                    Instrument.sector == "Unknown",
+                    Instrument.market_cap.is_(None),
+                    Instrument.market_cap == 0,
+                ),
+            )
+            .scalar()
+            or 0
+        )
+        latest_enrich = (
+            session.query(Run)
+            .filter(Run.run_type == "enrich_universe")
+            .order_by(desc(Run.started_at))
+            .first()
+        )
+        enrich_summary: dict[str, Any] | None = None
+        if latest_enrich:
+            enrich_summary = {
+                "started_at": latest_enrich.started_at.isoformat() if latest_enrich.started_at else None,
+                "status": latest_enrich.status,
+                "summary_json": latest_enrich.summary_json,
+            }
+        return {
+            "total_instruments": total,
+            "enriched_count": enriched,
+            "ever_screened_count": ever_screened,
+            "investigated_count": investigated,
+            "needs_enrichment_count": needs_enrichment,
+            "latest_enrich_run": enrich_summary,
+        }
+    finally:
+        session.close()
+
+
+@router.get("/coverage")
+async def get_universe_coverage():
+    """Aggregate universe coverage stats for dashboard hero metrics."""
+    if not settings.dashboard_enabled:
+        raise HTTPException(status_code=503, detail="Dashboard is disabled")
+    return await run_blocking(_get_universe_coverage_sync)
 
 
 @router.get("/", response_model=list[InstrumentSchema])

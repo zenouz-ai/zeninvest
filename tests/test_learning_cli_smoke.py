@@ -21,6 +21,7 @@ pytest.importorskip("sklearn")
 
 
 def _seed_in_memory_dataset() -> None:
+    from dashboard.backend.app.database import Base as DashboardBase
     from src.data.database import engine, get_session
     from src.data.models import (
         Base,
@@ -33,6 +34,7 @@ def _seed_in_memory_dataset() -> None:
     )
 
     Base.metadata.create_all(bind=engine)
+    DashboardBase.metadata.create_all(bind=engine)
     session = get_session()
     try:
         for model in (

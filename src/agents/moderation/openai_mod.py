@@ -103,12 +103,25 @@ def _normalize_openai_result(
     return normalized
 
 
+def _peer_block(peer_argument: str | None) -> str:
+    """Render an opposing committee member's argument for a rebuttal turn."""
+    if not peer_argument:
+        return ""
+    return (
+        "\n## Another committee analyst's assessment\n"
+        f"{peer_argument}\n"
+        "Engage directly with their argument: concede points that are valid, "
+        "and push back where you disagree. Then give your own final verdict.\n"
+    )
+
+
 def review_trade(
     trade_proposal: dict[str, Any],
     portfolio_context: str,
     market_context: dict[str, Any],
     cycle_id: str | None = None,
     research_executor=None,
+    peer_argument: str | None = None,
 ) -> dict[str, Any]:
     """Have GPT-4o review a trade proposal with full market context.
 
@@ -126,9 +139,11 @@ def review_trade(
     if research_executor:
         return _review_with_tools(
             trade_proposal, portfolio_context, market_context, cycle_id, research_executor,
+            peer_argument=peer_argument,
         )
     return _review_single_turn(
         trade_proposal, portfolio_context, market_context, cycle_id,
+        peer_argument=peer_argument,
     )
 
 
@@ -137,6 +152,7 @@ def _review_single_turn(
     portfolio_context: str,
     market_context: dict[str, Any],
     cycle_id: str | None,
+    peer_argument: str | None = None,
 ) -> dict[str, Any]:
     """Single-turn moderation without tools."""
     settings = get_settings()
@@ -155,7 +171,7 @@ def _review_single_turn(
 {portfolio_context}
 
 {context_text}
-
+{_peer_block(peer_argument)}
 Challenge the thesis. Is the conviction justified? Are there risks being ignored?
 Do the technicals, fundamentals, and sentiment all support this trade?
 Respond with JSON only."""
@@ -232,6 +248,7 @@ def _review_with_tools(
     market_context: dict[str, Any],
     cycle_id: str | None,
     research_executor: Any,
+    peer_argument: str | None = None,
 ) -> dict[str, Any]:
     """Moderation with tool-use loop (skeptic research)."""
     from src.agents.research.tools import get_research_tools_openai
@@ -250,7 +267,7 @@ def _review_with_tools(
 {portfolio_context}
 
 {context_text}
-
+{_peer_block(peer_argument)}
 Challenge the thesis. Use tools if needed to find bear cases or downgrades. Respond with JSON only."""
 
     messages: list[dict] = [
@@ -315,7 +332,6 @@ Challenge the thesis. Use tools if needed to find bear cases or downgrades. Resp
                 ],
             })
 
-            tool_result_parts = []
             for tc in tool_calls:
                 fn = tc.function
                 name = fn.name
@@ -339,16 +355,17 @@ Challenge the thesis. Use tools if needed to find bear cases or downgrades. Resp
                 else:
                     res = [{"error": f"Unknown tool: {name}"}]
 
-                tool_result_parts.append({
-                    "type": "tool_result",
+                # OpenAI chat.completions expects one `tool`-role message per tool call
+                # (not an Anthropic-style tool_result block on a user message). Using the
+                # wrong shape here previously raised and silently fell back to no-tools.
+                messages.append({
+                    "role": "tool",
                     "tool_call_id": tc.id,
                     "content": json.dumps(res)[:8000] if res else "[]",
                 })
 
-            messages.append({"role": "user", "content": tool_result_parts})
-
-        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
+        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id, peer_argument=peer_argument)
 
     except Exception as e:
         logger.error(f"GPT-4o tool-use moderation failed: {e}")
-        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
+        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id, peer_argument=peer_argument)

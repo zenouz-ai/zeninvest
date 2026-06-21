@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 import pandas as pd
 import yfinance as yf
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
 from src.agents.market_data.earnings import get_earnings_context
@@ -655,6 +655,7 @@ class DataFetcher:
             def _sample_tier(new_bucket: list[Instrument], review_bucket: list[Instrument], n: int) -> list[Instrument]:
                 if n <= 0:
                     return []
+                preserve_order = getattr(self.settings, "never_reviewed_priority", True)
                 target_new = min(int(round(n * new_share)), len(new_bucket))
                 selected: list[Instrument] = []
                 if target_new > 0:
@@ -664,6 +665,7 @@ class DataFetcher:
                             target_new,
                             settings.candidates_per_sector,
                             guidance=guidance,
+                            preserve_order=preserve_order,
                         )
                     )
                 remaining = n - len(selected)
@@ -674,6 +676,7 @@ class DataFetcher:
                             remaining,
                             settings.candidates_per_sector,
                             guidance=guidance,
+                            preserve_order=preserve_order,
                         )
                     )
                 if len(selected) < n:
@@ -684,9 +687,18 @@ class DataFetcher:
                             n - len(selected),
                             settings.candidates_per_sector,
                             guidance=guidance,
+                            preserve_order=preserve_order,
                         )
                     )
                 return selected[:n]
+
+            if getattr(self.settings, "never_reviewed_priority", True):
+                large_new = self._sort_for_fairness(large_new, review_history)
+                mid_new = self._sort_for_fairness(mid_new, review_history)
+                small_new = self._sort_for_fairness(small_new, review_history)
+                large_review = self._sort_for_fairness(large_review, review_history)
+                mid_review = self._sort_for_fairness(mid_review, review_history)
+                small_review = self._sort_for_fairness(small_review, review_history)
 
             # Sample within each tier using the configured fresh-vs-review split.
             selected: list[Instrument] = []
@@ -815,12 +827,14 @@ class DataFetcher:
         n: int,
         per_sector: int,
         guidance: dict[str, Any] | None,
+        *,
+        preserve_order: bool = False,
     ) -> list[Instrument]:
         """Sample a tier bucket, optionally using active guidance."""
         if not instruments or n <= 0:
             return []
         if not guidance or not guidance.get("enabled"):
-            return self._sector_balanced_sample(instruments, n, per_sector)
+            return self._sector_balanced_sample(instruments, n, per_sector, preserve_order=preserve_order)
 
         by_sector: dict[str, list[Instrument]] = defaultdict(list)
         for inst in instruments:
@@ -840,7 +854,8 @@ class DataFetcher:
         fallback_used = False
         for sector in ordered_sectors:
             pool = list(by_sector[sector])
-            random.shuffle(pool)
+            if not preserve_order:
+                random.shuffle(pool)
             if sector in favored:
                 cap = per_sector + 1
             elif sector in avoid:
@@ -856,18 +871,41 @@ class DataFetcher:
         if len(selected) < n:
             fallback_used = True
             leftover = [inst for pool in by_sector.values() for inst in pool if inst not in selected]
-            random.shuffle(leftover)
+            if not preserve_order:
+                random.shuffle(leftover)
             selected.extend(leftover[: max(0, n - len(selected))])
 
         if fallback_used:
             self.last_screening_metadata["fallback_used"] = True
         return selected[:n]
 
+    def _sort_for_fairness(
+        self,
+        instruments: list[Instrument],
+        review_history: dict[str, dict[str, Any]],
+    ) -> list[Instrument]:
+        """Prioritize never-investigated and oldest-screened tickers before random sampling."""
+
+        def sort_key(inst: Instrument) -> tuple[int, int, float]:
+            hist = review_history.get(inst.ticker, self._empty_review_history())
+            is_new = 0 if hist.get("is_new", True) else 1
+            never_screened = 0 if inst.last_screened_at is None else 1
+            screened_ts = (
+                inst.last_screened_at.timestamp()
+                if inst.last_screened_at is not None
+                else 0.0
+            )
+            return (is_new, never_screened, screened_ts)
+
+        return sorted(instruments, key=sort_key)
+
     @staticmethod
     def _sector_balanced_sample(
         instruments: list,
         n: int,
         per_sector: int,
+        *,
+        preserve_order: bool = False,
     ) -> list:
         """Sample n instruments ensuring at least per_sector from each sector."""
         if not instruments:
@@ -879,12 +917,14 @@ class DataFetcher:
 
         selected: list = []
         sectors = list(by_sector.keys())
-        random.shuffle(sectors)
+        if not preserve_order:
+            random.shuffle(sectors)
 
         # Round 1: guarantee per_sector from each sector
         for sector in sectors:
             pool = by_sector[sector]
-            random.shuffle(pool)
+            if not preserve_order:
+                random.shuffle(pool)
             take = min(per_sector, len(pool))
             selected.extend(pool[:take])
             by_sector[sector] = pool[take:]
@@ -893,7 +933,8 @@ class DataFetcher:
         remaining = n - len(selected)
         if remaining > 0:
             leftover = [inst for pool in by_sector.values() for inst in pool]
-            random.shuffle(leftover)
+            if not preserve_order:
+                random.shuffle(leftover)
             selected.extend(leftover[:remaining])
 
         return selected[:n]
@@ -1172,6 +1213,32 @@ class DataFetcher:
         low = str(raw).strip().lower()
         return SECTOR_ALIASES.get(low, raw.strip())
 
+    @staticmethod
+    def _needs_enrichment_filter():
+        """SQLAlchemy filter for instruments missing sector or market_cap."""
+        return or_(
+            Instrument.sector.is_(None),
+            Instrument.sector == "",
+            Instrument.sector == "Unknown",
+            Instrument.market_cap.is_(None),
+            Instrument.market_cap == 0,
+        )
+
+    def count_enrichment_backlog(self) -> int:
+        """Count tradeable instruments still missing sector or market_cap."""
+        session = get_session()
+        try:
+            return (
+                session.query(Instrument)
+                .filter(
+                    Instrument.data_available != False,  # noqa: E712
+                    self._needs_enrichment_filter(),
+                )
+                .count()
+            )
+        finally:
+            session.close()
+
     def enrich_instruments_batch(self, max_per_run: int | None = None) -> int:
         """Enrich instruments missing sector/market_cap via cascade: yfinance → Finnhub → AV → BRAVE_ANSWERS.
 
@@ -1185,21 +1252,27 @@ class DataFetcher:
         limit = max_per_run or settings.batch_enrichment_per_run
         session = get_session()
         try:
-            candidates = (
-                session.query(Instrument)
-                .filter(
-                    Instrument.data_available != False,  # noqa: E712
-                    (
-                        (Instrument.sector.is_(None))
-                        | (Instrument.sector == "")
-                        | (Instrument.sector == "Unknown")
-                        | (Instrument.market_cap.is_(None))
-                        | (Instrument.market_cap == 0),
-                    ),
-                )
+            base_query = session.query(Instrument).filter(
+                Instrument.data_available != False,  # noqa: E712
+                self._needs_enrichment_filter(),
+            )
+            order_clause = (Instrument.updated_at.asc().nullsfirst(), Instrument.ticker.asc())
+            us_candidates = (
+                base_query.filter(Instrument.ticker.like("%_US_EQ"))
+                .order_by(*order_clause)
                 .limit(limit)
                 .all()
             )
+            candidates = list(us_candidates)
+            if len(candidates) < limit:
+                remaining = limit - len(candidates)
+                other_candidates = (
+                    base_query.filter(~Instrument.ticker.like("%_US_EQ"))
+                    .order_by(*order_clause)
+                    .limit(remaining)
+                    .all()
+                )
+                candidates.extend(other_candidates)
             if not candidates:
                 logger.info("No instruments need batch enrichment")
                 return 0

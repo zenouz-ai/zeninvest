@@ -3,7 +3,7 @@
 import signal
 import sys
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Any, Callable
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -17,6 +17,7 @@ from src.runtime import (
 )
 from src.utils.config import get_settings
 from src.utils.logger import get_logger
+from src.utils.run_summary import merge_run_summary
 from src.utils.scheduling import (
     analysis_cycle_day_of_week,
     analysis_cycle_job_ids,
@@ -153,14 +154,11 @@ def _run_intraday_refresh() -> None:
                         if run:
                             run.completed_at = refresh_end_time
                             run.status = result.get("status", "completed")
-                            run.summary_json = {
-                                "orders_updated_total": result.get("orders_updated_total", 0),
-                                "positions_refreshed": result.get("positions_refreshed", 0),
-                                "market_data_tickers_warmed": result.get("market_data_tickers_warmed", 0),
-                                "stop_adjustments": result.get("stop_adjustments", 0),
-                                "deterministic_exits": result.get("deterministic_exits", 0),
-                                "duration_seconds": duration_seconds,
-                            }
+                            run.summary_json = merge_run_summary(
+                                run.summary_json,
+                                result,
+                                duration_seconds=duration_seconds,
+                            )
                             session.commit()
                     except Exception:
                         session.rollback()
@@ -197,11 +195,14 @@ def _run_intraday_refresh() -> None:
                         if run:
                             run.completed_at = refresh_end_time
                             run.status = "failed"
-                            run.summary_json = {
-                                "error_type": type(e).__name__,
-                                "error_message": str(e),
-                                "duration_seconds": duration_seconds,
-                            }
+                            run.summary_json = merge_run_summary(
+                                run.summary_json,
+                                {
+                                    "error_type": type(e).__name__,
+                                    "error_message": str(e),
+                                },
+                                duration_seconds=duration_seconds,
+                            )
                             session.commit()
                     except Exception:
                         session.rollback()
@@ -280,6 +281,33 @@ def _run_analysis_cycle() -> None:
         result = orchestrator.run_cycle(scheduled_cycle_id=cycle_id)
         cycle_id = result.get("cycle_id", cycle_id)
         logger.info(f"Cycle completed: {result.get('status')} — {result.get('num_trades', 0)} trades")
+
+        # Surface skipped cycles (lock held by an overrunning refresh/cycle) so this
+        # failure mode is never silent again.
+        if result.get("status") == "skipped_locked":
+            lock_details = result.get("lock_details") or {}
+            lock_metadata = lock_details.get("metadata") or {}
+            logger.warning(
+                "Scheduled cycle %s was SKIPPED — orchestrator-cycle lock held by pid=%s (%s). "
+                "A refresh/cycle likely overran into this slot.",
+                cycle_id,
+                lock_details.get("pid"),
+                lock_metadata.get("cycle_id"),
+            )
+            try:
+                notifications.emit_cycle_skipped_locked(
+                    cycle_id=cycle_id,
+                    payload={
+                        "cycle_id": cycle_id,
+                        "dry_run": False,
+                        "stage": "scheduler_analysis_cycle",
+                        "lock_path": result.get("lock_path"),
+                        "lock_owner_pid": lock_details.get("pid"),
+                        "lock_owner_cycle_id": lock_metadata.get("cycle_id"),
+                    },
+                )
+            except Exception as notify_err:  # nosec B110
+                logger.debug(f"Skipped-cycle notification failed (fail-open): {notify_err}")
         
         # Log run_completed event
         if DASHBOARD_AVAILABLE and log_event is not None:
@@ -309,14 +337,14 @@ def _run_analysis_cycle() -> None:
                         if run:
                             run.completed_at = cycle_end_time
                             run.status = result.get("status", "completed")
-                            run.summary_json = {
-                                "stocks_screened": result.get("stocks_screened", 0),
-                                "stocks_reviewed": result.get("stocks_reviewed", 0),
-                                "decisions_made": result.get("stocks_reviewed", 0),
-                                "num_trades": result.get("num_trades", 0),
-                                "num_rejected": len(result.get("rejected_stocks", [])),
-                                "duration_seconds": duration_seconds,
-                            }
+                            run.summary_json = merge_run_summary(
+                                run.summary_json,
+                                {
+                                    **result,
+                                    "decisions_made": result.get("stocks_reviewed", 0),
+                                },
+                                duration_seconds=duration_seconds,
+                            )
                             session.commit()
                             logger.debug(f"Updated Run record for scheduled cycle {cycle_id}")
                         else:
@@ -360,11 +388,14 @@ def _run_analysis_cycle() -> None:
                         if run:
                             run.completed_at = cycle_end_time
                             run.status = "failed"
-                            run.summary_json = {
-                                "error_type": type(e).__name__,
-                                "error_message": str(e),
-                                "duration_seconds": duration_seconds,
-                            }
+                            run.summary_json = merge_run_summary(
+                                run.summary_json,
+                                {
+                                    "error_type": type(e).__name__,
+                                    "error_message": str(e),
+                                },
+                                duration_seconds=duration_seconds,
+                            )
                             session.commit()
                             logger.debug(f"Updated Run record to failed for cycle {cycle_id}")
                         else:
@@ -397,29 +428,29 @@ def _run_analysis_cycle() -> None:
 
 def _run_daily_snapshot() -> None:
     """Generate daily snapshot and report."""
-    from src.agents.reporting.daily_report import generate_daily_report
-    logger.info("Generating daily report...")
-    try:
+    from src.utils.timed_job import run_timed_job
+
+    def _impl() -> dict[str, Any]:
+        from src.agents.reporting.daily_report import generate_daily_report
+
         path = generate_daily_report()
-        logger.info(f"Daily report: {path}")
-    except Exception as e:
-        logger.error(f"Daily report failed: {e}")
+        return {"report_path": str(path)}
+
+    run_timed_job("daily_snapshot", "daily_snapshot", _impl)
 
 
 def _run_strategy_episode_scan(days: int = 7) -> None:
     """Scan recent git history and auto-publish strategy change episodes."""
-    from src.agents.attribution.service import StrategyAttributionService
-    logger.info(f"Starting strategy episode git scan ({days}-day lookback)...")
-    try:
+    from src.utils.timed_job import run_timed_job
+
+    def _impl() -> dict[str, Any]:
+        from src.agents.attribution.service import StrategyAttributionService
+
         svc = StrategyAttributionService()
         episode_list = svc.backfill_recent_episodes(days=days, auto_confirm=True)
-        if episode_list:
-            titles = [ep["title"] for ep in episode_list]
-            logger.info(f"Strategy scan published {len(episode_list)} episodes: {titles}")
-        else:
-            logger.info("Strategy scan: no new episodes detected")
-    except Exception as e:
-        logger.error(f"Strategy episode scan failed: {e}", exc_info=True)
+        return {"episodes_published": len(episode_list or []), "lookback_days": days}
+
+    run_timed_job("strategy_episode_scan", "strategy_episode_scan", _impl)
 
 
 def _seed_episodes_if_empty() -> None:
@@ -437,123 +468,137 @@ def _seed_episodes_if_empty() -> None:
 
 def _run_weekly_report() -> None:
     """Generate weekly report."""
-    from src.agents.reporting.weekly_report import generate_weekly_report
-    logger.info("Generating weekly report...")
-    try:
+    from src.utils.timed_job import run_timed_job
+
+    def _impl() -> dict[str, Any]:
+        from src.agents.reporting.weekly_report import generate_weekly_report
+
         path = generate_weekly_report()
-        logger.info(f"Weekly report: {path}")
-    except Exception as e:
-        logger.error(f"Weekly report failed: {e}")
+        return {"report_path": str(path)}
+
+    run_timed_job("weekly_report", "weekly_report", _impl)
 
 
 def _run_learning_export() -> None:
     """Weekly learning dataset export (audit + build + memory JSONL)."""
-    logger.info("Starting scheduled learning export...")
-    try:
+    from src.utils.timed_job import run_timed_job
+
+    def _impl() -> dict[str, Any]:
         from src.learning.export import run_learning_export
 
-        result = run_learning_export()
-        if result.get("status") == "failed":
-            logger.error("Learning export failed: %s", result.get("error"))
-        else:
-            logger.info(
-                "Learning export complete: %s decision rows, %s text rows",
-                result.get("decisions_rows"),
-                result.get("text_corpus_rows"),
-            )
-    except Exception as exc:
-        logger.error("Learning export failed: %s", exc)
+        return run_learning_export()
+
+    run_timed_job("learning_export", "learning_export", _impl)
 
 
 def _run_learning_evaluate() -> None:
     """Weekly champion/challenger counterfactual evaluation."""
-    logger.info("Starting scheduled learning evaluation...")
-    try:
+    from src.utils.timed_job import run_timed_job
+
+    def _impl() -> dict[str, Any]:
         from src.learning.evaluation.counterfactual import run_counterfactual_evaluation
 
         result = run_counterfactual_evaluation(write_report=True)
-        if result.get("status") == "failed":
-            logger.error("Learning evaluation failed: %s", result.get("error"))
-        else:
-            logger.info(
-                "Learning evaluation complete: %s (%s rows, %s realized)",
-                result.get("run_id"),
-                result.get("n_rows"),
-                result.get("closed_trades"),
-            )
-    except Exception as exc:
-        logger.error("Learning evaluation failed: %s", exc)
+        try:
+            from src.learning.evaluation.alerts import emit_learning_alerts_if_needed
+
+            alert_result = emit_learning_alerts_if_needed()
+            result = {**result, "learning_alerts": alert_result}
+        except Exception as exc:
+            logger.warning("Learning alert check failed (non-fatal): %s", exc)
+        return result
+
+    run_timed_job("learning_evaluate", "learning_evaluate", _impl)
 
 
 def _run_shadow_outcome_join() -> None:
     """Daily job: mature shadow scores with trade outcomes."""
-    try:
-        from src.learning.evaluation.outcome_join import join_shadow_outcomes
+    from src.utils.timed_job import run_timed_job
+    from src.learning.evaluation.outcome_join import join_shadow_outcomes
 
+    def _impl() -> dict[str, Any]:
         result = join_shadow_outcomes()
-        logger.info("Shadow outcome join: %s", result)
-    except Exception as exc:
-        logger.error("Shadow outcome join failed: %s", exc)
+        try:
+            from src.learning.evaluation.alerts import emit_learning_alerts_if_needed
+
+            alert_result = emit_learning_alerts_if_needed()
+            result = {**result, "learning_alerts": alert_result}
+        except Exception as exc:
+            logger.warning("Learning alert check failed (non-fatal): %s", exc)
+        return result
+
+    run_timed_job("shadow_outcome_join", "shadow_outcome_join", _impl)
 
 
 def _refresh_instruments() -> None:
     """Refresh instrument universe from T212."""
-    from src.agents.execution.t212_client import T212Client
-    from src.agents.market_data.data_fetcher import DataFetcher
-    logger.info("Refreshing instrument universe...")
-    try:
+    from src.utils.timed_job import run_timed_job
+
+    def _impl() -> dict[str, Any]:
+        from src.agents.execution.t212_client import T212Client
+        from src.agents.market_data.data_fetcher import DataFetcher
+
         client = T212Client()
         instruments = client.get_instruments()
         client.close()
-
         fetcher = DataFetcher()
         count = fetcher.refresh_universe(instruments)
         fetcher.close()
-        logger.info(f"Refreshed {count} instruments")
-    except Exception as e:
-        logger.error(f"Instrument refresh failed: {e}")
+        return {"instruments_refreshed": count}
+
+    run_timed_job("instrument_refresh", "instrument_refresh", _impl)
 
 
 def _enrich_universe() -> None:
     """Batch-enrich instruments missing sector/market_cap (Finnhub + Brave/Gemini fallback)."""
-    from src.agents.market_data.data_fetcher import DataFetcher
+    from src.utils.timed_job import run_timed_job
+
     if not get_settings().batch_enrichment_enabled:
         logger.debug("Batch enrichment disabled, skipping enrich_universe job")
         return
-    logger.info("Running batch universe enrichment...")
-    try:
+
+    def _impl() -> dict[str, Any]:
+        from src.agents.market_data.data_fetcher import DataFetcher
+
         fetcher = DataFetcher()
+        backlog_before = fetcher.count_enrichment_backlog()
         count = fetcher.enrich_instruments_batch()
+        backlog_after = fetcher.count_enrichment_backlog()
         fetcher.close()
-        logger.info(f"Batch enrichment updated {count} instruments")
-    except Exception as e:
-        logger.error(f"Batch enrichment failed: {e}")
+        if count == 0 and backlog_after > 0:
+            logger.warning(
+                "Batch enrichment enriched 0 instruments but backlog remains at %d",
+                backlog_after,
+            )
+        return {
+            "instruments_enriched": count,
+            "enrichment_backlog_remaining": backlog_after,
+            "enrichment_backlog_before": backlog_before,
+        }
+
+    run_timed_job("enrich_universe", "enrich_universe", _impl)
 
 
 def _run_macro_scan() -> None:
     """Run proactive macro scan and persist macro state for later cycle use."""
-    from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
-    from src.agents.market_data.finnhub_client import FinnhubClient
-    from src.agents.market_data.macro_intelligence import run_proactive_macro_scan
+    from src.utils.timed_job import run_timed_job
 
-    settings = get_settings()
-    if not settings.macro_proactive_scan_enabled:
+    if not get_settings().macro_proactive_scan_enabled:
         logger.debug("Proactive macro scan disabled, skipping macro_scan job")
         return
 
-    logger.info("Running proactive macro scan...")
-    try:
+    def _impl() -> dict[str, Any]:
+        from src.agents.market_data.alpha_vantage_client import AlphaVantageClient
+        from src.agents.market_data.finnhub_client import FinnhubClient
+        from src.agents.market_data.macro_intelligence import run_proactive_macro_scan
+
         result = run_proactive_macro_scan(
             alpha_vantage=AlphaVantageClient(),
             finnhub=FinnhubClient(),
         )
-        logger.info(
-            "Proactive macro scan persisted state_id=%s regime=%s",
-            result.get("state_id"),
-            result.get("regime"),
-        )
-    except Exception as e:
-        logger.error(f"Proactive macro scan failed: {e}")
+        return {"state_id": result.get("state_id"), "regime": result.get("regime")}
+
+    run_timed_job("macro_scan", "macro_scan", _impl)
 
 
 def create_scheduler() -> BlockingScheduler:

@@ -89,6 +89,9 @@ def query_similar_sector_regime(sector: str, regime: str, limit: int = 10) -> li
     try:
         from neo4j import GraphDatabase
     except ImportError:
+        logger.warning(
+            "Neo4j Python driver not installed; graph query unavailable (poetry install --with memory)"
+        )
         return []
 
     driver = GraphDatabase.driver(

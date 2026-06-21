@@ -84,12 +84,25 @@ def _normalize_modifications_payload(
     return normalized or None
 
 
+def _peer_block(peer_argument: str | None) -> str:
+    """Render an opposing committee member's argument for a rebuttal turn."""
+    if not peer_argument:
+        return ""
+    return (
+        "\n## Another committee analyst's assessment\n"
+        f"{peer_argument}\n"
+        "Engage directly with their argument: concede points that are valid, "
+        "and push back where you disagree. Then give your own final assessment.\n"
+    )
+
+
 def review_trade(
     trade_proposal: dict[str, Any],
     portfolio_context: str,
     market_context: dict[str, Any],
     cycle_id: str | None = None,
     research_executor=None,
+    peer_argument: str | None = None,
 ) -> dict[str, Any]:
     """Have Gemini review a trade proposal with full market context.
 
@@ -111,11 +124,21 @@ def review_trade(
     )
 
     if use_tools:
-        return _review_with_tools(trade_proposal, portfolio_context, market_context, cycle_id, research_executor)
-    return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
+        return _review_with_tools(
+            trade_proposal, portfolio_context, market_context, cycle_id, research_executor,
+            peer_argument=peer_argument,
+        )
+    return _review_single_turn(
+        trade_proposal, portfolio_context, market_context, cycle_id, peer_argument=peer_argument,
+    )
 
 
-def _build_user_prompt(trade_proposal: dict, portfolio_context: str, market_context: dict) -> str:
+def _build_user_prompt(
+    trade_proposal: dict,
+    portfolio_context: str,
+    market_context: dict,
+    peer_argument: str | None = None,
+) -> str:
     context_text = format_market_context(market_context)
     return f"""Independently assess this proposed trade:
 
@@ -126,7 +149,7 @@ def _build_user_prompt(trade_proposal: dict, portfolio_context: str, market_cont
 {portfolio_context}
 
 {context_text}
-
+{_peer_block(peer_argument)}
 Score growth potential, risk level, and confidence using the data above.
 Flag if risk > growth. Respond with JSON only."""
 
@@ -168,6 +191,7 @@ def _review_single_turn(
     portfolio_context: str,
     market_context: dict[str, Any],
     cycle_id: str | None,
+    peer_argument: str | None = None,
 ) -> dict[str, Any]:
     """Single-turn Gemini moderation (no research tools)."""
     settings = get_settings()
@@ -176,7 +200,7 @@ def _review_single_turn(
         logger.warning("Google budget exceeded, skipping Gemini moderation")
         return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
 
-    user_prompt = _build_user_prompt(trade_proposal, portfolio_context, market_context)
+    user_prompt = _build_user_prompt(trade_proposal, portfolio_context, market_context, peer_argument)
 
     try:
         client = genai.Client(api_key=settings.google_ai_api_key)
@@ -315,6 +339,7 @@ def _review_with_tools(
     market_context: dict[str, Any],
     cycle_id: str | None,
     research_executor: Any,
+    peer_argument: str | None = None,
 ) -> dict[str, Any]:
     """Gemini moderation with tool-use loop for risk research."""
     settings = get_settings()
@@ -323,7 +348,7 @@ def _review_with_tools(
     if not check_budget(Provider.GOOGLE.value):
         return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
 
-    user_prompt = _build_user_prompt(trade_proposal, portfolio_context, market_context)
+    user_prompt = _build_user_prompt(trade_proposal, portfolio_context, market_context, peer_argument)
     sys_prompt = SYSTEM_PROMPT + "\n\nYou may use research tools to check risk factors, macro headwinds, or SEC filings. Use sparingly (1-2 searches). When done, respond with JSON only."
 
     tools = _gemini_tool_declarations()
@@ -387,11 +412,11 @@ def _review_with_tools(
 
             contents.append(types.Content(parts=tool_response_parts, role="user"))
 
-        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
+        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id, peer_argument=peer_argument)
 
     except Exception as e:
         logger.error(f"Gemini tool-use moderation failed: {e}")
-        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id)
+        return _review_single_turn(trade_proposal, portfolio_context, market_context, cycle_id, peer_argument=peer_argument)
 
 
 def _clamp_gemini_scores(result: dict[str, Any]) -> dict[str, Any]:

@@ -1276,7 +1276,7 @@ class ConversationOrchestrator:
                 turn_id=turn_id,
                 action_type="cancel_orders",
                 status="awaiting_confirmation",
-                title=f"Cancel pending {intent.cancel_order_class.replace('_', ' ')} orders",
+                title=f"Cancel pending {(intent.cancel_order_class or 'any').replace('_', ' ')} orders",
                 ticker=tickers[0],
                 payload_json={
                     "tickers": tickers,

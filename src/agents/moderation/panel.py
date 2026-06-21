@@ -19,6 +19,29 @@ from src.utils.logger import get_logger
 logger = get_logger("moderation_panel")
 
 
+def _format_peer_argument(
+    verdict: dict[str, Any] | None,
+    *,
+    anonymize: bool,
+    fallback_label: str,
+) -> str:
+    """Render one moderator's opening verdict as input for the other's rebuttal turn."""
+    if not isinstance(verdict, dict):
+        return ""
+    name = "A fellow committee analyst" if anonymize else fallback_label
+    lines = [f"{name} reached this verdict: {verdict.get('verdict', 'UNKNOWN')}"]
+    reasoning = verdict.get("reasoning") or verdict.get("assessment")
+    if reasoning:
+        lines.append(f"Their reasoning: {reasoning}")
+    flags = verdict.get("risk_flags")
+    if isinstance(flags, list) and flags:
+        lines.append("Risks they flagged: " + ", ".join(str(f) for f in flags))
+    for key, label in (("growth_score", "growth"), ("risk_score", "risk"), ("confidence_score", "confidence")):
+        if verdict.get(key) is not None:
+            lines.append(f"Their {label} score: {verdict[key]}")
+    return "\n".join(lines)
+
+
 class ModerationResult:
     """Result of the moderation panel review."""
 
@@ -31,6 +54,9 @@ class ModerationResult:
         gemini_verdict: dict[str, Any] | None,
         moderators_available: int,
         caution_flag: bool = False,
+        debate_rounds: int = 1,
+        gpt_verdict_changed: bool | None = None,
+        gemini_verdict_changed: bool | None = None,
     ) -> None:
         self.ticker = ticker
         self.consensus = consensus  # APPROVED, BLOCKED, CAUTION
@@ -39,6 +65,10 @@ class ModerationResult:
         self.gemini_verdict = gemini_verdict
         self.moderators_available = moderators_available
         self.caution_flag = caution_flag
+        # Debate telemetry (for offline benefit measurement over time).
+        self.debate_rounds = debate_rounds
+        self.gpt_verdict_changed = gpt_verdict_changed
+        self.gemini_verdict_changed = gemini_verdict_changed
 
     @property
     def gpt_score(self) -> int | float | None:
@@ -205,6 +235,33 @@ class ModerationPanel:
                 except Exception as exc:
                     logger.error(f"Gemini moderator failed for {ticker}: {exc}")
 
+        # Multi-turn debate: let the two moderators read and rebut each other's
+        # opening arguments before their final verdicts (kill switch: debate_enabled,
+        # debate_rounds). Only meaningful when both moderators produced an opening.
+        debate_rounds_run = 1
+        gpt_verdict_changed: bool | None = None
+        gemini_verdict_changed: bool | None = None
+        if (
+            self.settings.debate_enabled
+            and self.settings.debate_rounds >= 2
+            and gpt4o_result is not None
+            and gemini_result is not None
+        ):
+            opening_gpt_verdict = gpt4o_result.get("verdict")
+            opening_gemini_verdict = gemini_result.get("verdict")
+            gpt4o_result, gemini_result = self._run_debate_rounds(
+                trade_proposal=trade_proposal,
+                portfolio_context=portfolio_context,
+                market_context=market_context,
+                cycle_id=cycle_id,
+                research_executor=research_executor,
+                gpt4o_result=gpt4o_result,
+                gemini_result=gemini_result,
+            )
+            debate_rounds_run = self.settings.debate_rounds
+            gpt_verdict_changed = bool(gpt4o_result.get("verdict") != opening_gpt_verdict)
+            gemini_verdict_changed = bool(gemini_result.get("verdict") != opening_gemini_verdict)
+
         # Count available moderators
         moderators_available = sum([
             1 if gpt4o_result else 0,
@@ -228,12 +285,94 @@ class ModerationPanel:
             gemini_verdict=gemini_result,
             moderators_available=moderators_available,
             caution_flag=(consensus == "CAUTION"),
+            debate_rounds=debate_rounds_run,
+            gpt_verdict_changed=gpt_verdict_changed,
+            gemini_verdict_changed=gemini_verdict_changed,
         )
 
         # Log to database
         self._log_moderation(result, cycle_id)
 
         return result
+
+    def _run_debate_rounds(
+        self,
+        *,
+        trade_proposal: dict[str, Any],
+        portfolio_context: str,
+        market_context: dict[str, Any],
+        cycle_id: str,
+        research_executor: Any,
+        gpt4o_result: dict[str, Any],
+        gemini_result: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Run rebuttal rounds where each moderator responds to the other's argument.
+
+        Each round is simultaneous: both moderators see the other's *previous*
+        argument and re-issue a verdict. A failed rebuttal keeps the prior verdict,
+        so debate never makes the committee less available than the opening round.
+        """
+        anonymize = self.settings.debate_anonymize
+        rebuttal_rounds = self.settings.debate_rounds - 1
+
+        for _ in range(rebuttal_rounds):
+            gpt_peer = _format_peer_argument(
+                gemini_result, anonymize=anonymize, fallback_label="The Gemini risk assessor"
+            )
+            gem_peer = _format_peer_argument(
+                gpt4o_result, anonymize=anonymize, fallback_label="The GPT-4o skeptic"
+            )
+
+            def _rebut_gpt4o() -> dict[str, Any] | None:
+                res = openai_mod.review_trade(
+                    trade_proposal, portfolio_context, market_context, cycle_id,
+                    research_executor=research_executor if self.settings.skeptic_research_enabled else None,
+                    peer_argument=gpt_peer,
+                )
+                return res if res.get("available", False) else None
+
+            def _rebut_gemini() -> dict[str, Any] | None:
+                res = gemini_mod.review_trade(
+                    trade_proposal, portfolio_context, market_context, cycle_id,
+                    research_executor=research_executor if self.settings.risk_research_enabled else None,
+                    peer_argument=gem_peer,
+                )
+                return res if res.get("available", False) else None
+
+            new_gpt: dict[str, Any] | None = None
+            new_gem: dict[str, Any] | None = None
+
+            if self.settings.parallel_moderation_enabled:
+                from concurrent.futures import ThreadPoolExecutor
+
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    gpt_future = executor.submit(_rebut_gpt4o)
+                    gem_future = executor.submit(_rebut_gemini)
+                    try:
+                        new_gpt = gpt_future.result()
+                    except Exception as exc:
+                        logger.error(f"GPT-4o rebuttal failed for {trade_proposal.get('ticker')}: {exc}")
+                    try:
+                        new_gem = gem_future.result()
+                    except Exception as exc:
+                        logger.error(f"Gemini rebuttal failed for {trade_proposal.get('ticker')}: {exc}")
+            else:
+                try:
+                    new_gpt = _rebut_gpt4o()
+                except Exception as exc:
+                    logger.error(f"GPT-4o rebuttal failed for {trade_proposal.get('ticker')}: {exc}")
+                try:
+                    new_gem = _rebut_gemini()
+                except Exception as exc:
+                    logger.error(f"Gemini rebuttal failed for {trade_proposal.get('ticker')}: {exc}")
+
+            # Keep prior verdict if a rebuttal failed (debate is never worse than opening).
+            if new_gpt is not None:
+                gpt4o_result = new_gpt
+            if new_gem is not None:
+                gemini_result = new_gem
+
+        return gpt4o_result, gemini_result
 
     def _determine_consensus(
         self,
@@ -331,6 +470,7 @@ class ModerationPanel:
                 reasoning="Primary strategy proposal",
                 consensus=result.consensus,
                 prompt_hash=strategy_hash,
+                debate_rounds=result.debate_rounds,
             ))
 
             if result.gpt4o_verdict:
@@ -349,6 +489,8 @@ class ModerationPanel:
                     output_tokens=_safe_int_score(gpt.get("output_tokens")),
                     cost_gbp=_safe_float_cost(gpt.get("cost_gbp")),
                     prompt_hash=skeptic_hash,
+                    debate_rounds=result.debate_rounds,
+                    verdict_changed_in_debate=result.gpt_verdict_changed,
                 ))
 
             if result.gemini_verdict:
@@ -369,6 +511,8 @@ class ModerationPanel:
                     output_tokens=_safe_int_score(gem.get("output_tokens")),
                     cost_gbp=_safe_float_cost(gem.get("cost_gbp")),
                     prompt_hash=risk_hash,
+                    debate_rounds=result.debate_rounds,
+                    verdict_changed_in_debate=result.gemini_verdict_changed,
                 ))
 
             session.commit()

@@ -6,6 +6,10 @@ export type NavItem = {
   mobileLabel?: string
 }
 
+export function getNavLabel(item: NavItem, _authenticated: boolean): string {
+  return item.label
+}
+
 const NAV_ITEMS: NavItem[] = [
   { label: 'Overview', to: '/', public: true },
   { label: 'Dashboard', to: '/dashboard', public: false },
@@ -21,7 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Order Mgmt', to: '/orders', public: true, inMoreMenu: true },
   { label: 'Chat', to: '/chat', public: true, inMoreMenu: true },
   { label: 'Evolution', to: '/evolution', public: true, inMoreMenu: true },
-  { label: 'Costs', to: '/costs', public: true, inMoreMenu: true },
+  { label: 'Costs & Latency', to: '/costs', public: true, inMoreMenu: true },
 ]
 
 export function getNavigationItems(authenticated: boolean) {

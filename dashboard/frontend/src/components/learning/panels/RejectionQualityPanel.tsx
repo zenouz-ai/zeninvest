@@ -73,7 +73,7 @@ export function RejectionQualityPanel() {
       />
       <InfoCallout
         why="Measures whether declined tickers underperformed (good misses) or would have been winners (false rejects), to validate or re-tune the gate."
-        freshSource="rejected_analysis_*.json · scripts/analyze_rejected_tickers.py"
+        freshSource="rejected_analysis_*.json · weekly learning_export or scripts/analyze_rejected_tickers.py"
         action="poetry run python scripts/analyze_rejected_tickers.py"
         roadmapId="US-6.7"
       />
@@ -107,6 +107,23 @@ export function RejectionQualityPanel() {
             <StatCard label="Stall rate" value={formatRate(data.stall_rate)} />
             <StatCard label="Selection gap" value={formatGap(data.selection_gap_pct)} />
           </div>
+
+          {data.funnel_metrics ? (
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-3 mb-4">
+              <StatCard
+                label="Forward veto precision"
+                value={formatRate(data.funnel_metrics.forward_precision_at_veto)}
+              />
+              <StatCard
+                label="Missed-winner rate"
+                value={formatRate(data.funnel_metrics.missed_winner_rate)}
+              />
+              <StatCard
+                label="Accepted winner rate"
+                value={formatRate(data.funnel_metrics.accepted_winner_rate)}
+              />
+            </div>
+          ) : null}
 
           {(data.by_stage ?? []).length > 0 ? (
             <div className="overflow-x-auto border border-terminal-border rounded-panel">
@@ -157,6 +174,34 @@ export function RejectionQualityPanel() {
           ) : (
             <p className="text-sm text-terminal-text-muted">No per-stage breakdown in artifact.</p>
           )}
+
+          {(data.history ?? []).length > 1 ? (
+            <div className="mt-4 border-t border-terminal-border pt-3">
+              <p className="text-xs uppercase tracking-wide text-terminal-text-dim mb-2">Trend (artifacts)</p>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs">
+                  <thead>
+                    <tr className="text-terminal-text-muted text-left">
+                      <th className="px-2 py-1">Artifact</th>
+                      <th className="px-2 py-1">Good-miss</th>
+                      <th className="px-2 py-1">False-reject</th>
+                      <th className="px-2 py-1">Gap</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.history ?? []).map((row) => (
+                      <tr key={row.artifact_name} className="border-t border-terminal-border/60">
+                        <td className="px-2 py-1 font-mono">{row.artifact_name}</td>
+                        <td className="px-2 py-1">{formatRate(row.good_miss_rate)}</td>
+                        <td className="px-2 py-1">{formatRate(row.false_reject_rate)}</td>
+                        <td className="px-2 py-1">{formatGap(row.selection_gap_pct)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
         </>
       )}
 

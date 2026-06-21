@@ -8,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.agents.opportunity.optimizer import OpportunityOptimizer
 from src.data.models import Base
+from src.utils.config import get_settings
 
 
 @pytest.fixture
@@ -53,27 +54,30 @@ def test_optimizer_executes_top_ranked_and_queues_rest():
 
 def test_optimizer_promotes_persistent_queue_on_second_cycle():
     optimizer = OpportunityOptimizer()
+    cap = get_settings().max_positions
     approved = [{"ticker": "GOOG_US_EQ", "final_allocation_pct": 5.0}]
     scores = {"GOOG_US_EQ": {"uov_ewma": 0.6, "uov_final": 0.4, "uov_z": 0.3}}
 
+    # Cycle 1: book full to capacity -> GOOG cannot execute, queues.
     first = optimizer.optimize_buys(
         cycle_id="cycle_1",
         approved_buys=approved,
         scores_by_ticker=scores,
-        existing_tickers={f"POS{i}_US_EQ" for i in range(20)},
+        existing_tickers={f"POS{i}_US_EQ" for i in range(cap)},
         cash_pct=20.0,
-        num_positions=20,
+        num_positions=cap,
     )
     assert "GOOG_US_EQ" not in first["execution_order"]
     assert any(q["ticker"] == "GOOG_US_EQ" for q in first["queued_candidates"])
 
+    # Cycle 2: a few slots free up -> GOOG executes.
     second = optimizer.optimize_buys(
         cycle_id="cycle_2",
         approved_buys=approved,
         scores_by_ticker=scores,
-        existing_tickers={f"POS{i}_US_EQ" for i in range(14)},
+        existing_tickers={f"POS{i}_US_EQ" for i in range(cap - 6)},
         cash_pct=20.0,
-        num_positions=14,
+        num_positions=cap - 6,
     )
     assert "GOOG_US_EQ" in second["execution_order"]
 
@@ -103,19 +107,21 @@ def test_optimizer_swap_suggestion_threshold():
 def test_optimizer_queue_ttl_expires_after_max_cycles():
     """Queued ticker is dropped after queue_ttl_cycles exceeded."""
     optimizer = OpportunityOptimizer()
+    cap = get_settings().max_positions
+    ttl = get_settings().opportunity_queue_ttl_cycles
     approved = [{"ticker": "SLOW_US_EQ", "final_allocation_pct": 5.0}]
     scores = {"SLOW_US_EQ": {"uov_ewma": 0.2, "uov_final": 0.1, "uov_z": 0.05}}
 
-    # Run queue_ttl + 1 cycles (TTL=6, so cycle 7 should expire it)
+    # Run ttl + 1 cycles at full capacity so the queued ticker ages out and expires.
     dropped_at_any_cycle = False
-    for i in range(1, 8):  # 7 cycles
+    for i in range(1, ttl + 2):
         result = optimizer.optimize_buys(
             cycle_id=f"cycle_{i}",
             approved_buys=approved,
             scores_by_ticker=scores,
-            existing_tickers={f"POS{j}_US_EQ" for j in range(20)},  # Full capacity
+            existing_tickers={f"POS{j}_US_EQ" for j in range(cap)},  # Full capacity
             cash_pct=20.0,
-            num_positions=20,
+            num_positions=cap,
         )
         if any(
             d["ticker"] == "SLOW_US_EQ" and d["reason"] == "queue_ttl_expired"
@@ -150,6 +156,7 @@ def test_optimizer_rejection_details_below_queue_threshold():
 def test_optimizer_capacity_gated_rejection():
     """Queued ticker at capacity gets capacity_gated reason."""
     optimizer = OpportunityOptimizer()
+    cap = get_settings().max_positions
     approved = [{"ticker": "CAP_US_EQ", "final_allocation_pct": 5.0}]
     scores = {"CAP_US_EQ": {"uov_ewma": 0.2, "uov_final": 0.1, "uov_z": 0.1}}
 
@@ -158,9 +165,9 @@ def test_optimizer_capacity_gated_rejection():
         cycle_id="cycle_1",
         approved_buys=approved,
         scores_by_ticker=scores,
-        existing_tickers={f"POS{j}_US_EQ" for j in range(20)},
+        existing_tickers={f"POS{j}_US_EQ" for j in range(cap)},
         cash_pct=20.0,
-        num_positions=20,
+        num_positions=cap,
     )
 
     # Cycle 2: still at capacity — should be capacity_gated
@@ -168,9 +175,9 @@ def test_optimizer_capacity_gated_rejection():
         cycle_id="cycle_2",
         approved_buys=approved,
         scores_by_ticker=scores,
-        existing_tickers={f"POS{j}_US_EQ" for j in range(20)},
+        existing_tickers={f"POS{j}_US_EQ" for j in range(cap)},
         cash_pct=20.0,
-        num_positions=20,
+        num_positions=cap,
     )
 
     assert "CAP_US_EQ" in result["rejection_details"]

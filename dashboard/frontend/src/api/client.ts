@@ -292,6 +292,10 @@ export const learningApi = {
     const response = await api.get('/api/learning/evaluation/research')
     return response.data
   },
+  getCommitteeDebateHealth: async (days = 30): Promise<LearningDebateHealth> => {
+    const response = await api.get('/api/learning/committee/debate', { params: { days } })
+    return response.data
+  },
   evaluationReportUrl: (runId: string): string =>
     `${API_BASE_URL}/api/learning/evaluation/${runId}/report`,
   getShadowSummary: async (days = 30): Promise<LearningShadowSummary> => {
@@ -345,6 +349,16 @@ export interface RejectionAnalysisResponse {
   by_stage?: RejectionStageStat[]
   artifact_name?: string
   artifact_mtime?: string
+  history?: Array<{
+    artifact_name: string
+    generated_at?: string
+    good_miss_rate?: number | null
+    false_reject_rate?: number | null
+    selection_gap_pct?: number | null
+    coverage_pct?: number | null
+    rejected_total?: number
+  }>
+  funnel_metrics?: Record<string, number | null>
 }
 
 export interface LearningExportSummary {
@@ -414,6 +428,18 @@ export interface LearningResearchEvaluation {
   policies: Record<string, Record<string, unknown>>
 }
 
+export interface LearningDebateHealth {
+  days: number
+  total_decisions: number
+  debate_participation_rate: number
+  debate_churn_rate: number
+  per_moderator_churn: Record<string, { n: number; churn_rate: number }>
+  rounds_distribution: Record<string, number>
+  consensus_mix: Record<string, number>
+  skeptic_tool_calls: number
+  moderation_cost_gbp: number
+}
+
 export interface LearningShadowSummary {
   days: number
   span_days?: number
@@ -444,6 +470,17 @@ export const memoryApi = {
   similar: async (q: string, params?: { ticker?: string; regime?: string; k?: number }) => {
     const response = await api.get('/api/memory/similar', { params: { q, ...params } })
     return response.data as { query: string; hits: Array<Record<string, unknown>>; count: number }
+  },
+  graphSectorRegime: async (sector: string, regime: string, limit = 10) => {
+    const response = await api.get('/api/memory/graph/sector-regime', {
+      params: { sector, regime, limit },
+    })
+    return response.data as {
+      sector: string
+      regime: string
+      decisions: Array<Record<string, unknown>>
+      count: number
+    }
   },
 }
 
@@ -664,7 +701,23 @@ export const universeApi = {
   },
 
   getBubble: async (params?: { limit?: number }): Promise<UniverseBubbleItem[]> => {
-    const response = await api.get('/api/universe/bubble', { params: params ?? { limit: 200 } })
+    const response = await api.get('/api/universe/bubble', { params: params ?? { limit: 500 } })
+    return response.data
+  },
+
+  getCoverage: async (): Promise<{
+    total_instruments: number
+    enriched_count: number
+    ever_screened_count: number
+    investigated_count: number
+    needs_enrichment_count: number
+    latest_enrich_run: {
+      started_at: string | null
+      status: string
+      summary_json: Record<string, unknown> | null
+    } | null
+  }> => {
+    const response = await api.get('/api/universe/coverage')
     return response.data
   },
 }
@@ -926,6 +979,76 @@ export const costsApi = {
   },
   getDegradation: async (): Promise<{ level: string; message?: string }> => {
     const response = await api.get('/api/costs/degradation')
+    return response.data
+  },
+}
+
+export interface LatencyScheduleJob {
+  job_id: string
+  run_type: string
+  cron: string
+  category: string
+  shares_cycle_lock: boolean
+}
+
+export interface LatencySchedule {
+  timezone: string
+  cycle_lock_note: string
+  jobs: LatencyScheduleJob[]
+}
+
+export interface LatencySummary {
+  days: number
+  run_types: Record<string, { count: number; avg_seconds: number; p50_seconds: number; p95_seconds: number }>
+  phases: Record<string, { count: number; p50_seconds: number; p95_seconds: number }>
+  steps: Record<string, { count: number; p50_seconds: number; p95_seconds: number }>
+  off_hours_jobs: Array<{
+    cycle_id: string
+    run_type: string
+    duration_seconds: number
+    started_at: string | null
+    status: string
+  }>
+  truncation_rate?: number | null
+  baseline_delta?: Record<string, number | null> | null
+  frozen_baseline?: {
+    captured_at?: string
+    p50_seconds?: number
+    p95_seconds?: number
+    truncation_rate?: number
+    note?: string
+  } | null
+}
+
+export interface LatencySlowCall {
+  service: string
+  endpoint: string
+  count: number
+  avg_duration_ms: number
+  p95_duration_ms: number
+  max_duration_ms: number
+}
+
+export const latencyApi = {
+  getSchedule: async (): Promise<LatencySchedule> => {
+    const response = await api.get('/api/latency/schedule')
+    return response.data
+  },
+  getSummary: async (params?: { days?: number }): Promise<LatencySummary> => {
+    const response = await api.get('/api/latency/summary', { params })
+    return response.data
+  },
+  getSlowCalls: async (params?: { days?: number; min_duration_ms?: number }): Promise<LatencySlowCall[]> => {
+    const response = await api.get('/api/latency/slow-calls', { params })
+    return response.data
+  },
+  triggerBaseline: async (params?: { dry_run?: boolean; include_learning?: boolean }): Promise<{
+    status: string
+    dry_run: boolean
+    include_learning: boolean
+    message: string
+  }> => {
+    const response = await api.post('/api/latency/baseline', null, { params })
     return response.data
   },
 }

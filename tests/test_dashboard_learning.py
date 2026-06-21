@@ -62,7 +62,7 @@ def _seed_run(run_id: str = "20260512T100400Z") -> int:
     try:
         row = LearningRun(
             run_id=run_id,
-            dataset_version="v2",
+            dataset_version="v6",
             model_kind="bundle",
             status="completed",
             rows=1950,
@@ -131,6 +131,37 @@ def test_runs_endpoints_require_auth(dashboard_env) -> None:
     client = TestClient(_make_app(), base_url="http://localhost")
     unauth = client.get("/api/learning/runs")
     assert unauth.status_code == 401
+
+
+def test_committee_debate_health_endpoint(dashboard_env) -> None:
+    from src.data.models import ModerationLog
+
+    Base.metadata.create_all(bind=engine)
+    session = get_session()
+    try:
+        session.query(ModerationLog).delete()
+        now = datetime.now(timezone.utc)
+        session.add_all([
+            ModerationLog(timestamp=now, cycle_id="d1", ticker="AAA_US_EQ", moderator="gpt-4o",
+                          verdict="AGREE", consensus="APPROVED", debate_rounds=2,
+                          verdict_changed_in_debate=True),
+            ModerationLog(timestamp=now, cycle_id="d1", ticker="AAA_US_EQ", moderator="gemini-2.5-flash",
+                          verdict="AGREE", consensus="APPROVED", debate_rounds=2,
+                          verdict_changed_in_debate=False),
+        ])
+        session.commit()
+    finally:
+        session.close()
+
+    client = TestClient(_make_app(), base_url="http://localhost")
+    assert client.get("/api/learning/committee/debate").status_code == 401  # gated by auth
+    _login(client)
+    resp = client.get("/api/learning/committee/debate?days=30")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total_decisions"] == 1
+    assert body["debate_churn_rate"] == 0.5
+    assert body["consensus_mix"] == {"APPROVED": 1}
 
 
 def test_runs_empty_returns_empty_list(dashboard_env) -> None:
@@ -445,8 +476,18 @@ def test_evaluation_research(monkeypatch, tmp_path, dashboard_env) -> None:
     assert "challenger_no_research" in body["policies"]
 
 
-def _seed_rejection_artifact(tmp_root: Path, stamp: str, *, false_reject_rate: float = 0.3) -> Path:
-    reports_dir = tmp_root / "data" / "learning" / "reports"
+def _seed_rejection_artifact(
+    tmp_root: Path,
+    stamp: str,
+    *,
+    false_reject_rate: float = 0.3,
+    use_learning_root: bool = False,
+) -> Path:
+    reports_dir = (
+        tmp_root / "reports"
+        if use_learning_root
+        else tmp_root / "data" / "learning" / "reports"
+    )
     reports_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "generated_at": f"2026-06-{stamp[-2:]}T00:00:00+00:00",
@@ -516,7 +557,7 @@ def test_rejection_analysis_empty_state(monkeypatch, tmp_path, dashboard_env) ->
 def test_rejection_analysis_honors_learning_root(monkeypatch, tmp_path, dashboard_env) -> None:
     # When INVESTMENT_AGENT_LEARNING_ROOT is set it wins over _project_root.
     other_root = tmp_path / "sandbox"
-    _seed_rejection_artifact(other_root, "20260610")
+    _seed_rejection_artifact(other_root, "20260610", use_learning_root=True)
     monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path / "unused")
     monkeypatch.setenv("INVESTMENT_AGENT_LEARNING_ROOT", str(other_root))
     client = TestClient(_make_app(), base_url="http://localhost")
@@ -526,6 +567,35 @@ def test_rejection_analysis_honors_learning_root(monkeypatch, tmp_path, dashboar
     assert resp.status_code == 200
     body = resp.json()
     assert body["artifact_name"] == "rejected_analysis_20260610.json"
+
+
+def test_rejection_analysis_includes_history(monkeypatch, tmp_path, dashboard_env) -> None:
+    _seed_rejection_artifact(tmp_path, "20260601")
+    _seed_rejection_artifact(tmp_path, "20260615")
+    monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path)
+    monkeypatch.delenv("INVESTMENT_AGENT_LEARNING_ROOT", raising=False)
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+
+    resp = client.get("/api/learning/rejection-analysis")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body.get("history") or []) == 2
+
+
+def test_learning_status_includes_rejection_freshness(monkeypatch, tmp_path, dashboard_env) -> None:
+    _reset_runs()
+    _seed_rejection_artifact(tmp_path, "20260615", use_learning_root=True)
+    monkeypatch.setattr(learning_router, "_project_root", lambda: tmp_path / "unused")
+    monkeypatch.setenv("INVESTMENT_AGENT_LEARNING_ROOT", str(tmp_path))
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+
+    resp = client.get("/api/learning/status")
+    assert resp.status_code == 200
+    rejection = resp.json().get("rejection_analysis") or {}
+    assert rejection.get("available") is True
+    assert rejection.get("rejected_total") == 120
 
 
 def test_rejection_analysis_requires_auth(dashboard_env) -> None:

@@ -414,6 +414,21 @@ class Settings:
         """US-9.5: run GPT-4o + Gemini moderators concurrently. Kill switch."""
         return bool(self.moderation.get("parallel_enabled", True))
 
+    @property
+    def debate_enabled(self) -> bool:
+        """Multi-turn committee debate (moderators rebut each other). Kill switch."""
+        return bool(self.moderation.get("debate_enabled", True))
+
+    @property
+    def debate_rounds(self) -> int:
+        """Total committee rounds: 1 = opening only (legacy one-shot); 2 = opening + 1 rebuttal."""
+        return max(1, int(self.moderation.get("debate_rounds", 2)))
+
+    @property
+    def debate_anonymize(self) -> bool:
+        """Present peer arguments anonymously (Analyst A/B) to reduce identity bias."""
+        return bool(self.moderation.get("debate_anonymize", True))
+
     # --- Models ---
     @property
     def models(self) -> dict[str, str]:
@@ -615,6 +630,11 @@ class Settings:
     def uninvestigated_target_pct(self) -> float:
         """Share of per-cycle candidates from the "new" pool (never reviewed)."""
         return float(self.universe.get("uninvestigated_target_pct", 0.5))
+
+    @property
+    def never_reviewed_priority(self) -> bool:
+        """Prioritize never-investigated tickers in screener sampling."""
+        return bool(self.universe.get("never_reviewed_priority", True))
 
     @property
     def batch_enrichment_enabled(self) -> bool:
@@ -823,6 +843,25 @@ class Settings:
     @property
     def resubmit_partial_fills(self) -> bool:
         return bool(self.order_management.get("resubmit_partial_fills", True))
+
+    @property
+    def wallet_reconcile_per_cycle_enabled(self) -> bool:
+        """When True, run a cheap incremental wallet reconcile after each broker sync.
+
+        Kill switch for the per-cycle/refresh GBP wallet reconcile. The full
+        108-ticker backfill is always available via ``--reconcile-wallets``.
+        """
+        return bool(self.order_management.get("wallet_reconcile_per_cycle_enabled", True))
+
+    @property
+    def wallet_reconcile_lookback_days(self) -> int:
+        """Lookback window (days) for picking recently-placed orders to reconcile per cycle."""
+        return int(self.order_management.get("wallet_reconcile_lookback_days", 7))
+
+    @property
+    def wallet_reconcile_max_seconds(self) -> float:
+        """Wall-clock budget (seconds) for the per-cycle wallet reconcile while holding the cycle lock."""
+        return float(self.order_management.get("wallet_reconcile_max_seconds", 120.0))
 
     @property
     def execution_quality(self) -> dict[str, Any]:
@@ -1240,6 +1279,10 @@ class Settings:
         return bool(self.learning.get("export_train_enabled", False))
 
     @property
+    def learning_export_sync_embeddings_enabled(self) -> bool:
+        return bool(self.learning.get("export_sync_embeddings_enabled", False))
+
+    @property
     def learning_export_dataset_version(self) -> str:
         return str(self.learning.get("export_dataset_version", "v6"))
 
@@ -1313,6 +1356,26 @@ class Settings:
     @property
     def learning_memory_veto_threshold(self) -> float:
         return float(self.learning.get("memory_veto_threshold", 0.5))
+
+    @property
+    def learning_mlflow_enabled(self) -> bool:
+        return bool(self.learning.get("mlflow_enabled", False))
+
+    @property
+    def learning_mlflow_uri(self) -> str:
+        return str(self.learning.get("mlflow_uri", "file:./data/learning/mlflow"))
+
+    @property
+    def learning_alerts_enabled(self) -> bool:
+        return bool(self.learning.get("alerts_enabled", True))
+
+    @property
+    def learning_alerts_shadow_disagreement_threshold(self) -> float:
+        return float(self.learning.get("alerts_shadow_disagreement_threshold", 0.5))
+
+    @property
+    def learning_alerts_min_shadow_scores(self) -> int:
+        return int(self.learning.get("alerts_min_shadow_scores", 20))
 
     # --- Dashboard ---
     @property

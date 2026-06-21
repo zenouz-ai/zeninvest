@@ -64,18 +64,18 @@ export default function PublicCosts() {
     <div className="space-y-6">
       <PageBrandHeader
         eyebrow="PUBLIC"
-        title="Costs"
-        description="A public aggregate view of operating costs. The anonymous surface shows daily and monthly totals only, without provider-specific degradation controls or internal cost diagnostics."
+        title="Costs & Latency"
+        description="Public aggregate spend totals for LLM, API, and research. Pipeline latency charts and per-phase breakdowns require operator sign-in."
       />
 
       <PublicPageBanner
         mode="live"
-        message="Public cost reporting is aggregated and read-only. Provider-level controls, degradation status, and per-cycle operational telemetry remain private."
+        message="Public view shows rolled-up spend only. Latency observability (schedule map, p50/p95, slow API calls) and provider-level degradation controls remain operator-only."
       />
 
       {error ? (
         <Panel>
-          <EmptyState message="Public costs unavailable." hint={error} />
+          <EmptyState message="Costs & Latency data unavailable." hint={error} />
         </Panel>
       ) : (
         <>
@@ -108,7 +108,7 @@ export default function PublicCosts() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold tracking-[-0.02em]">Monthly Totals</h2>
-                <p className="mt-1 text-sm text-terminal-text-dim">Six months of aggregate public cost reporting.</p>
+                <p className="mt-1 text-sm text-terminal-text-dim">Six months of aggregate public spend reporting.</p>
               </div>
               <StatusPill label={`${monthly.length} months`} variant="dim" />
             </div>

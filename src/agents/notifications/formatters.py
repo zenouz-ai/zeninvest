@@ -40,6 +40,8 @@ def _render_slack(event: NotificationEvent, *, slack_max_chars: int) -> list[Not
         body = _slack_trade_without_stop(event.payload, prefix=prefix)
     elif event.event_type == "execution_quality_alert":
         body = _slack_execution_quality_alert(event.payload, prefix=prefix)
+    elif event.event_type == "learning_alert":
+        body = _slack_learning_alert(event.payload, prefix=prefix)
     else:
         body = _fallback_body(event)
 
@@ -67,6 +69,8 @@ def _render_email(event: NotificationEvent) -> list[NotificationMessage]:
         body = _email_trade_without_stop(event.payload, prefix=prefix)
     elif event.event_type == "execution_quality_alert":
         body = _email_execution_quality_alert(event.payload, prefix=prefix)
+    elif event.event_type == "learning_alert":
+        body = _slack_learning_alert(event.payload, prefix=prefix)
     else:
         body = _fallback_body(event)
 
@@ -83,6 +87,7 @@ def _title_for_event(event: NotificationEvent) -> str:
         "order_adjustment": "Order Adjustment",
         "trade_without_stop": "Trade Without Stop-Loss",
         "execution_quality_alert": "Execution Quality Alert",
+        "learning_alert": "Learning Shadow Alert",
     }
     return mapping.get(event.event_type, event.event_type)
 
@@ -514,6 +519,26 @@ def _slack_execution_quality_alert(payload: dict[str, Any], *, prefix: str) -> s
         f"Threshold: {payload.get('warning_threshold_bps', 'N/A')} bps\n"
         f"Filled market orders: {payload.get('fill_count', 'N/A')}\n"
         f"Detail: {_excerpt(payload.get('warning_message', ''), 240)}"
+    )
+
+
+def _slack_learning_alert(payload: dict[str, Any], *, prefix: str) -> str:
+    alert_type = payload.get("alert_type", "learning_alert")
+    if alert_type == "gate_regression":
+        signals = payload.get("stop_the_line") or []
+        return (
+            f"{prefix} [LEARNING-GATES]\n"
+            f"Evaluation run: {payload.get('evaluation_run_id', 'N/A')}\n"
+            f"Stop-the-line: {', '.join(str(s) for s in signals) or 'none'}\n"
+            f"Summary: {_excerpt(payload.get('summary', ''), 240)}"
+        )
+    return (
+        f"{prefix} [SHADOW-DISAGREEMENT]\n"
+        f"Policy: {payload.get('policy_id', 'N/A')}\n"
+        f"Rate: {payload.get('disagreement_rate', 'N/A')} "
+        f"(threshold {payload.get('threshold', 'N/A')})\n"
+        f"Scores: {payload.get('disagreements', 'N/A')}/{payload.get('total_scores', 'N/A')} "
+        f"over {payload.get('span_days', 'N/A')}d"
     )
 
 

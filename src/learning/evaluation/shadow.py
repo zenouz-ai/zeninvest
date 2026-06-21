@@ -190,16 +190,12 @@ class ShadowEvaluator:
             return []
 
     def _latest_artifact_run_id(self) -> str | None:
-        from src.data.models import LearningRun
+        from src.data.database import get_session
+        from src.learning.registry import active_dataset_version, resolve_champion_run
 
         session = get_session()
         try:
-            row = (
-                session.query(LearningRun)
-                .filter(LearningRun.status == "completed")
-                .order_by(LearningRun.created_at.desc())
-                .first()
-            )
+            row = resolve_champion_run(session, dataset_version=active_dataset_version())
             return row.run_id if row else None
         finally:
             session.close()

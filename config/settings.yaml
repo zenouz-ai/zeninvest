@@ -32,7 +32,7 @@ trading:
   market_days: [0, 1, 2, 3, 4]  # Mon-Fri
   skip_market_holidays: true     # Skip analysis cycles on NYSE holidays
   cycle_timeout_seconds: 1800    # Max seconds per cycle before timeout (30 min default)
-  max_positions: 20
+  max_positions: 35
   min_position_pct: 2
   max_position_pct: 15
   cash_floor_pct: 10
@@ -79,6 +79,9 @@ moderation:
   require_consensus: true
   consensus_threshold: 2
   parallel_enabled: true   # US-9.5: run GPT-4o + Gemini moderators concurrently (kill switch)
+  debate_enabled: true     # Multi-turn committee debate: moderators see + rebut each other before final verdict
+  debate_rounds: 2         # 1 = opening one-shot only (legacy); 2 = opening + one simultaneous rebuttal round
+  debate_anonymize: true   # Present each peer's argument anonymously (reduces identity/model bias)
 
 models:
   strategy: claude-sonnet-4-5-20250929
@@ -116,7 +119,7 @@ guidance:
   staleness_hours: 48
 
 universe:
-  max_candidates: 40          # Max new stocks to screen per cycle (increased from 30)
+  max_candidates: 50          # Max new stocks to screen per cycle (increased from 40 for higher new-ticker throughput)
   candidates_per_sector: 5    # Min candidates sampled from each sector
   large_cap_pct: 0.50         # candidates from large cap ($10B+)
   mid_cap_pct: 0.30           # from mid cap ($2B-$10B)
@@ -128,7 +131,8 @@ universe:
   effective_screening_cooldown_override: 4  # Allow the next intraday cycle to reconsider the prior pool
   review_cooldown_days: 2  # Faster autonomous re-review cadence for swing trading
   max_reviews_per_30_days: 10  # Higher autonomous re-review cap for active swing rotation
-  uninvestigated_target_pct: 0.5  # Target share of per-cycle candidates that have never been investigated (approx)
+  uninvestigated_target_pct: 0.65  # Target share of per-cycle candidates that have never been investigated (raised to bias toward new tickers without raising reviews)
+  never_reviewed_priority: true  # Prioritize never-investigated / oldest-screened tickers in screener sampling
   batch_enrichment_enabled: true   # Scheduled job to enrich instruments missing sector/market_cap
   batch_enrichment_per_run: 50     # Max instruments to enrich per scheduler run
   data_fallback_web_search_enabled: true  # Use Brave/Tavily for analyst/news when Finnhub/AV fail or time out
@@ -161,9 +165,9 @@ research:
 opportunity:
   enabled: true
   mode: active  # shadow|active
-  immediate_threshold_z: 0.0  # allow more approved buys to execute in the same cycle
-  queue_threshold_z: -0.15    # keep more borderline candidates queued instead of filtering them out
-  queue_ttl_cycles: 6       # extended to give queued tickers more cycles to promote
+  immediate_threshold_z: -0.2  # execute more approved buys in the same cycle (capacity/cash still gate); raised throughput
+  queue_threshold_z: -0.35    # retain more borderline approved candidates in the queue for promotion instead of dropping them
+  queue_ttl_cycles: 8       # longer runway for queued tickers to promote as slots free up
   swap_delta_z: 1.0
   ewma_half_life_cycles: 6
   weights:
@@ -202,6 +206,9 @@ order_management:
   default_stop_loss_pct: -12       # Default stop-loss % when placing missing stops (no ATR or no decision)
   resubmit_partial_fills: true     # Retry eligible cancelled partial BUY remainders once when a later cycle still approves the BUY
   reassess_stops: true            # Reassess stop-losses each cycle based on ATR
+  wallet_reconcile_per_cycle_enabled: true   # Run cheap incremental GBP wallet reconcile after each broker sync (full backfill via --reconcile-wallets)
+  wallet_reconcile_lookback_days: 7          # Incremental reconcile window: only re-scan tickers with orders placed within N days (plus any missing GBP truth)
+  wallet_reconcile_max_seconds: 120          # Wall-clock budget for per-cycle reconcile so it never overruns the cycle lock
   execution_quality:
     enabled: true
     alert_window_days: 7
@@ -249,6 +256,7 @@ notifications:
     order_adjustment: ["slack"]
     trade_without_stop: ["slack", "email"]
     execution_quality_alert: ["slack"]
+    learning_alert: ["slack", "email"]
   timeout_seconds: 5
   max_retries: 2
   dedup_window_seconds: 300
@@ -304,6 +312,7 @@ learning:
   export_day_of_week: sun
   export_time_utc: "13:00"
   export_train_enabled: false
+  export_sync_embeddings_enabled: false   # optional post-export vector index build (respects embedding budget)
   export_dataset_version: v6
   success_min_profit_per_day_pct: 0.25
   stall_min_gain_per_day_pct: -0.05
@@ -324,3 +333,8 @@ learning:
   gbm_veto_threshold: 0.35
   gbm_prioritize_threshold: 0.40
   memory_veto_threshold: 0.5
+  mlflow_enabled: false
+  mlflow_uri: "file:./data/learning/mlflow"
+  alerts_enabled: true
+  alerts_shadow_disagreement_threshold: 0.5
+  alerts_min_shadow_scores: 20

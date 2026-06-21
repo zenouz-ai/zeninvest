@@ -197,7 +197,7 @@ export default function PublicOverview() {
             ['Evolution', '/evolution', 'Static preview only.'],
             ['World News', '/world-news', 'Live macro headlines and regime context.'],
             ['Roadmap', '/roadmap', 'Full roadmap and architecture stay public.'],
-            ['Costs', '/costs', 'Aggregated live cost totals only.'],
+            ['Costs & Latency', '/costs', 'Public spend aggregates; latency detail after sign-in.'],
           ].map(([label, href, description]) => (
             <Link key={href} to={href} className="rounded-panel border border-terminal-border bg-terminal-bg/25 p-4 transition-colors hover:border-cyan/30 hover:bg-white/[0.03]">
               <div className="text-sm font-semibold text-terminal-text">{label}</div>
@@ -210,9 +210,9 @@ export default function PublicOverview() {
       <Panel className="space-y-4">
         <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
           <div>
-            <h2 className="text-xl font-semibold tracking-[-0.02em]">Aggregate Costs</h2>
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">Costs & Latency (public spend)</h2>
             <p className="mt-1 text-sm text-terminal-text-dim">
-              Monthly operating totals across LLM, API, and research spend.
+              Monthly operating totals across LLM, API, and research spend. Pipeline latency is operator-only.
             </p>
           </div>
           <StatusPill label={`${monthlyCosts.length} months`} variant="dim" />

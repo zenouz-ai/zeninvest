@@ -5,7 +5,7 @@ import { LoadingSpinner } from './components/LoadingSpinner'
 import { useDashboardAuthRequired } from './hooks/useDashboardAuthRequired'
 import { useSSE } from './hooks/useSSE'
 import { authApi, type AuthSession } from './api/client'
-import { getMoreNavigationItems, getPrimaryNavigationItems } from './navigation'
+import { getMoreNavigationItems, getNavLabel, getPrimaryNavigationItems } from './navigation'
 import { clearDashboardAuthRequired } from './utils/authErrorBridge'
 import { lazyWithRetry } from './utils/lazyWithRetry'
 
@@ -123,7 +123,7 @@ function MoreDropdown({ authenticated }: { authenticated: boolean }) {
         >
           {items.map((item) => (
             <NavLink key={item.to} to={item.to} className={dropdownLinkClass} onClick={() => setOpen(false)}>
-              {item.label}
+              {getNavLabel(item, authenticated)}
             </NavLink>
           ))}
         </div>
@@ -280,7 +280,7 @@ function DashboardShell() {
                   className={mobileLinkClass}
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {item.mobileLabel ?? item.label}
+                  {item.mobileLabel ?? getNavLabel(item, authenticated)}
                 </NavLink>
               ))}
               <div className="pt-2 pb-1">

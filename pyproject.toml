@@ -77,6 +77,12 @@ gymnasium = ">=0.29.0"
 # d3rlpy ships its own torch wheel; pin loosely so we can install on CPU-only hosts.
 d3rlpy = ">=2.5.0"
 
+[tool.poetry.group.mlflow]
+optional = true
+
+[tool.poetry.group.mlflow.dependencies]
+mlflow = ">=2.14.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
