@@ -404,6 +404,38 @@ class Settings:
     def post_earnings_drift_window_trading_days(self) -> int:
         return max(1, int(self.strategy.get("post_earnings_drift_window_trading_days", 10)))
 
+    @property
+    def strategy_slim_output_schema_enabled(self) -> bool:
+        return bool(self.strategy.get("slim_output_schema_enabled", False))
+
+    @property
+    def strategy_batched_synthesis_enabled(self) -> bool:
+        return bool(self.strategy.get("batched_synthesis_enabled", True))
+
+    @property
+    def strategy_candidate_research_enabled(self) -> bool:
+        return bool(self.strategy.get("candidate_research_enabled", True))
+
+    @property
+    def strategy_prompt_caching_enabled(self) -> bool:
+        return bool(self.strategy.get("prompt_caching_enabled", True))
+
+    @property
+    def strategy_hold_reasoning_max_sentences(self) -> int:
+        return max(1, int(self.strategy.get("hold_reasoning_max_sentences", 1)))
+
+    @property
+    def strategy_actionable_reasoning_max_sentences(self) -> int:
+        return max(1, int(self.strategy.get("actionable_reasoning_max_sentences", 2)))
+
+    @property
+    def strategy_sub_strategy_full_reasoning_top_n(self) -> int:
+        return max(1, int(self.strategy.get("sub_strategy_full_reasoning_top_n", 15)))
+
+    @property
+    def strategy_sub_strategy_compress_score_below(self) -> int:
+        return int(self.strategy.get("sub_strategy_compress_score_below", 40))
+
     # --- Moderation ---
     @property
     def moderation(self) -> dict[str, Any]:
@@ -428,6 +460,11 @@ class Settings:
     def debate_anonymize(self) -> bool:
         """Present peer arguments anonymously (Analyst A/B) to reduce identity bias."""
         return bool(self.moderation.get("debate_anonymize", True))
+
+    @property
+    def debate_skip_low_conviction(self) -> int:
+        """Skip debate rebuttal when both moderators AGREE and conviction is below this."""
+        return int(self.moderation.get("debate_skip_low_conviction", 60))
 
     # --- Models ---
     @property
@@ -736,6 +773,21 @@ class Settings:
     def alert_threshold_pct(self) -> float:
         return float(self.cost_limits["alert_threshold_pct"])
 
+    @property
+    def atomic_budget_enabled(self) -> bool:
+        """Opt-in atomic cost-budget reservation (P4-1, US-7.5).
+
+        When True, LLM calls reserve budget atomically (check-and-increment under
+        the DB write lock) instead of the legacy check-then-log path. Default False
+        preserves existing behavior. Kill switch for the reservation pipeline.
+        """
+        return bool(self.cost_limits.get("atomic_budget_enabled", False))
+
+    @property
+    def reservation_sweep_minutes(self) -> int:
+        """Age (minutes) after which orphaned pending budget reservations are swept."""
+        return int(self.cost_limits.get("reservation_sweep_minutes", 10))
+
     # --- Search API Limits (Brave, Tavily — monthly call budgets) ---
     @property
     def search_api_limits(self) -> dict[str, Any]:
@@ -852,6 +904,26 @@ class Settings:
         108-ticker backfill is always available via ``--reconcile-wallets``.
         """
         return bool(self.order_management.get("wallet_reconcile_per_cycle_enabled", True))
+
+    @property
+    def instrument_denylist_enabled(self) -> bool:
+        """Skip BUY re-attempts on tickers the broker recently rejected (P4-4, US-7.5).
+
+        Default True (protective). BUY-only — SELLs/protective stops are never blocked.
+        Kill switch for both recording and the pre-flight skip.
+        """
+        return bool(self.order_management.get("instrument_denylist_enabled", True))
+
+    @property
+    def instrument_denylist_ttl_hours(self) -> int:
+        """How long (hours) a rejected ticker stays on the BUY denial list."""
+        return int(self.order_management.get("instrument_denylist_ttl_hours", 24))
+
+    @property
+    def instrument_denylist_status_codes(self) -> list[int]:
+        """T212 HTTP status codes that trigger a denial-list entry on a failed BUY."""
+        raw = self.order_management.get("instrument_denylist_status_codes", [400, 403])
+        return [int(code) for code in raw]
 
     @property
     def wallet_reconcile_lookback_days(self) -> int:
@@ -1305,6 +1377,10 @@ class Settings:
     @property
     def learning_memory_inject_strategy(self) -> bool:
         return bool(self.learning.get("memory_inject_strategy", False))
+
+    @property
+    def learning_neo4j_enabled(self) -> bool:
+        return bool(self.learning.get("neo4j_enabled", False))
 
     @property
     def learning_neo4j_uri(self) -> str:

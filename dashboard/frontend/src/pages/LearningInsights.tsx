@@ -73,7 +73,7 @@ export default function LearningInsights() {
         }}
       </LearningTabs>
 
-      <ModelLabPanel runs={runs} />
+      <ModelLabPanel runs={runs} datasetVersion={status?.dataset_version} />
       <DataLabAccordion exports={exports} />
     </div>
   )

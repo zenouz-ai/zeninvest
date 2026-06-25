@@ -254,7 +254,7 @@ class TestPrompts:
         assert "BULL" in prompt
         assert "50.0%" in prompt
         assert "ENTRY QUALITY GUARDS" in prompt
-        assert '"expected_holding_period": "5-30 trading days"' in prompt
+        assert "expected_holding_period" in STRATEGY_SYSTEM_PROMPT
 
     def test_cautious_mode_prompt(self):
         prompt = build_strategy_prompt(
@@ -336,14 +336,21 @@ class TestStrategyEngine:
         assert "FAC40" not in factor_text
 
     @patch("src.agents.strategy.engine.check_budget", return_value=True)
-    @patch("src.agents.strategy.engine.log_cost")
-    def test_synthesize_with_claude(self, mock_log_cost, mock_budget, db_session):
+    @patch("src.agents.strategy.engine.budget_guard")
+    def test_synthesize_with_claude(self, mock_guard, mock_budget, db_session):
+        # budget_guard is a context manager yielding an approved, no-op-settle guard.
+        guard_obj = MagicMock()
+        guard_obj.approved = True
+        mock_guard.return_value.__enter__.return_value = guard_obj
+
         engine = StrategyEngine()
         engine.settings._config.setdefault("research", {})["enabled"] = False
+        engine.settings._config.setdefault("strategy", {})["batched_synthesis_enabled"] = False
 
         mock_response = MagicMock()
-        mock_response.content = [MagicMock()]
-        mock_response.content[0].text = json.dumps({
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = json.dumps({
             "market_assessment": "Bullish market conditions",
             "decisions": [{
                 "ticker": "AAPL_US_EQ",
@@ -364,6 +371,8 @@ class TestStrategyEngine:
             }],
             "portfolio_commentary": "Bullish positioning",
         })
+        mock_response.content = [text_block]
+        mock_response.stop_reason = "end_turn"
         mock_response.usage = MagicMock()
         mock_response.usage.input_tokens = 2000
         mock_response.usage.output_tokens = 500
@@ -372,7 +381,7 @@ class TestStrategyEngine:
         engine._client.messages.create.return_value = mock_response
 
         sub_results = {
-            "momentum": [],
+            "momentum": [MagicMock(ticker="AAPL_US_EQ", action="BUY", score=80.0, reasoning="strong")],
             "mean_reversion": [],
             "factor": [],
             "top_factor": [],

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 # Fields written by the orchestrator that the scheduler must preserve when updating runs.
@@ -44,8 +47,25 @@ def merge_run_summary(
     for key in ORCHESTRATOR_SUMMARY_KEYS:
         value = result.get(key)
         if value is not None:
-            merged[key] = value
+            merged[key] = _json_safe(value)
     if extra:
-        merged.update(extra)
+        merged.update({key: _json_safe(value) for key, value in extra.items()})
     merged["duration_seconds"] = duration_seconds
     return merged
+
+
+def _json_safe(value: Any) -> Any:
+    """Return a value safe for SQLAlchemy JSON columns."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    return str(value)

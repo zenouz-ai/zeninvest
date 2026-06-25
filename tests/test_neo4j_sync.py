@@ -16,8 +16,16 @@ def test_query_similar_sector_regime_without_password():
         assert neo4j_sync.query_similar_sector_regime("Tech", "RISK_ON") == []
 
 
+def test_sync_neo4j_disabled():
+    with patch.object(neo4j_sync, "get_settings") as mock_settings:
+        mock_settings.return_value.learning_neo4j_enabled = False
+        with pytest.raises(RuntimeError, match="neo4j_enabled=false"):
+            neo4j_sync.sync_neo4j(jsonl_path="/nonexistent")
+
+
 def test_sync_neo4j_requires_password(monkeypatch):
     with patch.object(neo4j_sync, "get_settings") as mock_settings:
+        mock_settings.return_value.learning_neo4j_enabled = True
         mock_settings.return_value.learning_neo4j_password = ""
         with pytest.raises(RuntimeError, match="NEO4J_PASSWORD"):
             neo4j_sync.sync_neo4j(jsonl_path="/nonexistent")
@@ -58,6 +66,7 @@ def test_sync_neo4j_upserts_from_jsonl(tmp_path, monkeypatch):
         patch.object(neo4j_sync, "get_settings") as mock_settings,
         patch.dict(sys.modules, {"neo4j": fake_neo4j}),
     ):
+        mock_settings.return_value.learning_neo4j_enabled = True
         mock_settings.return_value.learning_neo4j_password = "secret"
         mock_settings.return_value.learning_neo4j_uri = "bolt://localhost:7687"
         mock_settings.return_value.learning_neo4j_user = "neo4j"

@@ -28,6 +28,7 @@ from src.data.models import (
     RiskDecision,
     StrategyDecision,
 )
+from src.learning.dataset.decision_filters import eligible_strategy_decisions_query
 from src.learning.spec import TextCorpusSpec, get_text_corpus_spec
 from src.utils.logger import get_logger
 
@@ -226,7 +227,7 @@ class TextCorpusBuilder:
 
     def _load_strategy_text(self, cycles: set[str], tickers: set[str]) -> dict[tuple[str, str], dict]:
         rows = (
-            self.session.query(StrategyDecision)
+            eligible_strategy_decisions_query(self.session)
             .filter(StrategyDecision.cycle_id.in_(cycles), StrategyDecision.ticker.in_(tickers))
             .all()
         )

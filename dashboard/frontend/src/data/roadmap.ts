@@ -9,11 +9,13 @@ export const PROJECT_START = '2026-02-22'
 export type Wave = 1 | 2 | 3 | 4
 
 export const EPICS = [
+  { id: 'VER-1', name: 'Verification Foundation', wave: 1 as Wave },
   { id: 'EQ-1', name: 'Decision Quality & Funnel', wave: 1 as Wave },
   { id: 'OPS-1', name: 'Latency Verification', wave: 1 as Wave },
   { id: 'MEM-1', name: 'Track B — Institutional Memory', wave: 1 as Wave },
   { id: 'CAL-1', name: 'Data-Gated Calibration', wave: 2 as Wave },
   { id: 'ML-1', name: 'Shadow ML Promotion', wave: 2 as Wave },
+  { id: 'MLC-1', name: 'Memory-Learning Curation', wave: 2 as Wave },
   { id: 'EVO-1', name: 'Zen Evolution Engine', wave: 3 as Wave },
   { id: 'PARK', name: 'Optional / Deferred', wave: 4 as Wave },
 ] as const
@@ -711,24 +713,24 @@ export const MILESTONES: Milestone[] = [
     id: 'US-6.4',
     name: 'Decision Graph (Neo4j)',
     topic: 'ML / Advanced',
-    status: 'delivered',
+    status: 'pipeline',
     start: '2026-06-07',
     end: '2026-06-21',
     effort: 'M',
     priority: 'P1',
     horizon: 'Pipeline',
-    wave: 1,
+    wave: 2,
     epic: 'MEM-1',
     activeOrder: 4,
     timeboxDays: 3,
     track: 'Track B — Institutional Memory',
     description:
-      'Track B step 2 delivered: optional Neo4j Docker service + manual sync-neo4j from memory_bundle.jsonl; read-only GET /api/memory/graph/sector-regime and Data lab sector/regime panel (structured precedent by sector + macro regime — not semantic search, not live committee input). Internal network only. challenger_memory evaluate/shadow uses JSONL peers, not Neo4j. See docs/MEMORY_AND_LEARNING.md.',
+      'US-6.4 code delivered 2026-06-21 (sync-neo4j, sector/regime API, Data lab panel). Production Neo4j Docker service removed from ZenInvest VPS 2026-06-24 to reclaim RAM — not used in live trading. Re-enable compose service + learning.neo4j_enabled when shadow memory shows lift, operator adopts graph weekly, or promotion gates pass. challenger_memory uses JSONL peers, not Neo4j. See docs/MEMORY_AND_LEARNING.md.',
     architectureComponents: ['Learning Pipeline', 'Dashboard', 'Memory'],
     materiality: 'optional',
-    gate: 'Dashboard-only until influence-review tier (200 closed trades) + operator sign-off; no live pipeline wiring today.',
+    gate: 'Re-deploy Neo4j on VPS only after operator value or ≥200 closed trades + promotion tier; no live pipeline wiring.',
     successCriteria:
-      'Operator can sync-neo4j after export and query labeled Decision rows by sector/regime; Neo4j optional for all other Track B and learning flows.',
+      'Operator re-enables Neo4j, runs sync-neo4j, and queries sector/regime graph when Track B memory proves regular value.',
   },
   {
     id: 'US-6.5',
@@ -1167,6 +1169,159 @@ export const MILESTONES: Milestone[] = [
     materiality: 'crucial',
     successCriteria:
       'Stagnation floor inherits learning.success_min_profit_per_day_pct; dashboard shows rolling big_winner/stall/loser rates; v6 evaluate baseline recorded.',
+  },
+  // ── VER-1: Verification Foundation ────────────────────────────────────────
+  // P0 prerequisite: nothing in CAL-1/ML-1/MLC-1/EVO-1 may influence live decisions
+  // until this verification stack is in place.
+  {
+    id: 'US-11.1',
+    name: 'Alpha-Adjusted Counterfactual Metrics',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P0',
+    horizon: 'Pipeline',
+    wave: 1,
+    epic: 'VER-1',
+    activeOrder: 1,
+    timeboxDays: 2,
+    track: 'Verification Foundation',
+    description:
+      'Extend CounterfactualEvaluator to compute benchmark-relative alpha for every closed trade: alpha_pct = pnl_pct − contemporaneous SPY return over the same [entry_date, exit_date] window (yfinance cached). Alembic migration adds alpha_pct to trade_outcomes. GateReport surfaces mean_alpha_pct alongside net_counterfactual_gbp; Tier 3 adds alpha > 0 as a required condition. Dashboard /learning shows alpha distribution for champion + challengers. Kill switch: compute_alpha_enabled (default true). Without this, the verifier is beta-contaminated — a rally lifts all tickers and makes any policy look good.',
+    architectureComponents: ['Learning Pipeline', 'Database', 'Dashboard'],
+    materiality: 'crucial',
+    gate: 'Blocks US-11.2, US-11.3, US-2.1, US-2.2, US-6.1 influence promotion.',
+    successCriteria:
+      'trade_outcomes.alpha_pct populated for all closed trades; Tier 3 gate rejects policies with alpha ≤ 0; dashboard shows alpha vs raw PnL distribution.',
+  },
+  {
+    id: 'US-11.2',
+    name: 'Regime-Stratified Promotion Gates',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P0',
+    horizon: 'Pipeline',
+    wave: 1,
+    epic: 'VER-1',
+    activeOrder: 2,
+    timeboxDays: 2,
+    track: 'Verification Foundation',
+    description:
+      'All promotion gate evaluations must break down by macro_regime (RISK_ON / RISK_OFF / NEUTRAL) in addition to the aggregate. check_promotion_gates() accepts regime_stratified_metrics; each non-empty stratum must independently pass big_loser_recall ≥ conviction baseline and alpha > 0 (or show no negative regime at p ≤ 0.10). Stratum guard: skip regime-level gate if < 20 trades (flagged inconclusive, not failed). GateReport gains regime_breakdown section. A policy with good aggregate metrics that bleeds in RISK_OFF is dangerous for a system that cannot anticipate regime shifts.',
+    architectureComponents: ['Learning Pipeline', 'Dashboard'],
+    materiality: 'crucial',
+    gate: 'Requires US-11.1 (alpha metric). Blocks US-2.1, US-2.2, US-6.1 live promotion and US-12.3.',
+    successCriteria:
+      'GateReport.regime_breakdown populated; stop_the_line fires when any non-empty regime fails; dashboard gate strip shows per-regime breakdown.',
+  },
+  {
+    id: 'US-11.3',
+    name: 'Statistical Power Calibration of Gate Thresholds',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'S',
+    priority: 'P0',
+    horizon: 'Pipeline',
+    wave: 1,
+    epic: 'VER-1',
+    activeOrder: 3,
+    timeboxDays: 1,
+    track: 'Verification Foundation',
+    description:
+      'Given observed outcome variance (big_loser ~54%, big_winner ~31%, stall ~15%), compute minimum detectable effect (MDE) for each metric at current n and at n=200, n=500 (α=0.05, power=0.80). If the 200-trade Tier 3 gate cannot detect a 5pp improvement in big_loser_rate, raise the threshold and document the justification. CLI: poetry run python -m src.learning.cli power-calibration writes power_calibration.json. GateReport gains power_analysis section. The 50/200/500 thresholds are conventional, not statistically justified; at 54% big_loser_rate with high variance the MDE may exceed 10pp at 200 trades.',
+    architectureComponents: ['Learning Pipeline'],
+    materiality: 'crucial',
+    gate: 'Requires US-11.1. Informs gate thresholds for all US-2.x, US-6.x, and US-12.x stories.',
+    successCriteria:
+      'power_calibration.json produced deterministically; gates.py thresholds annotated with MDE reference; CLI produces readable power report.',
+  },
+  {
+    id: 'US-11.4',
+    name: 'Committee Ablation Pre-Registration',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P0',
+    horizon: 'Pipeline',
+    wave: 1,
+    epic: 'VER-1',
+    activeOrder: 4,
+    timeboxDays: 2,
+    track: 'Verification Foundation',
+    description:
+      'Pre-register and measure the marginal benefit of the multi-LLM debate committee over debate_rounds=1. Pre-registration doc (docs/COMMITTEE_ABLATION_PLAN.md) defines comparison, null hypothesis, analysis unit (closed trade linked to cycle moderation config), sample-size target from US-11.3, and regime stratification. Existing moderation_logs.verdict_changed_in_debate is the primary data source — no new instrumentation. cli evaluate gains committee_ablation_results section. Committee debate health card shows whether verdict_changed_in_debate cycles have statistically different realized outcomes. Kill-switch recommendation: if ≥200 trades show no AUC improvement from debate, default debate_rounds=1. The three-LLM debate is the most expensive post-strategy component; it must earn its cost in measured outcomes, not assumption.',
+    architectureComponents: ['Moderation Panel', 'Learning Pipeline', 'Dashboard'],
+    materiality: 'crucial',
+    gate: 'Requires US-11.2 (regime-stratified outcome analysis). Measurement gate for US-9.13 Phase 3 adaptive routing.',
+    successCriteria:
+      'docs/COMMITTEE_ABLATION_PLAN.md committed; cli evaluate shows committee_ablation_results when verdict_changed_in_debate data present; debate health card surfaces ablation p-value.',
+  },
+  // ── MLC-1: Memory-Learning Curation ───────────────────────────────────────
+  // P1 prerequisite: must be in place before memory_inject_strategy can be enabled
+  // at any gate tier.
+  {
+    id: 'US-12.1',
+    name: 'Lesson Unit Schema',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P1',
+    horizon: 'Future',
+    wave: 2,
+    epic: 'MLC-1',
+    activeOrder: 5,
+    timeboxDays: 2,
+    track: 'Memory-Learning Curation',
+    description:
+      'Define the canonical typed lesson unit that memory stores and retrieves: lessons table (id, cycle_id FK, trade_outcome_id FK, ticker, macro_regime, feature_snapshot_json, action, attributed_outcome_label, outcome_confidence, weight, created_at, provenance_note). LessonBuilder service constructs a Lesson from each closed trade_outcome using the cycle MacroState and a fixed feature snapshot (RSI, MACD, 50MA_pct, P/E, conviction_score, research_influence_flag). Every lesson requires a valid trade_outcome FK — no lessons from dry_run or unfilled cycles. CLI: poetry run python -m src.learning.cli build-lessons (idempotent). Without a typed lesson schema, memory is a log, not a knowledge structure.',
+    architectureComponents: ['Learning Pipeline', 'Database', 'Memory'],
+    materiality: 'crucial',
+    gate: 'Requires US-11.1 (alpha_pct becomes attributed_outcome field), US-11.2 (regime label). Blocks US-12.2, US-12.3.',
+    successCriteria:
+      'Alembic migration creates lessons table; LessonBuilder unit tests pass; CLI builds deterministic lessons from trade_outcomes fixture.',
+  },
+  {
+    id: 'US-12.2',
+    name: 'Memory Curation Policy',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'M',
+    priority: 'P1',
+    horizon: 'Future',
+    wave: 2,
+    epic: 'MLC-1',
+    activeOrder: 6,
+    timeboxDays: 2,
+    track: 'Memory-Learning Curation',
+    description:
+      'Implement a post-build curation pass in cli run-export to prevent memory from accumulating stale, duplicate, or low-value episodes. Rules: (1) Dedup — within (ticker, macro_regime, calendar-month) retain only the most recent lesson; (2) Decay — weight *= 0.5^(age_days/90), exclude episodes with weight < 0.25 unless < 20 lessons remain in that regime; (3) Value-weighting — big_winner gets weight *= 3, big_loser *= 2, stall *= 1; (4) Provenance — reject lessons where trade_outcome.dry_run=true or pnl_pct IS NULL. Post-curation stats logged. Ungoverned memory misevolves: repeated confirmation bias (e.g., the same winning ticker in each RISK_ON cycle) distorts the challenger and degrades over time.',
+    architectureComponents: ['Learning Pipeline', 'Memory'],
+    materiality: 'crucial',
+    gate: 'Requires US-12.1. Required before memory_inject_strategy can be enabled at any gate tier.',
+    successCriteria:
+      'Curation pass runs as part of cli run-export; synthetic 50-lesson fixture verifies dedup, decay, and value-weighting; post-curation stats in export log.',
+  },
+  {
+    id: 'US-12.3',
+    name: 'Regime-Stratified Memory Precision Gate',
+    topic: 'ML / Advanced',
+    status: 'pipeline',
+    effort: 'S',
+    priority: 'P1',
+    horizon: 'Future',
+    wave: 2,
+    epic: 'MLC-1',
+    activeOrder: 7,
+    timeboxDays: 1,
+    track: 'Memory-Learning Curation',
+    description:
+      'Extend check_promotion_gates() to require per-regime memory veto precision (not just aggregate). Each non-empty regime stratum must independently meet GATE_MIN_MEMORY_VETO_PRECISION = 0.40. A stratum with < 10 veto calls is flagged inconclusive (not pass or fail). Any regime stratum below the floor triggers stop_the_line. challenger_memory shadow scoring already records macro_regime from cycle MacroState — use this for stratification. The current aggregate 40% precision gate can pass a memory with 60% RISK_ON precision and 20% RISK_OFF precision — the exact failure mode that regime stratification prevents.',
+    architectureComponents: ['Learning Pipeline', 'Dashboard'],
+    materiality: 'crucial',
+    gate: 'Requires US-12.1, US-12.2, US-11.2 (regime labels from MacroState). Hardens the memory stop-the-line in gates.py.',
+    successCriteria:
+      'Synthetic precision fixture verifies RISK_OFF failure triggers stop_the_line; GateReport shows per-regime memory precision; dashboard gate strip reflects regime breakdown.',
   },
 ]
 

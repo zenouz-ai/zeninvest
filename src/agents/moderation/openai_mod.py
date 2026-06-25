@@ -12,7 +12,7 @@ import openai
 
 from src.agents.moderation.context import format_market_context
 from src.utils.config import get_settings
-from src.utils.cost_tracker import Provider, check_budget, log_cost
+from src.utils.cost_tracker import Provider, budget_guard, estimate_cost
 from src.utils.logger import get_logger
 from src.utils.prompt_loader import get_prompt_hash, load_prompt_file
 
@@ -157,10 +157,6 @@ def _review_single_turn(
     """Single-turn moderation without tools."""
     settings = get_settings()
 
-    if not check_budget(Provider.OPENAI.value):
-        logger.warning("OpenAI budget exceeded, skipping moderation")
-        return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
-
     context_text = format_market_context(market_context)
     user_prompt = f"""Review this proposed trade:
 
@@ -178,28 +174,35 @@ Respond with JSON only."""
 
     try:
         client = openai.OpenAI(api_key=settings.openai_api_key)
-        response = client.chat.completions.create(
+        with budget_guard(
+            Provider.OPENAI.value,
+            estimate_cost(Provider.OPENAI.value, SYSTEM_PROMPT + user_prompt, 1024),
             model=settings.moderator_1_model,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=1024,
-            temperature=0.4,
-        )
-
-        usage = response.usage
-        if usage:
-            cost_result = log_cost(
-                provider=Provider.OPENAI.value,
+            purpose="moderation_gpt4o",
+            cycle_id=cycle_id,
+        ) as guard:
+            if not guard.approved:
+                logger.warning("OpenAI budget exceeded, skipping moderation")
+                return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
+            response = client.chat.completions.create(
                 model=settings.moderator_1_model,
-                input_tokens=usage.prompt_tokens,
-                output_tokens=usage.completion_tokens,
-                cycle_id=cycle_id,
-                purpose="moderation_gpt4o",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=1024,
+                temperature=0.4,
             )
-        else:
-            cost_result = None
+
+            usage = response.usage
+            if usage:
+                cost_result = guard.settle(
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    model=settings.moderator_1_model,
+                )
+            else:
+                cost_result = None
 
         content = response.choices[0].message.content or ""
         if "```json" in content:
@@ -279,28 +282,32 @@ Challenge the thesis. Use tools if needed to find bear cases or downgrades. Resp
     try:
         client = openai.OpenAI(api_key=settings.openai_api_key)
         for _ in range(max_iter):
-            if not check_budget(Provider.OPENAI.value):
-                return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
-
-            response = client.chat.completions.create(
+            with budget_guard(
+                Provider.OPENAI.value,
+                estimate_cost(Provider.OPENAI.value, sys_prompt + user_prompt, 1024),
                 model=settings.moderator_1_model,
-                messages=messages,
-                tools=tools,
-                tool_choice="auto",
-                max_tokens=1024,
-                temperature=0.4,
-            )
+                purpose="moderation_gpt4o",
+                cycle_id=cycle_id,
+            ) as guard:
+                if not guard.approved:
+                    return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
 
-            usage = response.usage
-            if usage:
-                log_cost(
-                    provider=Provider.OPENAI.value,
+                response = client.chat.completions.create(
                     model=settings.moderator_1_model,
-                    input_tokens=usage.prompt_tokens,
-                    output_tokens=usage.completion_tokens,
-                    cycle_id=cycle_id,
-                    purpose="moderation_gpt4o",
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto",
+                    max_tokens=1024,
+                    temperature=0.4,
                 )
+
+                usage = response.usage
+                if usage:
+                    guard.settle(
+                        usage.prompt_tokens,
+                        usage.completion_tokens,
+                        model=settings.moderator_1_model,
+                    )
 
             msg = response.choices[0].message
             tool_calls = getattr(msg, "tool_calls", None) or []

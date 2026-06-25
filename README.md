@@ -20,7 +20,7 @@
   <img src="branding/ZenInvest_Promo.png" alt="ZenInvest promotional poster" width="760" />
 </p>
 
-**Status:** Proof of Concept (`v1.0`) with 1,000+ pytest cases, Docker-based local/runtime workflows, and an operator dashboard. Roadmap: **55 delivered / 16 pipeline / 71 total** — Wave 1 complete ([Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md)).
+**Status:** Proof of Concept (`v1.0`) with 1,000+ pytest cases, Docker-based local/runtime workflows, and an operator dashboard. Roadmap: **54 delivered / 24 pipeline / 78 total (~69%)** — Wave 1 data/memory stories complete; verification foundation added as prerequisite for learning promotion ([Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md)).
 
 ## Important Notes
 
@@ -241,7 +241,7 @@ See [Public Repo Scope](docs/PUBLIC_REPO_SCOPE.md).
 
 ## Project Evolution
 
-**Wave + Gate + ICE** roadmap: **55 / 16 / 71 (~77%)**. **Wave 1 complete:** latency scorecard (US-9.12), rejection diagnostics (US-6.7), memory track (US-6.2–6.5). **Wave 2 next:** calibration (US-2.1, US-2.2). **Wave 3:** Evolution Engine automation. [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md).
+**Wave + Gate + ICE** roadmap: **54 / 24 / 78 (~69%)**. **Wave 1 data/memory stories complete:** latency scorecard (US-9.12), rejection diagnostics (US-6.7), memory track (US-6.2–6.5). **Wave 1 active:** verification foundation (alpha-adjusted, regime-stratified, power-calibrated promotion gates) — prerequisite for all learning promotion. **Wave 2 next:** calibration (US-2.1, US-2.2) + memory curation. **Wave 3:** Evolution Engine automation. [Sophistication Roadmap](docs/SOPHISTICATION_ROADMAP.md).
 
 ## Documentation Index
 

@@ -249,18 +249,31 @@ class ModerationPanel:
         ):
             opening_gpt_verdict = gpt4o_result.get("verdict")
             opening_gemini_verdict = gemini_result.get("verdict")
-            gpt4o_result, gemini_result = self._run_debate_rounds(
-                trade_proposal=trade_proposal,
-                portfolio_context=portfolio_context,
-                market_context=market_context,
-                cycle_id=cycle_id,
-                research_executor=research_executor,
-                gpt4o_result=gpt4o_result,
-                gemini_result=gemini_result,
+            skip_debate = (
+                opening_gpt_verdict == "AGREE"
+                and opening_gemini_verdict == "AGREE"
+                and conviction < self.settings.debate_skip_low_conviction
             )
-            debate_rounds_run = self.settings.debate_rounds
-            gpt_verdict_changed = bool(gpt4o_result.get("verdict") != opening_gpt_verdict)
-            gemini_verdict_changed = bool(gemini_result.get("verdict") != opening_gemini_verdict)
+            if skip_debate:
+                logger.info(
+                    "Skipping debate for %s: both AGREE with conviction %s < %s",
+                    ticker,
+                    conviction,
+                    self.settings.debate_skip_low_conviction,
+                )
+            else:
+                gpt4o_result, gemini_result = self._run_debate_rounds(
+                    trade_proposal=trade_proposal,
+                    portfolio_context=portfolio_context,
+                    market_context=market_context,
+                    cycle_id=cycle_id,
+                    research_executor=research_executor,
+                    gpt4o_result=gpt4o_result,
+                    gemini_result=gemini_result,
+                )
+                debate_rounds_run = self.settings.debate_rounds
+                gpt_verdict_changed = bool(gpt4o_result.get("verdict") != opening_gpt_verdict)
+                gemini_verdict_changed = bool(gemini_result.get("verdict") != opening_gemini_verdict)
 
         # Count available moderators
         moderators_available = sum([

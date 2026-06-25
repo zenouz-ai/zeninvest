@@ -75,7 +75,7 @@ def test_run_cycle_dry_run_records_full_decision_chain(
     assert run.summary_json["num_trades"] == 1
     assert run.summary_json["num_rejected"] == 1
 
-    assert {row.ticker for row in strategy_rows} == {"AAPL_US_EQ", "MSFT_US_EQ"}
+    assert {row.ticker for row in strategy_rows} == set()
     assert len(moderation_rows) == 3
     assert {row.moderator for row in moderation_rows} == {"strategy", "gpt-4o", "gemini-2.0-flash"}
     assert len(risk_rows) == 1

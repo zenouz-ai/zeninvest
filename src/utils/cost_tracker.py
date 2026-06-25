@@ -1,12 +1,14 @@
 """LLM API cost tracking, budget enforcement, and graceful degradation."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import NamedTuple
 
 from sqlalchemy import func
 
-from src.data.database import get_session
+from src.data.database import get_session, write_transaction
 from src.data.models import CostLog
 from src.utils.chat_cost_context import current_chat_cost_context
 from src.utils.error_codes import ErrorCode
@@ -46,6 +48,12 @@ EMBEDDING_COST_RATES: dict[str, float] = {
 # still count toward the global monthly cap).
 CHAT_PURPOSE_PREFIX = "conversation_"
 EMBEDDING_PURPOSE = "embedding"
+
+# Atomic cost-budget reservation states (P4-1, US-7.5). A "pending" row is an
+# estimated reservation that counts toward spend until it is settled to the
+# actual cost or released. See reserve_budget/settle_reservation/budget_guard.
+RESERVATION_PENDING = "pending"
+RESERVATION_SETTLED = "settled"
 
 
 class CostResult(NamedTuple):
@@ -97,6 +105,17 @@ def calculate_cost(
     output_cost = (output_tokens / 1_000_000) * rates["output_per_1m"]
     total_usd = input_cost + output_cost
     return round(total_usd * USD_TO_GBP, 6)
+
+
+def estimate_cost(provider: str, input_text: str = "", max_output_tokens: int = 0) -> float:
+    """Rough pre-call cost estimate (GBP) for sizing a budget reservation.
+
+    Approximates input tokens at ~4 chars/token and assumes the call may use its
+    full ``max_output_tokens``. Over-estimating is the safe direction (reserves
+    conservatively); settlement corrects to the actual cost after the call.
+    """
+    est_input_tokens = max(len(input_text) // 4, 1)
+    return calculate_cost(provider, est_input_tokens, max_output_tokens)
 
 
 def calculate_embedding_cost(model: str, tokens: int) -> float:
@@ -373,6 +392,233 @@ def check_embedding_budget() -> bool:
     return check_category_budget("embedding")
 
 
+# --- Atomic cost budget (P4-1, US-7.5) ---------------------------------------
+#
+# The legacy pattern (check_budget -> call -> log_cost) has a TOCTOU gap: two
+# concurrent threads (scheduled cycle, scheduler refresh, dashboard chat) can each
+# pass check_budget() before either logs, overspending the cap. reserve_budget
+# closes this by inserting a "pending" CostLog row inside the process-wide write
+# lock, so the increment is atomic: a serialized later caller sees the reservation
+# in the spend total. Pending rows are settled to actual cost after the call, or
+# released on failure, or swept if orphaned by a crash. Opt-in via
+# settings.atomic_budget_enabled; budget_guard preserves the legacy path when off.
+
+
+def reserve_budget(
+    provider: str,
+    estimated_gbp: float,
+    *,
+    model: str = "",
+    purpose: str | None = None,
+    cycle_id: str | None = None,
+) -> int | None:
+    """Atomically reserve budget for a provider call. Returns reservation id or None.
+
+    Holds the write lock across the spend read and the reservation insert so two
+    concurrent callers cannot both pass the cap. Returns None (deny) when the
+    provider is already over its daily limit or the global monthly cap is hit.
+    """
+    settings = get_settings()
+    daily_limits = {
+        Provider.ANTHROPIC.value: settings.anthropic_daily_gbp,
+        Provider.OPENAI.value: settings.openai_daily_gbp,
+        Provider.GOOGLE.value: settings.google_daily_gbp,
+    }
+    daily_limit = daily_limits.get(provider, 0.0)
+    from src.data.database import get_write_lock, session_scope
+
+    with get_write_lock():
+        monthly_spent = get_monthly_spend()
+        if monthly_spent >= settings.total_monthly_gbp:
+            logger.warning(
+                f"[{ErrorCode.COST_MONTHLY_HALT}] Monthly budget exceeded: "
+                f"£{monthly_spent:.2f}/£{settings.total_monthly_gbp:.2f} — denying {provider} reservation"
+            )
+            return None
+        daily_spent = get_daily_spend(provider, exclude_categories=True)
+        if daily_spent >= daily_limit:
+            logger.warning(
+                f"[{ErrorCode.COST_DAILY_CAP_EXCEEDED}] {provider} daily budget exceeded: "
+                f"£{daily_spent:.2f}/£{daily_limit:.2f} — denying reservation"
+            )
+            return None
+        with session_scope() as session:
+            entry = CostLog(
+                timestamp=datetime.now(timezone.utc),
+                provider=provider,
+                model=model or "reservation",
+                input_tokens=0,
+                output_tokens=0,
+                cost_gbp=round(max(estimated_gbp, 0.0), 6),
+                cycle_id=cycle_id,
+                purpose=purpose,
+                reservation_state=RESERVATION_PENDING,
+            )
+            session.add(entry)
+            session.flush()
+            return int(entry.id)
+
+
+def settle_reservation(
+    reservation_id: int,
+    actual_gbp: float,
+    *,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    model: str | None = None,
+) -> None:
+    """Reconcile a pending reservation to the call's actual cost."""
+    with write_transaction() as session:
+        row = session.get(CostLog, reservation_id)
+        if row is None or row.reservation_state != RESERVATION_PENDING:
+            return
+        row.cost_gbp = round(max(actual_gbp, 0.0), 6)
+        row.input_tokens = input_tokens
+        row.output_tokens = output_tokens
+        if model:
+            row.model = model
+        row.reservation_state = RESERVATION_SETTLED
+
+
+def release_reservation(reservation_id: int) -> None:
+    """Delete a pending reservation (call failed or was skipped)."""
+    with write_transaction() as session:
+        row = session.get(CostLog, reservation_id)
+        if row is not None and row.reservation_state == RESERVATION_PENDING:
+            session.delete(row)
+
+
+def sweep_stale_reservations(max_age_minutes: int = 10) -> int:
+    """Delete orphaned pending reservations (crash recovery). Returns count removed."""
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+    with write_transaction() as session:
+        rows = (
+            session.query(CostLog)
+            .filter(
+                CostLog.reservation_state == RESERVATION_PENDING,
+                CostLog.timestamp < cutoff,
+            )
+            .all()
+        )
+        count = len(rows)
+        for row in rows:
+            session.delete(row)
+    if count:
+        logger.warning(f"Swept {count} stale cost reservation(s) older than {max_age_minutes}m")
+    return count
+
+
+class BudgetGuard:
+    """Handle yielded by budget_guard: gate a call and settle its actual cost.
+
+    ``approved`` mirrors check_budget()==True. ``settle(in, out)`` records the
+    actual cost: settling the reservation (atomic mode) or calling log_cost
+    (legacy mode). Idempotent.
+    """
+
+    def __init__(
+        self,
+        *,
+        approved: bool,
+        reservation_id: int | None,
+        provider: str,
+        model: str,
+        purpose: str | None,
+        cycle_id: str | None,
+        atomic: bool,
+    ) -> None:
+        self.approved = approved
+        self.reservation_id = reservation_id
+        self._provider = provider
+        self._model = model
+        self._purpose = purpose
+        self._cycle_id = cycle_id
+        self._atomic = atomic
+        self._settled = False
+        self.cost_result: CostResult | None = None
+
+    def settle(
+        self, input_tokens: int, output_tokens: int, *, model: str | None = None
+    ) -> CostResult:
+        """Record the actual cost of the completed call."""
+        used_model = model or self._model or "unknown"
+        if self._settled and self.cost_result is not None:
+            return self.cost_result
+        self._settled = True
+        if self._atomic and self.reservation_id is not None:
+            cost = calculate_cost(self._provider, input_tokens, output_tokens)
+            settle_reservation(
+                self.reservation_id,
+                cost,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                model=used_model,
+            )
+            self.cost_result = CostResult(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_gbp=cost,
+                provider=self._provider,
+                model=used_model,
+            )
+        else:
+            self.cost_result = log_cost(
+                self._provider,
+                used_model,
+                input_tokens,
+                output_tokens,
+                cycle_id=self._cycle_id,
+                purpose=self._purpose,
+            )
+        return self.cost_result
+
+
+@contextmanager
+def budget_guard(
+    provider: str,
+    estimated_gbp: float = 0.0,
+    *,
+    model: str = "",
+    purpose: str | None = None,
+    cycle_id: str | None = None,
+) -> Iterator[BudgetGuard]:
+    """Unified budget gate. Atomic reserve/settle when enabled, else check/log.
+
+    Usage::
+
+        with budget_guard(provider, est, model=m, purpose=p) as guard:
+            if not guard.approved:
+                return degraded
+            resp = call()
+            guard.settle(resp.input_tokens, resp.output_tokens)
+    """
+    settings = get_settings()
+    atomic = settings.atomic_budget_enabled
+    reservation_id: int | None = None
+    if atomic:
+        reservation_id = reserve_budget(
+            provider, estimated_gbp, model=model, purpose=purpose, cycle_id=cycle_id
+        )
+        approved = reservation_id is not None
+    else:
+        approved = check_budget(provider)
+    guard = BudgetGuard(
+        approved=approved,
+        reservation_id=reservation_id,
+        provider=provider,
+        model=model,
+        purpose=purpose,
+        cycle_id=cycle_id,
+        atomic=atomic,
+    )
+    try:
+        yield guard
+    finally:
+        # Release an unsettled reservation so a skipped/failed call leaves no phantom spend.
+        if atomic and reservation_id is not None and not guard._settled:
+            release_reservation(reservation_id)
+
+
 def get_degradation_level() -> DegradationLevel:
     """Determine current degradation level based on all budgets."""
     settings = get_settings()
@@ -412,6 +658,9 @@ def get_cost_summary(days: int = 1) -> dict[str, float]:
     session = get_session()
     try:
         since = datetime.now(timezone.utc) - timedelta(days=days)
+        # Exclude pending reservations from reporting so transient estimates don't
+        # skew dashboards (they still count toward live budget checks until settled).
+        not_pending = func.coalesce(CostLog.reservation_state, "") != RESERVATION_PENDING
         rows = (
             session.query(
                 CostLog.provider,
@@ -419,7 +668,7 @@ def get_cost_summary(days: int = 1) -> dict[str, float]:
                 func.sum(CostLog.input_tokens).label("input_tokens"),
                 func.sum(CostLog.output_tokens).label("output_tokens"),
             )
-            .filter(CostLog.timestamp >= since)
+            .filter(CostLog.timestamp >= since, not_pending)
             .group_by(CostLog.provider)
             .all()
         )
@@ -434,12 +683,16 @@ def get_cost_summary(days: int = 1) -> dict[str, float]:
         # Category breakdown by purpose (chat = conversation_*, embedding = embedding).
         chat_total = (
             session.query(func.coalesce(func.sum(CostLog.cost_gbp), 0.0))
-            .filter(CostLog.timestamp >= since, CostLog.purpose.like(CHAT_PURPOSE_PREFIX + "%"))
+            .filter(
+                CostLog.timestamp >= since,
+                CostLog.purpose.like(CHAT_PURPOSE_PREFIX + "%"),
+                not_pending,
+            )
             .scalar()
         )
         embedding_total = (
             session.query(func.coalesce(func.sum(CostLog.cost_gbp), 0.0))
-            .filter(CostLog.timestamp >= since, CostLog.purpose == EMBEDDING_PURPOSE)
+            .filter(CostLog.timestamp >= since, CostLog.purpose == EMBEDDING_PURPOSE, not_pending)
             .scalar()
         )
         summary["chat"] = float(chat_total or 0)

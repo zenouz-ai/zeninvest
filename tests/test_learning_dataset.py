@@ -471,3 +471,42 @@ def test_build_excludes_dry_run_cycle_decisions(learning_session, tmp_path) -> N
     )
     result = builder.build(write=False)
     assert result.decisions_rows == 1
+
+
+def test_build_excludes_refresh_run_type_decisions(learning_session, tmp_path) -> None:
+    from dashboard.backend.app.database import Base as DashboardBase, Run
+
+    DashboardBase.metadata.create_all(learning_session.bind)
+    _seed_minimal_dataset(learning_session)
+    refresh_ts = datetime(2026, 6, 14, 11, 38)
+    learning_session.add(
+        Run(
+            cycle_id="cycle_refresh_1",
+            run_type="refresh",
+            started_at=refresh_ts,
+            status="completed",
+        )
+    )
+    learning_session.add(
+        StrategyDecision(
+            cycle_id="cycle_refresh_1",
+            ticker="GEF/B_US_EQ",
+            action="BUY",
+            conviction=80,
+            timestamp=refresh_ts,
+        )
+    )
+    learning_session.commit()
+
+    def fake_prices(ticker: str, _ts: datetime, _days: int) -> pd.DataFrame:
+        days = [refresh_ts + timedelta(days=i) for i in range(0, 35)]
+        closes = [100.0 + i * 0.2 for i in range(0, 35)]
+        return pd.DataFrame({"date": days, "close": closes, "high": closes, "low": closes})
+
+    builder = DatasetBuilder(
+        session=learning_session,
+        project_root=str(tmp_path),
+        price_fetcher=fake_prices,
+    )
+    result = builder.build(write=False)
+    assert result.decisions_rows == 1

@@ -624,6 +624,7 @@ class TestCommitteeDebate:
             debate_enabled=True,
             debate_rounds=2,
             debate_anonymize=True,
+            debate_skip_low_conviction=60,
             min_conviction_no_moderators=78,
             min_conviction_one_moderator=70,
             strategy_model="claude-x",

@@ -303,11 +303,12 @@ class OrchestratorTestHarness:
                 "market_assessment": "Constructive market backdrop",
                 "portfolio_commentary": "Test portfolio commentary",
             }
-            orchestrator.strategy_engine._log_decisions(
-                result,
-                kwargs["cycle_id"],
-                json.dumps(result),
-            )
+            if kwargs.get("persist_decisions", True):
+                orchestrator.strategy_engine._log_decisions(
+                    result,
+                    kwargs["cycle_id"],
+                    json.dumps(result),
+                )
             return result
 
         orchestrator.strategy_engine.run_sub_strategies = _fake_run_sub_strategies

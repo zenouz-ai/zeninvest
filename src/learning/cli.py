@@ -255,6 +255,14 @@ def _run_sync_embeddings() -> int:
 
 
 def _run_sync_neo4j() -> int:
+    from src.utils.config import get_settings
+
+    if not get_settings().learning_neo4j_enabled:
+        print(
+            "Neo4j sync disabled (learning.neo4j_enabled=false). "
+            "Enable for local dev or re-deploy US-6.4 on the VPS."
+        )
+        return 1
     from src.learning.memory.neo4j_sync import sync_neo4j
 
     result = sync_neo4j()

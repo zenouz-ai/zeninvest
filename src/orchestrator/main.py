@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 import click
 
+from src.agents.execution import instrument_denylist
 from src.agents.execution.order_manager import OrderManager
 from src.agents.execution.stop_loss_manager import StopLossManager
 from src.agents.execution.t212_client import T212Client, calculate_quantity
@@ -70,7 +71,12 @@ from src.data.models import (
 from src.orchestrator.state_machine import StateMachine
 from src.runtime import RuntimeLockHeldError, acquire_runtime_lock
 from src.utils.config import get_settings
-from src.utils.cost_tracker import DegradationLevel, get_cost_summary, get_degradation_level
+from src.utils.cost_tracker import (
+    DegradationLevel,
+    get_cost_summary,
+    get_degradation_level,
+    sweep_stale_reservations,
+)
 from src.utils.fingerprints import get_repo_sha, stable_hash
 from src.utils.logger import get_logger
 from src.utils.phase_timer import PhaseTimer
@@ -2236,6 +2242,15 @@ class Orchestrator:
                 except Exception as recon_err:
                     logger.warning(f"Queue reconciliation skipped: {recon_err}")
 
+            # Sweep orphaned pending cost-budget reservations (P4-1 crash recovery)
+            if self.settings.atomic_budget_enabled:
+                try:
+                    swept = sweep_stale_reservations(self.settings.reservation_sweep_minutes)
+                    if swept:
+                        logger.info(f"Swept {swept} stale cost-budget reservation(s)")
+                except Exception as sweep_err:
+                    logger.warning(f"Reservation sweep skipped: {sweep_err}")
+
             # Update peak and check drawdown
             practice_skips_state_machine = self.settings.is_practice_account
             if not self.dry_run and not practice_skips_state_machine:
@@ -2485,6 +2500,7 @@ class Orchestrator:
 
             # Inject persisted proactive macro state when available (US-4.5 foundation)
             macro_state = macro.get("macro_state", {})
+            macro_context_will_populate = bool(macro_state.get("enabled"))
             if macro_state.get("enabled"):
                 news_parts.append("\n### Proactive Macro State")
                 news_parts.append(
@@ -2492,20 +2508,21 @@ class Orchestrator:
                     f"{macro_state.get('regime', 'NEUTRAL')} | "
                     f"Confidence: {float(macro_state.get('confidence_score', 0.0)):.2f}"
                 )
-                top_signals = macro_state.get("top_signals", [])[:3]
-                if top_signals:
+                top_signals_news = macro_state.get("top_signals", [])[:3]
+                if top_signals_news:
                     news_parts.append("Top signals:")
-                    for sig in top_signals:
+                    for sig in top_signals_news:
                         news_parts.append(
                             f"- [{sig.get('signal_type', 'macro')}] "
                             f"{sig.get('signal_text', '')}"
                         )
-                if macro_state.get("sector_summary"):
-                    news_parts.append("Persisted sector summary:")
-                    news_parts.append(str(macro_state["sector_summary"]))
-                if macro_state.get("economic_highlights"):
-                    news_parts.append("Persisted economic highlights:")
-                    news_parts.append(str(macro_state["economic_highlights"]))
+                if not macro_context_will_populate:
+                    if macro_state.get("sector_summary"):
+                        news_parts.append("Persisted sector summary:")
+                        news_parts.append(str(macro_state["sector_summary"]))
+                    if macro_state.get("economic_highlights"):
+                        news_parts.append("Persisted economic highlights:")
+                        news_parts.append(str(macro_state["economic_highlights"]))
                 action_plan = macro_state.get("action_plan", {})
                 if action_plan:
                     news_parts.append("Macro action plan:")
@@ -2543,10 +2560,12 @@ class Orchestrator:
                 if avoid:
                     news_parts.append("Avoid sectors: " + ", ".join([sector for sector in avoid if sector]))
 
-            analyst_summary = json.dumps(analyst_data_map, indent=2, default=str)[:3000]
+            analyst_summary = json.dumps(analyst_data_map, separators=(",", ":"), default=str)[:3000]
             news_summary = "\n".join(news_parts)[:3000] if news_parts else "News sentiment data unavailable."
             macro_context_summary = "No persisted proactive macro state available."
+            top_signals: list[dict[str, Any]] = []
             if macro_state.get("enabled"):
+                top_signals = macro_state.get("top_signals", [])[:3]
                 macro_context_lines = [
                     f"Regime: {macro_state.get('regime', 'NEUTRAL')}",
                     f"Confidence: {float(macro_state.get('confidence_score', 0.0)):.2f}",
@@ -2570,10 +2589,20 @@ class Orchestrator:
                     )
                 macro_context_summary = "\n".join(macro_context_lines)[:1500]
 
-            # Build company profiles for top candidates
-            all_stock_tickers = [s.get("ticker", "") for s in stocks_data if s.get("ticker")][:self.settings.max_candidates]
-            company_profiles = self._build_company_profiles(stocks_data, all_stock_tickers)
-            entry_quality_guards = self._build_entry_quality_guard_summary(stocks_data, all_stock_tickers)
+            # Company profiles for screened candidates only (held names in portfolio/P&L)
+            candidate_ticker_list = [
+                s.get("ticker", "")
+                for s in stocks_data
+                if s.get("ticker") and s.get("ticker") not in existing_tickers
+            ]
+            canonical_candidates = self.strategy_engine._canonical_ranked_tickers(
+                sub_results,
+                limit=self.settings.max_candidates,
+                ticker_filter=set(candidate_ticker_list),
+            )
+            company_profiles = self._build_company_profiles(stocks_data, canonical_candidates)
+            entry_quality_tickers = list(existing_tickers) + canonical_candidates
+            entry_quality_guards = self._build_entry_quality_guard_summary(stocks_data, entry_quality_tickers)
             uov_swap_context = self.opportunity_scorer.build_swap_context(existing_tickers)
 
             # Shared research executor for strategy + moderation (pipeline-wide budget)
@@ -2587,7 +2616,15 @@ class Orchestrator:
             strategy_performance = self._build_strategy_performance_summary()
 
             # Claude synthesis
-            portfolio_state_str = json.dumps(portfolio_data, indent=2, default=str)[:2000]
+            portfolio_state_str = json.dumps(portfolio_data, separators=(",", ":"), default=str)[:2000]
+            position_ticker_list = sorted(existing_tickers)
+            cached_prompt_prefix = "\n".join(
+                [
+                    portfolio_state_str,
+                    macro_context_summary,
+                    strategy_performance,
+                ]
+            )[:4000]
             strategy_result = self.strategy_engine.synthesize_with_claude(
                 sub_strategy_results=sub_results,
                 portfolio_state=portfolio_state_str,
@@ -2606,12 +2643,20 @@ class Orchestrator:
                 research_executor=research_executor,
                 position_pnl=position_pnl,
                 strategy_performance=strategy_performance,
+                position_tickers=position_ticker_list,
+                candidate_tickers=canonical_candidates,
+                cached_prompt_prefix=cached_prompt_prefix,
+                persist_decisions=not self.dry_run,
             )
             phase_timer.end()
 
             if "error" in strategy_result and not strategy_result.get("decisions"):
                 logger.error(f"Strategy synthesis failed: {strategy_result['error']}")
                 result["errors"].append(f"strategy: {strategy_result['error']}")
+                result["strategy_error"] = strategy_result.get("error")
+                result["strategy_stop_reason"] = strategy_result.get("stop_reason")
+                if strategy_result.get("batch"):
+                    result["strategy_failed_batch"] = strategy_result.get("batch")
                 if not self.dry_run:
                     self.state_machine.record_cycle()
                 self._save_snapshot(portfolio_data, current_state)
@@ -2619,6 +2664,9 @@ class Orchestrator:
 
             decisions = strategy_result.get("decisions", [])
             strategy_decisions = decisions
+            if strategy_result.get("batch_degraded"):
+                result["strategy_batch_degraded"] = True
+                result["candidate_batch_error"] = strategy_result.get("candidate_batch_error")
             logger.info(f"Strategy produced {len(decisions)} decisions")
             
             # Log strategy decisions
@@ -4065,6 +4113,21 @@ class Orchestrator:
                 execution_status="skipped",
                 reason_code="no_price",
                 reason_detail="No current price was available, so no order was sent",
+                value_gbp=None,
+                quantity=0,
+            )
+
+        # P4-4: skip BUYs on the time-bounded broker-rejection denial list before any
+        # pricing/order build or API call. BUY-only — SELLs/REDUCEs are never blocked.
+        if action == "BUY" and instrument_denylist.is_halted(ticker):
+            logger.info(f"BUY skipped for {ticker}: on broker-rejection denial list")
+            return _emit_and_build_entry(
+                execution_status="skipped",
+                reason_code="instrument_halted",
+                reason_detail=(
+                    "Ticker is on the broker-rejection denial list (recent T212 "
+                    "400/403); BUY re-attempt skipped until the halt window expires"
+                ),
                 value_gbp=None,
                 quantity=0,
             )
@@ -5807,10 +5870,15 @@ class Orchestrator:
         """Get current system status summary."""
         state = self.state_machine.get_state()
         cost = get_cost_summary(days=1)
+        halted = instrument_denylist.active_halts()
         return {
             "system_state": state,
             "cost_today": cost,
             "degradation": get_degradation_level().value,
+            "halted_instruments": {
+                "count": len(halted),
+                "tickers": [h.ticker for h in halted],
+            },
         }
 
     def force_sell(self, ticker: str) -> dict[str, Any]:
@@ -5929,6 +5997,7 @@ def _get_dashboard_summary() -> dict[str, Any]:
 @click.option("--performance", is_flag=True, help="Show performance metrics summary")
 @click.option("--dashboard", is_flag=True, help="Show dashboard: portfolio, metrics, costs, positions")
 @click.option("--reconcile-wallets", is_flag=True, help="Backfill order GBP wallets from T212 history and recompute trade outcomes")
+@click.option("--clear-halt", "clear_halt_ticker", default=None, help="Remove a ticker from the BUY denial list (P4-4)")
 def main(
     dry_run: bool,
     uov_diagnostic: bool,
@@ -5941,6 +6010,7 @@ def main(
     performance: bool,
     dashboard: bool,
     reconcile_wallets: bool,
+    clear_halt_ticker: str | None,
 ) -> None:
     """Investment Agent Orchestrator."""
     orchestrator = Orchestrator(dry_run=dry_run, uov_diagnostic=uov_diagnostic)
@@ -5949,6 +6019,14 @@ def main(
         if status:
             s = orchestrator.get_status()
             click.echo(json.dumps(s, indent=2, default=str))
+            return
+
+        if clear_halt_ticker:
+            removed = instrument_denylist.clear(clear_halt_ticker)
+            click.echo(
+                f"Denylist entry for {clear_halt_ticker}: "
+                f"{'removed' if removed else 'not found'}"
+            )
             return
 
         if performance:

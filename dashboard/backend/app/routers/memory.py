@@ -42,6 +42,17 @@ async def similar_cases(
     return {"query": q, "hits": hits, "count": len(hits)}
 
 
+def _ensure_neo4j_enabled() -> None:
+    if not settings.learning_neo4j_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Neo4j not deployed on this host (learning.neo4j_enabled=false). "
+                "US-6.4 re-enablement is gated — see /roadmap."
+            ),
+        )
+
+
 @router.get("/graph/sector-regime")
 async def graph_sector_regime(
     sector: str = Query(...),
@@ -50,5 +61,6 @@ async def graph_sector_regime(
 ) -> dict[str, Any]:
     """Read-only Neo4j query: decisions in sector during macro regime."""
     _ensure_dashboard_enabled()
+    _ensure_neo4j_enabled()
     rows = await run_blocking(query_similar_sector_regime, sector, regime, limit=limit)
     return {"sector": sector, "regime": regime, "decisions": rows, "count": len(rows)}

@@ -73,7 +73,8 @@ export function RejectionQualityPanel() {
       />
       <InfoCallout
         why="Measures whether declined tickers underperformed (good misses) or would have been winners (false rejects), to validate or re-tune the gate."
-        freshSource="rejected_analysis_*.json · weekly learning_export or scripts/analyze_rejected_tickers.py"
+        freshAsOf={data?.generated_at ?? data?.artifact_mtime ?? null}
+        freshSource="rejected_analysis_*.json summary + data/learning/parquet/v6/rejected.parquet row dataset"
         action="poetry run python scripts/analyze_rejected_tickers.py"
         roadmapId="US-6.7"
       />
@@ -91,6 +92,11 @@ export function RejectionQualityPanel() {
           <p className="text-sm text-terminal-text-muted mb-3">
             Coverage {formatRate(data.coverage_pct)} · {data.rejected_total ?? 0} rejected decisions ·
             generated {data.generated_at ?? '—'}
+          </p>
+          <p className="text-xs text-terminal-text-muted mb-3">
+            Row-level dataset:{' '}
+            <code className="text-terminal-text">data/learning/parquet/v6/rejected.parquet</code>
+            {' '}· included in weekly <code className="text-terminal-text">run-export</code> and available in Data lab → Rejected.
           </p>
 
           <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 mb-4">

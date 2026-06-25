@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 import httpx
 
+from src.agents.execution import instrument_denylist
 from src.agents.execution.order_wallet import parse_t212_history_item, wallet_amount_gbp
 from src.agents.execution.t212_client import T212Client, calculate_quantity
 from src.data.database import get_session
@@ -957,6 +958,20 @@ class OrderManager:
             quantity_override: When set, use this quantity directly instead of calculating
                 from target_amount_gbp. Used by Slack trade commands with explicit share count.
         """
+        # P4-4: defensive pre-flight skip for BUYs on the time-bounded denial list.
+        # The orchestrator normally short-circuits earlier; this guards direct callers.
+        if action == "BUY" and instrument_denylist.is_halted(ticker):
+            logger.info("Skipping BUY %s: on broker-rejection denial list", ticker)
+            return {
+                "status": "skipped",
+                "reason": "instrument_halted",
+                "ticker": ticker,
+                "action": action,
+                "quantity": 0.0,
+                "price": current_price,
+                "value_gbp": 0.0,
+            }
+
         if action == "BUY" and quantity_override is None:
             min_order = float(self.settings.min_order_value_gbp)
             if 0 < target_amount_gbp < min_order:
@@ -1450,6 +1465,16 @@ class OrderManager:
                     ticker,
                     "t212_instrument_not_tradable",
                 )
+            # P4-4: time-bounded BUY denial list for transient broker rejections.
+            if action == "BUY":
+                _, rej_status, rej_body = _unwrap_order_http_error(e)
+                if rej_status in set(self.settings.instrument_denylist_status_codes):
+                    instrument_denylist.record_rejection(
+                        ticker,
+                        rej_status,
+                        reason=f"t212_buy_rejected_{rej_status}",
+                        last_error=rej_body,
+                    )
             logger.error("%s", error_msg)
             # Update the pre-written record to failed
             self._update_order_status(order.id, "failed", error_message=error_msg)

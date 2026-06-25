@@ -34,10 +34,12 @@ export function useLearningPageData(): LearningPageData {
     setLoading(true)
     setError(null)
     try {
-      const [pageStatus, runsResp] = await Promise.all([
-        learningApi.getStatus(),
-        learningApi.listRuns(25),
-      ])
+      const pageStatus = await learningApi.getStatus()
+      const runsResp = await learningApi.listRuns({
+        limit: 25,
+        status: 'completed',
+        datasetVersion: pageStatus.dataset_version,
+      })
       setStatus(pageStatus)
       setNorthStar(pageStatus.north_star)
       setEvaluation(pageStatus.latest_evaluation)

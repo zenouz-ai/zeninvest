@@ -14,7 +14,7 @@ from google.genai import types
 
 from src.agents.moderation.context import format_market_context
 from src.utils.config import get_settings
-from src.utils.cost_tracker import Provider, check_budget, log_cost
+from src.utils.cost_tracker import Provider, budget_guard, estimate_cost
 from src.utils.logger import get_logger
 from src.utils.prompt_loader import get_prompt_hash, load_prompt_file
 
@@ -154,20 +154,20 @@ Score growth potential, risk level, and confidence using the data above.
 Flag if risk > growth. Respond with JSON only."""
 
 
-def _log_gemini_cost(response: Any, cycle_id: str | None, settings: Any):
+def _gemini_usage_tokens(response: Any) -> tuple[int, int]:
+    """Extract (input_tokens, output_tokens) from a Gemini response."""
     input_tokens = 0
     output_tokens = 0
     if hasattr(response, "usage_metadata") and response.usage_metadata:
         input_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
         output_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
-    return log_cost(
-        provider=Provider.GOOGLE.value,
-        model=settings.moderator_2_model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cycle_id=cycle_id,
-        purpose="moderation_gemini",
-    )
+    return int(input_tokens), int(output_tokens)
+
+
+def _settle_gemini_cost(guard: Any, response: Any, settings: Any):
+    """Settle a Gemini call's actual cost through the budget guard."""
+    input_tokens, output_tokens = _gemini_usage_tokens(response)
+    return guard.settle(input_tokens, output_tokens, model=settings.moderator_2_model)
 
 
 def _attach_gemini_usage(result: dict[str, Any], response: Any, cost_result: Any) -> None:
@@ -196,24 +196,30 @@ def _review_single_turn(
     """Single-turn Gemini moderation (no research tools)."""
     settings = get_settings()
 
-    if not check_budget(Provider.GOOGLE.value):
-        logger.warning("Google budget exceeded, skipping Gemini moderation")
-        return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
-
     user_prompt = _build_user_prompt(trade_proposal, portfolio_context, market_context, peer_argument)
 
     try:
         client = genai.Client(api_key=settings.google_ai_api_key)
-        response = client.models.generate_content(
+        with budget_guard(
+            Provider.GOOGLE.value,
+            estimate_cost(Provider.GOOGLE.value, SYSTEM_PROMPT + user_prompt, 512),
             model=settings.moderator_2_model,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                max_output_tokens=2048,
-                temperature=0.4,
-            ),
-        )
-        cost_result = _log_gemini_cost(response, cycle_id, settings)
+            purpose="moderation_gemini",
+            cycle_id=cycle_id,
+        ) as guard:
+            if not guard.approved:
+                logger.warning("Google budget exceeded, skipping Gemini moderation")
+                return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
+            response = client.models.generate_content(
+                model=settings.moderator_2_model,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    max_output_tokens=512,
+                    temperature=0.4,
+                ),
+            )
+            cost_result = _settle_gemini_cost(guard, response, settings)
 
         content = _extract_json_from_text(response.text or "")
         result = _parse_json_with_repair(
@@ -345,9 +351,6 @@ def _review_with_tools(
     settings = get_settings()
     ticker = trade_proposal.get("ticker", "general")
 
-    if not check_budget(Provider.GOOGLE.value):
-        return {"verdict": "SKIP", "reasoning": "Budget exceeded", "available": False}
-
     user_prompt = _build_user_prompt(trade_proposal, portfolio_context, market_context, peer_argument)
     sys_prompt = SYSTEM_PROMPT + "\n\nYou may use research tools to check risk factors, macro headwinds, or SEC filings. Use sparingly (1-2 searches). When done, respond with JSON only."
 
@@ -359,20 +362,26 @@ def _review_with_tools(
         contents: list[Any] = [types.Content(parts=[types.Part.from_text(text=user_prompt)], role="user")]
 
         for _ in range(max_iter):
-            if not check_budget(Provider.GOOGLE.value):
-                break
-
-            response = client.models.generate_content(
+            with budget_guard(
+                Provider.GOOGLE.value,
+                estimate_cost(Provider.GOOGLE.value, sys_prompt + user_prompt, 512),
                 model=settings.moderator_2_model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=sys_prompt,
-                    max_output_tokens=2048,
-                    temperature=0.4,
-                    tools=tools,
-                ),
-            )
-            cost_result = _log_gemini_cost(response, cycle_id, settings)
+                purpose="moderation_gemini",
+                cycle_id=cycle_id,
+            ) as guard:
+                if not guard.approved:
+                    break
+                response = client.models.generate_content(
+                    model=settings.moderator_2_model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=sys_prompt,
+                        max_output_tokens=512,
+                        temperature=0.4,
+                        tools=tools,
+                    ),
+                )
+                cost_result = _settle_gemini_cost(guard, response, settings)
 
             candidate = response.candidates[0] if response.candidates else None
             if not candidate or not candidate.content or not candidate.content.parts:

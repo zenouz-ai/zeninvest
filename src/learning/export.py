@@ -25,7 +25,7 @@ def run_learning_export(
     run_id: str | None = None,
     write_audit_json: bool = True,
 ) -> dict[str, Any]:
-    """Audit, build v2 parquet/text sidecar, and persist export metadata."""
+    """Audit, build configured-version parquet/text sidecar, and persist export metadata."""
     settings = get_settings()
     spec = get_default_spec()
     if settings.learning_export_dataset_version:

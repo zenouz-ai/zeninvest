@@ -315,10 +315,13 @@ def load_env(
     **kwargs: Any,
 ) -> DecisionReplayEnv:
     """Load the env from the canonical parquet bundle."""
+    from src.learning.spec import get_default_spec
+
+    spec = get_default_spec()
     parquet_path = (
         Path(parquet_path)
         if parquet_path
-        else Path(__file__).resolve().parents[3] / "data" / "learning" / "parquet" / "v1" / "merged.parquet"
+        else Path(__file__).resolve().parents[3] / spec.output_dir / "parquet" / spec.version / "merged.parquet"
     )
     if not parquet_path.exists():
         raise FileNotFoundError(f"Merged parquet not found at {parquet_path}; run `cli build` first.")

@@ -39,6 +39,7 @@ def build_strategy_prompt(
     uov_swap_context: str = "",
     position_pnl: str = "",
     strategy_performance: str = "",
+    batch_focus: str = "Full universe review",
 ) -> str:
     """Build the full strategy prompt for Claude."""
     settings = get_settings()
@@ -56,6 +57,7 @@ def build_strategy_prompt(
     )
 
     return STRATEGY_USER_PROMPT.format(
+        batch_focus=batch_focus,
         portfolio_state=portfolio_state,
         market_regime=market_regime,
         company_profiles=company_profiles,

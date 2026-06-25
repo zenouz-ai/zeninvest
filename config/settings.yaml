@@ -74,6 +74,14 @@ strategy:
   avoid_pre_earnings: true
   pre_earnings_window_trading_days: 5
   post_earnings_drift_window_trading_days: 10
+  slim_output_schema_enabled: false      # Anthropic structured JSON (experimental; tiered prompts always on)
+  batched_synthesis_enabled: true        # Split positions vs candidates LLM calls (kill switch)
+  candidate_research_enabled: true       # Research tools only on candidate batch
+  prompt_caching_enabled: true           # Anthropic cache_control on stable prompt prefix
+  hold_reasoning_max_sentences: 1
+  actionable_reasoning_max_sentences: 2
+  sub_strategy_full_reasoning_top_n: 15  # Full sub-strategy reasoning for top-N by score
+  sub_strategy_compress_score_below: 40    # Below this score: ticker+action+score only
 
 moderation:
   require_consensus: true
@@ -82,6 +90,7 @@ moderation:
   debate_enabled: true     # Multi-turn committee debate: moderators see + rebut each other before final verdict
   debate_rounds: 2         # 1 = opening one-shot only (legacy); 2 = opening + one simultaneous rebuttal round
   debate_anonymize: true   # Present each peer's argument anonymously (reduces identity/model bias)
+  debate_skip_low_conviction: 60  # Skip rebuttal when both opening AGREE and conviction below this
 
 models:
   strategy: claude-sonnet-4-5-20250929
@@ -143,6 +152,8 @@ cost_limits:
   google_daily_gbp: 1
   total_monthly_gbp: 60.00
   alert_threshold_pct: 80
+  atomic_budget_enabled: false   # P4-1: opt-in atomic reserve/settle budget (closes TOCTOU under concurrency). Default off = legacy check-then-log.
+  reservation_sweep_minutes: 10  # Age after which orphaned pending budget reservations are swept (crash recovery)
 
 # Search API monthly call limits (project-wide) — Brave, Tavily for enrichment + research
 search_api_limits:
@@ -209,6 +220,9 @@ order_management:
   wallet_reconcile_per_cycle_enabled: true   # Run cheap incremental GBP wallet reconcile after each broker sync (full backfill via --reconcile-wallets)
   wallet_reconcile_lookback_days: 7          # Incremental reconcile window: only re-scan tickers with orders placed within N days (plus any missing GBP truth)
   wallet_reconcile_max_seconds: 120          # Wall-clock budget for per-cycle reconcile so it never overruns the cycle lock
+  instrument_denylist_enabled: true          # P4-4: skip BUY re-attempts on tickers the broker recently rejected (BUY-only; SELLs/stops never blocked)
+  instrument_denylist_ttl_hours: 24          # How long a rejected ticker stays on the BUY denial list
+  instrument_denylist_status_codes: [400, 403]  # T212 HTTP codes on a failed BUY that add the ticker to the denial list
   execution_quality:
     enabled: true
     alert_window_days: 7
@@ -319,6 +333,7 @@ learning:
   embeddings_enabled: false
   embedding_daily_budget_gbp: 0.25
   memory_inject_strategy: false
+  neo4j_enabled: false
   neo4j_uri: bolt://neo4j:7687
   neo4j_user: neo4j
   graphiti_enabled: false

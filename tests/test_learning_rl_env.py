@@ -102,3 +102,23 @@ def test_wis_runs_without_d3rlpy() -> None:
     assert result.estimator == "wis"
     assert result.n_transitions == len(df)
     assert "weight_mean" in result.diagnostic
+
+
+def test_load_env_default_uses_active_dataset_version(monkeypatch) -> None:
+    from src.learning.rl import env as rl_env
+    from src.learning.spec import DATASET_VERSION
+
+    captured: dict[str, str] = {}
+
+    def fake_exists(self):
+        captured["path"] = str(self)
+        return False
+
+    monkeypatch.setattr(rl_env.Path, "exists", fake_exists)
+
+    try:
+        rl_env.load_env()
+    except FileNotFoundError:
+        pass
+
+    assert f"data/learning/parquet/{DATASET_VERSION}/merged.parquet" in captured["path"]

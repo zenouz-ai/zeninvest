@@ -13,7 +13,7 @@ The roadmap uses a **Wave + Gate + ICE** framework (see the canonical repo for f
 3. **Live influence** stays data-gated; **diagnostics and shadow** work does not
 4. Lower-leverage investigations stay in later waves unless tied to an active epic
 
-**Current counts (machine-readable source in the repo):** **55 delivered · 16 pipeline · 71 total (~77%)**.
+**Current counts (machine-readable source in the repo):** **54 delivered · 24 pipeline · 78 total (~69%)**.
 
 ## Delivered Themes
 
@@ -36,15 +36,17 @@ Major delivered themes include:
 - **Wave 1 Track B memory (shadow-only):** vector similar-case search (US-6.2), optional Neo4j sector/regime panel (US-6.4), Graphiti-ready episodes JSON (US-6.5)
 - agentic-operability hardening: prompt hashing 3/3, chat/embedding budgets, durable research cache, parallel moderation, failure-mode catalog, golden tests
 
-## Wave 1 — Evidence & Ops (**complete**)
+## Wave 1 — Evidence & Ops (data/memory **complete**; verification foundation **active**)
 
-Wave 1 pipeline stories delivered (2026-06-21):
+Wave 1 data/memory pipeline stories delivered (2026-06-21):
 
 | Epic | Stories | Outcome |
 |------|---------|---------|
 | **OPS-1** | US-9.12 | Production latency scorecard — US-9.5 exit confirmed (truncation 0%) |
 | **EQ-1** | US-6.7 | Rejected-decision funnel Tier 1 — parquet, dashboard, evaluate funnel block |
 | **MEM-1** | US-6.2 → US-6.4 → US-6.5 | Track B operator tools: embeddings search, **optional** Neo4j graph panel, episodes JSON |
+
+**Verification foundation (active):** Before any learning policy can influence live decisions, the promotion verifier is being hardened — benchmark-relative alpha (not beta-contaminated raw PnL), regime-stratified gates (RISK_ON / RISK_OFF / NEUTRAL), power-calibrated thresholds, and a pre-registered committee-debate ablation. This is a prerequisite for all Wave 2 learning promotion.
 
 **Track B clarifications (public):**
 
@@ -61,6 +63,7 @@ Blocked until enough `trade_outcomes` exist:
 
 - conviction calibration (US-2.1)
 - dynamic strategy weighting (US-2.2)
+- memory curation policy — typed lesson schema, dedup/decay/value-weighting, regime-stratified precision gate (prerequisite before any memory influences live decisions)
 - MLflow platform when experiment volume warrants (US-6.8)
 - US-6.7 Tier 2 reject-inference research (only if diagnostics show material bias)
 

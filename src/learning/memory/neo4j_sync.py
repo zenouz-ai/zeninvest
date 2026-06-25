@@ -15,6 +15,11 @@ logger = get_logger("learning.memory.neo4j")
 
 def sync_neo4j(jsonl_path: str | Path | None = None) -> dict[str, Any]:
     settings = get_settings()
+    if not settings.learning_neo4j_enabled:
+        raise RuntimeError(
+            "Neo4j sync disabled (learning.neo4j_enabled=false). "
+            "Enable for local dev or re-deploy US-6.4 on the VPS."
+        )
     password = settings.learning_neo4j_password
     if not password:
         raise RuntimeError("NEO4J_PASSWORD env var required for Neo4j sync")

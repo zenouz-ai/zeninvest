@@ -23,11 +23,16 @@ export function InfoCallout({ why, freshAsOf, freshSource, action, roadmapId }: 
           </>
         ) : null}
       </p>
-      {freshAsOf || freshSource ? (
+      {freshAsOf ? (
         <p>
           <span className="text-terminal-text-dim uppercase tracking-wide mr-1">Fresh as of:</span>
-          {freshAsOf ?? '—'}
+          {freshAsOf}
           {freshSource ? ` · ${freshSource}` : ''}
+        </p>
+      ) : freshSource ? (
+        <p>
+          <span className="text-terminal-text-dim uppercase tracking-wide mr-1">Source:</span>
+          {freshSource}
         </p>
       ) : null}
       {action ? (

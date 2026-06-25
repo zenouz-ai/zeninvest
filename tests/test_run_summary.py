@@ -1,5 +1,7 @@
 """Tests for run summary merge helper."""
 
+from datetime import datetime, timezone
+
 from src.utils.run_summary import merge_run_summary
 
 
@@ -38,3 +40,20 @@ def test_merge_scheduler_counts_with_rich_orchestrator_fields():
     assert merged["step_timing"]["order_sync"] == 12.0
     assert merged["num_trades"] == 2
     assert merged["duration_seconds"] == 600.0
+
+
+def test_merge_sanitizes_nested_datetime_values_for_json_columns():
+    ts = datetime(2026, 6, 21, 21, 4, 20, tzinfo=timezone.utc)
+    merged = merge_run_summary(
+        None,
+        {
+            "order_sync": {"last_broker_sync_at": ts},
+            "slow_calls": [{"service": "t212", "started_at": ts}],
+        },
+        duration_seconds=12.5,
+        extra={"completed_at": ts},
+    )
+
+    assert merged["order_sync"]["last_broker_sync_at"] == ts.isoformat()
+    assert merged["slow_calls"][0]["started_at"] == ts.isoformat()
+    assert merged["completed_at"] == ts.isoformat()

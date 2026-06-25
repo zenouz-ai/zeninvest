@@ -106,8 +106,9 @@ export default function Dashboard({ sseEvents, sseConnectionState }: DashboardPr
   const portfolioResult = useAsyncData<PortfolioSnapshot | null>(fetchPortfolio, [], { refreshInterval: 60_000 })
 
   const fetchLatestRun = useCallback(async () => {
-    const runs = await runsApi.list({ limit: 10 })
-    return runs.find((run) => run.run_type !== 'refresh') || null
+    const runs = await runsApi.list({ limit: 20 })
+    const tradingRunTypes = new Set(['scheduled', 'manual', 'dry_run', 'slack_command'])
+    return runs.find((run) => tradingRunTypes.has(run.run_type)) || null
   }, [])
   const latestRunResult = useAsyncData<Run | null>(fetchLatestRun, [], { refreshInterval: 60_000 })
 

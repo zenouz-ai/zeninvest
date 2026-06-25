@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -65,12 +65,33 @@ def test_memory_similar_returns_hits(dashboard_env):
     assert body["hits"][0]["doc_id"] == "d1"
 
 
+def test_memory_graph_sector_regime_disabled(dashboard_env):
+    client = TestClient(_make_app(), base_url="http://localhost")
+    _login(client)
+    mock_settings = MagicMock()
+    mock_settings.dashboard_enabled = True
+    mock_settings.learning_neo4j_enabled = False
+    with patch("dashboard.backend.app.routers.memory.settings", mock_settings):
+        resp = client.get(
+            "/api/memory/graph/sector-regime",
+            params={"sector": "Technology", "regime": "RISK_ON"},
+        )
+    assert resp.status_code == 503
+    assert "neo4j_enabled=false" in resp.json()["detail"].lower()
+
+
 def test_memory_graph_sector_regime(dashboard_env):
     client = TestClient(_make_app(), base_url="http://localhost")
     _login(client)
-    with patch(
-        "dashboard.backend.app.routers.memory.query_similar_sector_regime",
-        return_value=[{"ticker": "AAPL_US_EQ", "label": "big_winner", "pnl_pct": 10.0}],
+    mock_settings = MagicMock()
+    mock_settings.dashboard_enabled = True
+    mock_settings.learning_neo4j_enabled = True
+    with (
+        patch("dashboard.backend.app.routers.memory.settings", mock_settings),
+        patch(
+            "dashboard.backend.app.routers.memory.query_similar_sector_regime",
+            return_value=[{"ticker": "AAPL_US_EQ", "label": "big_winner", "pnl_pct": 10.0}],
+        ),
     ):
         resp = client.get(
             "/api/memory/graph/sector-regime",

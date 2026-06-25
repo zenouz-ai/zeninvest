@@ -214,12 +214,18 @@ __marimo__/
 # Investment Agent specific
 .env.*
 !.env.example
+docker-compose.yml.bak-*
 logs/
 /data/
 backtests/results/
 *.db
-!fixtures/dev/investment_agent.db
 fixtures/dev/.tmp.db
+fixtures/dev/investment_agent.db
+fixtures/dev/investment_agent.db-*
+fixtures/dev/investment_agent.db-journal
+fixtures/dev/investment_agent.db-shm
+fixtures/dev/investment_agent.db-wal
+data/zeninvest_imports/
 credentials/
 *.key
 /journals/

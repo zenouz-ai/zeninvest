@@ -27,6 +27,7 @@ const LABEL_COLORS: Record<string, string> = {
 
 interface ModelLabPanelProps {
   runs: LearningRunSummary[]
+  datasetVersion?: string | null
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
@@ -38,20 +39,30 @@ function Metric({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function ModelLabPanel({ runs }: ModelLabPanelProps) {
+export function ModelLabPanel({ runs, datasetVersion }: ModelLabPanelProps) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(runs[0]?.run_id ?? null)
   const [detail, setDetail] = useState<LearningRunDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (runs.length > 0 && !selectedRunId) {
+    if (runs.length === 0) {
+      setSelectedRunId(null)
+      setDetail(null)
+      return
+    }
+    if (!selectedRunId || !runs.some((run) => run.run_id === selectedRunId)) {
       setSelectedRunId(runs[0].run_id)
     }
   }, [runs, selectedRunId])
 
   useEffect(() => {
-    if (!selectedRunId) return
+    if (!selectedRunId) {
+      setDetail(null)
+      setError(null)
+      return
+    }
     let cancelled = false
+    setError(null)
     learningApi.getRun(selectedRunId)
       .then((data) => { if (!cancelled) setDetail(data) })
       .catch((err) => {
@@ -115,7 +126,8 @@ export function ModelLabPanel({ runs }: ModelLabPanelProps) {
           roadmapId="US-2.1"
         />
         <p className="text-sm text-terminal-text-muted">
-          No train run yet — shadow evaluation still works from weekly export. Run train when sample size warrants refresh.
+          No {datasetVersion ?? 'current'} train run yet — shadow evaluation still works from weekly export.
+          Run train when sample size warrants refresh.
         </p>
       </Panel>
     )

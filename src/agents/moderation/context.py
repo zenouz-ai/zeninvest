@@ -183,22 +183,23 @@ def format_market_context(market_context: dict[str, Any]) -> str:
         lines = ["## Sub-Strategy Signals"]
         mom = subs.get("momentum")
         if mom:
+            reasoning = str(mom.get("reasoning", ""))[:120]
             lines.append(
-                f"- Momentum: {mom['action']} (score: {mom['score']:.0f}) "
-                f"— {mom['reasoning']}"
+                f"- Momentum: {mom['action']} (score: {mom['score']:.0f}) — {reasoning}"
             )
         mr = subs.get("mean_reversion")
         if mr:
+            reasoning = str(mr.get("reasoning", ""))[:120]
             lines.append(
-                f"- Mean Reversion: {mr['action']} (score: {mr['score']:.0f}) "
-                f"— {mr['reasoning']}"
+                f"- Mean Reversion: {mr['action']} (score: {mr['score']:.0f}) — {reasoning}"
             )
         fac = subs.get("factor")
         if fac:
+            reasoning = str(fac.get("reasoning", ""))[:120]
             lines.append(
                 f"- Factor: composite={fac['composite_score']:.0f} "
                 f"(V={fac['value_score']:.0f} Q={fac['quality_score']:.0f} "
-                f"M={fac['momentum_score']:.0f}) — {fac['reasoning']}"
+                f"M={fac['momentum_score']:.0f}) — {reasoning}"
             )
         if len(lines) > 1:
             sections.append("\n".join(lines))

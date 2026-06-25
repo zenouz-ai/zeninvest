@@ -235,8 +235,17 @@ export interface LearningRunDetail {
 }
 
 export const learningApi = {
-  listRuns: async (limit = 25): Promise<{ runs: LearningRunSummary[]; count: number }> => {
-    const response = await api.get('/api/learning/runs', { params: { limit } })
+  listRuns: async (
+    params: { limit?: number; status?: string; datasetVersion?: string } = {}
+  ): Promise<{ runs: LearningRunSummary[]; count: number }> => {
+    const { limit = 25, status, datasetVersion } = params
+    const response = await api.get('/api/learning/runs', {
+      params: {
+        limit,
+        status,
+        dataset_version: datasetVersion,
+      },
+    })
     return response.data
   },
   getRun: async (runId: string): Promise<LearningRunDetail> => {

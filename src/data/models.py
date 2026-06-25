@@ -64,6 +64,28 @@ class Instrument(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
+class HaltedInstrument(Base):
+    """Time-bounded denial list of tickers the broker rejected (P4-4, US-7.5).
+
+    Distinct from ``Instrument.data_available`` (permanent / yfinance can't fetch):
+    this records transient T212 BUY rejections (HTTP 400/403) so the pipeline skips
+    re-attempting the same ticker for a TTL window (default 24h) instead of wasting
+    an API call and repeating the failure every cycle. Restart-safe (architecture
+    rule #9 — persist truth). BUY-only; SELLs/protective stops are never blocked.
+    """
+
+    __tablename__ = "halted_instruments"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    ticker = Column(String(50), unique=True, nullable=False, index=True)
+    reason = Column(String(100), nullable=False)
+    status_code = Column(Integer, nullable=True)
+    halted_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    halted_until = Column(DateTime, nullable=False, index=True)
+    hit_count = Column(Integer, nullable=False, default=1)
+    last_error = Column(Text, nullable=True)
+
+
 class PortfolioSnapshot(Base):
     """Periodic snapshot of portfolio state."""
 
@@ -460,6 +482,10 @@ class CostLog(Base):
     cost_gbp = Column(Float, nullable=False, default=0.0)
     cycle_id = Column(String(50), nullable=True, index=True)
     purpose = Column(String(100), nullable=True)  # strategy, moderation, etc.
+    # Atomic cost budget (P4-1, US-7.5). NULL = normal logged cost; "pending" =
+    # reserved estimate counting toward spend pre-call; "settled" = reconciled to
+    # actual cost after the call. Orphaned "pending" rows are swept on crash.
+    reservation_state = Column(String(20), nullable=True, index=True)
 
 
 class NotificationLog(Base):
